@@ -1,0 +1,68 @@
+[workspace]
+resolver = "2"
+members = [
+    "src/tentgent-core",
+    "src/tentgent-cli",
+    "src/tentgent-http",
+]
+default-members = ["src/tentgent-cli"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.81"
+version = "0.1.0"
+
+[workspace.dependencies]
+clap = { version = "4.5", features = ["derive"] }
+comfy-table = "7"
+console = "0.16"
+directories = "6"
+dotenvy = "0.15"
+hex = "0.4"
+indicatif = "0.18"
+keyring = { version = "3.6", default-features = false, features = ["apple-native"] }
+miette = { version = "7", features = ["fancy"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
+rpassword = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+time = { version = "0.3", features = ["formatting"] }
+toml = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "signal", "net", "fs", "io-util", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+walkdir = "2"
+
+[workspace.metadata.tentgent]
+app_slug = "tentgent"
+display_name = "Tentgent"
+bin_name = "tentgent"
+service_host = "agent.tentserv.com"
+app_id = "com.tentserv.tentgent"
+env_prefix = "TENTGENT"
+
+[workspace.metadata.tentgent.project_dirs]
+qualifier = "com"
+organization = "tentserv"
+application = "tentgent"
+
+[workspace.metadata.tentgent.env]
+home = "TENTGENT_HOME"
+models = "TENTGENT_MODELS_DIR"
+adapters = "TENTGENT_ADAPTERS_DIR"
+cache = "TENTGENT_CACHE_DIR"
+runtime = "TENTGENT_RUNTIME_DIR"
+logs = "TENTGENT_LOG_DIR"
+
+[workspace.metadata.tentgent.paths]
+config_file = "config.toml"
+models = "models"
+adapters = "adapters"
+cache = "cache"
+runtime = "runtime"
+logs = "logs"
+locks = "locks"
+socket = "runtime/tentgent.sock"
+pid_file = "runtime/tentgent.pid"

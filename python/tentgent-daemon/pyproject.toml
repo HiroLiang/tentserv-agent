@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tentgent-daemon"
+version = "0.1.0"
+description = "Python runtime and daemon layer for Tentgent."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "gguf",
+    "huggingface-hub",
+    "llama-cpp-python",
+    "mlx",
+    "mlx-lm",
+    "peft",
+    "safetensors",
+    "torch",
+    "transformers",
+]
+
+[project.scripts]
+tentgent-chat-once = "tentgent_daemon.cli.chat_once:main"
+tentgent-hf-snapshot = "tentgent_daemon.tools.hf_snapshot:main"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tentgent_daemon"]
+
+[tool.pyright]
+include = ["src"]
+extraPaths = ["src"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.11"

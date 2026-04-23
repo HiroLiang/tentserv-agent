@@ -1,0 +1,38 @@
+# Tentgent Daemon
+
+Use this directory as the standalone Python subproject for Tentgent runtime and daemon work.
+
+## Directory Map
+
+- `pyproject.toml`
+  Python packaging entry point for this subproject.
+- `src/tentgent_daemon/`
+  Importable package root.
+- `src/tentgent_daemon/runtime/`
+  Stored-model resolution, runtime request types, and backend routing.
+- `src/tentgent_daemon/cli/`
+  Package-local CLI entry points such as `tentgent-chat-once`.
+- `src/tentgent_daemon/backends/`
+  Backend-specific runtime integrations such as `mlx`, `transformers + peft`, and `llama_cpp`.
+- `src/tentgent_daemon/tools/`
+  Internal helper tools such as the Hugging Face snapshot helper used by the Rust model-store MVP.
+
+## Runtime Conventions
+
+- The daemon should use the shared Tentgent runtime-home rules documented in [docs/contracts/runtime-home.md](../../docs/contracts/runtime-home.md).
+- The daemon should not treat the repository root as its persistent storage root.
+- Repository-local testing should rely on `TENTGENT_HOME="$PWD/.tentgent"` rather than ad hoc relative paths.
+- Prefer `uv run --project python/tentgent-daemon ...` from the repository root when manually testing Python entry points.
+- `tentgent-chat-once` currently runs the `safetensors -> transformers`, `mlx -> mlx-lm`, and `gguf -> llama.cpp` paths, all with `--stream`.
+- Message inputs accept ordered `role:content` entries so the first manual harness can already carry multi-turn context.
+- A verified small MLX test model is `mlx-community/Llama-3.2-1B-Instruct-4bit`.
+- A verified small GGUF test model is `DravenBlack/gemma-3-1b-it-Q4_K_M-GGUF`.
+
+## Expansion Rules
+
+- Keep backend-specific details in the closest backend folder under `src/tentgent_daemon/backends/`.
+- Keep Python-direct runtime logic inside `src/tentgent_daemon/runtime/`.
+- Keep reusable entry logic inside the package and expose commands through `pyproject.toml` entry points.
+- Keep internal helper tools inside `src/tentgent_daemon/tools/` instead of ad hoc top-level scripts.
+- Add a local `README.md` or `AGENTS.md` in a backend subtree when that backend grows large enough to need its own routing document.
+- Update the relevant Markdown in the same change whenever runtime boundaries or routing behavior change.

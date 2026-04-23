@@ -1,0 +1,42 @@
+[tool.uv]
+package = false
+
+[tool.pyright]
+include = [
+    "python/tentgent-daemon/src",
+]
+extraPaths = ["python/tentgent-daemon/src"]
+venvPath = "python/tentgent-daemon"
+venv = ".venv"
+pythonVersion = "3.11"
+
+[tool.tentgent]
+app_slug = "tentgent"
+display_name = "Tentgent"
+service_host = "agent.tentserv.com"
+app_id = "com.tentserv.tentgent"
+env_prefix = "TENTGENT"
+
+[tool.tentgent.project_dirs]
+qualifier = "com"
+organization = "tentserv"
+application = "tentgent"
+
+[tool.tentgent.env]
+home = "TENTGENT_HOME"
+models = "TENTGENT_MODELS_DIR"
+adapters = "TENTGENT_ADAPTERS_DIR"
+cache = "TENTGENT_CACHE_DIR"
+runtime = "TENTGENT_RUNTIME_DIR"
+logs = "TENTGENT_LOG_DIR"
+
+[tool.tentgent.paths]
+config_file = "config.toml"
+models = "models"
+adapters = "adapters"
+cache = "cache"
+runtime = "runtime"
+logs = "logs"
+locks = "locks"
+socket = "runtime/tentgent.sock"
+pid_file = "runtime/tentgent.pid"
