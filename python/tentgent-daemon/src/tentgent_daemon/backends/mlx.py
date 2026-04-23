@@ -52,6 +52,11 @@ class MlxChatBackend(ChatBackend):
         )
         return ChatResult(text=text.rstrip())
 
+    def release(self) -> None:
+        self._record = None
+        self._model = None
+        self._tokenizer = None
+
     def stream_generate(self, request: ChatRequest) -> Iterator[str]:
         model, tokenizer = self._require_loaded()
         prompt = _render_prompt(tokenizer, request.messages)

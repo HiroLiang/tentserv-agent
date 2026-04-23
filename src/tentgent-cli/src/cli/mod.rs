@@ -3,6 +3,7 @@ mod auth;
 mod chat;
 mod commands;
 mod model;
+mod server;
 
 use clap::{CommandFactory, Parser};
 use commands::Commands;
@@ -22,6 +23,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Auth { subject } => auth::handle_auth_command(subject).await?,
         Commands::Chat(command) => chat::handle_chat_command(command).await?,
         Commands::Model { action } => model::handle_model_command(action)?,
+        Commands::Server { action } => server::handle_server_command(action).await?,
         Commands::Status | Commands::Adapter | Commands::Daemon => {
             println!("Command scaffold is present. Use --help to inspect available groups.");
         }

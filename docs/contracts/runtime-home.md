@@ -37,6 +37,7 @@ Environment variables:
 ## Standard Subdirectories
 
 - `models/`
+- `servers/`
 - `adapters/`
 - `cache/`
 - `runtime/`

@@ -40,6 +40,10 @@ class LlamaCppChatBackend(ChatBackend):
         text = response["choices"][0]["message"]["content"]
         return ChatResult(text=(text or "").rstrip())
 
+    def release(self) -> None:
+        self._record = None
+        self._model = None
+
     def stream_generate(self, request: ChatRequest) -> Iterator[str]:
         model = self._require_loaded()
         response = model.create_chat_completion(

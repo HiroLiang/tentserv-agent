@@ -16,6 +16,11 @@ pub enum ModelError {
     NotFound(String),
     #[error("model reference `{0}` is ambiguous; multiple stored models share that prefix")]
     AmbiguousRef(String),
+    #[error("model `{model_ref}` is still referenced by server spec(s): {server_refs}")]
+    InUse {
+        model_ref: String,
+        server_refs: String,
+    },
     #[error("the Hugging Face snapshot helper is missing at `{path}`")]
     MissingHelper { path: PathBuf },
     #[error("failed to invoke the Hugging Face snapshot helper: {message}")]

@@ -11,9 +11,11 @@ Use this directory as the standalone Python subproject for Tentgent runtime and 
 - `src/tentgent_daemon/runtime/`
   Stored-model resolution, runtime request types, and backend routing.
 - `src/tentgent_daemon/cli/`
-  Package-local CLI entry points such as `tentgent-chat-once`.
+  Package-local CLI entry points such as `tentgent-chat-once` and `tentgent-server`.
 - `src/tentgent_daemon/backends/`
   Backend-specific runtime integrations such as `mlx`, `transformers + peft`, and `llama_cpp`.
+- `src/tentgent_daemon/server/`
+  Long-lived server configuration and HTTP skeleton logic.
 - `src/tentgent_daemon/tools/`
   Internal helper tools such as the Hugging Face snapshot helper used by the Rust model-store MVP.
 
@@ -24,6 +26,12 @@ Use this directory as the standalone Python subproject for Tentgent runtime and 
 - Repository-local testing should rely on `TENTGENT_HOME="$PWD/.tentgent"` rather than ad hoc relative paths.
 - Prefer direct calls to `python/tentgent-daemon/.venv/bin/...` when manually testing Python entry points from the repository root; this avoids `uv` workspace warnings from the parent repo.
 - `tentgent-chat-once` currently runs the `safetensors -> transformers`, `mlx -> mlx-lm`, and `gguf -> llama.cpp` paths, all with `--stream`.
+- `tentgent-server` now provides the Slice 5 long-lived server skeleton with `GET /healthz` and `POST /v1/chat`.
+- HTTP `stream=true` is intentionally not implemented yet; the server returns `501` until the streaming protocol is chosen.
+- `tentgent-server` now applies explicit lifecycle policy:
+  - eager load when `--lazy-load` is absent
+  - load on first request when `--lazy-load` is present
+  - release on later `/healthz` or `/v1/chat` access once `--idle-seconds` has expired
 - Message inputs accept ordered `role:content` entries so the first manual harness can already carry multi-turn context.
 - A verified small MLX test model is `mlx-community/Llama-3.2-1B-Instruct-4bit`.
 - A verified small GGUF test model is `DravenBlack/gemma-3-1b-it-Q4_K_M-GGUF`.

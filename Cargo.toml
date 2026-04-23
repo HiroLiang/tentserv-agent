@@ -59,6 +59,7 @@ logs = "TENTGENT_LOG_DIR"
 [workspace.metadata.tentgent.paths]
 config_file = "config.toml"
 models = "models"
+servers = "servers"
 adapters = "adapters"
 cache = "cache"
 runtime = "runtime"

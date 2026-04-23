@@ -36,9 +36,9 @@ This crate owns the `tentgent` binary and should stay focused on command-line in
 - `tentgent help`
   Show root help through the built-in help subcommand.
 - `tentgent auth --help`
-  Show auth-group help with provider examples.
+  Show auth-group help.
 - `tentgent auth hf --help`
-  Show Hugging Face auth help with action examples.
+  Show Hugging Face auth help.
 - `tentgent auth hf set --help`
   Show the secure-input format and behavior for key storage.
 - `tentgent auth hf`
@@ -52,7 +52,7 @@ This crate owns the `tentgent` binary and should stay focused on command-line in
 - `tentgent auth anthropic`
   Show Anthropic key status with the same resolution rules.
 - `tentgent model --help`
-  Show model-group help with add, pull, list, and inspect examples.
+  Show model-group help.
 - `tentgent model add <PATH>`
   Import a local file or directory into `TENTGENT_HOME/models`.
 - `tentgent model pull <HF_REPO> [--revision <REV>]`
@@ -60,7 +60,7 @@ This crate owns the `tentgent` binary and should stay focused on command-line in
 - `tentgent model ls`
   List managed models by short ref, primary format, and source.
 - `tentgent model rm <HASH>`
-  Remove one managed model and its related source indexes by short or full hash ref.
+  Remove one managed model and its related source indexes by short or full hash ref. Removal is blocked while any stored server spec still references that model.
 - `tentgent model inspect <REF>`
   Show metadata, manifest path, and canonical store path for one managed model.
 - `tentgent chat <MODEL_REF> [--message ...]`
@@ -69,3 +69,17 @@ This crate owns the `tentgent` binary and should stay focused on command-line in
   Prompt once for a user message when no `--message` flags are provided.
 - `tentgent chat <MODEL_REF> --stream`
   Preserve streamed stdout from the selected Python backend.
+- `tentgent server run <MODEL_REF> [--home ...] [--host ...] [--port ...] [--lazy-load] [--idle-seconds ...] [--detach]`
+  Persist a stable `server.toml` and launch the Python server skeleton. Foreground is the default, and `--detach` performs the initial launch in background mode.
+- `tentgent server ls [--home ...]`
+  List persisted server specs together with their current runtime state.
+- `tentgent server ps [--home ...]`
+  List only currently running server processes.
+- `tentgent server inspect <SERVER_REF> [--home ...]`
+  Show one stored server spec, runtime status, and server-local log paths.
+- `tentgent server start <SERVER_REF> [--home ...] [--details]`
+  Launch one stored server spec in background mode. The default output is concise, and `--details` adds the full inspection table.
+- `tentgent server stop <SERVER_REF> [--home ...] [--details]`
+  Stop one live server process without deleting its spec. The default output is concise, and `--details` adds the full inspection table.
+- `tentgent server rm <SERVER_REF> [--home ...] [--details]`
+  Remove one stopped server spec directory. The default output is concise, and `--details` adds the full inspection table captured before removal.

@@ -2,6 +2,13 @@
 
 This plan defines how Tentgent should introduce runnable model backends and a first usable single-shot chat flow.
 
+## Status
+
+- This plan is now the completed foundation for the runtime layer.
+- The completed next phase is [server-runtime-mvp.md](./server-runtime-mvp.md).
+- The current active runtime follow-up now lives in [../lora-server-mvp.md](../lora-server-mvp.md).
+- Keep this document focused on the one-shot chat foundation that `tentgent server` will build on.
+
 ## Decision Summary
 
 - Start with a Python-first runtime harness before wiring the full Rust `tentgent chat` surface.
@@ -144,6 +151,7 @@ python/tentgent-daemon/
 - Yes, start with Python so models can be tested directly before the Rust chat UX is finalized.
 - Yes, keep the three backends separated internally.
 - No, do not expose them as three unrelated user-facing products.
+- Yes, treat this plan as the prerequisite for the server phase rather than extending it into a long server design document.
 
 ## Current Progress
 
@@ -156,3 +164,4 @@ python/tentgent-daemon/
 - `tentgent-chat-once --stream` now streams generated text to stdout for the GGUF path as well.
 - `tentgent chat <MODEL_REF>` now wraps the Python chat harness from Rust.
 - The Rust wrapper supports repeated `--message` inputs, `--stream`, and a single interactive prompt when `--message` is omitted.
+- The next completed milestone was `tentgent server <MODEL_REF>`, which established the long-lived runtime process and lifecycle boundary used by the current LoRA follow-up plan.

@@ -1,10 +1,12 @@
 use std::{
+    env,
     fs,
     path::{Path, PathBuf},
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use directories::ProjectDirs;
 use serde::Deserialize;
 use walkdir::WalkDir;
 
@@ -72,6 +74,12 @@ struct HfSnapshotOutput {
     repo_id: String,
     resolved_revision: String,
     local_dir: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct StoredServerSpec {
+    short_ref: String,
+    model_ref: String,
 }
 
 impl ModelManager {
@@ -182,6 +190,7 @@ impl ModelManager {
 
     pub fn remove(&self, reference: &str) -> Result<RemovalOutcome, ModelError> {
         let metadata = self.resolve_metadata(reference)?;
+        self.ensure_not_referenced_by_server(&metadata.model_ref)?;
         let store_path = self.paths.model_dir(&metadata.model_ref);
 
         let removed_index_paths =
@@ -336,6 +345,54 @@ impl ModelManager {
         Ok(stage_root)
     }
 
+    fn ensure_not_referenced_by_server(&self, model_ref: &str) -> Result<(), ModelError> {
+        let server_refs = self.find_server_refs_for_model(model_ref)?;
+        if server_refs.is_empty() {
+            return Ok(());
+        }
+
+        Err(ModelError::InUse {
+            model_ref: model_ref.to_string(),
+            server_refs: server_refs.join(", "),
+        })
+    }
+
+    fn find_server_refs_for_model(&self, model_ref: &str) -> Result<Vec<String>, ModelError> {
+        let servers_dir = resolve_servers_dir()?;
+        if !servers_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut server_refs = Vec::new();
+        for entry in fs::read_dir(&servers_dir)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+
+            let spec_path = entry.path().join("server.toml");
+            if !spec_path.exists() {
+                continue;
+            }
+
+            let body = fs::read_to_string(&spec_path)?;
+            let spec = toml::from_str::<StoredServerSpec>(&body).map_err(|err| {
+                ModelError::MetadataParse {
+                    path: spec_path.clone(),
+                    message: err.to_string(),
+                }
+            })?;
+
+            if spec.model_ref == model_ref || model_ref.starts_with(&spec.model_ref) {
+                server_refs.push(spec.short_ref);
+            }
+        }
+
+        server_refs.sort();
+        server_refs.dedup();
+        Ok(server_refs)
+    }
+
     fn run_hf_snapshot(
         &self,
         repo_id: &str,
@@ -462,4 +519,25 @@ fn copy_into_source_root(input_path: &Path, source_root: &Path) -> Result<(), Mo
     }
 
     Ok(())
+}
+
+fn resolve_servers_dir() -> Result<PathBuf, ModelError> {
+    let home_dir = read_env_path("TENTGENT_HOME").unwrap_or(default_home_dir()?);
+    Ok(home_dir.join("servers"))
+}
+
+fn read_env_path(name: &str) -> Option<PathBuf> {
+    let value = env::var(name).ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(trimmed))
+    }
+}
+
+fn default_home_dir() -> Result<PathBuf, ModelError> {
+    let project_dirs = ProjectDirs::from("com", "tentserv", "tentgent")
+        .ok_or(ModelError::ProjectDirsUnavailable)?;
+    Ok(project_dirs.data_local_dir().to_path_buf())
 }

@@ -50,6 +50,16 @@ class TransformersPeftChatBackend(ChatBackend):
         text = tokenizer.decode(generated_ids, skip_special_tokens=True)
         return ChatResult(text=text.rstrip())
 
+    def release(self) -> None:
+        self._record = None
+        self._tokenizer = None
+        self._model = None
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+
     def stream_generate(self, request: ChatRequest) -> Iterator[str]:
         tokenizer, model = self._require_loaded()
         generate_kwargs = self._prepare_generate_kwargs(tokenizer, request)

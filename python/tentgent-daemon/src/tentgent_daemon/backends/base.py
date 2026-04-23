@@ -18,6 +18,10 @@ class ChatBackend:
     def load(self, record: StoredModelRecord) -> None:
         raise NotImplementedError
 
+    def release(self) -> None:
+        """Release loaded runtime state when the server lifecycle decides to unload."""
+        return None
+
     def generate(self, request: ChatRequest) -> ChatResult:
         raise NotImplementedError
 

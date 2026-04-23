@@ -34,9 +34,11 @@ If the current task is about agent workflows, role selection, or role-specific w
 - `docs/contracts/`
   Concise contract documents for cross-module and cross-language interfaces.
 - `docs/plans/`
-  Execution plans for larger runtime and backend initiatives.
+  Active execution plans for larger runtime and backend initiatives.
 - `docs/i18n/`
   Localized Markdown that mirrors English source documents.
+- `docs/plans/archive/`
+  Completed plans kept only for historical context and implementation history.
 
 Key current documents:
 
@@ -46,8 +48,10 @@ Key current documents:
   Provider-secret resolution order and keychain usage rules.
 - `docs/contracts/model-store.md`
   Model-store identity, deduplication, layout, and Hugging Face pull boundaries.
-- `docs/plans/runtime-chat-mvp.md`
-  Staged plan for Python-first chat runtimes, backend routing, and future server layering.
+- `docs/plans/lora-server-mvp.md`
+  Active plan for request-time LoRA support on top of the completed single-model server lifecycle.
+- `docs/plans/archive/README.md`
+  Router for completed plans that should be consulted only when historical implementation context is needed.
 
 ## Project Naming
 
@@ -91,7 +95,7 @@ Key current documents:
 ## Expansion Conventions
 
 - If `docs/contracts/` grows, split it by interface or subsystem and keep this file as the top-level router only.
-- If `docs/plans/` grows, keep one plan per initiative or split into subfolders with a local `README.md`.
+- If `docs/plans/` grows, keep unfinished work at the top level and move completed plans into `docs/plans/archive/`.
 - If `python/tentgent-daemon/` grows, add a subtree `README.md` or `AGENTS.md` to route backend-specific reads.
 - Keep the Python subproject in standard `pyproject.toml + src/` layout so IDE and packaging behavior remain predictable.
 - If a `src/` subtree gains local rules, add a subtree `AGENTS.md` and link to it from this file.

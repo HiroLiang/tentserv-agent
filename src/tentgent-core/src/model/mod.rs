@@ -9,4 +9,4 @@ mod store;
 pub use error::ModelError;
 pub use format::ModelFormat;
 pub use service::{ImportOutcome, ModelInspection, ModelManager, ModelSummary, RemovalOutcome};
-pub use store::{ImportMethod, ModelMetadata, SourceKind, VariantMetadata};
+pub use store::{read_model_metadata, ImportMethod, ModelMetadata, SourceKind, VariantMetadata};

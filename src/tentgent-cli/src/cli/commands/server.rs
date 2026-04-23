@@ -1,0 +1,124 @@
+use std::path::PathBuf;
+
+use clap::{Args, Subcommand};
+
+#[derive(Debug, Subcommand)]
+pub enum ServerCommands {
+    /// Create a server spec and launch it in foreground mode by default.
+    #[command(
+        name = "run",
+        about = "Create a server spec and launch it in foreground mode by default.",
+        long_about = "Create or reuse one stored server spec for a single model reference and launch it immediately. `MODEL_REF` can be a full Tentgent model reference or a unique short-ref prefix.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address.\n`--lazy-load` delays model loading until the first chat request arrives.\n`--idle-seconds` releases a loaded model after inactivity when the next health or chat access checks lifecycle state.\n`--detach` launches the initial server process in background mode and returns immediately."
+    )]
+    Run(ServerRunCommand),
+    /// List registered server specs and their current runtime state.
+    #[command(
+        name = "ls",
+        visible_alias = "list",
+        about = "List registered server specs and their current runtime state.",
+        long_about = "List registered server specs and their current runtime state. This includes stored servers that are currently stopped."
+    )]
+    Ls {
+        /// Optional Tentgent runtime home override for server state lookup.
+        #[arg(long, value_name = "HOME")]
+        home: Option<PathBuf>,
+    },
+    /// List only live server processes.
+    #[command(
+        name = "ps",
+        about = "List only live server processes.",
+        long_about = "List only live server processes. This command reads Tentgent server specs, checks process metadata, and filters to currently running servers."
+    )]
+    Ps {
+        /// Optional Tentgent runtime home override for server state lookup.
+        #[arg(long, value_name = "HOME")]
+        home: Option<PathBuf>,
+    },
+    /// Show one stored server spec together with runtime state and log paths.
+    #[command(
+        name = "inspect",
+        about = "Show one stored server spec together with runtime state and log paths.",
+        long_about = "Show one stored server spec together with runtime state and log paths. Tentgent accepts either the full server_ref or a unique short_ref prefix."
+    )]
+    Inspect {
+        #[arg(value_name = "SERVER_REF")]
+        reference: String,
+        /// Optional Tentgent runtime home override for server state lookup.
+        #[arg(long, value_name = "HOME")]
+        home: Option<PathBuf>,
+    },
+    /// Launch one stored server spec in background mode.
+    #[command(
+        name = "start",
+        about = "Launch one stored server spec in background mode.",
+        long_about = "Launch one stored server spec in background mode. Tentgent accepts either the full server_ref or a unique short_ref prefix, starts the Python server with stdout and stderr redirected to server-local log files, and returns immediately.\n\nBy default `start` prints a concise status summary. Add `--details` to include the full inspection table."
+    )]
+    Start {
+        #[arg(value_name = "SERVER_REF")]
+        reference: String,
+        /// Optional Tentgent runtime home override for server state lookup.
+        #[arg(long, value_name = "HOME")]
+        home: Option<PathBuf>,
+        /// Show the full inspection table after the server starts.
+        #[arg(long)]
+        details: bool,
+    },
+    /// Stop one live server process without deleting its stored spec.
+    #[command(
+        name = "stop",
+        about = "Stop one live server process without deleting its stored spec.",
+        long_about = "Stop one live server process without deleting its stored spec. Tentgent accepts either the full server_ref or a unique short_ref prefix.\n\nBy default `stop` prints a concise status summary. Add `--details` to include the full inspection table after shutdown."
+    )]
+    Stop {
+        #[arg(value_name = "SERVER_REF")]
+        reference: String,
+        /// Optional Tentgent runtime home override for server state lookup.
+        #[arg(long, value_name = "HOME")]
+        home: Option<PathBuf>,
+        /// Show the full inspection table after the server stops.
+        #[arg(long)]
+        details: bool,
+    },
+    /// Remove one stored server spec after it is stopped.
+    #[command(
+        name = "rm",
+        visible_alias = "remove",
+        about = "Remove one stored server spec after it is stopped.",
+        long_about = "Remove one stored server spec after it is stopped. Tentgent accepts either the full server_ref or a unique short_ref prefix and removes the full server directory under TENTGENT_HOME/servers/<server_ref>.\n\nBy default `rm` prints a concise status summary. Add `--details` to include the full inspection table before removal."
+    )]
+    Rm {
+        #[arg(value_name = "SERVER_REF")]
+        reference: String,
+        /// Optional Tentgent runtime home override for server state lookup.
+        #[arg(long, value_name = "HOME")]
+        home: Option<PathBuf>,
+        /// Show the full inspection table captured before the server is removed.
+        #[arg(long)]
+        details: bool,
+    },
+}
+
+#[derive(Debug, Args)]
+pub struct ServerRunCommand {
+    /// Stored Tentgent model reference to bind to this server.
+    #[arg(value_name = "MODEL_REF")]
+    pub model_ref: String,
+    /// Optional Tentgent runtime home override for server state and model lookup.
+    #[arg(long, value_name = "HOME")]
+    pub home: Option<PathBuf>,
+    /// Host interface for the future HTTP listener.
+    #[arg(long, value_name = "HOST")]
+    pub host: Option<String>,
+    /// TCP port for the future HTTP listener.
+    #[arg(long, value_name = "PORT")]
+    pub port: Option<u16>,
+    /// Delay model loading until the first request arrives.
+    #[arg(long)]
+    pub lazy_load: bool,
+    /// Auto-release the loaded model after N idle seconds.
+    #[arg(long = "idle-seconds", value_name = "N")]
+    pub idle_seconds: Option<u64>,
+    /// Launch the initial server process in background mode and return immediately.
+    #[arg(long)]
+    pub detach: bool,
+}

@@ -49,6 +49,7 @@ TENTGENT_HOME/
 ## Removal Rule
 
 - `tentgent model rm <HASH>` should resolve the model by full hash or unique short-hash prefix.
+- Removing a model must be blocked when any stored Tentgent server spec still references that model.
 - Removing a model should delete the canonical store directory under `models/store/<model_ref>/`.
 - Removing a model should also delete related source indexes in both `models/by-source/local/` and `models/by-source/hf/`.
 - Empty Hugging Face source-index directories should be cleaned up after removal.

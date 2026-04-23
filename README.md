@@ -9,6 +9,51 @@ Language:
 - Traditional Chinese: [docs/i18n/zh-TW/README.md](./docs/i18n/zh-TW/README.md)
 - Japanese: [docs/i18n/ja/README.md](./docs/i18n/ja/README.md)
 
+## Install Status
+
+Tentgent is currently source-first.
+
+- Available today:
+  - build and run from this repository
+- Planned later:
+  - Homebrew install
+  - packaged app or daemon distribution
+  - simpler bootstrap commands for non-developer users
+
+Until packaged installers exist, the supported path is to run Tentgent from the checked-out repository.
+
+## Quick Start
+
+- Build the Rust workspace:
+
+```bash
+cargo build --workspace
+```
+
+- Pull a small model into the repository-local runtime home:
+
+```bash
+TENTGENT_HOME="$PWD/.tentgent-test" ./target/debug/tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
+```
+
+- Run one-shot chat:
+
+```bash
+TENTGENT_HOME="$PWD/.tentgent-test" ./target/debug/tentgent chat c5066419e049 --message "user:Hello there"
+```
+
+- Launch a long-lived server in foreground mode:
+
+```bash
+TENTGENT_HOME="$PWD/.tentgent-test" ./target/debug/tentgent server run c5066419e049 --host 127.0.0.1 --port 8780 --lazy-load
+```
+
+- Launch a long-lived server in background mode:
+
+```bash
+TENTGENT_HOME="$PWD/.tentgent-test" ./target/debug/tentgent server run c5066419e049 --host 127.0.0.1 --port 8780 --lazy-load --detach
+```
+
 ## Repository Layout
 
 - `src/tentgent-core/`
@@ -39,7 +84,8 @@ Language:
 - Start with [AGENTS.md](./AGENTS.md) for shared repository context and documentation routing.
 - Continue with [CLAUDE.md](./CLAUDE.md) for agent workflows, role definitions, and write boundaries.
 - Use `docs/contracts/` for cross-language and cross-module interface notes.
-- Use `docs/plans/` for staged execution plans before large runtime or backend changes.
+- Use `docs/plans/` for active staged execution plans before large runtime or backend changes.
+- Use `docs/plans/archive/` only when historical plan context is actually needed.
 - Use folder-level `README.md` files as routing documents when a subtree becomes large enough to justify local navigation.
 - The root `pyproject.toml` now keeps shared repository metadata plus workspace-level Pyright paths.
 - `python/tentgent-daemon/pyproject.toml` owns Python packaging, dependencies, and entry points for the daemon subproject.
@@ -55,6 +101,13 @@ Language:
   - `TENTGENT_CACHE_DIR`
   - `TENTGENT_RUNTIME_DIR`
   - `TENTGENT_LOG_DIR`
+- Standard runtime-home subdirectories now include:
+  - `models/`
+  - `servers/`
+  - `adapters/`
+  - `cache/`
+  - `runtime/`
+  - `logs/`
 
 ## Development Workflow
 
@@ -74,10 +127,31 @@ Language:
 - Use `make run-cli ARGS='model --help'` to inspect the model-store command group.
 - Use `make run-cli ARGS='model add /path/to/model.gguf'` to import a local model file.
 - Use `make run-cli ARGS='model pull google/gemma-3-1b-pt'` to pull a full Hugging Face snapshot into the managed store.
-- Use `make run-cli ARGS='model rm <hash>'` to remove a managed model and its source indexes.
+- Use `make run-cli ARGS='model rm <hash>'` to remove a managed model and its source indexes. Tentgent blocks removal while any stored server spec still references that model.
 - Use `make run-cli ARGS='model ls'` and `make run-cli ARGS='model inspect <short-ref>'` to inspect stored models.
 - Use `python/tentgent-daemon/.venv/bin/tentgent-chat-once --model-ref <REF> --message "user:..."` to exercise the Python-first chat harness directly without `uv` workspace warnings.
+- Use `PYTHONPATH=python/tentgent-daemon/src python/tentgent-daemon/.venv/bin/python -m tentgent_daemon.cli.server --server-ref <server-ref> --model-ref <model-ref> --host 127.0.0.1 --port 8000` to exercise the Slice 3 Python server skeleton directly.
 - Use `./target/debug/tentgent chat <model-ref>` to run the Rust wrapper around the Python chat harness.
+- Use `./target/debug/tentgent server run <model-ref>` to persist a server spec and launch the Python server skeleton in foreground mode by default.
+- Use `./target/debug/tentgent server run <model-ref> --detach` to create or reuse the server spec and return immediately after launching the Python server in background mode.
+- `tentgent server run` now persists a server spec under `TENTGENT_HOME/servers/<server_ref>/server.toml` and forwards control to the Python server entry.
+- Use `./target/debug/tentgent server ls --home "$PWD/.tentgent-test"` to list stored server specs.
+- Use `./target/debug/tentgent server ps --home "$PWD/.tentgent-test"` to list live server processes.
+- Use `./target/debug/tentgent server inspect <server-ref> --home "$PWD/.tentgent-test"` to inspect one server spec and its runtime state.
+- Use `./target/debug/tentgent server start <server-ref> --home "$PWD/.tentgent-test"` to relaunch one stored server spec in background mode.
+- Add `--details` to `server start` when you want the full inspection table after launch.
+- Use `./target/debug/tentgent server stop <server-ref> --home "$PWD/.tentgent-test"` to stop one live server process without deleting its spec.
+- Add `--details` to `server stop` when you want the full inspection table after shutdown.
+- Use `./target/debug/tentgent server rm <server-ref> --home "$PWD/.tentgent-test"` to remove one stopped server spec directory.
+- Add `--details` to `server rm` when you want the full inspection table captured before removal.
+- The current server skeleton exposes:
+  - `GET /healthz`
+  - `POST /v1/chat`
+- HTTP `stream=true` is not implemented yet and currently returns `501`.
+- Lifecycle policy is now explicit:
+  - eager load when `--lazy-load` is absent
+  - load on first request when `--lazy-load` is present
+  - idle release when `--idle-seconds` is set
 
 ## Repository-Local Test Commands
 
@@ -200,7 +274,12 @@ HF_TOKEN="your token" TENTGENT_HOME="$PWD/.tentgent-test" ./target/debug/tentgen
 - The Python `tentgent-chat-once` harness can now run stored `safetensors` models through the transformers backend, with optional stdout streaming.
 - The Python `tentgent-chat-once` harness can now run stored `mlx` models through the MLX backend, with optional stdout streaming.
 - The Python `tentgent-chat-once` harness can now run stored `gguf` models through the llama.cpp backend, with optional stdout streaming.
+- The Python `tentgent-server` skeleton can now bind a long-lived process, answer `GET /healthz`, and serve non-streaming `POST /v1/chat`.
+- The Python server skeleton now reports lifecycle state through `GET /healthz`, including load mode, idle policy, and release metadata.
 - The Rust `tentgent chat <MODEL_REF>` command now wraps the Python chat harness and preserves backend behavior, including terminal prompting and `--stream`.
+- The Rust `tentgent server run <MODEL_REF>` command now wraps the Python server skeleton in foreground mode by default and supports `--detach` for the initial background launch.
+- The Rust `tentgent server run <MODEL_REF>` command now persists a stable server spec and `SERVER_REF` as Slice 2 of the future long-lived server flow.
+- The Rust CLI now includes `tentgent server ls`, `ps`, `inspect`, `start`, `stop`, and `rm` for server registry and process control.
 - Canonical model identity is content-derived through `model_ref` hashing, not source-name hashing.
 - Naming, runtime-home, and environment-variable conventions are defined in repository TOML metadata.
 - Documentation rules require Markdown to be updated together with approved structural changes.
