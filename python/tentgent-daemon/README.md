@@ -22,7 +22,7 @@ Use this directory as the standalone Python subproject for Tentgent runtime and 
 - The daemon should use the shared Tentgent runtime-home rules documented in [docs/contracts/runtime-home.md](../../docs/contracts/runtime-home.md).
 - The daemon should not treat the repository root as its persistent storage root.
 - Repository-local testing should rely on `TENTGENT_HOME="$PWD/.tentgent"` rather than ad hoc relative paths.
-- Prefer `uv run --project python/tentgent-daemon ...` from the repository root when manually testing Python entry points.
+- Prefer direct calls to `python/tentgent-daemon/.venv/bin/...` when manually testing Python entry points from the repository root; this avoids `uv` workspace warnings from the parent repo.
 - `tentgent-chat-once` currently runs the `safetensors -> transformers`, `mlx -> mlx-lm`, and `gguf -> llama.cpp` paths, all with `--stream`.
 - Message inputs accept ordered `role:content` entries so the first manual harness can already carry multi-turn context.
 - A verified small MLX test model is `mlx-community/Llama-3.2-1B-Instruct-4bit`.

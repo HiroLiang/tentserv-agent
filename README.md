@@ -76,7 +76,7 @@ Language:
 - Use `make run-cli ARGS='model pull google/gemma-3-1b-pt'` to pull a full Hugging Face snapshot into the managed store.
 - Use `make run-cli ARGS='model rm <hash>'` to remove a managed model and its source indexes.
 - Use `make run-cli ARGS='model ls'` and `make run-cli ARGS='model inspect <short-ref>'` to inspect stored models.
-- Use `uv run --project python/tentgent-daemon tentgent-chat-once --model-ref <REF> --message "user:..."` to exercise the Python-first chat harness directly.
+- Use `python/tentgent-daemon/.venv/bin/tentgent-chat-once --model-ref <REF> --message "user:..."` to exercise the Python-first chat harness directly without `uv` workspace warnings.
 - Use `./target/debug/tentgent chat <model-ref>` to run the Rust wrapper around the Python chat harness.
 
 ## Repository-Local Test Commands
@@ -132,13 +132,13 @@ TENTGENT_HOME="$PWD/.tentgent-test" ./target/debug/tentgent model rm <hash>
 - Run one-shot Python chat directly against a stored `safetensors` model:
 
 ```bash
-uv run --project python/tentgent-daemon tentgent-chat-once --model-ref <short-ref> --home "$PWD/.tentgent-test" --message "user:Hello there"
+python/tentgent-daemon/.venv/bin/tentgent-chat-once --model-ref <short-ref> --home "$PWD/.tentgent-test" --message "user:Hello there"
 ```
 
 - Stream generated text to stdout:
 
 ```bash
-uv run --project python/tentgent-daemon tentgent-chat-once --model-ref <short-ref> --home "$PWD/.tentgent-test" --message "system:You are terse." --message "user:Hello there" --stream
+python/tentgent-daemon/.venv/bin/tentgent-chat-once --model-ref <short-ref> --home "$PWD/.tentgent-test" --message "system:You are terse." --message "user:Hello there" --stream
 ```
 
 - Message inputs accept `role:content` for ordered context. Supported roles are `system`, `user`, and `assistant`. If no role prefix is present, Tentgent treats the message as `user`.
@@ -150,6 +150,8 @@ uv run --project python/tentgent-daemon tentgent-chat-once --model-ref <short-re
 ```bash
 ./target/debug/tentgent chat <short-ref> --home "$PWD/.tentgent-test" --message "user:Hello there"
 ```
+
+- The Rust `tentgent chat` wrapper is the preferred end-user path because it avoids `uv` workspace warnings and suppresses backend stderr noise during successful chats.
 
 - Omit `--message` to let the Rust wrapper prompt once for terminal input:
 
