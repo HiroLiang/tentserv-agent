@@ -14,12 +14,31 @@ pub use model::ModelCommands;
 pub use server::{ServerCommands, ServerRunCommand};
 pub use train::{TrainCommands, TrainLoraCommands, TrainLoraPlanCommands, TrainLoraRunCommand};
 
-use clap::Subcommand;
+use clap::{Args, Subcommand};
+
+#[derive(Debug, Args)]
+pub struct DoctorCommand {
+    /// Developer bootstrap: create or sync the managed Python environment with uv before checking health.
+    #[arg(long)]
+    pub fix: bool,
+}
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Show the current daemon, runtime, model, and adapter status.
+    /// Show current runtime paths and Python asset resolution.
+    #[command(
+        name = "status",
+        about = "Show current runtime paths and Python asset resolution.",
+        long_about = "Show current runtime paths and Python asset resolution. This is the first packaging diagnostic surface: it reports the runtime home, Python project source, managed Python environment, and key Python entry points."
+    )]
     Status,
+    /// Run local installation and runtime health checks.
+    #[command(
+        name = "doctor",
+        about = "Run local installation and runtime health checks.",
+        long_about = "Run local installation and runtime health checks. Doctor checks platform, runtime-home writability, standard Tentgent directories, Python runtime assets, Python entry points, developer uv availability, and backend capability states. By default it reports findings without installing dependencies. Add --fix only for the current developer bootstrap path; release installers must not require users to preinstall uv."
+    )]
+    Doctor(DoctorCommand),
     /// Inspect and manage registered models and downloaded runtimes.
     #[command(
         name = "model",

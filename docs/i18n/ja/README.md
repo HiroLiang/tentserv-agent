@@ -12,17 +12,41 @@ Tentgent は Rust を主体としたローカル operator CLI で、Python daemo
 
 ## インストール状況
 
-Tentgent は現在 source-first です。
+Tentgent は現在 source-first です。packaged Python runtime bootstrap はまだ整理中のため、一般ユーザー向け release-ready ではありません。
 
 現在利用可能：
 - この repository から build して実行
+- `scripts/package-local.sh` で local release-like smoke-test tarball を作成
+- `uv` がすでに利用できる開発環境では `tentgent doctor --fix` を developer bootstrap として使用
 
 今後の予定：
+- ユーザーに `uv` の事前インストールを求めない installer-managed Python bootstrap
 - Homebrew install
 - packaged app または daemon distribution
 - 非開発者向けの簡単な bootstrap commands
 
 packaged installer が用意されるまでは、checkout 済み repository から Tentgent を実行してください。
+
+local release-like smoke-test artifact を作成:
+
+```bash
+scripts/package-local.sh
+```
+
+この script は `dist/tentgent-<version>-<target>.tar.gz` と `dist/checksums.txt` を書き込みます。
+この artifact は install layout のテストには有用ですが、installer が Python runtime bootstrap を自前で処理し、事前インストール済み `uv` に依存しなくなるまでは、一般ユーザー向け release として公開すべきではありません。
+
+重い Python ML dependencies をダウンロードせずに installer layout だけを smoke-test する場合:
+
+```bash
+scripts/install.sh \
+  --archive dist/tentgent-0.1.0-aarch64-apple-darwin.tar.gz \
+  --checksums dist/checksums.txt \
+  --prefix /tmp/tentgent-install-smoke \
+  --skip-python-bootstrap
+```
+
+`--skip-python-bootstrap` を外すと full managed Python bootstrap を実行します。この path は pinned `uv` を Tentgent bootstrap cache にダウンロードし、`TENTGENT_HOME/runtime/python-env` を作成し、Python ML dependencies をインストールします。
 
 ## Quick Start
 
@@ -30,6 +54,18 @@ Rust workspace を build:
 
 ```bash
 cargo build --workspace
+```
+
+local runtime の health check を実行:
+
+```bash
+./target/debug/tentgent doctor
+```
+
+開発時に `uv` が利用できる場合は managed Python environment を作成または同期:
+
+```bash
+./target/debug/tentgent doctor --fix
 ```
 
 テスト中は repository-local runtime home を使います:
@@ -233,13 +269,17 @@ Runtime directories:
 
 ## Backend 状態
 
-- `safetensors` model は `transformers-peft` backend で実行されます。
-- `mlx` model は Apple Silicon 上の MLX backend で実行されます。
-- `gguf` model は `llama-cpp-python` で実行されます。
+- `tentgent doctor` は installation と runtime の health check を実行します。
+- `tentgent doctor --fix` は developer-only bootstrap であり、現時点では `uv` が必要です。
+- `tentgent status` は現在の platform と backend capability 状態を表示します。
+- `safetensors` model は Python dependencies が入っている場合に `transformers-peft` backend で実行されます。
+- `mlx` model は Apple Silicon macOS 上でのみ MLX backend で実行されます。
+- `gguf` model は `llama-cpp-python` dependency が入っている場合に実行されます。
 - PEFT LoRA adapter は request ごとに `adapter_ref` で指定できます。
 - MLX adapter も request ごとに指定できます。正しさを優先し、adapter を切り替えると MLX model を reload します。
 - `llama-cpp` の外部 adapter execution はこの MVP では未実装です。
 - HTTP `/v1/chat` は non-streaming です。`stream=true` は現在 `501` を返します。
+- Windows は計画中ですが、まだ fully supported release target ではありません。MLX は Windows では blocked されます。
 
 ## Keychain プロンプト
 

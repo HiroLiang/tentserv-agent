@@ -21,6 +21,8 @@ pub enum ServerError {
     #[error("failed to control server process: {message}")]
     ProcessControl { message: String },
     #[error(transparent)]
+    BackendCapability(#[from] crate::platform::BackendCapabilityError),
+    #[error(transparent)]
     Model(#[from] crate::model::ModelError),
     #[error(transparent)]
     Io(#[from] std::io::Error),

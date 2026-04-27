@@ -140,7 +140,9 @@ Full provenance remains available through `adapter inspect <ADAPTER_REF>`.
 `tentgent adapter pull <HF_REPO> [--revision <REV>] [--base-model-ref <MODEL_REF>]` should:
 
 - resolve the requested repo to an exact commit SHA through the shared `tentgent-hf-snapshot` helper
-- run that helper through `uv --no-config run --project python/tentgent-daemon ...` so adapter pulls use the Python subproject environment directly without inspecting the repository-root `pyproject.toml`
+- prefer an existing `tentgent-hf-snapshot` entry point in the resolved Python environment
+- fall back to `uv --no-config run --project <resolved-python-project> ...` with `UV_PROJECT_ENVIRONMENT` set to the resolved Python environment only when the entry point is missing
+- use the shared Python runtime asset resolver so development falls back to `python/tentgent-daemon` and installed builds use `share/tentgent/python`
 - download the full snapshot into adapter staging
 - build the normal adapter manifest and content-derived `adapter_ref`
 - write `source_kind = "huggingface"`, `source_repo`, and `source_revision`

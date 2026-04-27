@@ -1,4 +1,4 @@
-use crate::model::ModelFormat;
+use crate::{model::ModelFormat, platform::model_format_capability};
 
 use super::config::{
     CheckpointConfig, LoraBackendConfig, LoraConfig, LoraTrainBackend, LoraTrainBackendRequest,
@@ -18,11 +18,17 @@ pub fn select_backend(
     model_format: ModelFormat,
     requested_backend: LoraTrainBackendRequest,
 ) -> (Option<LoraTrainBackend>, String, Vec<String>) {
+    let capability = model_format_capability(model_format);
     match requested_backend {
         LoraTrainBackendRequest::Auto => match model_format {
+            ModelFormat::Mlx if capability.is_blocked() => (
+                None,
+                "model primary_format is mlx but current platform does not support MLX".to_string(),
+                vec![capability.summary()],
+            ),
             ModelFormat::Mlx => (
                 Some(LoraTrainBackend::Mlx),
-                "model primary_format is mlx".to_string(),
+                "model primary_format is mlx and current platform supports MLX".to_string(),
                 Vec::new(),
             ),
             ModelFormat::Safetensors => (
@@ -36,18 +42,23 @@ pub fn select_backend(
                 vec!["GGUF models are inference artifacts and are not trainable by Tentgent LoRA MVP".to_string()],
             ),
         },
-        LoraTrainBackendRequest::Mlx if model_format == ModelFormat::Mlx => (
-            Some(LoraTrainBackend::Mlx),
-            "`--backend mlx` requested and model primary_format is mlx".to_string(),
-            Vec::new(),
-        ),
-        LoraTrainBackendRequest::Mlx => (
+        LoraTrainBackendRequest::Mlx if model_format != ModelFormat::Mlx => (
             None,
             "`--backend mlx` requested".to_string(),
             vec![format!(
                 "`--backend mlx` requires model primary_format mlx; got {}",
                 model_format.as_str()
             )],
+        ),
+        LoraTrainBackendRequest::Mlx if capability.is_blocked() => (
+            None,
+            "`--backend mlx` requested".to_string(),
+            vec![capability.summary()],
+        ),
+        LoraTrainBackendRequest::Mlx => (
+            Some(LoraTrainBackend::Mlx),
+            "`--backend mlx` requested, model primary_format is mlx, and current platform supports MLX".to_string(),
+            Vec::new(),
         ),
         LoraTrainBackendRequest::Peft if model_format == ModelFormat::Safetensors => (
             Some(LoraTrainBackend::Peft),

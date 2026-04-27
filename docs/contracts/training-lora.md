@@ -150,14 +150,16 @@ The recipe excludes display name, creation time, command hint, warnings, blocker
 
 Auto-selection rules:
 
-- `model.primary_format = "mlx"` selects `mlx`
+- `model.primary_format = "mlx"` selects `mlx` only when the current platform supports MLX
 - `model.primary_format = "safetensors"` selects `peft`
 - `model.primary_format = "gguf"` is blocked for LoRA training
 
 Manual backend rules:
 
-- `--backend mlx` requires an `mlx` model
+- `--backend mlx` requires an `mlx` model and an MLX-capable platform
 - `--backend peft` requires a `safetensors` model
+
+Platform capability rules are defined in [platform-backends.md](./platform-backends.md).
 
 ## Config Shape
 

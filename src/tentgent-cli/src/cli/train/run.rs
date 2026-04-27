@@ -1,7 +1,7 @@
 use std::{
     fs::{File, OpenOptions},
     io::{BufRead, BufReader, Write},
-    path::{Path, PathBuf},
+    path::Path,
     process::{Command, Stdio},
     sync::{Arc, Mutex},
     thread,
@@ -17,6 +17,7 @@ use tentgent_core::{
 };
 
 use crate::cli::commands::TrainLoraRunCommand;
+use crate::cli::python_runtime::{require_python_interpreter, resolve_python_runtime};
 
 use super::{
     run_render::render_event,
@@ -45,15 +46,15 @@ pub fn run_lora_plan(command: TrainLoraRunCommand) -> Result<()> {
         outcome.run_dir.display()
     );
 
-    let python_project = resolve_python_project_dir();
-    let python = resolve_python_interpreter(&python_project)?;
+    let python_runtime = resolve_python_runtime()?;
+    let python = require_python_interpreter(&python_runtime, "python training runtime")?;
     let raw_log = open_append(&outcome.raw_log_path)?;
     let raw_log = Arc::new(Mutex::new(raw_log));
 
     let mut process = Command::new(&python);
     process
-        .current_dir(&python_project)
-        .env("PYTHONPATH", python_project.join("src"))
+        .current_dir(python_runtime.project_dir())
+        .env("PYTHONPATH", python_runtime.python_src_dir())
         .arg("-m")
         .arg("tentgent_daemon.cli.train_lora_run")
         .arg("--plan-ref")
@@ -218,24 +219,6 @@ fn capture_done_event(event: &Value, run: &mut LoraTrainRun) {
         .get("adapter_ref")
         .and_then(Value::as_str)
         .map(ToOwned::to_owned);
-}
-
-fn resolve_python_project_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join("python/tentgent-daemon")
-}
-
-fn resolve_python_interpreter(project_dir: &Path) -> Result<PathBuf> {
-    let python = project_dir.join(".venv/bin/python");
-    if python.exists() {
-        return Ok(python);
-    }
-
-    Err(miette!(
-        "python runtime is missing at `{}`; initialize the Python subproject environment first",
-        python.display()
-    ))
 }
 
 fn open_append(path: &Path) -> Result<File> {

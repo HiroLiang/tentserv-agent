@@ -1,38 +1,43 @@
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use miette::{miette, IntoDiagnostic};
+use tentgent_core::runtime_assets::resolve_runtime_home;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 use super::commands::ChatCommand;
+use super::python_runtime::{require_python_script, resolve_python_runtime};
 
 pub async fn handle_chat_command(command: ChatCommand) -> miette::Result<()> {
-    let python_project = resolve_python_project_dir();
-    let python_entrypoint = resolve_python_entrypoint(&python_project)?;
-    if !python_entrypoint.exists() {
-        return Err(miette!(
-            "python chat entrypoint was not found at `{}`",
-            python_entrypoint.display()
-        ));
-    }
+    let python_runtime = resolve_python_runtime()?;
+    let python_entrypoint = require_python_script(
+        &python_runtime,
+        "tentgent-chat-once",
+        "python chat entrypoint",
+    )?;
 
     let messages = resolve_messages(&command)?;
+    let runtime_home = match &command.home {
+        Some(home) => home.clone(),
+        None => resolve_runtime_home()
+            .map_err(|err| miette!("failed to resolve Tentgent runtime home: {err}"))?
+            .to_string_lossy()
+            .into_owned(),
+    };
 
     let mut process = Command::new(&python_entrypoint);
     process
-        .current_dir(&python_project)
+        .current_dir(python_runtime.project_dir())
         .arg("--model-ref")
         .arg(&command.model_ref)
+        .arg("--home")
+        .arg(&runtime_home)
+        .env("TENTGENT_HOME", &runtime_home)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-
-    if let Some(home) = &command.home {
-        process.arg("--home").arg(home);
-    }
 
     if let Some(max_tokens) = command.max_tokens {
         process.arg("--max-tokens").arg(max_tokens.to_string());
@@ -81,24 +86,6 @@ pub async fn handle_chat_command(command: ChatCommand) -> miette::Result<()> {
     }
 
     Ok(())
-}
-
-fn resolve_python_project_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join("python/tentgent-daemon")
-}
-
-fn resolve_python_entrypoint(project_dir: &Path) -> miette::Result<PathBuf> {
-    let entrypoint = project_dir.join(".venv/bin/tentgent-chat-once");
-    if entrypoint.exists() {
-        return Ok(entrypoint);
-    }
-
-    Err(miette!(
-        "python chat entrypoint is missing at `{}`; initialize the Python subproject environment first",
-        entrypoint.display()
-    ))
 }
 
 fn resolve_messages(command: &ChatCommand) -> miette::Result<Vec<String>> {

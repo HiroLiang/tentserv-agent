@@ -12,17 +12,41 @@ The current MVP can manage provider keys, pull and deduplicate local models, imp
 
 ## Install Status
 
-Tentgent is currently source-first.
+Tentgent is currently source-first. It is not release-ready for general users yet because the packaged Python runtime bootstrap is still being finalized.
 
 Available today:
 - build and run from this repository
+- create a local release-like smoke-test tarball with `scripts/package-local.sh`
+- use `tentgent doctor --fix` as a developer bootstrap path when `uv` is already available
 
 Planned later:
+- installer-managed Python bootstrap that does not require users to preinstall `uv`
 - Homebrew install
 - packaged app or daemon distribution
 - simpler bootstrap commands for non-developer users
 
 Until packaged installers exist, run Tentgent from the checked-out repository.
+
+To create a local release-like smoke-test artifact:
+
+```bash
+scripts/package-local.sh
+```
+
+The script writes `dist/tentgent-<version>-<target>.tar.gz` and `dist/checksums.txt`.
+This artifact is useful for install-layout testing, but should not be published as an end-user release until the installer owns Python runtime bootstrap without relying on a preinstalled `uv`.
+
+To smoke-test the installer layout without downloading heavy Python ML dependencies:
+
+```bash
+scripts/install.sh \
+  --archive dist/tentgent-0.1.0-aarch64-apple-darwin.tar.gz \
+  --checksums dist/checksums.txt \
+  --prefix /tmp/tentgent-install-smoke \
+  --skip-python-bootstrap
+```
+
+Omit `--skip-python-bootstrap` to run the full managed Python bootstrap. That path downloads pinned `uv` into Tentgent's bootstrap cache, creates `TENTGENT_HOME/runtime/python-env`, and installs the Python ML dependencies.
 
 ## Quick Start
 
@@ -30,6 +54,18 @@ Build the Rust workspace:
 
 ```bash
 cargo build --workspace
+```
+
+Check local runtime health:
+
+```bash
+./target/debug/tentgent doctor
+```
+
+Create or sync the managed Python environment during development when `uv` is available:
+
+```bash
+./target/debug/tentgent doctor --fix
 ```
 
 Use a repository-local runtime home while testing:
@@ -233,13 +269,17 @@ Environment variables are read when a process starts. Tentgent does not rewrite 
 
 ## Backend Status
 
-- `safetensors` models run through the `transformers-peft` backend.
-- `mlx` models run through the MLX backend on Apple Silicon.
-- `gguf` models run through `llama-cpp-python`.
+- `tentgent doctor` runs installation and runtime health checks.
+- `tentgent doctor --fix` is a developer-only bootstrap path that currently requires `uv`.
+- `tentgent status` reports the current platform and backend capability state.
+- `safetensors` models run through the `transformers-peft` backend when Python dependencies are installed.
+- `mlx` models run through the MLX backend only on Apple Silicon macOS.
+- `gguf` models run through `llama-cpp-python` when that dependency is installed.
 - PEFT LoRA adapters can be selected per request with `adapter_ref`.
 - MLX adapters can be selected per request; changing adapters reloads the MLX model for correctness.
 - `llama-cpp` external adapter execution is not implemented in this MVP.
 - HTTP `/v1/chat` is non-streaming; `stream=true` currently returns `501`.
+- Windows is planned, but not a fully supported release target yet. MLX is blocked on Windows.
 
 ## Keychain Prompts
 

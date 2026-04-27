@@ -1,47 +1,342 @@
 # Packaging And Install MVP
 
-This plan records the future packaging and installation track after the current source-first development workflow.
+This plan defines the installation and release track for moving Tentgent from source-first development to user-friendly installs.
 
 ## Scope
 
-- Define the first product-shaped installation target for Tentgent.
+- Define the first release artifact shape.
+- Support a `curl` installer first.
+- Keep Homebrew as the first polished package-manager path.
 - Keep the Rust CLI as the primary user-facing entry point.
-- Preserve a clean Rust-to-Python runtime boundary so the current development layout can evolve into a packaged release.
+- Preserve a clean Rust-to-Python runtime boundary.
 
 ## Goals
 
-- Decide what a Tentgent release artifact should contain.
-- Decide how end users should install Tentgent without working directly from the repository.
-- Keep user-facing install steps short and stable.
-
-## Candidate Packaging Tracks
-
-### Track A: bundled Python runtime
-
-- Ship a controlled Python runtime inside the Tentgent product bundle.
-- Keep the Python daemon and runtime assets inside the packaged installation.
-- Let the Rust CLI launch that bundled runtime.
-
-### Track B: packaged daemon executable
-
-- Expose the Python daemon through a packaged executable boundary.
-- Let the Rust CLI launch a stable daemon executable instead of a Python module path.
-- Keep the current Rust-to-Python boundary compatible with this future shape.
-
-## Current Recommendation
-
-- Keep both Track A and Track B open for now.
-- Favor a clean runtime boundary first, not a rushed packaging decision.
-- Do not force the current development `.venv` shape into the final release shape.
+- Let users install Tentgent without cloning the repository.
+- Avoid source-tree assumptions such as `python/tentgent-daemon/.venv`.
+- Do not require end users to preinstall `uv` or other developer bootstrap tools.
+- Use one release artifact shape for manual, `curl`, and Homebrew installs.
+- Keep checksums and versioned artifacts mandatory from the first installer slice.
 
 ## Non-Goals
 
-- Do not implement packaging yet.
-- Do not decide the final release channel yet.
-- Do not block LoRA or server follow-up work on packaging.
+- Do not submit to `homebrew/core` in this track.
+- Do not implement macOS notarization in the first slice.
+- Do not package model weights, adapters, datasets, or `TENTGENT_HOME`.
+- Do not auto-install provider API keys or user secrets.
+- Do not add self-update behavior to the CLI.
 
-## Future Questions
+## Release Artifact Shape
 
-- Should the first supported install channel be a downloadable archive plus installer script?
-- Should Homebrew become the first polished install channel for macOS users?
-- Should the first packaged release embed Python directly, or wrap the daemon behind an executable boundary?
+First release artifacts should be versioned tarballs:
+
+```text
+tentgent-<version>-<target>.tar.gz
+checksums.txt
+```
+
+Initial targets:
+
+- `aarch64-apple-darwin`
+- `x86_64-apple-darwin`
+
+Planned later targets:
+
+- `x86_64-pc-windows-msvc`
+- `aarch64-pc-windows-msvc`
+- Linux targets after dependency packaging is clarified
+
+Each tarball should contain:
+
+```text
+bin/tentgent
+share/tentgent/python/
+LICENSE
+README.md
+```
+
+`share/tentgent/python/` may initially contain the Python project source and metadata rather than a prebuilt environment.
+This artifact shape is a smoke-test target until Python environment bootstrap no longer depends on a user-installed `uv`.
+
+## Runtime Layout
+
+Installed runtime state must stay separate from the install prefix.
+
+Suggested install prefix:
+
+```text
+~/.local/bin/tentgent
+~/.local/share/tentgent/
+```
+
+Suggested runtime home remains platform-managed or `TENTGENT_HOME`:
+
+```text
+~/Library/Application Support/com.tentserv.tentgent/
+```
+
+The installed CLI must resolve Python helpers from the installed prefix, not from the repository source tree.
+
+## Python Runtime Strategy
+
+Track A is the first implementation target:
+
+- install the Rust CLI
+- install Python daemon source under `share/tentgent/python`
+- create or reuse a managed Python environment under Tentgent-owned support data
+- invoke daemon entry points through that managed environment
+
+The current `doctor --fix` implementation uses `uv` only as a developer bootstrap. A publishable installer must either bundle the bootstrap tool, download a pinned bootstrap tool, use a prebuilt Python environment artifact, or replace this step with another user-owned runtime strategy.
+
+Track B remains a future option:
+
+- package Python daemon entry points as executables
+- have Rust invoke stable daemon binaries instead of Python modules
+
+Do not bundle local model runtimes or downloaded model files into release artifacts.
+
+## Installer Channels
+
+### Curl Installer
+
+Desired user command:
+
+```text
+curl -fsSL https://agent.tentserv.com/install.sh | sh
+```
+
+The installer must:
+
+- detect OS and CPU architecture
+- download a versioned release tarball
+- verify `sha256` from `checksums.txt`
+- install `tentgent` into a user-writable bin directory
+- install support files under a user-writable share directory
+- initialize or check the Python daemon environment
+- print `tentgent doctor` as the next verification command
+
+### Homebrew Tap
+
+Desired user command:
+
+```text
+brew tap tentserv/tap
+brew install tentgent
+```
+
+Use a private tap first, not `homebrew/core`, because Tentgent is currently proprietary and may ship binary artifacts.
+
+The formula should:
+
+- point to a versioned GitHub Release tarball
+- include `sha256`
+- install `bin/tentgent`
+- install support files into `pkgshare`
+- define a small `test do` block such as `tentgent --version`
+
+## Implementation Slices
+
+### Slice 1: Runtime Resolver Contract
+
+- Status: implemented in the active workspace.
+- define installed-prefix lookup for Python daemon assets
+- preserve source-tree fallback for local development
+- document environment overrides for debugging
+- expose `tentgent status` as the current diagnostic command until `doctor` exists
+
+Review target:
+
+- no release scripts yet
+- CLI can explain where it expects Python runtime assets
+
+### Slice 2: Doctor Command
+
+- Status: implemented in the active workspace.
+- add `tentgent doctor`
+- check CLI version, runtime home, Python daemon availability, and key directories
+- avoid network checks by default
+- report missing Python runtime setup with actionable commands
+
+Review target:
+
+- users can verify install health after `curl` or Homebrew installation
+
+### Slice 3: Local Release Script
+
+- Status: implemented in the active workspace.
+- add a script that builds `cargo build --release`
+- package `bin/tentgent`, Python source, `README.md`, and `LICENSE`
+- produce `.tar.gz` and `checksums.txt`
+- keep model/test/runtime data excluded
+
+Review target:
+
+- one local command creates a release-like smoke-test tarball
+
+### Slice 3.5: Python Env Bootstrap
+
+- Status: implemented in the active workspace as a developer bootstrap only.
+- add `tentgent doctor --fix`
+- use the resolved Python project and `UV_PROJECT_ENVIRONMENT`
+- run `uv --no-config sync --project <resolved-python-project>`
+- keep regular `doctor` read-only
+
+Review target:
+
+- developers can smoke-test installed-prefix packages before the release-ready bootstrap exists
+
+Release gate:
+
+- this slice is not sufficient for public release because it requires `uv` on the user's PATH
+- no public installer should be published until this requirement is removed or owned by the installer
+
+### Slice 3.6: User Bootstrap Strategy
+
+- Status: planned.
+- choose the release bootstrap strategy before writing the public `install.sh`
+- use downloaded pinned `uv` as the first MVP strategy
+- require zero preinstalled `uv` expectation for normal users
+- keep prebuilt Python env artifacts and daemon executables as later alternatives
+- document cache/runtime locations and failure recovery behavior
+
+Review target:
+
+- the selected installer path can create a working Python runtime from a clean user machine without developer tools
+
+Decision:
+
+- The first public installer should download a pinned `uv` executable into a Tentgent-owned bootstrap cache, verify it, use it to create the managed Python environment, then run Tentgent through the managed entry points.
+- The downloaded `uv` is an installer/bootstrap implementation detail, not a runtime requirement and not expected on the user's PATH.
+
+### Slice 3.7: Bootstrap Cache Contract
+
+- Status: implemented in the active workspace.
+- define `TENTGENT_HOME/runtime/bootstrap/` as the default cache for installer-owned bootstrap tools
+- store downloaded bootstrap tools under versioned, platform-specific paths
+- store a checksum or manifest for each downloaded tool
+- make `tentgent doctor` report whether the bootstrap cache exists without requiring it for normal runtime commands
+- keep `TENTGENT_PYTHON_ENV_DIR` as the override for the managed Python environment
+
+Review target:
+
+- runtime-home docs explain where installer-owned bootstrap tools live and how they differ from runtime entry points
+
+### Slice 3.8: Pinned `uv` Downloader
+
+- Status: implemented in the active workspace.
+- add installer logic that resolves OS and architecture to a pinned `uv` artifact
+- download into a temporary file under the bootstrap cache
+- verify checksum before making the executable available
+- avoid using `uv` from the user's PATH unless an explicit developer flag requests it
+- fail with a concise recovery message when offline, unsupported, or checksum verification fails
+
+Review target:
+
+- a clean machine without `uv` can acquire the bootstrap tool through the installer path
+
+Implementation note:
+
+- `scripts/bootstrap-uv.sh` pins `uv 0.11.7`
+- it supports `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-gnu`, and `x86_64-unknown-linux-gnu`
+- it verifies the pinned upstream `sha256.sum` file before trusting per-asset checksums from that file
+- it writes to `TENTGENT_HOME/runtime/bootstrap/uv/<version>/<target>/`
+
+### Slice 3.9: Installer Python Env Sync
+
+- Status: implemented in the active workspace.
+- use the cached pinned `uv` executable to run `uv --no-config sync --project <installed-python-project>`
+- set `UV_PROJECT_ENVIRONMENT=<TENTGENT_HOME>/runtime/python-env`
+- verify required entry points after sync
+- print `tentgent doctor` as the final verification command
+
+Review target:
+
+- after installation, `tentgent chat`, `tentgent server`, `tentgent train`, and HF pull helpers use managed env entry points without invoking `uv`
+
+Implementation note:
+
+- `scripts/bootstrap-python-env.sh` resolves the packaged or development Python project
+- it defaults the environment to `TENTGENT_HOME/runtime/python-env`
+- it ensures pinned `uv` is available through `scripts/bootstrap-uv.sh`
+- it keeps `UV_CACHE_DIR` under `TENTGENT_HOME/runtime/bootstrap/uv-cache`
+- it requests managed Python `3.13`, frozen lockfile sync, and non-editable package installation
+- `scripts/package-local.sh` now includes both bootstrap scripts under `share/tentgent/scripts/`
+
+### Slice 3.10: Runtime No-`uv` Guard
+
+- Status: implemented in the active workspace.
+- ensure normal runtime commands never fall back to `uv` in installed-prefix mode
+- keep `uv` fallback only for development-source mode or an explicit developer override
+- make missing entry points produce an installer/bootstrap repair hint instead of trying user PATH tools
+
+Review target:
+
+- installed-prefix runtime behavior is deterministic and does not depend on developer tools
+
+Implementation note:
+
+- HF snapshot helpers now use managed `tentgent-hf-snapshot` entry points in installed-prefix mode
+- if the installed-prefix entry point is missing, model/adapter pull returns a bootstrap repair error instead of invoking `uv`
+- CLI runtime entrypoint errors now differentiate installed-prefix repair from development `doctor --fix`
+
+### Slice 4: Curl Installer Draft
+
+- depends on Slices 3.6 through 3.10
+- Status: implemented in the active workspace.
+- add `scripts/install.sh`
+- install from a local or GitHub Release URL
+- verify checksums
+- support `--prefix` or env-based install destination
+- do not require sudo for the default path
+
+Review target:
+
+- install into a temporary prefix and run `tentgent doctor`
+
+Implementation note:
+
+- `scripts/install.sh` supports local paths, `file://` URLs, and HTTPS URLs
+- it verifies the archive against `checksums.txt`
+- it installs `bin/tentgent`, `share/tentgent/python`, and `share/tentgent/scripts`
+- by default it runs `bootstrap-python-env.sh` and then `tentgent doctor`
+- `--skip-python-bootstrap` exists for layout smoke tests that should not download heavy ML dependencies
+
+### Slice 5: GitHub Release Workflow
+
+- add GitHub Actions build matrix for macOS targets
+- upload artifacts and checksums to a draft release
+- keep signing/notarization out of this slice
+
+Review target:
+
+- a tagged version can produce release artifacts reproducibly
+
+### Slice 6: Homebrew Tap Formula
+
+- create or document `homebrew-tap`
+- add `Formula/tentgent.rb`
+- use the same release artifact and checksum
+- add formula test
+
+Review target:
+
+- `brew install tentgent` works from the tap
+
+### Slice 7: Signing And Notarization
+
+- sign macOS binaries with Developer ID
+- optionally notarize release artifacts
+- document Keychain prompt behavior after signing
+
+Review target:
+
+- reduce macOS trust prompts for normal users
+
+## Open Questions
+
+- Should the first release artifacts be GitHub-only or also mirrored at `agent.tentserv.com`?
+- Should `install.sh` default to latest stable or require an explicit version?
+- Should Python dependencies be installed during installation, first run, or `tentgent doctor --fix`?
+- Should heavyweight dependencies such as `torch`, `mlx-lm`, and `llama-cpp-python` be optional feature bundles later?
+- Should Windows use a PowerShell installer first, or wait until the Python dependency bootstrap is stable on macOS?
+- Should the release bootstrap bundle pinned `uv`, download pinned `uv`, ship a prebuilt Python environment artifact, or ship Python daemon executables?

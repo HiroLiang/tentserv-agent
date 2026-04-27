@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from .capabilities import ensure_backend_supported
 from .records import StoredModelRecord
 
 
@@ -13,7 +14,9 @@ class BackendKind(StrEnum):
 
 def resolve_backend(record: StoredModelRecord) -> BackendKind:
     if record.primary_format == "mlx":
-        return BackendKind.MLX
+        backend = BackendKind.MLX
+        ensure_backend_supported(str(backend))
+        return backend
     if record.primary_format == "safetensors":
         return BackendKind.TRANSFORMERS_PEFT
     if record.primary_format == "gguf":

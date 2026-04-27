@@ -83,6 +83,7 @@ TENTGENT_HOME/
 - Detect `safetensors` when any file ends with `.safetensors` or a filename equals `model.safetensors.index.json`.
 - Detect `mlx` only for Hugging Face repositories under `mlx-community/*` in this MVP.
 - Mixed-format sources are allowed, but Tentgent stores one primary format per canonical model in this MVP.
+- Format detection does not guarantee the current machine can run the model. Backend capability rules are defined in [platform-backends.md](./platform-backends.md).
 
 Primary format selection order:
 
@@ -93,9 +94,12 @@ Primary format selection order:
 ## Hugging Face Pull Contract
 
 - `tentgent model pull` should resolve the requested repo to an exact commit SHA before download.
-- The Rust core invokes the `tentgent-hf-snapshot` entry point from the `python/tentgent-daemon` subproject.
+- The Rust core invokes the `tentgent-hf-snapshot` entry point through the shared Python runtime asset resolver.
 - The helper implementation lives in `python/tentgent-daemon/src/tentgent_daemon/tools/hf_snapshot.py`.
-- The helper should run through `uv --no-config run --project python/tentgent-daemon tentgent-hf-snapshot ...` so the Python subproject remains the single source of truth for package resolution and `uv` does not inspect the repository-root `pyproject.toml`.
+- In development, the resolver falls back to `python/tentgent-daemon`.
+- In installed builds, the resolver should find `share/tentgent/python` relative to the `tentgent` binary.
+- The helper should prefer an existing `tentgent-hf-snapshot` entry point in the resolved Python environment.
+- When the entry point is missing, Rust may fall back to `uv --no-config run --project <resolved-python-project> tentgent-hf-snapshot ...` with `UV_PROJECT_ENVIRONMENT` set to the resolved Python environment so the Python subproject remains the single source of truth for package resolution and `uv` does not inspect the repository-root `pyproject.toml`.
 - The helper should use `huggingface_hub` `model_info()` plus `snapshot_download()`.
 - The effective `HF_TOKEN` should be passed through when available.
 - Rust owns CLI progress rendering for `model pull`.

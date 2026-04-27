@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    process::Stdio,
-};
+use std::{path::Path, process::Stdio};
 
 use clap::CommandFactory;
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
@@ -15,6 +12,8 @@ use tokio::process::Command;
 
 use super::app::Cli;
 use super::commands::{ServerCommands, ServerRunCommand};
+use super::python_runtime::{require_python_interpreter, resolve_python_runtime};
+use tentgent_core::runtime_assets::PythonRuntime;
 
 pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()> {
     match action {
@@ -51,11 +50,12 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
 
             let manager = ServerManager::new(home.as_deref()).into_diagnostic()?;
             let inspection = manager.resolve_for_start(&reference).into_diagnostic()?;
-            let python_project = resolve_python_project_dir();
-            let python_interpreter = resolve_python_interpreter(&python_project)?;
+            let python_runtime = resolve_python_runtime()?;
+            let python_interpreter =
+                require_python_interpreter(&python_runtime, "python server interpreter")?;
             let inspection = launch_background_server_runtime(
                 &manager,
-                &python_project,
+                &python_runtime,
                 &python_interpreter,
                 &inspection,
             )
@@ -115,20 +115,21 @@ async fn run_server(command: ServerRunCommand) -> miette::Result<()> {
     let detached = command.detach;
     render_server_spec_outcome(&outcome, detached);
 
-    let python_project = resolve_python_project_dir();
-    let python_interpreter = resolve_python_interpreter(&python_project)?;
+    let python_runtime = resolve_python_runtime()?;
+    let python_interpreter =
+        require_python_interpreter(&python_runtime, "python server interpreter")?;
     if detached {
         let inspection = inspection_from_prepare_outcome(&outcome);
         let inspection = launch_background_server_runtime(
             &manager,
-            &python_project,
+            &python_runtime,
             &python_interpreter,
             &inspection,
         )
         .await?;
         render_server_inspection("Server started", &inspection);
     } else {
-        launch_foreground_server_runtime(&manager, &python_project, &python_interpreter, &outcome)
+        launch_foreground_server_runtime(&manager, &python_runtime, &python_interpreter, &outcome)
             .await?;
     }
 
@@ -423,12 +424,12 @@ fn render_server_table(inspection: &ServerInspection) -> Table {
 
 async fn launch_foreground_server_runtime(
     manager: &ServerManager,
-    python_project: &Path,
+    python_runtime: &PythonRuntime,
     python_interpreter: &Path,
     outcome: &ServerPrepareOutcome,
 ) -> miette::Result<()> {
     let mut process = server_process_command(
-        python_project,
+        python_runtime,
         python_interpreter,
         &outcome.spec,
         &outcome.home_dir,
@@ -460,13 +461,13 @@ async fn launch_foreground_server_runtime(
 
 async fn launch_background_server_runtime(
     manager: &ServerManager,
-    python_project: &Path,
+    python_runtime: &PythonRuntime,
     python_interpreter: &Path,
     inspection: &ServerInspection,
 ) -> miette::Result<ServerInspection> {
     let mut process = Command::new("sh");
     process
-        .current_dir(python_project)
+        .current_dir(python_runtime.project_dir())
         .env("TENTGENT_STDOUT_LOG", &inspection.stdout_log_path)
         .env("TENTGENT_STDERR_LOG", &inspection.stderr_log_path)
         .arg("-c")
@@ -525,14 +526,14 @@ async fn launch_background_server_runtime(
 }
 
 fn server_process_command(
-    python_project: &Path,
+    python_runtime: &PythonRuntime,
     python_interpreter: &Path,
     spec: &tentgent_core::server::ServerSpec,
     home_dir: &Path,
 ) -> Command {
     let mut process = Command::new(python_interpreter);
     process
-        .current_dir(python_project)
+        .current_dir(python_runtime.project_dir())
         .arg("-m")
         .arg("tentgent_daemon.cli.server")
         .arg("--server-ref")
@@ -555,24 +556,6 @@ fn server_process_command(
     }
 
     process
-}
-
-fn resolve_python_project_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join("python/tentgent-daemon")
-}
-
-fn resolve_python_interpreter(project_dir: &Path) -> miette::Result<PathBuf> {
-    let interpreter = project_dir.join(".venv/bin/python");
-    if interpreter.exists() {
-        return Ok(interpreter);
-    }
-
-    Err(miette!(
-        "python server interpreter is missing at `{}`; initialize the Python subproject environment first",
-        interpreter.display()
-    ))
 }
 
 fn is_help_token(value: &str) -> bool {

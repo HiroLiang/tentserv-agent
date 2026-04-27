@@ -7,6 +7,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from tentgent_daemon.runtime.capabilities import ensure_backend_supported
 from tentgent_daemon.training.mlx_lora import run_mlx_lora
 from tentgent_daemon.training.peft_lora import run_peft_lora
 from tentgent_daemon.training.skeleton import run_skeleton
@@ -18,6 +19,7 @@ def main() -> int:
     backend = plan.get("backend") or "unknown"
 
     if backend == "mlx":
+        ensure_backend_supported(backend)
         return run_mlx_lora(
             plan=plan,
             plan_ref=args.plan_ref,

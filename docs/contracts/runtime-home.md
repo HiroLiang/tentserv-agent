@@ -35,6 +35,8 @@ Environment variables:
 - `TENTGENT_CACHE_DIR`
 - `TENTGENT_RUNTIME_DIR`
 - `TENTGENT_LOG_DIR`
+- `TENTGENT_PYTHON_DIR`
+- `TENTGENT_PYTHON_ENV_DIR`
 
 ## Standard Subdirectories
 
@@ -52,6 +54,7 @@ Reserved runtime files:
 
 - `runtime/tentgent.sock`
 - `runtime/tentgent.pid`
+- `runtime/bootstrap/`
 - `config.toml`
 
 ## Development Usage
@@ -59,6 +62,91 @@ Reserved runtime files:
 - During repository development, run commands from the repository root.
 - For isolated local testing, set `TENTGENT_HOME="$PWD/.tentgent"` before starting the CLI or daemon.
 - Do not assume the current working directory is the storage root.
+
+## Python Runtime Assets
+
+Rust commands that need Python should resolve the Python daemon project without depending on the current working directory.
+
+Python project resolution order:
+
+1. Use `TENTGENT_PYTHON_DIR` when set.
+2. Otherwise look for an installed project relative to the `tentgent` binary:
+   `../share/tentgent/python`, then `../libexec/tentgent/python`.
+3. Otherwise fall back to the repository development project at `python/tentgent-daemon`.
+
+The resolved Python project directory must contain `pyproject.toml`.
+
+Python environment resolution order:
+
+1. Use `TENTGENT_PYTHON_ENV_DIR` when set.
+2. For installed-prefix mode, use `TENTGENT_HOME/runtime/python-env`.
+3. For development-source or explicit Python-project override mode, use `<python-project>/.venv`.
+
+Rust should pass the resolved Python environment to `uv` as `UV_PROJECT_ENVIRONMENT` when invoking Python helpers through `uv run`.
+That fallback is allowed only for development-source or explicit override mode.
+Installed-prefix runtime commands must use generated entry points from the managed Python environment and must not fall back to a user PATH `uv`.
+
+`tentgent doctor --fix` should use the same resolved Python project and environment, then run `uv --no-config sync --project <resolved-python-project>` with `UV_PROJECT_ENVIRONMENT=<resolved-python-env>`.
+This is the current developer bootstrap only. Public installers must not require users to preinstall `uv`; they must own the bootstrap step by bundling or downloading a pinned tool, using a prebuilt Python environment, or replacing the Python-source bootstrap strategy.
+
+Installed release artifacts should place Python project files at:
+
+```text
+share/tentgent/python/
+```
+
+That directory is the packaged equivalent of the repository `python/tentgent-daemon/` project root.
+
+## Bootstrap Cache
+
+`runtime/bootstrap/` is reserved for installer-owned bootstrap tools such as a pinned `uv` executable.
+It is not part of the normal runtime command path after the managed Python environment has been created.
+
+Default path:
+
+```text
+TENTGENT_HOME/runtime/bootstrap/
+```
+
+Rules:
+
+- The public installer may create this directory when it needs to download bootstrap tools.
+- Normal runtime commands should not require this directory to exist.
+- `tentgent doctor` should report whether the directory exists or can be created, but missing cache state should not block runtime health by itself.
+- Downloaded tools should live under versioned, platform-specific child directories.
+- Each downloaded tool should have a checksum or manifest record before it is used.
+
+Pinned `uv` bootstrap layout:
+
+```text
+runtime/bootstrap/
+└── uv/
+    └── <version>/
+        └── <target>/
+            ├── bin/
+            │   └── uv
+            ├── manifest.toml
+            └── sha256.sum
+```
+
+`scripts/bootstrap-uv.sh` is the current installer-facing helper for this layout.
+It downloads a pinned `uv` release archive, verifies the pinned `sha256.sum` manifest first, verifies the selected archive from that manifest, then writes the executable and `manifest.toml` into the cache.
+
+`scripts/bootstrap-python-env.sh` is the current installer-facing helper for managed Python environment creation.
+It resolves the packaged or development Python project, ensures pinned `uv` is cached, and runs:
+
+```text
+UV_PROJECT_ENVIRONMENT=<python-env> UV_CACHE_DIR=<bootstrap-uv-cache> uv --no-config sync --project <python-project> --managed-python --python 3.13 --frozen --no-editable
+```
+
+Default managed Python environment:
+
+```text
+TENTGENT_HOME/runtime/python-env/
+```
+
+After this step, normal runtime commands should use the generated entry points under `runtime/python-env/bin/` and should not invoke `uv`.
+The bootstrap helper also keeps `uv` package/cache data under `runtime/bootstrap/uv-cache/` unless `TENTGENT_BOOTSTRAP_UV_CACHE_DIR` is explicitly set.
 
 ## Persistence Rules
 

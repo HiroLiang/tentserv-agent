@@ -10,7 +10,10 @@ use hex::encode;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::model::{read_model_metadata, ModelError, ModelMetadata};
+use crate::{
+    model::{read_model_metadata, ModelError, ModelMetadata},
+    platform::ensure_model_format_supported,
+};
 
 use super::{
     error::ServerError,
@@ -108,7 +111,9 @@ impl ServerManager {
         &self,
         request: ServerRunRequest,
     ) -> Result<ServerPrepareOutcome, ServerError> {
-        let model_ref = self.resolve_model_ref(&request.model_ref)?;
+        let metadata = self.resolve_model_metadata(&request.model_ref)?;
+        ensure_model_format_supported(metadata.primary_format)?;
+        let model_ref = metadata.model_ref;
         let host = normalize_host(request.host.as_deref())?;
         let port = request.port.unwrap_or(DEFAULT_SERVER_PORT);
 
@@ -195,7 +200,8 @@ impl ServerManager {
     pub fn resolve_for_start(&self, reference: &str) -> Result<ServerInspection, ServerError> {
         let resolved = self.resolve_reference(reference)?;
         let inspection = self.inspect_resolved(&resolved, true)?;
-        self.resolve_model_ref(&inspection.spec.model_ref)?;
+        let metadata = self.resolve_model_metadata(&inspection.spec.model_ref)?;
+        ensure_model_format_supported(metadata.primary_format)?;
         if inspection.running {
             return Err(ServerError::AlreadyRunning(
                 inspection.spec.short_ref.clone(),
@@ -338,11 +344,6 @@ impl ServerManager {
             1 => Ok(matches.remove(0)),
             _ => Err(ServerError::AmbiguousRef(reference.to_string())),
         }
-    }
-
-    fn resolve_model_ref(&self, reference: &str) -> Result<String, ServerError> {
-        let metadata = self.resolve_model_metadata(reference)?;
-        Ok(metadata.model_ref)
     }
 
     fn resolve_model_metadata(&self, reference: &str) -> Result<ModelMetadata, ServerError> {

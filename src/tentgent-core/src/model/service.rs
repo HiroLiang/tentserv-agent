@@ -10,7 +10,10 @@ use directories::ProjectDirs;
 use serde::Deserialize;
 use walkdir::WalkDir;
 
-use crate::auth::{AuthManager, Provider};
+use crate::{
+    auth::{AuthManager, Provider},
+    runtime_assets::{PythonRuntime, PythonRuntimeSource},
+};
 
 use super::{
     error::ModelError,
@@ -436,9 +439,10 @@ impl ModelManager {
         staged_source_dir: &Path,
         progress: &mut impl FnMut(HfPullProgress),
     ) -> Result<HfSnapshotOutput, ModelError> {
-        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let python_project = repo_root.join("python/tentgent-daemon");
-        let helper = python_project.join("pyproject.toml");
+        let python_runtime = PythonRuntime::resolve().map_err(|err| ModelError::HfHelper {
+            message: err.to_string(),
+        })?;
+        let helper = python_runtime.pyproject_path();
         let result_path = staged_source_dir
             .parent()
             .unwrap_or(staged_source_dir)
@@ -446,15 +450,8 @@ impl ModelManager {
         if !helper.exists() {
             return Err(ModelError::MissingHelper { path: helper });
         }
-
-        let mut command = Command::new("uv");
+        let mut command = hf_snapshot_command(&python_runtime)?;
         command
-            .current_dir(&repo_root)
-            .arg("--no-config")
-            .arg("run")
-            .arg("--project")
-            .arg(&python_project)
-            .arg("tentgent-hf-snapshot")
             .arg("--repo-id")
             .arg(repo_id)
             .arg("--local-dir")
@@ -499,6 +496,39 @@ impl ModelManager {
             }
         })
     }
+}
+
+fn hf_snapshot_command(python_runtime: &PythonRuntime) -> Result<Command, ModelError> {
+    let script = python_runtime.script_bin("tentgent-hf-snapshot");
+    if script.exists() {
+        let mut command = Command::new(script);
+        command.current_dir(python_runtime.project_dir());
+        return Ok(command);
+    }
+
+    if python_runtime.source() == PythonRuntimeSource::InstalledPrefix {
+        return Err(ModelError::HfHelper {
+            message: format!(
+                "Hugging Face snapshot helper is missing at `{}`; run the installer Python bootstrap or `tentgent doctor` to repair the managed runtime",
+                script.display()
+            ),
+        });
+    }
+
+    if let Some(parent) = python_runtime.env_dir().parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut command = Command::new("uv");
+    command
+        .current_dir(python_runtime.project_dir())
+        .arg("--no-config")
+        .arg("run")
+        .arg("--project")
+        .arg(python_runtime.project_dir())
+        .arg("tentgent-hf-snapshot");
+    python_runtime.configure_uv_command(&mut command);
+    Ok(command)
 }
 
 fn parse_hf_progress_line(line: &str) -> Option<HfPullProgress> {

@@ -7,6 +7,7 @@ use tentgent_core::model::{
     HfPullProgress, ImportOutcome, ModelError, ModelInspection, ModelManager, ModelSummary,
     RemovalOutcome,
 };
+use tentgent_core::platform::model_format_capability;
 
 use super::app::Cli;
 use super::commands::ModelCommands;
@@ -354,6 +355,10 @@ fn add_model_metadata_rows(table: &mut Table, metadata: &tentgent_core::model::M
                 .collect::<Vec<_>>()
                 .join(", "),
         ),
+    ]);
+    table.add_row(vec![
+        Cell::new("backend_support"),
+        Cell::new(model_format_capability(metadata.primary_format).summary()),
     ]);
     table.add_row(vec![
         Cell::new("file_count"),

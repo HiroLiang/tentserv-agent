@@ -7,6 +7,9 @@
 # Rust
 /target/
 
+# Release artifacts
+/dist/
+
 # Python
 __pycache__/
 *.py[cod]

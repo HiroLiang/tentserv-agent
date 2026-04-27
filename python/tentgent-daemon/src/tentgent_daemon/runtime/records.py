@@ -8,7 +8,7 @@ from pathlib import Path
 
 DEFAULT_QUALIFIER = "com"
 DEFAULT_ORGANIZATION = "tentserv"
-DEFAULT_APPLICATION = "tentgent"
+DEFAULT_APPLICATION = "com.tentserv.tentgent"
 HOME_ENV = "TENTGENT_HOME"
 MODELS_ENV = "TENTGENT_MODELS_DIR"
 

@@ -11,6 +11,7 @@ Use this directory for concise interface documents that define stable boundaries
 - Describe model-store identity, deduplication, and import or pull boundaries when model management behavior changes.
 - Describe adapter-store identity, compatibility, and source-index boundaries when adapter management behavior changes.
 - Describe canonical dataset schemas when training, evaluation, or cloud dataset generation behavior changes.
+- Describe platform and backend support boundaries before runtime routing behavior depends on them.
 - Keep each document focused on one interface or one boundary.
 
 ## Contract Index
@@ -31,6 +32,8 @@ Use this directory for concise interface documents that define stable boundaries
   Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
 - [runtime-home.md](./runtime-home.md)
   Runtime-home resolution, standard subdirectories, and environment-variable overrides.
+- [platform-backends.md](./platform-backends.md)
+  Platform capability matrix and backend support guardrails.
 
 ## Expansion Rules
 

@@ -7,8 +7,11 @@ mod auth;
 mod chat;
 mod commands;
 mod dataset;
+mod doctor;
 mod model;
+mod python_runtime;
 mod server;
+mod status;
 mod train;
 
 use clap::{CommandFactory, Parser};
@@ -32,8 +35,10 @@ pub async fn run() -> miette::Result<()> {
         Commands::Dataset { action } => dataset::handle_dataset_command(action)?,
         Commands::Model { action } => model::handle_model_command(action)?,
         Commands::Server { action } => server::handle_server_command(action).await?,
+        Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
+        Commands::Status => status::handle_status_command()?,
         Commands::Train { action } => train::handle_train_command(action)?,
-        Commands::Status | Commands::Daemon => {
+        Commands::Daemon => {
             println!("Command scaffold is present. Use --help to inspect available groups.");
         }
     }
