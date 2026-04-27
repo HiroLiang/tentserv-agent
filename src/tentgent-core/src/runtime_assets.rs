@@ -86,7 +86,7 @@ impl PythonRuntime {
     }
 
     pub fn script_bin(&self, name: &str) -> PathBuf {
-        python_bin_dir(&self.env_dir).join(name)
+        python_bin_dir(&self.env_dir).join(python_script_name(name))
     }
 
     pub fn configure_uv_command(&self, command: &mut Command) {
@@ -169,6 +169,14 @@ fn python_executable_name() -> &'static str {
         "python.exe"
     } else {
         "python"
+    }
+}
+
+fn python_script_name(name: &str) -> String {
+    if cfg!(windows) && !name.ends_with(".exe") {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
     }
 }
 

@@ -2,7 +2,7 @@
 
 Use this document for user-facing install and upgrade flows.
 
-## Latest Install
+## Latest Install On macOS
 
 Install the latest GitHub Release:
 
@@ -25,12 +25,33 @@ Verify the runtime:
 tentgent doctor
 ```
 
+## Latest Install On Windows
+
+Install the latest GitHub Release from PowerShell:
+
+```powershell
+irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
+```
+
+Temporarily add the default install location to `PATH`:
+
+```powershell
+$env:Path = "$env:LOCALAPPDATA\Programs\tentgent\bin;$env:Path"
+tentgent doctor
+```
+
+The installer does not edit the user's PowerShell profile automatically.
+
 ## Pinned Install
 
 Use a fixed version when you want reproducible installation:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.0/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.sh | sh
+```
+
+```powershell
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.ps1 | iex
 ```
 
 The pinned installer is tied to that release's artifact URL and version.
@@ -41,6 +62,12 @@ Upgrade by running the installer again:
 
 ```bash
 curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | sh
+tentgent doctor
+tentgent --version
+```
+
+```powershell
+irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
 tentgent doctor
 tentgent --version
 ```
@@ -66,9 +93,12 @@ The installer should preserve:
 
 Default install locations:
 
-- binary: `~/.local/bin/tentgent`
-- support files: `~/.local/share/tentgent`
+- macOS binary: `~/.local/bin/tentgent`
+- macOS support files: `~/.local/share/tentgent`
 - macOS runtime home: `~/Library/Application Support/com.tentserv.tentgent`
+- Windows binary: `%LOCALAPPDATA%\Programs\tentgent\bin\tentgent.exe`
+- Windows support files: `%LOCALAPPDATA%\Programs\tentgent\share\tentgent`
+- Windows runtime home: `%LOCALAPPDATA%\tentserv\tentgent\data`
 - managed Python runtime: `TENTGENT_HOME/runtime/python-env`
 - bootstrap cache: `TENTGENT_HOME/runtime/bootstrap`
 
@@ -86,7 +116,7 @@ Smoke-test install layout without downloading heavy Python ML dependencies:
 
 ```bash
 scripts/install.sh \
-  --archive dist/tentgent-0.1.0-aarch64-apple-darwin.tar.gz \
+  --archive dist/tentgent-0.1.1-aarch64-apple-darwin.tar.gz \
   --checksums dist/checksums.txt \
   --prefix /tmp/tentgent-install-smoke \
   --skip-python-bootstrap

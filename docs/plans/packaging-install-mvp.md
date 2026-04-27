@@ -28,10 +28,11 @@ This plan defines the installation and release track for moving Tentgent from so
 
 ## Release Artifact Shape
 
-First release artifacts should be versioned tarballs:
+First release artifacts should be versioned archives:
 
 ```text
 tentgent-<version>-<target>.tar.gz
+tentgent-<version>-<target>.zip
 checksums.txt
 ```
 
@@ -39,17 +40,17 @@ Initial targets:
 
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`
+- `x86_64-pc-windows-msvc`
 
 Planned later targets:
 
-- `x86_64-pc-windows-msvc`
 - `aarch64-pc-windows-msvc`
 - Linux targets after dependency packaging is clarified
 
-Each tarball should contain:
+Each archive should contain:
 
 ```text
-bin/tentgent
+bin/tentgent or bin/tentgent.exe
 share/tentgent/python/
 LICENSE
 README.md
@@ -114,6 +115,23 @@ The installer must:
 - install support files under a user-writable share directory
 - initialize or check the Python daemon environment
 - print `tentgent doctor` as the next verification command
+
+### PowerShell Installer
+
+Desired user command:
+
+```text
+irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
+```
+
+The installer must:
+
+- download the versioned Windows `.zip` artifact
+- verify `sha256` from `checksums.txt`
+- install `tentgent.exe` into a user-writable bin directory
+- install support files under a user-writable share directory
+- initialize or check the Python daemon environment
+- avoid editing the user's PowerShell profile automatically
 
 ### Homebrew Tap
 
@@ -304,7 +322,7 @@ Implementation note:
 ### Slice 5: GitHub Release Workflow
 
 - Status: implemented in the active workspace.
-- add GitHub Actions build matrix for macOS targets
+- add GitHub Actions build matrix for macOS and Windows x86_64 targets
 - upload artifacts and checksums to a draft release
 - keep signing/notarization out of this slice
 
@@ -316,12 +334,31 @@ Implementation note:
 
 - `.github/workflows/release.yml` runs on `v*.*.*` tag pushes and manual dispatch with an existing tag
 - it builds native macOS artifacts on `macos-14` for Apple Silicon and `macos-15-intel` for Intel
+- it builds a native Windows x86_64 artifact on `windows-latest`
 - each package job runs `scripts/package-local.sh` with `TENTGENT_VERSION` and `TENTGENT_TARGET`
 - the release job merges per-target checksum files into one `checksums.txt`
-- release assets include tarballs, `checksums.txt`, and `install.sh`
+- release assets include macOS tarballs, the Windows zip, `checksums.txt`, `install.sh`, and `install.ps1`
 - the release copy of `install.sh` is rewritten with the tag version and GitHub Release asset URL so `latest/download/install.sh | sh` works without extra environment variables
+- the release copy of `install.ps1` is rewritten with the tag version and GitHub Release asset URL so `latest/download/install.ps1 | iex` works without extra environment variables
 - release assets are uploaded to a draft GitHub Release through `gh release`
 - signing and notarization remain deferred to Slice 7
+
+### Slice 5.5: Windows Installer And Runtime Bootstrap
+
+- Status: implemented in the active workspace.
+- add `scripts/install.ps1`
+- install Windows `.zip` artifacts into `%LOCALAPPDATA%\Programs\tentgent`
+- use `%LOCALAPPDATA%\tentserv\tentgent\data` as the installer-side equivalent of Rust's default Windows runtime home
+- download pinned `uv.exe` into Tentgent's bootstrap cache
+- create `TENTGENT_HOME/runtime/python-env` with uv-managed Python
+- verify Windows `.exe` entry points after sync
+- keep PowerShell profile and PATH edits manual
+- gate MLX dependencies to Apple Silicon macOS so Windows bootstrap can resolve PEFT/safetensors dependencies
+
+Review target:
+
+- a Windows x86_64 GitHub Actions runner can produce a zip artifact and draft release asset
+- a Windows user can install with `install.ps1` and run `tentgent doctor`
 
 ### Slice 6: Homebrew Tap Formula
 

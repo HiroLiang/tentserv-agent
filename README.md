@@ -12,16 +12,26 @@ The current MVP can manage provider keys, pull and deduplicate local models, imp
 
 ## Install
 
-Recommended user install from the latest GitHub Release:
+Recommended macOS install from the latest GitHub Release:
 
 ```bash
 curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | sh
 ```
 
+Recommended Windows PowerShell install from the latest GitHub Release:
+
+```powershell
+irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
+```
+
 Install a pinned version when you want a reproducible setup:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.0/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.sh | sh
+```
+
+```powershell
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.ps1 | iex
 ```
 
 Then make sure the default install location is on `PATH` and verify the runtime:
@@ -40,7 +50,7 @@ See [docs/user/install.md](./docs/user/install.md) for install, upgrade, pinned 
 
 ## Current Version
 
-`v0.1.0` is the first installable MVP target.
+`v0.1.1` is the first installable MVP target with macOS and Windows release artifacts.
 
 Included:
 
@@ -53,7 +63,7 @@ Included:
 
 Known limits:
 
-- macOS is the first supported install target
+- macOS and Windows x86_64 are the first packaged install targets
 - MLX requires Apple Silicon macOS
 - HTTP chat is currently non-streaming
 - macOS signing and notarization are deferred to a later slice

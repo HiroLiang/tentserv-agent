@@ -2,9 +2,9 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
-## v0.1.0
+## v0.1.1
 
-`v0.1.0` is the first installable MVP target.
+`v0.1.1` is the first installable MVP target with macOS and Windows release artifacts.
 
 Included:
 
@@ -18,13 +18,14 @@ Included:
 - runnable MLX LoRA training loop
 - runnable PEFT safetensors LoRA training loop
 - installer-managed Python runtime bootstrap for normal installs
+- Windows x86_64 `.zip` artifact and PowerShell installer
 
 Known limits:
 
-- macOS is the first supported install target
+- macOS and Windows x86_64 are the first packaged install targets
 - MLX requires Apple Silicon macOS
+- Windows runtime support is PEFT/safetensors-first; MLX is disabled
 - HTTP chat is currently non-streaming
-- Windows is planned but not a release-supported target yet
 - `llama-cpp` external adapter execution is not implemented in this MVP
 - macOS signing and notarization are deferred to a later slice
 

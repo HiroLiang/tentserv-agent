@@ -16,6 +16,12 @@ Default macOS runtime home:
 ~/Library/Application Support/com.tentserv.tentgent
 ```
 
+Default Windows runtime home:
+
+```text
+%LOCALAPPDATA%\tentserv\tentgent\data
+```
+
 Runtime directories include:
 
 - `models/`
@@ -50,7 +56,7 @@ Environment variables are read when a process starts. Tentgent does not rewrite 
 - PEFT LoRA adapters can be selected per request with `adapter_ref`.
 - MLX adapters can be selected per request; changing adapters reloads the MLX model for correctness.
 - HTTP `/v1/chat` is non-streaming; `stream=true` currently returns `501`.
-- Windows is planned, but not a fully supported release target yet. MLX is blocked on Windows.
+- Windows x86_64 is packaged, but MLX is blocked on Windows.
 
 ## Keychain Prompts
 

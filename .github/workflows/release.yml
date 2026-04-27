@@ -24,8 +24,13 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             runner: macos-14
+            archive_ext: tar.gz
           - target: x86_64-apple-darwin
             runner: macos-15-intel
+            archive_ext: tar.gz
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            archive_ext: zip
     steps:
       - name: Resolve release metadata
         id: release
@@ -52,6 +57,7 @@ jobs:
           case "${{ matrix.target }}:${arch}" in
             aarch64-apple-darwin:arm64) ;;
             x86_64-apple-darwin:x86_64) ;;
+            x86_64-pc-windows-msvc:x86_64) ;;
             *) echo "unexpected runner architecture ${arch} for ${{ matrix.target }}" >&2; exit 1 ;;
           esac
 
@@ -70,7 +76,7 @@ jobs:
           name: tentgent-${{ matrix.target }}
           if-no-files-found: error
           path: |
-            dist/tentgent-${{ steps.release.outputs.version }}-${{ matrix.target }}.tar.gz
+            dist/tentgent-${{ steps.release.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}
             dist/checksums-${{ matrix.target }}.txt
 
   draft-release:
@@ -99,6 +105,7 @@ jobs:
           ref: ${{ steps.release.outputs.tag }}
           sparse-checkout: |
             scripts/install.sh
+            scripts/install.ps1
           sparse-checkout-cone-mode: false
 
       - name: Download package artifacts
@@ -111,16 +118,18 @@ jobs:
         run: |
           mkdir -p dist-release
           find artifacts -type f -name "tentgent-*.tar.gz" -exec cp {} dist-release/ \;
+          find artifacts -type f -name "tentgent-*.zip" -exec cp {} dist-release/ \;
           find artifacts -type f -name "checksums-*.txt" -print0 \
             | sort -z \
             | xargs -0 cat >dist-release/checksums.txt
           cp scripts/install.sh dist-release/install.sh
+          cp scripts/install.ps1 dist-release/install.ps1
           python3 - <<'PY'
           from pathlib import Path
 
           install_path = Path("dist-release/install.sh")
           text = install_path.read_text()
-          text = text.replace('VERSION="0.1.0"', 'VERSION="${{ steps.release.outputs.version }}"', 1)
+          text = text.replace('VERSION="0.1.1"', 'VERSION="${{ steps.release.outputs.version }}"', 1)
           text = text.replace(
               'DEFAULT_BASE_URL="https://agent.tentserv.com/releases"',
               'DEFAULT_BASE_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}"',
@@ -132,10 +141,26 @@ jobs:
               1,
           )
           install_path.write_text(text)
+
+          install_ps1_path = Path("dist-release/install.ps1")
+          text = install_ps1_path.read_text()
+          text = text.replace('[string]$Version = "0.1.1"', '[string]$Version = "${{ steps.release.outputs.version }}"', 1)
+          text = text.replace(
+              '$DefaultBaseUrl = "https://agent.tentserv.com/releases"',
+              '$DefaultBaseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}"',
+              1,
+          )
+          text = text.replace(
+              '$BaseUrl = if ($env:TENTGENT_INSTALL_BASE_URL) { $env:TENTGENT_INSTALL_BASE_URL } else { "$DefaultBaseUrl/$Version" }',
+              '$BaseUrl = if ($env:TENTGENT_INSTALL_BASE_URL) { $env:TENTGENT_INSTALL_BASE_URL } else { $DefaultBaseUrl }',
+              1,
+          )
+          install_ps1_path.write_text(text)
           PY
           ls -lah dist-release
           test -s dist-release/checksums.txt
           test -s dist-release/install.sh
+          test -s dist-release/install.ps1
 
       - name: Write draft release notes
         shell: bash
@@ -148,14 +173,22 @@ jobs:
           Assets:
           - macOS Apple Silicon: tentgent-${{ steps.release.outputs.version }}-aarch64-apple-darwin.tar.gz
           - macOS Intel: tentgent-${{ steps.release.outputs.version }}-x86_64-apple-darwin.tar.gz
+          - Windows x86_64: tentgent-${{ steps.release.outputs.version }}-x86_64-pc-windows-msvc.zip
           - checksums.txt
           - install.sh
+          - install.ps1
 
-          Installer smoke test:
+          macOS installer smoke test:
 
           \`\`\`bash
           curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/install.sh" \\
             | sh -s -- --skip-python-bootstrap
+          \`\`\`
+
+          Windows installer smoke test:
+
+          \`\`\`powershell
+          irm "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/install.ps1" | iex
           \`\`\`
           NOTES
 
@@ -166,12 +199,14 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" dist-release/*.tar.gz dist-release/checksums.txt dist-release/install.sh --clobber
+            gh release upload "${TAG}" dist-release/*.tar.gz dist-release/*.zip dist-release/checksums.txt dist-release/install.sh dist-release/install.ps1 --clobber
           else
             gh release create "${TAG}" \
               dist-release/*.tar.gz \
+              dist-release/*.zip \
               dist-release/checksums.txt \
               dist-release/install.sh \
+              dist-release/install.ps1 \
               --draft \
               --title "Tentgent ${TAG}" \
               --notes-file release-notes.md

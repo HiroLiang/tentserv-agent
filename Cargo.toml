@@ -10,7 +10,7 @@ default-members = ["src/tentgent-cli"]
 [workspace.package]
 edition = "2021"
 rust-version = "1.81"
-version = "0.1.0"
+version = "0.1.1"
 
 [workspace.dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -20,7 +20,7 @@ directories = "6"
 dotenvy = "0.15"
 hex = "0.4"
 indicatif = "0.18"
-keyring = { version = "3.6", default-features = false, features = ["apple-native"] }
+keyring = { version = "3.6", default-features = false }
 miette = { version = "7", features = ["fancy"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
 rpassword = "7"

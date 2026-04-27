@@ -12,16 +12,26 @@ Tentgent は Rust を主体としたローカル operator CLI で、Python daemo
 
 ## インストール
 
-通常ユーザー向けの推奨インストールは、最新 GitHub Release から行います:
+macOS ユーザー向けの推奨インストールは、最新 GitHub Release から行います:
 
 ```bash
 curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | sh
 ```
 
+Windows PowerShell ユーザー向けの推奨インストール:
+
+```powershell
+irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
+```
+
 再現可能なセットアップにしたい場合は、version を固定して install します:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.0/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.sh | sh
+```
+
+```powershell
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.ps1 | iex
 ```
 
 その後、デフォルトのインストール先を `PATH` に追加し、runtime を確認します:
@@ -40,7 +50,7 @@ install、upgrade、pinned version、local package smoke test は [docs/user/ins
 
 ## 現在のバージョン
 
-`v0.1.0` は最初の installable MVP target です。
+`v0.1.1` は macOS と Windows release artifacts を含む最初の installable MVP target です。
 
 含まれる機能:
 
@@ -53,7 +63,7 @@ install、upgrade、pinned version、local package smoke test は [docs/user/ins
 
 現在の制限:
 
-- macOS が最初の supported install target
+- macOS と Windows x86_64 が最初の packaged install targets
 - MLX は Apple Silicon macOS が必要
 - HTTP chat は現在 non-streaming
 - macOS signing と notarization は後続 slice に延期

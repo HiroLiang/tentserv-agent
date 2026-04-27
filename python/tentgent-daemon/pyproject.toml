@@ -4,16 +4,16 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tentgent-daemon"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python runtime and daemon layer for Tentgent."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "gguf",
     "huggingface-hub",
-    "llama-cpp-python",
-    "mlx",
-    "mlx-lm",
+    "llama-cpp-python; sys_platform != 'win32'",
+    "mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-lm; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "peft",
     "safetensors",
     "torch",
