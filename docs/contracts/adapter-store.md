@@ -1,0 +1,175 @@
+# Adapter Store
+
+This document defines the Tentgent adapter-store draft under `TENTGENT_HOME/adapters`.
+
+## Purpose
+
+- Keep LoRA and other adapter assets under Tentgent-managed storage.
+- Treat adapters as first-class resources instead of nesting them under one model directory.
+- Preserve compatibility metadata so a server can decide whether an adapter may be used with its base model.
+- Keep the layout compatible with local imports, Hugging Face pulls, and future training outputs.
+
+## Layout
+
+```text
+TENTGENT_HOME/
+└── adapters/
+    ├── store/
+    │   └── <adapter_ref>/
+    │       ├── adapter.toml
+    │       ├── manifest.json
+    │       └── source/
+    ├── by-base/
+    │   └── <base_model_ref>/
+    │       └── <adapter_ref>.toml
+    ├── by-source/
+    │   ├── hf/
+    │   │   └── <escaped_repo_id>/
+    │   │       └── <resolved_sha>.toml
+    │   ├── local/
+    │   │   └── <adapter_ref>.toml
+    │   └── train-run/
+    │       └── <run_ref>.toml
+    └── staging/
+```
+
+## Canonical Identity
+
+- The canonical adapter identity is `adapter_ref`.
+- `adapter_ref` should be content-derived from a canonical manifest, following the same spirit as `model_ref`.
+- The manifest should record every regular file under the staged adapter root with:
+  - `relative_path`
+  - `size_bytes`
+  - `sha256`
+- Sort manifest entries by normalized relative path before hashing.
+- `short_ref` is the first 12 hexadecimal characters of `adapter_ref`.
+
+## Adapter Metadata
+
+`adapter.toml` should record:
+
+- `adapter_ref`
+- `short_ref`
+- `adapter_format`
+- `adapter_type`
+- `base_model_ref`
+- `base_model_source_repo`
+- `base_model_source_revision`
+- `model_family`
+- `backend_support`
+- `source_kind`
+- `source_repo`
+- `source_revision`
+- `source_path`
+- `training_dataset_ref`
+- `training_run_ref`
+- `training_config_ref`
+- `file_count`
+- `total_bytes`
+- `imported_at`
+
+Notes:
+
+- `base_model_ref` should be preferred when the exact local base model is known.
+- `base_model_source_repo` and `base_model_source_revision` help match adapters pulled from Hugging Face when the local `model_ref` is not known yet.
+- `model_family` is a weaker compatibility hint and should not replace exact compatibility metadata.
+- `backend_support` should describe intended runtime support, such as `transformers-peft`, `mlx`, or `llama-cpp`.
+
+## Compatibility Rule
+
+Tentgent should not treat an adapter as universally compatible.
+
+`tentgent adapter add <PATH> --base-model-ref <MODEL_REF>` may bind a local adapter import to one managed base model during import.
+
+`tentgent adapter bind <ADAPTER_REF> --base-model-ref <MODEL_REF>` should bind an already imported adapter to one managed base model after the base model becomes available.
+
+Imports without a local base model are valid. They should preserve any source-level base-model hints from `adapter_config.json`, but they should not prompt for a model or pull one from the network by default.
+
+Before a server uses an adapter, it should check:
+
+- the adapter exists in `adapters/store/<adapter_ref>/`
+- the server base model matches `base_model_ref` when that field is present
+- otherwise, the server can fall back to source repo and revision compatibility checks
+- the adapter backend support includes the server backend
+- the server policy allows that adapter
+
+The first implementation should be conservative. If compatibility cannot be proven, reject the request with a clear error.
+
+When `adapter_config.json` contains base-model hints, Tentgent should compare them with the selected local base model:
+
+- PEFT adapters commonly use `base_model_name_or_path` and optional `revision`.
+- MLX training output may use `model`.
+- If the adapter base model hint and the local model source repo disagree, reject the binding.
+- If both sides provide revisions and they disagree, reject the binding.
+
+## Source Shape
+
+For PEFT-style LoRA adapters, `source/` commonly contains:
+
+- `adapter_model.safetensors`
+- `adapter_config.json`
+- `README.md`
+
+Other backend-specific adapter formats may use different filenames. Tentgent should keep the raw adapter source intact and store Tentgent metadata beside it.
+
+## Indexes
+
+- `by-base/<base_model_ref>/<adapter_ref>.toml`
+  Fast lookup for adapters known to target one local base model.
+- `by-source/hf/<escaped_repo_id>/<resolved_sha>.toml`
+  Lookup for remote adapter imports by Hugging Face repo and resolved revision.
+- `by-source/local/<adapter_ref>.toml`
+  Lookup for local adapter imports.
+- `by-source/train-run/<run_ref>.toml`
+  Lookup from one training run to its produced adapter.
+
+Indexes are lookup aids only. Canonical ownership lives under `store/<adapter_ref>/`.
+
+## List Display
+
+`adapter ls` should keep rows compact:
+
+- Hugging Face sources show `<repo>@<short_revision>`.
+- Training-run sources show `run:<short_run_ref>`.
+- Local sources show the original path only when short, otherwise the final path component.
+
+Full provenance remains available through `adapter inspect <ADAPTER_REF>`.
+
+## Hugging Face Pull
+
+`tentgent adapter pull <HF_REPO> [--revision <REV>] [--base-model-ref <MODEL_REF>]` should:
+
+- resolve the requested repo to an exact commit SHA through the shared `tentgent-hf-snapshot` helper
+- run that helper through `uv --no-config run --project python/tentgent-daemon ...` so adapter pulls use the Python subproject environment directly without inspecting the repository-root `pyproject.toml`
+- download the full snapshot into adapter staging
+- build the normal adapter manifest and content-derived `adapter_ref`
+- write `source_kind = "huggingface"`, `source_repo`, and `source_revision`
+- create `by-source/hf/<escaped_repo_id>/<resolved_sha>.toml`
+- optionally validate and bind to `--base-model-ref` using the same rules as local `adapter add`
+
+The first pull implementation intentionally imports the full adapter repository snapshot. File filtering can be added later if large training artifacts become a practical problem.
+
+## Removal Rule
+
+- `tentgent adapter rm <ADAPTER_REF>` should resolve by full hash or unique short-hash prefix.
+- Removing an adapter should be blocked when any stored server spec explicitly allows, preloads, or defaults to that adapter. Current removal protection recognizes future server-spec fields such as `adapter_ref`, `default_adapter_ref`, `allowed_adapters`, and `adapter_refs`.
+- Removing an adapter should delete the canonical store directory under `adapters/store/<adapter_ref>/`.
+- Removing an adapter should also delete related `by-base` and `by-source` index entries.
+
+## First Implementation Boundary
+
+The first adapter-store implementation should support:
+
+- local adapter import
+- Hugging Face adapter pull
+- training-run adapter import
+- metadata inspection
+- explicit local base-model binding
+- compatibility checks for `safetensors + PEFT`
+
+It should not require:
+
+- multi-server coordination
+- remote adapter hosting by Tentgent
+- dynamic download during a live chat request
+- feature parity across `mlx` and `llama-cpp`

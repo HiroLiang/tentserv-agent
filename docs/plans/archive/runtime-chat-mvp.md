@@ -6,7 +6,7 @@ This plan defines how Tentgent should introduce runnable model backends and a fi
 
 - This plan is now the completed foundation for the runtime layer.
 - The completed next phase is [server-runtime-mvp.md](./server-runtime-mvp.md).
-- The current active runtime follow-up now lives in [../lora-server-mvp.md](../lora-server-mvp.md).
+- The completed LoRA runtime follow-up now lives in [lora-server-mvp.md](./lora-server-mvp.md).
 - Keep this document focused on the one-shot chat foundation that `tentgent server` will build on.
 
 ## Decision Summary

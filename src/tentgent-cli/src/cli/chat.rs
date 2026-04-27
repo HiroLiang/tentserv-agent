@@ -67,10 +67,7 @@ pub async fn handle_chat_command(command: ChatCommand) -> miette::Result<()> {
     });
 
     let status = child.wait().await.into_diagnostic()?;
-    let stderr_bytes = stderr_task
-        .await
-        .into_diagnostic()?
-        .into_diagnostic()?;
+    let stderr_bytes = stderr_task.await.into_diagnostic()?.into_diagnostic()?;
 
     if !status.success() {
         let stderr_text = String::from_utf8_lossy(&stderr_bytes).trim().to_string();

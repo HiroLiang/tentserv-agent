@@ -4,6 +4,13 @@ import json
 from http import HTTPStatus
 from typing import Any
 
+from tentgent_daemon.runtime.adapters import (
+    AdapterAmbiguousError,
+    AdapterBackendUnsupportedError,
+    AdapterExecutionNotImplementedError,
+    AdapterIncompatibleError,
+    AdapterNotFoundError,
+)
 from tentgent_daemon.runtime.chat import Message
 
 from .session import ChatRequestPayload, RuntimeSession
@@ -37,6 +44,31 @@ def handle_chat_request(raw_body: bytes, session: RuntimeSession) -> tuple[HTTPS
 
     try:
         text = session.generate(request)
+    except AdapterNotFoundError as exc:
+        return (
+            HTTPStatus.NOT_FOUND,
+            {"error": "adapter_not_found", "message": str(exc)},
+        )
+    except AdapterAmbiguousError as exc:
+        return (
+            HTTPStatus.CONFLICT,
+            {"error": "adapter_ambiguous", "message": str(exc)},
+        )
+    except AdapterIncompatibleError as exc:
+        return (
+            HTTPStatus.CONFLICT,
+            {"error": "adapter_incompatible", "message": str(exc)},
+        )
+    except AdapterBackendUnsupportedError as exc:
+        return (
+            HTTPStatus.NOT_IMPLEMENTED,
+            {"error": "adapter_backend_unsupported", "message": str(exc)},
+        )
+    except AdapterExecutionNotImplementedError as exc:
+        return (
+            HTTPStatus.NOT_IMPLEMENTED,
+            {"error": "adapter_execution_not_implemented", "message": str(exc)},
+        )
     except NotImplementedError as exc:
         return (
             HTTPStatus.NOT_IMPLEMENTED,
@@ -75,6 +107,10 @@ def parse_chat_request(payload: dict[str, Any]) -> ChatRequestPayload:
     adapter_ref = payload.get("adapter_ref")
     if adapter_ref is not None and not isinstance(adapter_ref, str):
         raise ValueError("`adapter_ref` must be a string when provided")
+    if isinstance(adapter_ref, str):
+        adapter_ref = adapter_ref.strip()
+        if not adapter_ref:
+            raise ValueError("`adapter_ref` must not be empty when provided")
 
     stream = payload.get("stream", False)
     if not isinstance(stream, bool):

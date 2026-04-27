@@ -17,7 +17,7 @@ pub struct ChatCommand {
     /// Sampling temperature. Omit or use 0 for deterministic decoding.
     #[arg(long, value_name = "TEMP")]
     pub temperature: Option<f32>,
-    /// Optional adapter reference reserved for future LoRA work.
+    /// Optional compatible adapter reference for PEFT-backed LoRA chat.
     #[arg(long = "adapter-ref", value_name = "REF")]
     pub adapter_ref: Option<String>,
     /// Stream generated text to stdout when the selected backend supports streaming.

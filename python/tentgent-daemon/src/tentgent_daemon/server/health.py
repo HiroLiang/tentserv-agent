@@ -17,7 +17,7 @@ def build_health_payload(config: ServerConfig, session: RuntimeSession) -> dict[
         "lazy_load": config.lazy_load,
         "idle_seconds": config.idle_seconds,
         "runtime_home": str(config.home) if config.home is not None else None,
-        "slice": "slice-6",
+        "slice": "server-adapter-contract",
         "chat_ready": True,
         "model_loaded": snapshot.loaded,
         "startup_mode": snapshot.startup_mode,

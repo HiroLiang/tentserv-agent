@@ -7,9 +7,14 @@ from threading import Lock
 from time import monotonic
 
 from tentgent_daemon.backends import ChatBackend, create_backend
+from tentgent_daemon.runtime.adapters import (
+    StoredAdapterRecord,
+    load_adapter_record,
+    validate_adapter_for_model,
+)
 from tentgent_daemon.runtime.chat import ChatRequest, Message
 from tentgent_daemon.runtime.records import StoredModelRecord, load_model_record
-from tentgent_daemon.runtime.router import resolve_backend
+from tentgent_daemon.runtime.router import BackendKind, resolve_backend
 
 from .config import ServerConfig
 
@@ -41,7 +46,8 @@ class RuntimeSession:
             config.model_ref,
             home=config.home,
         )
-        self._backend: ChatBackend = create_backend(resolve_backend(self._record))
+        self._backend_kind: BackendKind = resolve_backend(self._record)
+        self._backend: ChatBackend = create_backend(self._backend_kind)
         self._loaded = False
         self._last_activity_monotonic: float | None = None
         self._last_activity_at: str | None = None
@@ -75,17 +81,30 @@ class RuntimeSession:
     def generate(self, payload: ChatRequestPayload) -> str:
         with self._lock:
             self._release_if_idle_locked()
+            adapter = self._resolve_adapter_request_locked(payload.adapter_ref)
             self._ensure_loaded_locked()
+            self._backend.select_adapter(adapter)
             request = ChatRequest(
                 model_ref=self._config.model_ref,
                 messages=payload.messages,
                 max_tokens=payload.max_tokens,
                 temperature=payload.temperature,
-                adapter_ref=payload.adapter_ref,
+                adapter_ref=adapter.adapter_ref if adapter else None,
             )
             text = self._backend.generate(request).text
             self._mark_activity_locked()
             return text
+
+    def _resolve_adapter_request_locked(
+        self,
+        adapter_ref: str | None,
+    ) -> StoredAdapterRecord | None:
+        if not adapter_ref:
+            return None
+
+        adapter = load_adapter_record(adapter_ref, home=self._config.home)
+        validate_adapter_for_model(adapter, self._record, self._backend_kind)
+        return adapter
 
     def _ensure_loaded_locked(self) -> None:
         if self._loaded:

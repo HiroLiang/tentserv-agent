@@ -4,7 +4,7 @@ This document defines how Tentgent should resolve and use its daemon-managed loc
 
 ## Purpose
 
-- Keep models, adapters, cache, runtime sockets, and logs outside the repository by default.
+- Keep models, adapters, datasets, training plans, cache, runtime sockets, and logs outside the repository by default.
 - Let the CLI and future HTTP entry point share the same persistent local state.
 - Make development testing easy to isolate without changing production defaults.
 
@@ -30,6 +30,8 @@ Environment variables:
 - `TENTGENT_HOME`
 - `TENTGENT_MODELS_DIR`
 - `TENTGENT_ADAPTERS_DIR`
+- `TENTGENT_DATASETS_DIR`
+- `TENTGENT_TRAIN_DIR`
 - `TENTGENT_CACHE_DIR`
 - `TENTGENT_RUNTIME_DIR`
 - `TENTGENT_LOG_DIR`
@@ -39,6 +41,8 @@ Environment variables:
 - `models/`
 - `servers/`
 - `adapters/`
+- `datasets/`
+- `train/`
 - `cache/`
 - `runtime/`
 - `logs/`

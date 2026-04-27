@@ -95,10 +95,12 @@ Primary format selection order:
 - `tentgent model pull` should resolve the requested repo to an exact commit SHA before download.
 - The Rust core invokes the `tentgent-hf-snapshot` entry point from the `python/tentgent-daemon` subproject.
 - The helper implementation lives in `python/tentgent-daemon/src/tentgent_daemon/tools/hf_snapshot.py`.
-- The helper should run from the Python subproject root through `uv run tentgent-hf-snapshot ...` so the Python subproject remains the single source of truth for package resolution.
-- Callers outside the subproject may still use `uv run --project python/tentgent-daemon ...` for manual testing.
+- The helper should run through `uv --no-config run --project python/tentgent-daemon tentgent-hf-snapshot ...` so the Python subproject remains the single source of truth for package resolution and `uv` does not inspect the repository-root `pyproject.toml`.
 - The helper should use `huggingface_hub` `model_info()` plus `snapshot_download()`.
 - The effective `HF_TOKEN` should be passed through when available.
+- Rust owns CLI progress rendering for `model pull`.
+- The Python helper should keep native `huggingface_hub` progress bars disabled and emit JSON Lines progress events when called with `--progress-json`.
+- The Rust core parses those JSON Lines events and the CLI renders one terminal progress bar, avoiding nested tqdm output.
 - The helper should materialize a full snapshot into Tentgent staging and return JSON containing:
   - `repo_id`
   - `resolved_revision`

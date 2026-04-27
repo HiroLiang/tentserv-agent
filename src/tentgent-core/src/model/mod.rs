@@ -8,5 +8,7 @@ mod store;
 
 pub use error::ModelError;
 pub use format::ModelFormat;
-pub use service::{ImportOutcome, ModelInspection, ModelManager, ModelSummary, RemovalOutcome};
+pub use service::{
+    HfPullProgress, ImportOutcome, ModelInspection, ModelManager, ModelSummary, RemovalOutcome,
+};
 pub use store::{read_model_metadata, ImportMethod, ModelMetadata, SourceKind, VariantMetadata};

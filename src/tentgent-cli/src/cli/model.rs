@@ -4,7 +4,8 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use miette::{miette, IntoDiagnostic};
 use tentgent_core::model::{
-    ImportOutcome, ModelError, ModelInspection, ModelManager, ModelSummary, RemovalOutcome,
+    HfPullProgress, ImportOutcome, ModelError, ModelInspection, ModelManager, ModelSummary,
+    RemovalOutcome,
 };
 
 use super::app::Cli;
@@ -19,13 +20,13 @@ pub fn handle_model_command(action: ModelCommands) -> miette::Result<()> {
             render_import_outcome("Model imported", &outcome);
         }
         ModelCommands::Pull { repo_id, revision } => {
-            let progress = start_pull_progress(&repo_id, revision.as_deref());
-            let outcome = manager
-                .pull_hf(&repo_id, revision.as_deref())
-                .into_diagnostic();
-            finish_pull_progress(&progress);
+            let mut progress = PullProgress::new(&repo_id, revision.as_deref());
+            let outcome = manager.pull_hf_with_progress(&repo_id, revision.as_deref(), |event| {
+                progress.update(event);
+            });
+            progress.finish();
 
-            let outcome = outcome?;
+            let outcome = outcome.into_diagnostic()?;
             render_import_outcome("Model pulled", &outcome);
         }
         ModelCommands::Ls => {
@@ -220,22 +221,103 @@ fn base_table() -> Table {
     table
 }
 
-fn start_pull_progress(repo_id: &str, revision: Option<&str>) -> ProgressBar {
-    let progress = ProgressBar::new_spinner();
-    progress.set_style(
-        ProgressStyle::with_template("{spinner} {msg} [{elapsed_precise}]")
-            .expect("valid pull progress template"),
-    );
-    progress.set_message(match revision {
-        Some(revision) => format!("Pulling {repo_id} @ {revision} from Hugging Face"),
-        None => format!("Pulling {repo_id} from Hugging Face"),
-    });
-    progress.enable_steady_tick(std::time::Duration::from_millis(100));
-    progress
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PullProgressMode {
+    Spinner,
+    Files,
+    Bytes,
 }
 
-fn finish_pull_progress(progress: &ProgressBar) {
-    progress.finish_and_clear();
+struct PullProgress {
+    bar: ProgressBar,
+    repo_id: String,
+    mode: PullProgressMode,
+}
+
+impl PullProgress {
+    fn new(repo_id: &str, revision: Option<&str>) -> Self {
+        let bar = ProgressBar::new_spinner();
+        bar.set_style(
+            ProgressStyle::with_template("{spinner} {msg} [{elapsed_precise}]")
+                .expect("valid pull spinner template"),
+        );
+        bar.set_message(match revision {
+            Some(revision) => format!("Resolving {repo_id} @ {revision} from Hugging Face"),
+            None => format!("Resolving {repo_id} from Hugging Face"),
+        });
+        bar.enable_steady_tick(std::time::Duration::from_millis(100));
+
+        Self {
+            bar,
+            repo_id: repo_id.to_string(),
+            mode: PullProgressMode::Spinner,
+        }
+    }
+
+    fn update(&mut self, event: HfPullProgress) {
+        if event.finished {
+            return;
+        }
+
+        if event.unit == "B" {
+            self.switch_mode(PullProgressMode::Bytes);
+            if let Some(total) = event.total {
+                self.bar.set_length(total);
+            }
+            self.bar.set_position(event.position);
+            self.bar.set_message(match event.description.as_str() {
+                "" | "Downloading (incomplete total...)" => {
+                    format!("Downloading {}", self.repo_id)
+                }
+                description => description.to_string(),
+            });
+            return;
+        }
+
+        self.switch_mode(PullProgressMode::Files);
+        if let Some(total) = event.total {
+            self.bar.set_length(total);
+        }
+        self.bar.set_position(event.position);
+        self.bar.set_message(if event.description.is_empty() {
+            format!("Fetching files for {}", self.repo_id)
+        } else {
+            event.description
+        });
+    }
+
+    fn finish(&self) {
+        self.bar.finish_and_clear();
+    }
+
+    fn switch_mode(&mut self, mode: PullProgressMode) {
+        if self.mode == mode {
+            return;
+        }
+
+        self.mode = mode;
+        match mode {
+            PullProgressMode::Spinner => {}
+            PullProgressMode::Files => {
+                self.bar.set_style(
+                    ProgressStyle::with_template(
+                        "{spinner:.cyan} {msg} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len}",
+                    )
+                    .expect("valid file progress template")
+                    .progress_chars("=> "),
+                );
+            }
+            PullProgressMode::Bytes => {
+                self.bar.set_style(
+                    ProgressStyle::with_template(
+                        "{spinner:.cyan} {msg} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} {bytes_per_sec} ETA {eta_precise}",
+                    )
+                    .expect("valid byte progress template")
+                    .progress_chars("=> "),
+                );
+            }
+        }
+    }
 }
 
 fn add_model_metadata_rows(table: &mut Table, metadata: &tentgent_core::model::ModelMetadata) {

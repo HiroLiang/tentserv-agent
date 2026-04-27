@@ -5,6 +5,10 @@ import json
 from pathlib import Path
 
 from tentgent_daemon.backends import create_backend
+from tentgent_daemon.runtime.adapters import (
+    load_adapter_record,
+    validate_adapter_for_model,
+)
 from tentgent_daemon.runtime.chat import ChatRequest, Message, build_chat_plan
 
 
@@ -27,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--home", help="Optional Tentgent runtime home override")
     parser.add_argument("--max-tokens", type=int)
     parser.add_argument("--temperature", type=float)
-    parser.add_argument("--adapter-ref", help="Optional adapter ref for future LoRA work")
+    parser.add_argument("--adapter-ref", help="Optional compatible PEFT adapter ref")
     parser.add_argument(
         "--stream",
         action="store_true",
@@ -71,8 +75,24 @@ def main() -> int:
         )
         return 0
 
+    adapter = None
+    if request.adapter_ref:
+        adapter = load_adapter_record(
+            request.adapter_ref,
+            home=Path(args.home).expanduser().resolve() if args.home else None,
+        )
+        validate_adapter_for_model(adapter, plan.record, plan.backend)
+        request = ChatRequest(
+            model_ref=request.model_ref,
+            messages=request.messages,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+            adapter_ref=adapter.adapter_ref,
+        )
+
     backend = create_backend(plan.backend)
     backend.load(plan.record)
+    backend.select_adapter(adapter)
 
     if args.stream:
         for chunk in backend.stream_generate(request):

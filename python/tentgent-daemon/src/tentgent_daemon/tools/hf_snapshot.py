@@ -3,13 +3,97 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
+from typing import Any, Iterable
+
+# Tentgent renders pull progress in Rust; keep the Python helper from drawing
+# nested tqdm bars when huggingface_hub downloads a snapshot.
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 from huggingface_hub import HfApi, snapshot_download
+
+
+class JsonProgressTqdm:
+    _lock = threading.RLock()
+    _ids = itertools.count(1)
+
+    def __init__(
+        self,
+        iterable: Iterable[Any] | None = None,
+        desc: str | None = None,
+        total: int | float | None = None,
+        initial: int | float = 0,
+        unit: str = "it",
+        **_: Any,
+    ) -> None:
+        self.iterable = iterable
+        self.desc = desc or ""
+        self.total = total
+        self.n = initial
+        self.unit = unit
+        self.progress_id = next(self._ids)
+        self.closed = False
+        self._emit("start")
+
+    @classmethod
+    def get_lock(cls) -> threading.RLock:
+        return cls._lock
+
+    @classmethod
+    def set_lock(cls, lock: threading.RLock) -> None:
+        cls._lock = lock
+
+    def __iter__(self):
+        try:
+            for item in self.iterable or ():
+                yield item
+                self.update(1)
+        finally:
+            self.close()
+
+    def __enter__(self) -> "JsonProgressTqdm":
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        self.close()
+
+    def update(self, n: int | float | None = 1) -> None:
+        if n is not None:
+            self.n += n
+        self._emit("update")
+
+    def refresh(self, *_: Any, **__: Any) -> None:
+        self._emit("refresh")
+
+    def set_description(self, desc: str | None = None, refresh: bool = True) -> None:
+        self.desc = desc or ""
+        if refresh:
+            self._emit("description")
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self._emit("close")
+
+    def _emit(self, kind: str) -> None:
+        payload = {
+            "event": "progress",
+            "kind": kind,
+            "id": self.progress_id,
+            "desc": self.desc,
+            "position": self.n,
+            "total": self.total,
+            "unit": self.unit,
+        }
+        with self._lock:
+            print(json.dumps(payload, separators=(",", ":")), flush=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,6 +117,11 @@ def parse_args() -> argparse.Namespace:
         "--result-path",
         required=True,
         help="JSON output path for the resolved pull result",
+    )
+    parser.add_argument(
+        "--progress-json",
+        action="store_true",
+        help="Emit snapshot progress as JSON Lines on stdout instead of drawing tqdm bars.",
     )
     return parser.parse_args()
 
@@ -59,6 +148,7 @@ def main() -> int:
             revision=resolved_revision,
             token=token,
             local_dir=str(local_dir),
+            tqdm_class=JsonProgressTqdm if args.progress_json else None,
         )
     except Exception as exc:  # pragma: no cover - CLI integration handles the surface area.
         print(str(exc), file=sys.stderr)

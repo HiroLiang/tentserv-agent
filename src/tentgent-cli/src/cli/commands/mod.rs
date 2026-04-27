@@ -1,12 +1,18 @@
+mod adapter;
 mod auth;
 mod chat;
+mod dataset;
 mod model;
 mod server;
+mod train;
 
+pub use adapter::AdapterCommands;
 pub use auth::{AuthCommands, AuthProviderAction};
 pub use chat::ChatCommand;
+pub use dataset::DatasetCommands;
 pub use model::ModelCommands;
 pub use server::{ServerCommands, ServerRunCommand};
+pub use train::{TrainCommands, TrainLoraCommands, TrainLoraPlanCommands, TrainLoraRunCommand};
 
 use clap::Subcommand;
 
@@ -32,7 +38,35 @@ pub enum Commands {
     )]
     Chat(ChatCommand),
     /// Inspect and manage adapters, including LoRA selection and switching.
-    Adapter,
+    #[command(
+        name = "adapter",
+        about = "Inspect and manage adapters.",
+        long_about = "Inspect and manage adapters such as LoRA assets. Tentgent stores managed adapters under TENTGENT_HOME/adapters and later uses adapter references for server-side selection."
+    )]
+    Adapter {
+        #[command(subcommand)]
+        action: AdapterCommands,
+    },
+    /// Inspect and manage datasets for training and evaluation.
+    #[command(
+        name = "dataset",
+        about = "Inspect and manage datasets.",
+        long_about = "Inspect and manage datasets for future training and evaluation workflows. Tentgent stores local datasets under TENTGENT_HOME/datasets, computes content-derived dataset references, and reuses those references for deduplication."
+    )]
+    Dataset {
+        #[command(subcommand)]
+        action: DatasetCommands,
+    },
+    /// Plan and run training workflows.
+    #[command(
+        name = "train",
+        about = "Plan and run training workflows.",
+        long_about = "Plan and run training workflows. The current MVP exposes LoRA plan creation and run records. MLX plans execute through the Python MLX runner; safetensors plans execute through the Python PEFT runner."
+    )]
+    Train {
+        #[command(subcommand)]
+        action: TrainCommands,
+    },
     /// Inspect and manage the persistent local daemon process.
     Daemon,
     /// Define and launch long-lived local model servers.

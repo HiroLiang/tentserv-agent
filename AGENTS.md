@@ -35,6 +35,8 @@ If the current task is about agent workflows, role selection, or role-specific w
   Concise contract documents for cross-module and cross-language interfaces.
 - `docs/plans/`
   Active execution plans for larger runtime and backend initiatives.
+- `docs/development/`
+  Developer-focused repository-local commands and testing notes.
 - `docs/i18n/`
   Localized Markdown that mirrors English source documents.
 - `docs/plans/archive/`
@@ -48,8 +50,20 @@ Key current documents:
   Provider-secret resolution order and keychain usage rules.
 - `docs/contracts/model-store.md`
   Model-store identity, deduplication, layout, and Hugging Face pull boundaries.
-- `docs/plans/lora-server-mvp.md`
-  Active plan for request-time LoRA support on top of the completed single-model server lifecycle.
+- `docs/contracts/adapter-store.md`
+  Adapter-store identity, compatibility metadata, layout, and source-index draft.
+- `docs/contracts/dataset-store.md`
+  Dataset-store identity, layout, local import, and deduplication boundary for training data.
+- `docs/contracts/dataset-schema.md`
+  Canonical chat, tool-call, and cloud-generated dataset record schema.
+- `docs/contracts/server-chat.md`
+  HTTP chat request shape, adapter validation rules, and runtime error mapping.
+- `docs/contracts/training-lora.md`
+  Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
+- `docs/development/README.md`
+  Developer command reference for source-first builds and repository-local tests.
+- `docs/plans/cloud-dataset-mvp.md`
+  Active plan for OpenAI/Claude-assisted dataset generation and evaluation.
 - `docs/plans/archive/README.md`
   Router for completed plans that should be consulted only when historical implementation context is needed.
 
@@ -74,7 +88,9 @@ Key current documents:
 - If an approved change affects repository structure, requirements, runtime boundaries, entry points, or contracts, update the affected Markdown files in the same change.
 - Apply `skill-creator` principles when updating Markdown: keep it concise, split by concern, avoid duplication, and prefer folder-plus-`README.md` expansion over growing one large document.
 - Treat unnecessary documentation growth as a defect. Add structure only when it reduces reading cost for later agents.
-- Treat roughly 300 lines as a practical upper bound for a single Markdown file unless there is a strong reason not to split it.
+- General source files may grow up to roughly 1000 lines before splitting becomes mandatory, though smaller focused modules are preferred.
+- Human-readable Markdown may grow up to roughly 500 lines when it remains easy to scan.
+- Agent-routing Markdown, skill files, and direction-setting Markdown should stay near 300 lines because they are read for orientation and token efficiency.
 
 ## Documentation Writing Rules
 

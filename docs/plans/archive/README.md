@@ -22,3 +22,5 @@ Use this directory for completed plans that are no longer the active execution t
   Completed foundation for one-shot chat and backend routing.
 - [server-runtime-mvp.md](./server-runtime-mvp.md)
   Completed first server lifecycle and management surface.
+- [lora-server-mvp.md](./lora-server-mvp.md)
+  Completed adapter, dataset, LoRA training, and request-time adapter execution milestone.

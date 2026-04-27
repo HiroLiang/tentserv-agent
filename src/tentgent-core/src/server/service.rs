@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -105,7 +104,10 @@ impl ServerManager {
         Ok(Self { paths })
     }
 
-    pub fn prepare_run(&self, request: ServerRunRequest) -> Result<ServerPrepareOutcome, ServerError> {
+    pub fn prepare_run(
+        &self,
+        request: ServerRunRequest,
+    ) -> Result<ServerPrepareOutcome, ServerError> {
         let model_ref = self.resolve_model_ref(&request.model_ref)?;
         let host = normalize_host(request.host.as_deref())?;
         let port = request.port.unwrap_or(DEFAULT_SERVER_PORT);
@@ -195,7 +197,9 @@ impl ServerManager {
         let inspection = self.inspect_resolved(&resolved, true)?;
         self.resolve_model_ref(&inspection.spec.model_ref)?;
         if inspection.running {
-            return Err(ServerError::AlreadyRunning(inspection.spec.short_ref.clone()));
+            return Err(ServerError::AlreadyRunning(
+                inspection.spec.short_ref.clone(),
+            ));
         }
         Ok(inspection)
     }
@@ -268,7 +272,9 @@ impl ServerManager {
         let resolved = self.resolve_reference(reference)?;
         let inspection = self.inspect_resolved(&resolved, true)?;
         if inspection.running {
-            return Err(ServerError::AlreadyRunning(inspection.spec.short_ref.clone()));
+            return Err(ServerError::AlreadyRunning(
+                inspection.spec.short_ref.clone(),
+            ));
         }
 
         fs::remove_dir_all(&inspection.server_dir)?;

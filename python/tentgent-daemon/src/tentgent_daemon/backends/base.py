@@ -4,6 +4,10 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from ..runtime.chat import ChatRequest
+from ..runtime.adapters import (
+    AdapterExecutionNotImplementedError,
+    StoredAdapterRecord,
+)
 from ..runtime.records import StoredModelRecord
 
 
@@ -21,6 +25,15 @@ class ChatBackend:
     def release(self) -> None:
         """Release loaded runtime state when the server lifecycle decides to unload."""
         return None
+
+    def select_adapter(self, adapter: StoredAdapterRecord | None) -> None:
+        """Select the request adapter, or clear adapter selection for base-model chat."""
+        if adapter is None:
+            return
+        raise AdapterExecutionNotImplementedError(
+            f"adapter `{adapter.short_ref}` is recognized, but this backend has not "
+            "implemented request-time adapter execution yet."
+        )
 
     def generate(self, request: ChatRequest) -> ChatResult:
         raise NotImplementedError

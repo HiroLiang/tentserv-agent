@@ -63,6 +63,18 @@ This crate owns the `tentgent` binary and should stay focused on command-line in
   Remove one managed model and its related source indexes by short or full hash ref. Removal is blocked while any stored server spec still references that model.
 - `tentgent model inspect <REF>`
   Show metadata, manifest path, and canonical store path for one managed model.
+- `tentgent adapter add <PATH> [--base-model-ref <MODEL_REF>]`
+  Import one local adapter directory into the managed adapter store, optionally binding it to a local managed base model.
+- `tentgent adapter pull <HF_REPO> [--revision <REV>] [--base-model-ref <MODEL_REF>]`
+  Pull a Hugging Face adapter snapshot into the managed adapter store, optionally binding it to a local managed base model.
+- `tentgent adapter ls`
+  List managed adapters by short ref, format, base binding, and source.
+- `tentgent adapter inspect <ADAPTER_REF>`
+  Show metadata, manifest path, and canonical store path for one managed adapter.
+- `tentgent adapter bind <ADAPTER_REF> --base-model-ref <MODEL_REF>`
+  Bind an already imported adapter to one local managed base model after validating adapter config hints when available.
+- `tentgent adapter rm <ADAPTER_REF>`
+  Remove one managed adapter and its related source or base-model indexes by short or full hash ref.
 - `tentgent chat <MODEL_REF> [--message ...]`
   Run the Rust chat wrapper around the Python runtime harness.
 - `tentgent chat <MODEL_REF>`

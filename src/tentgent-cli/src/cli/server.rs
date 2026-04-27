@@ -185,7 +185,10 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
     println!("{} {}", style("==>").cyan().bold(), style(title).bold());
 
     if servers.is_empty() {
-        println!("{} No matching servers were found.\n", style("empty").yellow().bold());
+        println!(
+            "{} No matching servers were found.\n",
+            style("empty").yellow().bold()
+        );
         return;
     }
 
@@ -316,19 +319,39 @@ fn render_server_table(inspection: &ServerInspection) -> Table {
         .apply_modifier(UTF8_ROUND_CORNERS)
         .set_header(vec!["Field", "Value"]);
 
-    table.add_row(vec![Cell::new("server_ref"), Cell::new(&inspection.spec.server_ref)]);
-    table.add_row(vec![Cell::new("short_ref"), Cell::new(&inspection.spec.short_ref)]);
-    table.add_row(vec![Cell::new("model_ref"), Cell::new(&inspection.spec.model_ref)]);
+    table.add_row(vec![
+        Cell::new("server_ref"),
+        Cell::new(&inspection.spec.server_ref),
+    ]);
+    table.add_row(vec![
+        Cell::new("short_ref"),
+        Cell::new(&inspection.spec.short_ref),
+    ]);
+    table.add_row(vec![
+        Cell::new("model_ref"),
+        Cell::new(&inspection.spec.model_ref),
+    ]);
     table.add_row(vec![
         Cell::new("status"),
-        Cell::new(if inspection.running { "running" } else { "stopped" }),
+        Cell::new(if inspection.running {
+            "running"
+        } else {
+            "stopped"
+        }),
     ]);
-    table.add_row(vec![Cell::new("home"), Cell::new(inspection.home_dir.display().to_string())]);
+    table.add_row(vec![
+        Cell::new("home"),
+        Cell::new(inspection.home_dir.display().to_string()),
+    ]);
     table.add_row(vec![Cell::new("host"), Cell::new(&inspection.spec.host)]);
     table.add_row(vec![Cell::new("port"), Cell::new(inspection.spec.port)]);
     table.add_row(vec![
         Cell::new("lazy_load"),
-        Cell::new(if inspection.spec.lazy_load { "true" } else { "false" }),
+        Cell::new(if inspection.spec.lazy_load {
+            "true"
+        } else {
+            "false"
+        }),
     ]);
     table.add_row(vec![
         Cell::new("idle_seconds"),
@@ -340,7 +363,10 @@ fn render_server_table(inspection: &ServerInspection) -> Table {
                 .unwrap_or_else(|| "(not set)".to_string()),
         ),
     ]);
-    table.add_row(vec![Cell::new("created_at"), Cell::new(&inspection.spec.created_at)]);
+    table.add_row(vec![
+        Cell::new("created_at"),
+        Cell::new(&inspection.spec.created_at),
+    ]);
     table.add_row(vec![
         Cell::new("launch_mode"),
         Cell::new(
@@ -401,7 +427,12 @@ async fn launch_foreground_server_runtime(
     python_interpreter: &Path,
     outcome: &ServerPrepareOutcome,
 ) -> miette::Result<()> {
-    let mut process = server_process_command(python_project, python_interpreter, &outcome.spec, &outcome.home_dir);
+    let mut process = server_process_command(
+        python_project,
+        python_interpreter,
+        &outcome.spec,
+        &outcome.home_dir,
+    );
     process
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -477,7 +508,9 @@ async fn launch_background_server_runtime(
         } else {
             stderr
         };
-        return Err(miette!("failed to launch background server runtime: {detail}"));
+        return Err(miette!(
+            "failed to launch background server runtime: {detail}"
+        ));
     }
 
     let pid = String::from_utf8_lossy(&output.stdout)

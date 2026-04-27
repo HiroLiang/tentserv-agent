@@ -9,7 +9,28 @@ Use this directory for concise interface documents that define stable boundaries
 - Describe runtime-home conventions, environment-variable overrides, and stable storage boundaries.
 - Describe provider auth storage and resolution rules when secrets cross process boundaries.
 - Describe model-store identity, deduplication, and import or pull boundaries when model management behavior changes.
+- Describe adapter-store identity, compatibility, and source-index boundaries when adapter management behavior changes.
+- Describe canonical dataset schemas when training, evaluation, or cloud dataset generation behavior changes.
 - Keep each document focused on one interface or one boundary.
+
+## Contract Index
+
+- [auth-secrets.md](./auth-secrets.md)
+  Provider-secret resolution and keychain usage rules.
+- [model-store.md](./model-store.md)
+  Model identity, deduplication, managed layout, and Hugging Face pull boundaries.
+- [adapter-store.md](./adapter-store.md)
+  Adapter identity, compatibility metadata, managed layout, and source-index draft.
+- [dataset-store.md](./dataset-store.md)
+  Dataset identity, managed layout, local import, and deduplication boundary.
+- [dataset-schema.md](./dataset-schema.md)
+  Canonical chat, tool-call, and cloud-generated dataset record schema.
+- [server-chat.md](./server-chat.md)
+  HTTP chat request shape, adapter validation rules, and runtime error mapping.
+- [training-lora.md](./training-lora.md)
+  Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
+- [runtime-home.md](./runtime-home.md)
+  Runtime-home resolution, standard subdirectories, and environment-variable overrides.
 
 ## Expansion Rules
 

@@ -1,8 +1,8 @@
 use std::{
-    env,
-    fs,
+    env, fs,
+    io::{BufRead, BufReader},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -29,6 +29,15 @@ pub struct ImportOutcome {
     pub store_path: PathBuf,
     pub source_index_path: PathBuf,
     pub deduplicated: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct HfPullProgress {
+    pub description: String,
+    pub position: u64,
+    pub total: Option<u64>,
+    pub unit: String,
+    pub finished: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +83,20 @@ struct HfSnapshotOutput {
     repo_id: String,
     resolved_revision: String,
     local_dir: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct HfProgressLine {
+    event: String,
+    kind: String,
+    #[serde(default)]
+    desc: Option<String>,
+    #[serde(default)]
+    position: Option<f64>,
+    #[serde(default)]
+    total: Option<f64>,
+    #[serde(default)]
+    unit: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,18 +146,31 @@ impl ModelManager {
         repo_id: &str,
         revision: Option<&str>,
     ) -> Result<ImportOutcome, ModelError> {
+        self.pull_hf_with_progress(repo_id, revision, |_| {})
+    }
+
+    pub fn pull_hf_with_progress(
+        &self,
+        repo_id: &str,
+        revision: Option<&str>,
+        mut progress: impl FnMut(HfPullProgress),
+    ) -> Result<ImportOutcome, ModelError> {
         let stage_root = self.create_staging_root("pull")?;
         let staged_source_dir = stage_root.join("source");
         fs::create_dir_all(&staged_source_dir)?;
 
-        let hf_output = self.run_hf_snapshot(repo_id, revision, &staged_source_dir)?;
+        let hf_output =
+            self.run_hf_snapshot(repo_id, revision, &staged_source_dir, &mut progress)?;
         let resolved_source_dir = PathBuf::from(&hf_output.local_dir);
-        if resolved_source_dir != staged_source_dir {
+        let expected_source_dir = staged_source_dir
+            .canonicalize()
+            .unwrap_or_else(|_| staged_source_dir.clone());
+        if resolved_source_dir != expected_source_dir {
             return Err(ModelError::HfHelperOutput {
                 message: format!(
                     "helper downloaded to `{}` instead of the expected staging directory `{}`",
                     resolved_source_dir.display(),
-                    staged_source_dir.display()
+                    expected_source_dir.display()
                 ),
             });
         }
@@ -398,6 +434,7 @@ impl ModelManager {
         repo_id: &str,
         revision: Option<&str>,
         staged_source_dir: &Path,
+        progress: &mut impl FnMut(HfPullProgress),
     ) -> Result<HfSnapshotOutput, ModelError> {
         let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let python_project = repo_root.join("python/tentgent-daemon");
@@ -412,16 +449,21 @@ impl ModelManager {
 
         let mut command = Command::new("uv");
         command
-            .current_dir(&python_project)
+            .current_dir(&repo_root)
+            .arg("--no-config")
             .arg("run")
+            .arg("--project")
+            .arg(&python_project)
             .arg("tentgent-hf-snapshot")
             .arg("--repo-id")
             .arg(repo_id)
             .arg("--local-dir")
             .arg(staged_source_dir)
             .arg("--result-path")
-            .arg(&result_path);
+            .arg(&result_path)
+            .arg("--progress-json");
         command.env_remove("VIRTUAL_ENV");
+        command.env("HF_HUB_DISABLE_PROGRESS_BARS", "1");
 
         if let Some(revision) = revision {
             command.arg("--revision").arg(revision);
@@ -431,7 +473,18 @@ impl ModelManager {
             command.env(Provider::HuggingFace.env_var(), secret);
         }
 
-        let status = command.status()?;
+        command.stdout(Stdio::piped());
+        let mut child = command.spawn()?;
+        if let Some(stdout) = child.stdout.take() {
+            for line in BufReader::new(stdout).lines() {
+                let line = line?;
+                if let Some(event) = parse_hf_progress_line(&line) {
+                    progress(event);
+                }
+            }
+        }
+
+        let status = child.wait()?;
         if !status.success() {
             return Err(ModelError::HfHelper {
                 message: format!("helper exited with status {status}"),
@@ -446,6 +499,31 @@ impl ModelManager {
             }
         })
     }
+}
+
+fn parse_hf_progress_line(line: &str) -> Option<HfPullProgress> {
+    let parsed = serde_json::from_str::<HfProgressLine>(line).ok()?;
+    if parsed.event != "progress" {
+        return None;
+    }
+
+    let position = parsed
+        .position
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or_default()
+        .round() as u64;
+    let total = parsed
+        .total
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(|value| value.round() as u64);
+
+    Some(HfPullProgress {
+        description: parsed.desc.unwrap_or_default(),
+        position,
+        total,
+        unit: parsed.unit.unwrap_or_else(|| "it".to_string()),
+        finished: parsed.kind == "close",
+    })
 }
 
 impl ImportSource {

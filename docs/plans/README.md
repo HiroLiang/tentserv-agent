@@ -19,8 +19,8 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Active Plan Index
 
-- [lora-server-mvp.md](./lora-server-mvp.md)
-  Active next-phase plan for request-time LoRA support on top of the completed single-model server lifecycle.
+- [cloud-dataset-mvp.md](./cloud-dataset-mvp.md)
+  Active next-phase plan for OpenAI/Claude-assisted dataset generation and evaluation.
 - [packaging-install-mvp.md](./packaging-install-mvp.md)
   Future track for product-shaped packaging and user-facing installation beyond the current source-first workflow.
 

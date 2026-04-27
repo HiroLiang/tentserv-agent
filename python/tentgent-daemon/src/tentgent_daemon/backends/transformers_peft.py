@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import nullcontext
 from threading import Thread
 
+from peft import PeftModel
 import torch
 from transformers import (
     AutoModelForCausalLM,
@@ -13,6 +15,7 @@ from transformers import (
 )
 
 from .base import ChatBackend, ChatResult
+from ..runtime.adapters import StoredAdapterRecord
 from ..runtime.chat import ChatRequest, Message
 from ..runtime.records import StoredModelRecord
 
@@ -21,7 +24,9 @@ class TransformersPeftChatBackend(ChatBackend):
     def __init__(self) -> None:
         self._record: StoredModelRecord | None = None
         self._tokenizer: PreTrainedTokenizerBase | None = None
-        self._model: PreTrainedModel | None = None
+        self._model: PreTrainedModel | PeftModel | None = None
+        self._loaded_adapters: dict[str, str] = {}
+        self._active_adapter_ref: str | None = None
         self._device = _detect_device()
 
     def load(self, record: StoredModelRecord) -> None:
@@ -37,12 +42,14 @@ class TransformersPeftChatBackend(ChatBackend):
         self._record = record
         self._tokenizer = tokenizer
         self._model = model
+        self._loaded_adapters = {}
+        self._active_adapter_ref = None
 
     def generate(self, request: ChatRequest) -> ChatResult:
         tokenizer, model = self._require_loaded()
         generate_kwargs = self._prepare_generate_kwargs(tokenizer, request)
 
-        with torch.inference_mode():
+        with self._adapter_context(model, request), torch.inference_mode():
             output_ids = model.generate(**generate_kwargs)
 
         prompt_length = generate_kwargs["input_ids"].shape[-1]
@@ -54,11 +61,47 @@ class TransformersPeftChatBackend(ChatBackend):
         self._record = None
         self._tokenizer = None
         self._model = None
+        self._loaded_adapters = {}
+        self._active_adapter_ref = None
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         if torch.backends.mps.is_available():
             torch.mps.empty_cache()
+
+    def select_adapter(self, adapter: StoredAdapterRecord | None) -> None:
+        _, model = self._require_loaded()
+
+        if adapter is None:
+            self._active_adapter_ref = None
+            return
+
+        adapter_name = self._loaded_adapters.get(adapter.adapter_ref)
+        if adapter_name is None:
+            adapter_name = adapter.short_ref
+            if isinstance(model, PeftModel):
+                model.load_adapter(
+                    str(adapter.source_dir),
+                    adapter_name=adapter_name,
+                    is_trainable=False,
+                    torch_device=self._device.type,
+                )
+            else:
+                model = PeftModel.from_pretrained(
+                    model,
+                    str(adapter.source_dir),
+                    adapter_name=adapter_name,
+                    is_trainable=False,
+                )
+                model.to(self._device)
+                model.eval()
+                self._model = model
+
+            self._loaded_adapters[adapter.adapter_ref] = adapter_name
+
+        peft_model = self._require_peft_model()
+        peft_model.set_adapter(adapter_name)
+        self._active_adapter_ref = adapter.adapter_ref
 
     def stream_generate(self, request: ChatRequest) -> Iterator[str]:
         tokenizer, model = self._require_loaded()
@@ -74,7 +117,7 @@ class TransformersPeftChatBackend(ChatBackend):
 
         def _run_generation() -> None:
             try:
-                with torch.inference_mode():
+                with self._adapter_context(model, request), torch.inference_mode():
                     model.generate(**generate_kwargs)
             except BaseException as exc:  # pragma: no cover - streamed surface area.
                 error_holder.append(exc)
@@ -92,21 +135,26 @@ class TransformersPeftChatBackend(ChatBackend):
 
     def _require_loaded(
         self,
-    ) -> tuple[PreTrainedTokenizerBase, PreTrainedModel]:
+    ) -> tuple[PreTrainedTokenizerBase, PreTrainedModel | PeftModel]:
         if self._record is None or self._tokenizer is None or self._model is None:
             raise RuntimeError(
                 "Transformers backend is not loaded yet; call load() before generate()."
             )
         return self._tokenizer, self._model
 
+    def _require_peft_model(self) -> PeftModel:
+        if not isinstance(self._model, PeftModel):
+            raise RuntimeError("PEFT adapter selection did not produce a PEFT model.")
+        return self._model
+
     def _prepare_generate_kwargs(
         self,
         tokenizer: PreTrainedTokenizerBase,
         request: ChatRequest,
     ) -> dict[str, object]:
-        if request.adapter_ref:
-            raise NotImplementedError(
-                "adapter_ref is not implemented yet for the transformers backend."
+        if request.adapter_ref and self._active_adapter_ref != request.adapter_ref:
+            raise RuntimeError(
+                f"adapter `{request.adapter_ref}` was requested but not activated"
             )
 
         prompt = _render_prompt(tokenizer, request.messages)
@@ -128,6 +176,17 @@ class TransformersPeftChatBackend(ChatBackend):
         if do_sample:
             kwargs["temperature"] = temperature
         return kwargs
+
+    def _adapter_context(
+        self,
+        model: PreTrainedModel | PeftModel,
+        request: ChatRequest,
+    ):
+        if request.adapter_ref:
+            return nullcontext()
+        if isinstance(model, PeftModel):
+            return model.disable_adapter()
+        return nullcontext()
 
 
 def _detect_device() -> torch.device:
