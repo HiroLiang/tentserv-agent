@@ -303,6 +303,7 @@ Implementation note:
 
 ### Slice 5: GitHub Release Workflow
 
+- Status: implemented in the active workspace.
 - add GitHub Actions build matrix for macOS targets
 - upload artifacts and checksums to a draft release
 - keep signing/notarization out of this slice
@@ -310,6 +311,17 @@ Implementation note:
 Review target:
 
 - a tagged version can produce release artifacts reproducibly
+
+Implementation note:
+
+- `.github/workflows/release.yml` runs on `v*.*.*` tag pushes and manual dispatch with an existing tag
+- it builds native macOS artifacts on `macos-14` for Apple Silicon and `macos-15-intel` for Intel
+- each package job runs `scripts/package-local.sh` with `TENTGENT_VERSION` and `TENTGENT_TARGET`
+- the release job merges per-target checksum files into one `checksums.txt`
+- release assets include tarballs, `checksums.txt`, and `install.sh`
+- the release copy of `install.sh` is rewritten with the tag version and GitHub Release asset URL so `latest/download/install.sh | sh` works without extra environment variables
+- release assets are uploaded to a draft GitHub Release through `gh release`
+- signing and notarization remain deferred to Slice 7
 
 ### Slice 6: Homebrew Tap Formula
 

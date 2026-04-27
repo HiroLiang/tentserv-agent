@@ -33,6 +33,8 @@ If the current task is about agent workflows, role selection, or role-specific w
   Importable Python package for runtime, backend, CLI, and internal helper modules.
 - `docs/contracts/`
   Concise contract documents for cross-module and cross-language interfaces.
+- `docs/user/`
+  User-facing install, upgrade, version, command, runtime, and Keychain documentation.
 - `docs/plans/`
   Active execution plans for larger runtime and backend initiatives.
 - `docs/development/`
@@ -60,6 +62,16 @@ Key current documents:
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - `docs/contracts/training-lora.md`
   Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
+- `docs/user/README.md`
+  Router for user-facing install, upgrade, command, version, and runtime documentation.
+- `docs/user/install.md`
+  Install, upgrade, pinned-version, PATH, and local package smoke-test guidance.
+- `docs/user/version.md`
+  Current MVP feature list, known limits, and upgrade expectations.
+- `docs/user/commands.md`
+  User command examples for auth, model, adapter, dataset, chat, server, and LoRA training flows.
+- `docs/user/runtime.md`
+  Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
 - `docs/plans/cloud-dataset-mvp.md`

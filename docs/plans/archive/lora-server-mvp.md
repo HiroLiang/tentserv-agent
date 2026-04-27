@@ -100,7 +100,7 @@ Tentgent should eventually manage:
 - `TENTGENT_HOME/datasets/`
 - `TENTGENT_HOME/train-runs/`
 
-Adapter-store layout and metadata are drafted in [adapter-store.md](../contracts/adapter-store.md).
+Adapter-store layout and metadata are drafted in [adapter-store.md](../../contracts/adapter-store.md).
 
 Adapters should not be physically nested under one base model directory by default. Instead, adapter metadata should record compatibility such as:
 
@@ -430,5 +430,5 @@ Build the first LoRA milestone in this order:
 
 - Multi-server coordination should be a later systems plan, not part of this one.
 - Shared network-visible server state should be designed separately from adapter execution.
-- Packaging and install should remain tracked in [packaging-install-mvp.md](./packaging-install-mvp.md).
+- Packaging and install should remain tracked in [packaging-install-mvp.md](../packaging-install-mvp.md).
 - Remote adapter hosting already exists in the ecosystem, so Tentgent should favor interoperability before inventing a new hosted adapter platform.

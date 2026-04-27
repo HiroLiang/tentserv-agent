@@ -1,0 +1,75 @@
+# Runtime And Platform Notes
+
+Tentgent stores runtime state outside source code by default.
+
+## Runtime Home
+
+During development, prefer a repository-local runtime home:
+
+```bash
+export TENTGENT_HOME="$PWD/.tentgent-test"
+```
+
+Default macOS runtime home:
+
+```text
+~/Library/Application Support/com.tentserv.tentgent
+```
+
+Runtime directories include:
+
+- `models/`
+- `adapters/`
+- `datasets/`
+- `train/`
+- `servers/`
+- `cache/`
+- `runtime/`
+- `logs/`
+
+Supported path overrides:
+
+- `TENTGENT_HOME`
+- `TENTGENT_MODELS_DIR`
+- `TENTGENT_ADAPTERS_DIR`
+- `TENTGENT_DATASETS_DIR`
+- `TENTGENT_TRAIN_DIR`
+- `TENTGENT_CACHE_DIR`
+- `TENTGENT_RUNTIME_DIR`
+- `TENTGENT_LOG_DIR`
+
+Environment variables are read when a process starts. Tentgent does not rewrite or persist shell environment settings.
+
+## Backend Status
+
+- `tentgent doctor` runs installation and runtime health checks.
+- `tentgent status` reports the current platform and backend capability state.
+- `safetensors` models run through the `transformers-peft` backend when Python dependencies are installed.
+- `mlx` models run through the MLX backend only on Apple Silicon macOS.
+- `gguf` models run through `llama-cpp-python` when that dependency is installed.
+- PEFT LoRA adapters can be selected per request with `adapter_ref`.
+- MLX adapters can be selected per request; changing adapters reloads the MLX model for correctness.
+- HTTP `/v1/chat` is non-streaming; `stream=true` currently returns `501`.
+- Windows is planned, but not a fully supported release target yet. MLX is blocked on Windows.
+
+## Keychain Prompts
+
+On macOS, Tentgent may trigger a Keychain prompt when a command needs a stored provider secret and no environment override is present.
+
+This is expected for commands such as:
+
+- `tentgent auth hf`
+- `tentgent auth openai`
+- `tentgent auth anthropic`
+- `tentgent model pull <HF_REPO>`
+- `tentgent adapter pull <HF_REPO>`
+
+If you trust your installed or locally built `tentgent` binary, choosing `Always Allow` is reasonable. Rebuilding or relocating an unsigned development binary may cause macOS to ask again.
+
+To skip Keychain reads for one command, pass a one-shot environment variable:
+
+```bash
+HF_TOKEN="your token" tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
+```
+
+One-shot environment variables apply only to that command and do not need `unset`.
