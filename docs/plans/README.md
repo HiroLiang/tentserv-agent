@@ -19,14 +19,21 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Active Plan Index
 
+- [http-chat-streaming-mvp.md](./http-chat-streaming-mvp.md)
+  Highest-priority next plan for `POST /v1/chat` streaming over Server-Sent Events.
 - [cloud-provider-server-mvp.md](./cloud-provider-server-mvp.md)
-  Highest-priority plan for exposing OpenAI and Claude through local `tentgent server` chat.
-- [cloud-dataset-mvp.md](./cloud-dataset-mvp.md)
-  Plan for OpenAI/Claude-assisted dataset validation, prompt-template generation, synthesis, and evaluation.
+  Active polish and documentation plan for exposing OpenAI and Claude through local `tentgent server` chat.
 - [http-daemon-mvp.md](./http-daemon-mvp.md)
   Future service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
 - [tui-session-mvp.md](./tui-session-mvp.md)
   Future terminal UI plan for selectable workflows and coarse chat session context management.
+
+## Recommended Order
+
+1. Finish [http-chat-streaming-mvp.md](./http-chat-streaming-mvp.md).
+2. Finish remaining cloud provider server polish and docs.
+3. Build the HTTP daemon entry after the chat protocol is stable.
+4. Build TUI session management after daemon/server behavior settles.
 
 ## Deferred Plans
 

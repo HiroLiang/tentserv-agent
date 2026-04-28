@@ -47,11 +47,11 @@ The installer does not edit the user's PowerShell profile automatically.
 Use a fixed version when you want reproducible installation:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.2/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.2/install.ps1 | iex
 ```
 
 The pinned installer is tied to that release's artifact URL and version.
@@ -116,7 +116,7 @@ Smoke-test install layout without downloading heavy Python ML dependencies:
 
 ```bash
 scripts/install.sh \
-  --archive dist/tentgent-0.1.1-aarch64-apple-darwin.tar.gz \
+  --archive dist/tentgent-0.1.2-aarch64-apple-darwin.tar.gz \
   --checksums dist/checksums.txt \
   --prefix /tmp/tentgent-install-smoke \
   --skip-python-bootstrap \

@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 再現可能なセットアップにしたい場合は、version を固定して install します:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.2/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.2/install.ps1 | iex
 ```
 
 その後、デフォルトのインストール先を `PATH` に追加し、runtime を確認します:
@@ -50,12 +50,14 @@ install、upgrade、pinned version、local package smoke test は [docs/user/ins
 
 ## 現在のバージョン
 
-`v0.1.1` は macOS と Windows release artifacts を含む最初の installable MVP target です。
+`v0.1.2` は最初の installable MVP に cloud provider server routing と provider-assisted dataset workflows を追加します。
 
 含まれる機能:
 
 - Hugging Face、OpenAI、Anthropic の provider auth key 管理
 - content-addressed model、adapter、dataset stores
+- OpenAI と Anthropic の local server proxy runtimes
+- dataset validation、prompt templates、provider synthesis、provider evaluation
 - MLX、PEFT safetensors、llama-cpp GGUF path の one-shot local chat
 - registry と process lifecycle commands を備えた local HTTP chat server
 - managed LoRA train plans と実行可能な MLX / PEFT training loops
@@ -65,7 +67,7 @@ install、upgrade、pinned version、local package smoke test は [docs/user/ins
 
 - macOS と Windows x86_64 が最初の packaged install targets
 - MLX は Apple Silicon macOS が必要
-- HTTP chat は現在 non-streaming
+- HTTP chat streaming は計画済みですが、まだ未実装です
 - macOS signing と notarization は後続 slice に延期
 
 version feature list と known limits は [docs/user/version.md](../../../docs/user/version.md) を参照してください。

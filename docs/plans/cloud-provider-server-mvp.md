@@ -169,6 +169,8 @@ Review target:
 
 Defer streaming until the non-streaming path is stable.
 
+Status: split into [http-chat-streaming-mvp.md](./http-chat-streaming-mvp.md).
+
 Goals:
 
 - define provider streaming normalization

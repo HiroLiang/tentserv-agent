@@ -1,6 +1,8 @@
 # Cloud Dataset MVP
 
-Use OpenAI and Claude to help users produce valid Tentgent tuning data. This track should reuse the provider client boundary from [cloud-provider-server-mvp.md](./cloud-provider-server-mvp.md) once cloud chat routing is stable.
+Status: archived. This plan completed dataset validation, deterministic generation templates, provider-backed dataset synthesis, synthesis debugging, and provider-backed dataset evaluation.
+
+Use OpenAI and Claude to help users produce valid Tentgent tuning data. This track reused the provider client boundary from [cloud-provider-server-mvp.md](../cloud-provider-server-mvp.md) once cloud chat routing became stable.
 
 ## Scope
 
@@ -172,7 +174,7 @@ Implementation notes:
 
 ## Dataset Contract
 
-All generated records must use [../contracts/dataset-schema.md](../contracts/dataset-schema.md).
+All generated records must use [dataset-schema.md](../../contracts/dataset-schema.md).
 
 Providers must output JSONL where each row has:
 

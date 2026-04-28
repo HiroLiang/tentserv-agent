@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 Install a pinned version when you want a reproducible setup:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.2/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.1/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.2/install.ps1 | iex
 ```
 
 Then make sure the default install location is on `PATH` and verify the runtime:
@@ -50,12 +50,14 @@ See [docs/user/install.md](./docs/user/install.md) for install, upgrade, pinned 
 
 ## Current Version
 
-`v0.1.1` is the first installable MVP target with macOS and Windows release artifacts.
+`v0.1.2` adds cloud provider server routing and provider-assisted dataset workflows on top of the first installable MVP.
 
 Included:
 
 - provider auth key management for Hugging Face, OpenAI, and Anthropic
 - content-addressed model, adapter, and dataset stores
+- OpenAI and Anthropic local server proxy runtimes
+- dataset validation, prompt templates, provider synthesis, and provider evaluation
 - one-shot local chat for MLX, PEFT safetensors, and llama-cpp GGUF paths
 - local HTTP chat server with registry and process lifecycle commands
 - managed LoRA train plans and runnable MLX / PEFT training loops
@@ -65,7 +67,7 @@ Known limits:
 
 - macOS and Windows x86_64 are the first packaged install targets
 - MLX requires Apple Silicon macOS
-- HTTP chat is currently non-streaming
+- HTTP chat streaming is planned but not implemented yet
 - macOS signing and notarization are deferred to a later slice
 
 See [docs/user/version.md](./docs/user/version.md) for the version feature list and known limits.

@@ -2,6 +2,23 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.1.2
+
+`v0.1.2` adds cloud provider server routing and provider-assisted dataset workflows.
+
+Added:
+
+- OpenAI and Anthropic keys can be verified through `auth status`.
+- `server run openai:<model>` and `server run claude:<model>` can expose provider chat through the local `/v1/chat` surface.
+- `dataset validate`, `dataset template`, `dataset synth`, and `dataset eval` help produce and review `tentgent.chat.v1` tuning data.
+- server JSON responses preserve UTF-8 text for direct curl readability.
+
+Known limits:
+
+- HTTP chat streaming is planned but not implemented yet.
+- Cloud provider servers do not support request-time LoRA adapters.
+- Dataset synthesis quality still depends on provider output and should be validated before import or training.
+
 ## v0.1.1
 
 `v0.1.1` is the first installable MVP target with macOS and Windows release artifacts.
