@@ -20,6 +20,9 @@ Request body:
 }
 ```
 
+Responses are JSON encoded as UTF-8. Non-ASCII text should remain readable in
+the response body rather than being escaped as `\uXXXX` sequences.
+
 ## Adapter Contract
 
 `adapter_ref` is optional.
