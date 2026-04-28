@@ -104,7 +104,8 @@ Role rules:
 - `system` and `user` messages require non-empty string `content`.
 - `assistant.content` may be empty only when `tool_calls` is non-empty.
 - `tool` messages require `tool_call_id`, `name`, and `content`.
-- A record used with prompt masking should end with a final assistant answer.
+- Training records used with prompt masking should end with a final assistant answer.
+- `eval_cases.jsonl` may contain prompt-only records plus expected behavior metadata.
 
 ## Content Rules
 
@@ -131,6 +132,22 @@ Rules:
 - `name` is required.
 - `arguments` is required and should be a JSON object.
 - OpenAI-style `{ "type": "function", "function": { "name": "...", "arguments": "{\"x\":1}" } }` may be accepted as input, but Tentgent should canonicalize it into the shape above.
+
+## Eval Case Compatibility
+
+`eval_cases.jsonl` is validated separately from direct training splits. It may contain either canonical `tentgent.chat.v1` records with `messages` and optional `expected_behavior`, or legacy local eval cases shaped like:
+
+```json
+{
+  "case_id": "tool_call_profile",
+  "input_language": "en",
+  "user_prompt": "Use tools to get Hiro's current role",
+  "tools_available": ["get_profile(field)"],
+  "expected_behaviors": ["emits function call to get_profile"]
+}
+```
+
+Legacy eval cases are accepted for local evaluation fixtures, but new cloud-generated tuning data should still use canonical chat records.
 
 ## Renderer Contract
 

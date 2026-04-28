@@ -17,6 +17,18 @@ const LEGACY_VAL_FILE: &str = "val.jsonl";
 const TEST_FILE: &str = "test.jsonl";
 const EVAL_CASES_FILE: &str = "eval_cases.jsonl";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SplitValidationKind {
+    Training,
+    Eval,
+}
+
+impl SplitValidationKind {
+    const fn requires_final_assistant(self) -> bool {
+        matches!(self, Self::Training)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DatasetValidationOutcome {
     pub path: PathBuf,
@@ -86,7 +98,7 @@ pub fn validate_dataset_path(
 
 fn validate_dataset_file(path: &Path) -> Result<DatasetValidationOutcome, DatasetError> {
     ensure_jsonl_path(path)?;
-    let (records, errors) = validate_jsonl_file(path)?;
+    let (records, errors) = validate_jsonl_file(path, SplitValidationKind::Training)?;
     let split_errors = errors.len();
     Ok(DatasetValidationOutcome {
         path: path.to_path_buf(),
@@ -109,10 +121,34 @@ fn validate_dataset_dir(path: &Path) -> Result<DatasetValidationOutcome, Dataset
     let mut warnings = Vec::new();
     let mut split_files = Vec::new();
 
-    push_split_if_present(&mut split_files, path, "train", TRAIN_FILE);
-    push_split_if_present(&mut split_files, path, "valid", VALID_FILE);
-    push_split_if_present(&mut split_files, path, "test", TEST_FILE);
-    push_split_if_present(&mut split_files, path, "eval", EVAL_CASES_FILE);
+    push_split_if_present(
+        &mut split_files,
+        path,
+        "train",
+        TRAIN_FILE,
+        SplitValidationKind::Training,
+    );
+    push_split_if_present(
+        &mut split_files,
+        path,
+        "valid",
+        VALID_FILE,
+        SplitValidationKind::Training,
+    );
+    push_split_if_present(
+        &mut split_files,
+        path,
+        "test",
+        TEST_FILE,
+        SplitValidationKind::Training,
+    );
+    push_split_if_present(
+        &mut split_files,
+        path,
+        "eval",
+        EVAL_CASES_FILE,
+        SplitValidationKind::Eval,
+    );
 
     let legacy_val = path.join(LEGACY_VAL_FILE);
     if legacy_val.is_file() {
@@ -126,7 +162,11 @@ fn validate_dataset_dir(path: &Path) -> Result<DatasetValidationOutcome, Dataset
                 "`val.jsonl` was found; treating it as validation, but `valid.jsonl` is preferred"
                     .to_string(),
             );
-            split_files.push(("valid".to_string(), legacy_val));
+            split_files.push((
+                "valid".to_string(),
+                legacy_val,
+                SplitValidationKind::Training,
+            ));
         }
     }
 
@@ -146,8 +186,8 @@ fn validate_dataset_dir(path: &Path) -> Result<DatasetValidationOutcome, Dataset
 
     let mut splits = Vec::new();
     let mut errors = Vec::new();
-    for (name, split_path) in split_files {
-        let (records, mut split_errors) = validate_jsonl_file(&split_path)?;
+    for (name, split_path, kind) in split_files {
+        let (records, mut split_errors) = validate_jsonl_file(&split_path, kind)?;
         let error_count = split_errors.len();
         splits.push(DatasetValidationSplit {
             name,
@@ -168,10 +208,16 @@ fn validate_dataset_dir(path: &Path) -> Result<DatasetValidationOutcome, Dataset
     })
 }
 
-fn push_split_if_present(splits: &mut Vec<(String, PathBuf)>, root: &Path, name: &str, file: &str) {
+fn push_split_if_present(
+    splits: &mut Vec<(String, PathBuf, SplitValidationKind)>,
+    root: &Path,
+    name: &str,
+    file: &str,
+    kind: SplitValidationKind,
+) {
     let path = root.join(file);
     if path.is_file() {
-        splits.push((name.to_string(), path));
+        splits.push((name.to_string(), path, kind));
     }
 }
 
@@ -221,7 +267,10 @@ fn ensure_jsonl_path(path: &Path) -> Result<(), DatasetError> {
     })
 }
 
-fn validate_jsonl_file(path: &Path) -> Result<(usize, Vec<DatasetValidationIssue>), DatasetError> {
+fn validate_jsonl_file(
+    path: &Path,
+    kind: SplitValidationKind,
+) -> Result<(usize, Vec<DatasetValidationIssue>), DatasetError> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let mut records = 0usize;
@@ -235,7 +284,7 @@ fn validate_jsonl_file(path: &Path) -> Result<(usize, Vec<DatasetValidationIssue
         }
         records += 1;
         match serde_json::from_str::<Value>(&line) {
-            Ok(value) => validate_record(path, line_number, &value, &mut errors),
+            Ok(value) => validate_record(path, line_number, &value, kind, &mut errors),
             Err(err) => errors.push(issue(path, line_number, format!("invalid JSON: {err}"))),
         }
     }
@@ -251,12 +300,18 @@ fn validate_record(
     path: &Path,
     line: usize,
     value: &Value,
+    kind: SplitValidationKind,
     errors: &mut Vec<DatasetValidationIssue>,
 ) {
     let Some(record) = value.as_object() else {
         errors.push(issue(path, line, "record must be a JSON object"));
         return;
     };
+
+    if kind == SplitValidationKind::Eval && is_legacy_eval_case(record) {
+        validate_legacy_eval_case(path, line, record, errors);
+        return;
+    }
 
     if let Some(schema) = record.get("schema") {
         match schema.as_str() {
@@ -283,8 +338,11 @@ fn validate_record(
         return;
     }
 
-    validate_messages(path, line, messages, errors);
+    validate_messages(path, line, messages, kind, errors);
     validate_tools(path, line, record.get("tools"), errors);
+    if kind == SplitValidationKind::Eval {
+        validate_eval_expectations(path, line, record, errors);
+    }
     if let Some(metadata) = record.get("metadata") {
         if !metadata.is_object() {
             errors.push(issue(
@@ -296,10 +354,102 @@ fn validate_record(
     }
 }
 
+fn is_legacy_eval_case(record: &serde_json::Map<String, Value>) -> bool {
+    record.contains_key("case_id")
+        && record.contains_key("user_prompt")
+        && record.contains_key("expected_behaviors")
+}
+
+fn validate_legacy_eval_case(
+    path: &Path,
+    line: usize,
+    record: &serde_json::Map<String, Value>,
+    errors: &mut Vec<DatasetValidationIssue>,
+) {
+    validate_optional_string(path, line, record, "case_id", true, errors);
+    validate_optional_string(path, line, record, "user_prompt", true, errors);
+    validate_optional_string(path, line, record, "input_language", false, errors);
+    validate_optional_string_array(path, line, record, "tools_available", false, errors);
+    validate_optional_string_array(path, line, record, "expected_behaviors", true, errors);
+}
+
+fn validate_eval_expectations(
+    path: &Path,
+    line: usize,
+    record: &serde_json::Map<String, Value>,
+    errors: &mut Vec<DatasetValidationIssue>,
+) {
+    if let Some(expected_behavior) = record.get("expected_behavior") {
+        if !expected_behavior.is_object() {
+            errors.push(issue(
+                path,
+                line,
+                "`expected_behavior` must be an object when present",
+            ));
+        }
+    }
+    validate_optional_string_array(path, line, record, "expected_behaviors", false, errors);
+}
+
+fn validate_optional_string(
+    path: &Path,
+    line: usize,
+    record: &serde_json::Map<String, Value>,
+    key: &str,
+    required: bool,
+    errors: &mut Vec<DatasetValidationIssue>,
+) {
+    match record.get(key).and_then(Value::as_str) {
+        Some(value) if !value.trim().is_empty() => {}
+        Some(_) => errors.push(issue(path, line, format!("`{key}` must not be empty"))),
+        None if required => errors.push(issue(path, line, format!("`{key}` is required"))),
+        None => {}
+    }
+}
+
+fn validate_optional_string_array(
+    path: &Path,
+    line: usize,
+    record: &serde_json::Map<String, Value>,
+    key: &str,
+    required: bool,
+    errors: &mut Vec<DatasetValidationIssue>,
+) {
+    let Some(value) = record.get(key) else {
+        if required {
+            errors.push(issue(path, line, format!("`{key}` is required")));
+        }
+        return;
+    };
+    let Some(values) = value.as_array() else {
+        errors.push(issue(path, line, format!("`{key}` must be an array")));
+        return;
+    };
+    if required && values.is_empty() {
+        errors.push(issue(path, line, format!("`{key}` must not be empty")));
+    }
+    for (index, value) in values.iter().enumerate() {
+        match value.as_str() {
+            Some(value) if !value.trim().is_empty() => {}
+            Some(_) => errors.push(issue(
+                path,
+                line,
+                format!("`{key}`[{index}] must not be empty"),
+            )),
+            None => errors.push(issue(
+                path,
+                line,
+                format!("`{key}`[{index}] must be a string"),
+            )),
+        }
+    }
+}
+
 fn validate_messages(
     path: &Path,
     line: usize,
     messages: &[Value],
+    kind: SplitValidationKind,
     errors: &mut Vec<DatasetValidationIssue>,
 ) {
     let mut seen_tool_call_ids = HashSet::new();
@@ -347,7 +497,7 @@ fn validate_messages(
         }
     }
 
-    if last_role.as_deref() != Some("assistant") {
+    if kind.requires_final_assistant() && last_role.as_deref() != Some("assistant") {
         errors.push(issue(
             path,
             line,
@@ -450,13 +600,82 @@ fn validate_tool_call(
         Some(_) => errors.push(issue(path, line, "tool_call id must not be empty")),
         None => errors.push(issue(path, line, "tool_call id is required")),
     }
-    match call.get("name").and_then(Value::as_str) {
-        Some(name) if !name.trim().is_empty() => {}
-        Some(_) => errors.push(issue(path, line, "tool_call name must not be empty")),
-        None => errors.push(issue(path, line, "tool_call name is required")),
+    if let Some(function) = call.get("function") {
+        validate_openai_style_tool_call(path, line, function, errors);
+    } else {
+        match call.get("name").and_then(Value::as_str) {
+            Some(name) if !name.trim().is_empty() => {}
+            Some(_) => errors.push(issue(path, line, "tool_call name must not be empty")),
+            None => errors.push(issue(path, line, "tool_call name is required")),
+        }
+        if !call.get("arguments").is_some_and(Value::is_object) {
+            errors.push(issue(path, line, "tool_call arguments must be an object"));
+        }
     }
-    if !call.get("arguments").is_some_and(Value::is_object) {
-        errors.push(issue(path, line, "tool_call arguments must be an object"));
+}
+
+fn validate_openai_style_tool_call(
+    path: &Path,
+    line: usize,
+    function: &Value,
+    errors: &mut Vec<DatasetValidationIssue>,
+) {
+    let Some(function) = function.as_object() else {
+        errors.push(issue(path, line, "tool_call function must be an object"));
+        return;
+    };
+
+    match function.get("name").and_then(Value::as_str) {
+        Some(name) if !name.trim().is_empty() => {}
+        Some(_) => errors.push(issue(
+            path,
+            line,
+            "tool_call function.name must not be empty",
+        )),
+        None => errors.push(issue(path, line, "tool_call function.name is required")),
+    }
+
+    let Some(arguments) = function.get("arguments") else {
+        errors.push(issue(
+            path,
+            line,
+            "tool_call function.arguments is required",
+        ));
+        return;
+    };
+
+    if arguments.is_object() {
+        return;
+    }
+
+    let Some(arguments) = arguments.as_str() else {
+        errors.push(issue(
+            path,
+            line,
+            "tool_call function.arguments must be an object or JSON object string",
+        ));
+        return;
+    };
+    if arguments.trim().is_empty() {
+        errors.push(issue(
+            path,
+            line,
+            "tool_call function.arguments must not be empty",
+        ));
+        return;
+    }
+    match serde_json::from_str::<Value>(arguments) {
+        Ok(value) if value.is_object() => {}
+        Ok(_) => errors.push(issue(
+            path,
+            line,
+            "tool_call function.arguments string must decode to a JSON object",
+        )),
+        Err(err) => errors.push(issue(
+            path,
+            line,
+            format!("tool_call function.arguments is not valid JSON: {err}"),
+        )),
     }
 }
 
@@ -642,6 +861,64 @@ mod tests {
         assert!(outcome.is_valid());
         assert!(outcome.tuning_ready);
         assert_eq!(outcome.splits.len(), 2);
+        assert_eq!(outcome.record_count(), 2);
+    }
+
+    #[test]
+    fn accepts_openai_style_tool_calls() {
+        let root = unique_root("openai_tool");
+        fs::create_dir_all(&root).expect("root");
+        fs::write(
+            root.join("train.jsonl"),
+            r#"{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Fetch profile."},{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_profile","arguments":"{\"field\":\"role\"}"}}]},{"role":"tool","tool_call_id":"call_1","name":"get_profile","content":"{\"role\":\"AI Engineer\"}"},{"role":"assistant","content":"AI Engineer."}]}"#,
+        )
+        .expect("write");
+
+        let outcome = validate_dataset_path(&root).expect("validate");
+
+        assert!(outcome.is_valid());
+        assert_eq!(outcome.record_count(), 1);
+    }
+
+    #[test]
+    fn accepts_eval_cases_without_final_assistant() {
+        let root = unique_root("eval_prompt");
+        fs::create_dir_all(&root).expect("root");
+        fs::write(
+            root.join("train.jsonl"),
+            r#"{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello"}]}"#,
+        )
+        .expect("write");
+        fs::write(
+            root.join("eval_cases.jsonl"),
+            r#"{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Say hello."}],"expected_behavior":{"answer_language":"en"}}"#,
+        )
+        .expect("write");
+
+        let outcome = validate_dataset_path(&root).expect("validate");
+
+        assert!(outcome.is_valid());
+        assert_eq!(outcome.record_count(), 2);
+    }
+
+    #[test]
+    fn accepts_legacy_eval_case_records() {
+        let root = unique_root("legacy_eval");
+        fs::create_dir_all(&root).expect("root");
+        fs::write(
+            root.join("train.jsonl"),
+            r#"{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello"}]}"#,
+        )
+        .expect("write");
+        fs::write(
+            root.join("eval_cases.jsonl"),
+            r#"{"case_id":"case-1","input_language":"zh-TW","user_prompt":"請介紹 Hiro。","tools_available":["get_profile(field)"],"expected_behaviors":["uses zh-TW","does not hallucinate"]}"#,
+        )
+        .expect("write");
+
+        let outcome = validate_dataset_path(&root).expect("validate");
+
+        assert!(outcome.is_valid());
         assert_eq!(outcome.record_count(), 2);
     }
 
