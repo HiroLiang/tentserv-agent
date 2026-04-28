@@ -120,6 +120,11 @@ Import local datasets for training or evaluation:
 tentgent dataset validate /path/to/dataset.jsonl
 tentgent dataset validate /path/to/dataset-dir
 tentgent dataset template --task chat --language zh-TW --output dataset-template.md
+tentgent dataset synth \
+  --provider openai \
+  --model gpt-4.1-mini \
+  --output ./generated-dataset \
+  --brief "Generate 20 concise support examples in Traditional Chinese."
 tentgent dataset add /path/to/dataset.jsonl
 tentgent dataset add /path/to/dataset-dir
 tentgent dataset ls
@@ -135,6 +140,8 @@ A training dataset directory is ready when it contains `train.jsonl`. Optional c
 New chat and tool-use datasets should use the canonical `tentgent.chat.v1` schema in [docs/contracts/dataset-schema.md](../contracts/dataset-schema.md).
 
 Use `dataset template` when you want a paste-ready prompt for OpenAI, Claude, or another agent to produce JSONL that should pass `dataset validate`.
+
+Use `dataset synth` to ask OpenAI or Claude to generate a local dataset directory. The output directory must be missing or empty. It writes files only; run `dataset validate ./generated-dataset` and then `dataset add ./generated-dataset` when the result looks good.
 
 To edit a managed dataset, export it to a working directory, edit there, then run `dataset add` again to create a new content-derived reference.
 

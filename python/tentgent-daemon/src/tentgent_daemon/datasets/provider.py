@@ -92,7 +92,7 @@ def call_dataset_provider(
     api_key: str | None = None,
     client: ProviderChatClient | None = None,
 ) -> DatasetProviderCallResponse:
-    provider = require_non_empty(request.provider, "provider")
+    provider = normalize_provider(request.provider)
     model = require_non_empty(request.model, "model")
     if not request.messages:
         raise DatasetProviderRequestError("provider dataset request requires at least one message")
@@ -252,6 +252,13 @@ def fenced_blocks(text: str) -> list[str]:
 
 def looks_like_json_object(line: str) -> bool:
     return line.startswith("{") and line.endswith("}")
+
+
+def normalize_provider(provider: str) -> str:
+    provider = require_non_empty(provider, "provider")
+    if provider == "claude":
+        return "anthropic"
+    return provider
 
 
 def require_non_empty(value: str, label: str) -> str:

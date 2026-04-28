@@ -17,17 +17,17 @@ Use OpenAI and Claude to help users produce valid Tentgent tuning data. This tra
 
 ## Command Surface
 
-Implemented foundation commands:
+Implemented commands:
 
 ```text
 tentgent dataset validate <PATH>
 tentgent dataset template [--task <KIND>] [--language <LANG>] [--output <PATH>]
+tentgent dataset synth --provider <openai|anthropic|claude> --model <MODEL> --output <DIR> (--brief <TEXT> | --spec <PATH>) [OPTIONS]
 ```
 
 Planned provider-backed commands:
 
 ```text
-tentgent dataset synth --provider <openai|anthropic> --output <DIR> (--brief <TEXT> | --spec <PATH>) [OPTIONS]
 tentgent dataset eval <DATASET_REF|PATH> --provider <openai|anthropic> [OPTIONS]
 ```
 
@@ -107,6 +107,8 @@ Implementation notes:
 
 Implement a file-first `dataset synth` draft.
 
+Status: implemented.
+
 Goals:
 
 - accept either `--brief` or `--spec`
@@ -119,6 +121,12 @@ Goals:
 Review target:
 
 - generated output is immediately inspectable and importable, but not automatically managed
+
+Implementation notes:
+
+- Rust CLI performs provider auth preflight and passes the selected key to the Python runtime through the provider environment variable.
+- Python writes only to a missing or empty output directory and emits a JSON summary for the Rust CLI to render.
+- The generated package contains the requested split JSONL plus `manifest.json`; the user must run `dataset validate` and `dataset add` explicitly.
 
 ### Slice 5: Dataset Eval
 

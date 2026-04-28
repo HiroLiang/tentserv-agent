@@ -2,7 +2,7 @@
 
 This document defines the dataset-store boundary for Tentgent training and evaluation workflows.
 
-The current implementation supports local dataset validation, manual generation templates, local dataset imports, deterministic manifests, content-derived references, deduplication, split detection, safe export to working directories, listing, and inspection.
+The current implementation supports local dataset validation, manual generation templates, file-first provider-backed dataset synthesis, local dataset imports, deterministic manifests, content-derived references, deduplication, split detection, safe export to working directories, listing, and inspection.
 
 ## Command Shape
 
@@ -12,6 +12,7 @@ Implemented command group:
 tentgent dataset add <PATH>
 tentgent dataset validate <PATH>
 tentgent dataset template [--task <KIND>] [--language <LANG>] [--output <PATH>]
+tentgent dataset synth --provider <PROVIDER> --model <MODEL> --output <DIR> (--brief <TEXT> | --spec <PATH>) [OPTIONS]
 tentgent dataset ls
 tentgent dataset inspect <DATASET_REF>
 tentgent dataset export <DATASET_REF> <PATH>
@@ -23,7 +24,6 @@ tentgent dataset rm <DATASET_REF>
 Planned future commands:
 
 ```text
-tentgent dataset synth --provider <PROVIDER> --model <MODEL> ...
 tentgent dataset eval <DATASET_REF> ...
 ```
 
@@ -37,6 +37,8 @@ The local import path accepts:
 The canonical chat and tool-use schema is defined in [dataset-schema.md](./dataset-schema.md). The store remains responsible for content identity, layout, and indexes; schema validation and backend rendering are separate concerns.
 
 Use `dataset validate <PATH>` to check local JSONL files or dataset directories against the canonical schema before import. Use `dataset template` to print or write a deterministic prompt that asks OpenAI, Claude, or another agent to produce `tentgent.chat.v1` JSONL.
+
+Use `dataset synth` to ask OpenAI or Claude to write a local dataset package. Synthesis is file-first: Tentgent writes the selected split and source `manifest.json` to a missing or empty output directory, but does not import the result until the user runs `dataset add`.
 
 ## Training Package Shape
 

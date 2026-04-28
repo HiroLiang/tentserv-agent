@@ -1,20 +1,36 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
 
 use clap::CommandFactory;
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
 use miette::{miette, IntoDiagnostic, Result};
-use tentgent_core::dataset::{
-    render_dataset_template, validate_dataset_path, write_dataset_template, DatasetDiffOutcome,
-    DatasetDiffStatus, DatasetError, DatasetExportOutcome, DatasetImportOutcome, DatasetInspection,
-    DatasetManager, DatasetMetadata, DatasetRemovalOutcome, DatasetSummary, DatasetTemplateRequest,
-    DatasetValidationOutcome,
+use serde_json::Value;
+use tentgent_core::{
+    auth::{AuthManager, KeySource, KeyValidationState, Provider},
+    dataset::{
+        render_dataset_template, validate_dataset_path, write_dataset_template, DatasetDiffOutcome,
+        DatasetDiffStatus, DatasetError, DatasetExportOutcome, DatasetImportOutcome,
+        DatasetInspection, DatasetManager, DatasetMetadata, DatasetRemovalOutcome, DatasetSummary,
+        DatasetTemplateRequest, DatasetValidationOutcome,
+    },
 };
+use tokio::process::Command;
 
 use super::app::Cli;
 use super::commands::DatasetCommands;
+use super::python_runtime::{require_python_interpreter, resolve_python_runtime};
 
-pub fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
+#[derive(Debug, Clone)]
+struct DatasetProviderAuth {
+    provider: Provider,
+    normalized_provider: &'static str,
+    secret: String,
+}
+
+pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
     match action {
         DatasetCommands::Add { path } => {
             if is_help_path(&path) {
@@ -54,6 +70,30 @@ pub fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             } else {
                 print!("{body}");
             }
+        }
+        DatasetCommands::Synth {
+            provider,
+            model,
+            output,
+            brief,
+            spec,
+            split,
+            max_tokens,
+            temperature,
+        } => {
+            let auth = preflight_dataset_provider_auth(&provider).await?;
+            let outcome = run_dataset_synth_runtime(
+                &auth,
+                &model,
+                &output,
+                brief.as_deref(),
+                spec.as_deref(),
+                &split,
+                max_tokens,
+                temperature,
+            )
+            .await?;
+            render_synth_outcome(&outcome);
         }
         DatasetCommands::Ls => {
             let manager = DatasetManager::new().into_diagnostic()?;
@@ -279,6 +319,66 @@ fn render_template_written(path: &Path, request: &DatasetTemplateRequest) {
         Cell::new("paste this template into OpenAI, Claude, or another agent"),
     ]);
     println!("{table}");
+    println!();
+}
+
+fn render_synth_outcome(outcome: &Value) {
+    println!(
+        "{} {}",
+        style("==>").cyan().bold(),
+        style("Dataset synthesized").bold()
+    );
+
+    let output_dir = json_field(outcome, "output_dir");
+    let mut table = base_table();
+    table.add_row(vec![
+        Cell::new("provider"),
+        Cell::new(json_field(outcome, "provider")),
+    ]);
+    table.add_row(vec![
+        Cell::new("model"),
+        Cell::new(json_field(outcome, "model")),
+    ]);
+    table.add_row(vec![
+        Cell::new("split"),
+        Cell::new(json_field(outcome, "split")),
+    ]);
+    table.add_row(vec![
+        Cell::new("records"),
+        Cell::new(json_usize_field(outcome, "record_count")),
+    ]);
+    table.add_row(vec![Cell::new("output_dir"), Cell::new(output_dir.clone())]);
+    table.add_row(vec![
+        Cell::new("split_path"),
+        Cell::new(json_field(outcome, "split_path")),
+    ]);
+    table.add_row(vec![
+        Cell::new("manifest_path"),
+        Cell::new(json_field(outcome, "manifest_path")),
+    ]);
+    table.add_row(vec![
+        Cell::new("template"),
+        Cell::new(json_field(outcome, "template_version")),
+    ]);
+    table.add_row(vec![
+        Cell::new("next"),
+        Cell::new(format!("tentgent dataset validate {output_dir}")),
+    ]);
+    table.add_row(vec![
+        Cell::new("import"),
+        Cell::new(format!("tentgent dataset add {output_dir}")),
+    ]);
+    println!("{table}");
+
+    if let Some(warnings) = outcome.get("warnings").and_then(Value::as_array) {
+        if !warnings.is_empty() {
+            println!("{} Warnings", style("note").yellow().bold());
+            for warning in warnings.iter().filter_map(Value::as_str) {
+                println!("- {warning}");
+            }
+        }
+    }
+
     println!();
 }
 
@@ -615,6 +715,146 @@ fn size_transition(left: Option<u64>, right: Option<u64>) -> String {
     }
 }
 
+async fn preflight_dataset_provider_auth(provider_name: &str) -> Result<DatasetProviderAuth> {
+    let (provider, normalized_provider) = auth_provider_for_dataset_synth(provider_name)?;
+    let auth = AuthManager::new().into_diagnostic()?;
+    let Some((source, secret)) = auth.effective_secret(provider).into_diagnostic()? else {
+        return Err(miette!(
+            "{} key is missing for dataset synth; run `tentgent auth {} set` or set `{}` before launch",
+            provider.display_name(),
+            provider.cli_name(),
+            provider.env_var()
+        ));
+    };
+
+    match auth.validate_secret(provider, &secret).await {
+        KeyValidationState::Verified => {
+            render_dataset_provider_auth_preflight(provider, source);
+            Ok(DatasetProviderAuth {
+                provider,
+                normalized_provider,
+                secret,
+            })
+        }
+        KeyValidationState::Invalid { reason } => Err(miette!(
+            "{} key from {} is invalid for dataset synth: {}",
+            provider.display_name(),
+            source,
+            reason
+        )),
+        KeyValidationState::Unknown { reason } => Err(miette!(
+            "{} key from {} could not be verified for dataset synth: {}",
+            provider.display_name(),
+            source,
+            reason
+        )),
+        KeyValidationState::Missing => Err(miette!(
+            "{} key is missing for dataset synth; run `tentgent auth {} set` or set `{}` before launch",
+            provider.display_name(),
+            provider.cli_name(),
+            provider.env_var()
+        )),
+    }
+}
+
+async fn run_dataset_synth_runtime(
+    auth: &DatasetProviderAuth,
+    model: &str,
+    output: &Path,
+    brief: Option<&str>,
+    spec: Option<&Path>,
+    split: &str,
+    max_tokens: Option<u32>,
+    temperature: f32,
+) -> Result<Value> {
+    let python_runtime = resolve_python_runtime()?;
+    let python = require_python_interpreter(&python_runtime, "python dataset synth runtime")?;
+
+    let mut process = Command::new(&python);
+    process
+        .current_dir(python_runtime.project_dir())
+        .env("PYTHONPATH", python_runtime.python_src_dir())
+        .env(auth.provider.env_var(), &auth.secret)
+        .arg("-m")
+        .arg("tentgent_daemon.cli.dataset_synth")
+        .arg("--provider")
+        .arg(auth.normalized_provider)
+        .arg("--model")
+        .arg(model)
+        .arg("--output")
+        .arg(output)
+        .arg("--split")
+        .arg(split)
+        .arg("--temperature")
+        .arg(temperature.to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+
+    if let Some(brief) = brief {
+        process.arg("--brief").arg(brief);
+    }
+    if let Some(spec) = spec {
+        process.arg("--spec").arg(spec);
+    }
+    if let Some(max_tokens) = max_tokens {
+        process.arg("--max-tokens").arg(max_tokens.to_string());
+    }
+
+    let output = process.output().await.into_diagnostic()?;
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !output.status.success() {
+        if stderr.is_empty() {
+            return Err(miette!(
+                "dataset synth runtime exited with status {}",
+                output.status
+            ));
+        }
+        return Err(miette!(
+            "dataset synth runtime exited with status {}\n\n{}",
+            output.status,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    serde_json::from_str::<Value>(&stdout)
+        .map_err(|err| miette!("dataset synth runtime returned invalid JSON: {err}\n\n{stdout}"))
+}
+
+fn auth_provider_for_dataset_synth(provider: &str) -> Result<(Provider, &'static str)> {
+    match provider {
+        "openai" => Ok((Provider::OpenAI, "openai")),
+        "anthropic" | "claude" => Ok((Provider::Anthropic, "anthropic")),
+        other => Err(miette!("unsupported dataset synth provider `{other}`")),
+    }
+}
+
+fn render_dataset_provider_auth_preflight(provider: Provider, source: KeySource) {
+    println!(
+        "{} {} key verified from {} for dataset synth.",
+        style("verified").green().bold(),
+        provider.display_name(),
+        source
+    );
+}
+
+fn json_field(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("-")
+        .to_string()
+}
+
+fn json_usize_field(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
 fn is_help_path(path: &Path) -> bool {
     path.file_name()
         .and_then(|file_name| file_name.to_str())
@@ -673,6 +913,7 @@ fn usage_for_command(command: &str) -> &'static str {
         "diff" => "tentgent dataset diff <LEFT_REF> <RIGHT_REF>\n       tentgent dataset diff <LEFT_REF> --path <PATH>",
         "export" => "tentgent dataset export <DATASET_REF> <PATH>",
         "rm" => "tentgent dataset rm <DATASET_REF>",
+        "synth" => "tentgent dataset synth --provider <openai|anthropic|claude> --model <MODEL> --output <DIR> (--brief <TEXT> | --spec <PATH>)",
         "validate" => "tentgent dataset validate <PATH>",
         _ => "tentgent dataset inspect <DATASET_REF>",
     }

@@ -41,6 +41,32 @@ pub enum DatasetCommands {
         #[arg(long, value_name = "PATH")]
         output: Option<PathBuf>,
     },
+    /// Generate a local dataset package with OpenAI or Claude.
+    #[command(
+        name = "synth",
+        about = "Generate a local dataset package with OpenAI or Claude.",
+        long_about = "Generate a file-first Tentgent dataset package by asking OpenAI or Claude to produce tentgent.chat.v1 JSONL. The output directory is created locally and is not imported until you run dataset add.",
+        override_usage = "tentgent dataset synth --provider <openai|anthropic|claude> --model <MODEL> --output <DIR> (--brief <TEXT> | --spec <PATH>) [OPTIONS]",
+        group(clap::ArgGroup::new("input").required(true).args(["brief", "spec"]))
+    )]
+    Synth {
+        #[arg(long, value_name = "PROVIDER", value_parser = ["openai", "anthropic", "claude"])]
+        provider: String,
+        #[arg(long, value_name = "MODEL")]
+        model: String,
+        #[arg(long, value_name = "DIR")]
+        output: PathBuf,
+        #[arg(long, value_name = "TEXT", conflicts_with = "spec")]
+        brief: Option<String>,
+        #[arg(long, value_name = "PATH", conflicts_with = "brief")]
+        spec: Option<PathBuf>,
+        #[arg(long, value_name = "SPLIT", default_value = "train", value_parser = ["train", "valid", "test", "eval_cases"])]
+        split: String,
+        #[arg(long, value_name = "TOKENS")]
+        max_tokens: Option<u32>,
+        #[arg(long, value_name = "FLOAT", default_value_t = 0.0)]
+        temperature: f32,
+    },
     /// List managed datasets.
     #[command(
         name = "ls",

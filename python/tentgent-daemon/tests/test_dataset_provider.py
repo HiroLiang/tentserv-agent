@@ -51,6 +51,20 @@ class DatasetProviderTests(unittest.TestCase):
         self.assertEqual(client.requests[0].max_tokens, 128)
         self.assertEqual(client.requests[0].temperature, 0.1)
 
+    def test_call_dataset_provider_normalizes_claude_alias(self) -> None:
+        client = FakeProviderClient("provider text")
+
+        response = call_dataset_provider(
+            DatasetProviderCallRequest(
+                provider="claude",
+                model="claude-3-5-sonnet-latest",
+                messages=(Message(role="user", content="Generate rows."),),
+            ),
+            client=client,
+        )
+
+        self.assertEqual(response.provider, "anthropic")
+
     def test_generate_dataset_jsonl_builds_dataset_messages_and_parses_response(self) -> None:
         client = FakeProviderClient(CANONICAL_ROW)
 

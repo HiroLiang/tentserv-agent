@@ -32,7 +32,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Adapter { action } => adapter::handle_adapter_command(action)?,
         Commands::Auth { subject } => auth::handle_auth_command(subject).await?,
         Commands::Chat(command) => chat::handle_chat_command(command).await?,
-        Commands::Dataset { action } => dataset::handle_dataset_command(action)?,
+        Commands::Dataset { action } => dataset::handle_dataset_command(action).await?,
         Commands::Model { action } => model::handle_model_command(action)?,
         Commands::Server { action } => server::handle_server_command(action).await?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
