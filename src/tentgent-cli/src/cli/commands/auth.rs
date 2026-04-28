@@ -2,6 +2,14 @@ use clap::Subcommand;
 
 #[derive(Debug, Subcommand)]
 pub enum AuthCommands {
+    /// Show auth status for every provider.
+    #[command(
+        name = "status",
+        visible_alias = "ls",
+        about = "Show auth status for every provider.",
+        long_about = "Show auth status for every provider. Tentgent reports .env/env override state, keychain presence, effective source, and validation status without printing secret values."
+    )]
+    Status,
     /// Show, store, or remove the Hugging Face API key.
     #[command(
         name = "hf",

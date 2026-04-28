@@ -4,12 +4,25 @@ This document collects user-facing command examples. Short references are accept
 
 ## Auth
 
+Check all provider keys:
+
+```bash
+tentgent auth status
+```
+
 Set provider keys:
 
 ```bash
 tentgent auth hf set
 tentgent auth openai set
 tentgent auth anthropic set
+```
+
+Inspect or remove one provider key:
+
+```bash
+tentgent auth openai
+tentgent auth openai rm
 ```
 
 ## Models

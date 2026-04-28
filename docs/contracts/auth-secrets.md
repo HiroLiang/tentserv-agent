@@ -40,6 +40,7 @@ Use these environment variables:
 
 ## CLI Surface
 
+- `tentgent auth status`
 - `tentgent auth hf`
 - `tentgent auth hf set`
 - `tentgent auth hf rm`
@@ -58,6 +59,7 @@ Use these environment variables:
 
 ## Output Rule
 
+- `auth status` should show every provider in one table.
 - Show whether `.env/env` is present.
 - Show whether a keychain entry is present.
 - Show the effective source after applying resolution order.

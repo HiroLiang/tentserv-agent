@@ -8,6 +8,8 @@ pub enum Provider {
 }
 
 impl Provider {
+    pub const ALL: [Self; 3] = [Self::HuggingFace, Self::OpenAI, Self::Anthropic];
+
     pub const fn display_name(self) -> &'static str {
         match self {
             Self::HuggingFace => "Hugging Face",

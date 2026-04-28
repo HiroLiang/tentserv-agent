@@ -9,6 +9,7 @@ pub async fn handle_auth_command(subject: AuthCommands) -> miette::Result<()> {
     let auth = AuthManager::new().into_diagnostic()?;
 
     match subject {
+        AuthCommands::Status => render_all_key_statuses(&auth).await?,
         AuthCommands::Hf { action } => {
             handle_provider_action(&auth, Provider::HuggingFace, action).await?
         }
@@ -20,6 +21,52 @@ pub async fn handle_auth_command(subject: AuthCommands) -> miette::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn render_all_key_statuses(auth: &AuthManager) -> miette::Result<()> {
+    let mut statuses = Vec::new();
+    for provider in Provider::ALL {
+        statuses.push(auth.key_status(provider).await.into_diagnostic()?);
+    }
+
+    println!(
+        "{} {}",
+        style("==>").cyan().bold(),
+        style("Provider auth status").bold()
+    );
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL_CONDENSED)
+        .apply_modifier(UTF8_ROUND_CORNERS)
+        .set_header(vec![
+            "Provider",
+            "Env",
+            "Keychain",
+            "Effective",
+            "Validation",
+            "Detail",
+        ]);
+
+    for status in statuses {
+        table.add_row(vec![
+            Cell::new(status.provider.display_name()),
+            Cell::new(presence(status.env_present)),
+            Cell::new(presence(status.keychain_present)),
+            Cell::new(
+                status
+                    .effective_source
+                    .map(|source| source.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+            ),
+            Cell::new(status.validation.summary()),
+            Cell::new(status.validation.detail().unwrap_or("-")),
+        ]);
+    }
+
+    println!("{table}");
+    println!();
     Ok(())
 }
 
