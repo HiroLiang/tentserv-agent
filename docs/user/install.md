@@ -119,7 +119,8 @@ scripts/install.sh \
   --archive dist/tentgent-0.1.1-aarch64-apple-darwin.tar.gz \
   --checksums dist/checksums.txt \
   --prefix /tmp/tentgent-install-smoke \
-  --skip-python-bootstrap
+  --skip-python-bootstrap \
+  --skip-doctor
 ```
 
 Omit `--skip-python-bootstrap` to run the full managed Python bootstrap.

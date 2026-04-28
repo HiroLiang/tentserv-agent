@@ -114,10 +114,16 @@ pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
 
     match PythonRuntime::resolve() {
         Ok(runtime) => {
-            let bootstrap_status = if uv_available {
-                CheckStatus::Warn
-            } else {
-                CheckStatus::Fail
+            let bootstrap_status = match runtime.source() {
+                PythonRuntimeSource::InstalledPrefix => CheckStatus::Fail,
+                PythonRuntimeSource::DevelopmentSource
+                | PythonRuntimeSource::EnvironmentOverride => {
+                    if uv_available {
+                        CheckStatus::Warn
+                    } else {
+                        CheckStatus::Fail
+                    }
+                }
             };
             checks.push(DoctorCheck::pass(
                 "python source",

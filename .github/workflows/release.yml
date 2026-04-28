@@ -182,7 +182,7 @@ jobs:
 
           \`\`\`bash
           curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/install.sh" \\
-            | sh -s -- --skip-python-bootstrap
+            | sh -s -- --skip-python-bootstrap --skip-doctor
           \`\`\`
 
           Windows installer smoke test:

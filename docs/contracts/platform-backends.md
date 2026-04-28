@@ -59,12 +59,16 @@ Python should enforce the same checks before backend creation so `chat` and serv
 
 ## Windows Position
 
-Windows is planned, not fully supported.
+Windows x86_64 is packaged in the installable MVP, with PEFT/safetensors as the
+first runtime path. MLX remains unsupported on Windows, and `llama-cpp` remains
+dependency-gated by native package availability.
 
-The current resolver knows Windows Python environment layout:
+The resolver uses the Windows Python environment layout:
 
 ```text
 <python-env>/Scripts/python.exe
 ```
 
-Windows release artifacts, PowerShell installation, dependency bootstrap, and backend verification remain future packaging work.
+Windows release artifacts, PowerShell installation, and installer-owned Python
+dependency bootstrap are part of the current packaging path. Backend execution
+still depends on the installed Python environment and platform-specific wheels.

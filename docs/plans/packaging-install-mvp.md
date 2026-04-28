@@ -210,7 +210,7 @@ Release gate:
 
 ### Slice 3.6: User Bootstrap Strategy
 
-- Status: planned.
+- Status: implemented in the active workspace.
 - choose the release bootstrap strategy before writing the public `install.sh`
 - use downloaded pinned `uv` as the first MVP strategy
 - require zero preinstalled `uv` expectation for normal users
@@ -317,7 +317,7 @@ Implementation note:
 - it verifies the archive against `checksums.txt`
 - it installs `bin/tentgent`, `share/tentgent/python`, and `share/tentgent/scripts`
 - by default it runs `bootstrap-python-env.sh` and then `tentgent doctor`
-- `--skip-python-bootstrap` exists for layout smoke tests that should not download heavy ML dependencies
+- `--skip-python-bootstrap --skip-doctor` exists for layout smoke tests that should not download heavy ML dependencies
 
 ### Slice 5: GitHub Release Workflow
 
@@ -362,6 +362,7 @@ Review target:
 
 ### Slice 6: Homebrew Tap Formula
 
+- Status: planned.
 - create or document `homebrew-tap`
 - add `Formula/tentgent.rb`
 - use the same release artifact and checksum
@@ -373,6 +374,7 @@ Review target:
 
 ### Slice 7: Signing And Notarization
 
+- Status: planned.
 - sign macOS binaries with Developer ID
 - optionally notarize release artifacts
 - document Keychain prompt behavior after signing
