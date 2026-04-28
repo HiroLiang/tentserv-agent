@@ -84,6 +84,8 @@ Review target:
 
 Reuse the shared provider boundary from the cloud provider server track.
 
+Status: implemented.
+
 Goals:
 
 - keep dataset prompts and parsing outside provider transport code
@@ -94,6 +96,12 @@ Goals:
 Review target:
 
 - dataset generation can call providers without owning provider transport details
+
+Implementation notes:
+
+- `tentgent_daemon.datasets.provider.call_dataset_provider` reuses the shared provider chat client for OpenAI and Anthropic calls.
+- `generate_dataset_jsonl` builds dataset-specific provider messages, parses JSONL from raw provider text, and validates generated records through the same Python renderer used by MLX and PEFT preparation.
+- Provider JSONL parsing accepts pure JSONL, fenced JSONL, and JSONL wrapped in provider prose; malformed or backend-incompatible rows fail before file writing.
 
 ### Slice 4: Dataset Synth
 
