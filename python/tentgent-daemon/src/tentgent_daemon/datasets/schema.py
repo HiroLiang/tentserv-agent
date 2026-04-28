@@ -128,7 +128,7 @@ def normalize_tool_call(raw: Any, source: str, index: int, call_index: int) -> d
     if not isinstance(raw, dict):
         raise ValueError(f"tool_call must be an object at {source}:{index}:{call_index}")
 
-    function = raw.get("function") if raw.get("type") == "function" else None
+    function = raw.get("function")
     body = function if isinstance(function, dict) else raw
     call_id = str(raw.get("id", "")).strip()
     name = str(body.get("name", "")).strip()
