@@ -74,8 +74,15 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
+- `docs/plans/cloud-provider-server-mvp.md`
+  Highest-priority active plan for exposing OpenAI and Claude through local `tentgent server` chat.
 - `docs/plans/cloud-dataset-mvp.md`
-  Active plan for OpenAI/Claude-assisted dataset generation and evaluation.
+  Active plan for OpenAI/Claude-assisted dataset validation, prompt-template generation,
+  synthesis, and evaluation.
+- `docs/plans/http-daemon-mvp.md`
+  Future service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
+- `docs/plans/tui-session-mvp.md`
+  Future terminal UI plan for selectable workflows and coarse chat session context management.
 - `docs/plans/archive/README.md`
   Router for completed plans that should be consulted only when historical implementation context is needed.
 

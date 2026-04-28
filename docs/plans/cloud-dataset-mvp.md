@@ -1,62 +1,122 @@
 # Cloud Dataset MVP
 
-This plan defines the next active track: use existing provider auth to help generate, validate, and evaluate Tentgent datasets without mixing cloud APIs into local model runtime ownership.
+Use OpenAI and Claude to help users produce valid Tentgent tuning data. This track should reuse the provider client boundary from [cloud-provider-server-mvp.md](./cloud-provider-server-mvp.md) once cloud chat routing is stable.
 
 ## Scope
 
-- Reuse existing `auth openai` and `auth anthropic` secret resolution.
-- Generate `tentgent.chat.v1` dataset records for local LoRA training.
-- Keep OpenAI and Claude as dataset/evaluation providers, not managed local models.
-- Keep the first implementation review-sized and file-based.
+- Reuse `auth openai` and `auth anthropic` secret resolution.
+- Generate, validate, and evaluate `tentgent.chat.v1` JSONL packages.
+- Support both provider-backed generation and manual AI/agent generation through a fixed prompt template.
+- Keep generated data file-first until the user explicitly imports it with `dataset add`.
 
 ## Non-Goals
 
-- Do not add cloud providers to the model store in this phase.
-- Do not start cloud-backed `tentgent server` instances yet.
-- Do not automatically train after dataset generation.
+- Do not add cloud providers to the model store.
+- Do not automatically train after generation.
 - Do not auto-publish generated datasets or adapters.
 
 ## Command Surface
 
-Planned first commands:
+Planned commands:
 
 ```text
 tentgent dataset validate <PATH>
-tentgent dataset synth --provider <openai|anthropic> --output <DIR> [OPTIONS]
+tentgent dataset template [--task <KIND>] [--language <LANG>] [--output <PATH>]
+tentgent dataset synth --provider <openai|anthropic> --output <DIR> (--brief <TEXT> | --spec <PATH>) [OPTIONS]
 tentgent dataset eval <DATASET_REF|PATH> --provider <openai|anthropic> [OPTIONS]
 ```
 
-## First Slice
+Command intent:
+
+- `validate`
+  Check local files before import or training.
+- `template`
+  Print a stable Markdown prompt users can paste into OpenAI, Claude, or another agent to create compliant JSONL.
+- `synth`
+  Call OpenAI or Claude directly and write a local dataset package.
+- `eval`
+  Ask a provider to review a generated or managed dataset and write a local report.
+
+## Execution Order
+
+### Slice 1: Dataset Validate
 
 Implement `dataset validate <PATH>` first.
 
 Goals:
 
-- validate local files against `tentgent.chat.v1`
-- report train/valid/test/eval split counts
-- surface schema errors with file and line number
+- validate single JSONL files and dataset directories
+- validate `train.jsonl`, `valid.jsonl`, `test.jsonl`, and `eval_cases.jsonl` when present
+- report split counts and tuning readiness
+- surface schema errors with file path and line number
 - avoid network calls
 
-## Second Slice
+Review target:
+
+- users can check manually generated data before `dataset add`
+
+### Slice 2: Manual Generation Template
+
+Implement `dataset template`.
+
+Goals:
+
+- generate one paste-ready Markdown prompt for OpenAI, Claude, or another agent
+- include the required `tentgent.chat.v1` output rules
+- include one minimal JSONL example
+- support task/language hints without expanding into a complex prompt builder
+- keep the output deterministic enough that validation failures are actionable
+
+Review target:
+
+- users can create valid tuning data even when they do not know the dataset contract
+
+### Slice 3: Provider Client Reuse
+
+Reuse the shared provider boundary from the cloud provider server track.
+
+Goals:
+
+- keep dataset prompts and parsing outside provider transport code
+- support explicit provider model selection for generation and evaluation
+- fail clearly when keys, network, or provider output are unavailable
+- avoid duplicating OpenAI or Anthropic request/response code
+
+Review target:
+
+- dataset generation can call providers without owning provider transport details
+
+### Slice 4: Dataset Synth
 
 Implement a file-first `dataset synth` draft.
 
 Goals:
 
-- resolve provider keys through existing auth infrastructure
-- write generated JSONL into an output directory
-- do not automatically run `dataset add`
+- accept either `--brief` or `--spec`
+- write `train.jsonl` by default
+- optionally write `valid.jsonl`, `test.jsonl`, and `eval_cases.jsonl`
+- write a source `manifest.json` with provider, provider model, prompt template version, and generation options
+- run local validation before printing success
 - print the suggested `tentgent dataset add <DIR>` command
 
-## Third Slice
+Review target:
 
-Implement `dataset eval` for generated or managed datasets.
+- generated output is immediately inspectable and importable, but not automatically managed
+
+### Slice 5: Dataset Eval
+
+Implement `dataset eval` for local paths and managed datasets.
 
 Goals:
 
 - evaluate whether answers stay inside provided context
-- flag language mismatch, hallucination, unsafe requests, and format drift
-- write a local evaluation report rather than mutating the dataset
+- flag language mismatch, hallucination risk, unsafe requests, malformed tool calls, and format drift
+- write a local report without mutating the dataset
+- keep report paths predictable under the chosen output directory
+
+Review target:
+
+- users get a review artifact before training on generated data
 
 ## Dataset Contract
 
@@ -71,8 +131,9 @@ Providers must output JSONL where each row has:
 
 Generated data must not be pre-rendered as MLX, PEFT, ChatML, or provider-specific prompt text.
 
-## Open Questions
+## Default Decisions
 
-- Should `dataset synth` accept a plain brief, a Markdown spec file, or both?
-- Should generated output include separate `train.jsonl`, `valid.jsonl`, and `test.jsonl` by default?
-- Should provider/model choices be stored in `manifest.json` before `dataset add`?
+- Accept both `--brief` and `--spec`; require exactly one.
+- Default `synth` output is `train.jsonl`; add split flags later only when needed.
+- Store provider/model/template metadata in source `manifest.json` before `dataset add`.
+- Keep validation local and deterministic; providers are used only by `synth` and `eval`.

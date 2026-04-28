@@ -19,10 +19,19 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Active Plan Index
 
+- [cloud-provider-server-mvp.md](./cloud-provider-server-mvp.md)
+  Highest-priority plan for exposing OpenAI and Claude through local `tentgent server` chat.
 - [cloud-dataset-mvp.md](./cloud-dataset-mvp.md)
-  Active next-phase plan for OpenAI/Claude-assisted dataset generation and evaluation.
+  Plan for OpenAI/Claude-assisted dataset validation, prompt-template generation, synthesis, and evaluation.
+- [http-daemon-mvp.md](./http-daemon-mvp.md)
+  Future service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
+- [tui-session-mvp.md](./tui-session-mvp.md)
+  Future terminal UI plan for selectable workflows and coarse chat session context management.
+
+## Deferred Plans
+
 - [packaging-install-mvp.md](./packaging-install-mvp.md)
-  Future track for product-shaped packaging and user-facing installation beyond the current source-first workflow.
+  Mostly implemented release/install track; Homebrew tap and signing/notarization remain deferred.
 
 ## Archived Plans
 
