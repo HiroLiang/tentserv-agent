@@ -11,7 +11,7 @@ Use this directory as the standalone Python subproject for Tentgent runtime and 
 - `src/tentgent_daemon/runtime/`
   Stored-model resolution, runtime request types, and backend routing.
 - `src/tentgent_daemon/cli/`
-  Package-local CLI entry points such as `tentgent-chat-once` and `tentgent-server`.
+  Package-local CLI entry points such as `tentgent-chat-once`, `tentgent-dataset-synth`, `tentgent-dataset-eval`, and `tentgent-server`.
 - `src/tentgent_daemon/backends/`
   Backend-specific runtime integrations such as `mlx`, `transformers + peft`, and `llama_cpp`.
 - `src/tentgent_daemon/server/`

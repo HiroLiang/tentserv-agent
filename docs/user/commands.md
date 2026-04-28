@@ -129,6 +129,11 @@ tentgent dataset synth \
   --timeout-seconds 300 \
   -b "Generate 20 concise support examples in Traditional Chinese."
 tentgent dataset synth --print-prompt -b "Generate 20 concise support examples in Traditional Chinese."
+tentgent dataset eval ./generated-dataset \
+  -p openai \
+  -m gpt-4.1-mini \
+  -o ./generated-dataset-eval \
+  -c "Check Traditional Chinese quality and whether final replies usually end with 咕嚕."
 tentgent dataset add /path/to/dataset.jsonl
 tentgent dataset add /path/to/dataset-dir
 tentgent dataset ls
@@ -147,6 +152,8 @@ Use `dataset template` when you want a paste-ready prompt for OpenAI, Claude, or
 Its `--task` and `--language` options are prompt hints only. For example, `--task support` asks the template to prefer support-style examples, and `--language zh-TW` asks for Traditional Chinese content; both still produce the same `tentgent.chat.v1` schema.
 
 Use `dataset synth` to ask OpenAI or Claude to generate a local dataset directory. The output directory must be missing or empty. It writes files only; run `dataset validate ./generated-dataset` and then `dataset add ./generated-dataset` when the result looks good. Add `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. When provider output fails local parsing and the output directory is missing or empty, Tentgent writes `_debug/prompt.md`, `_debug/provider-output.raw.txt`, and `_debug/error.txt` under the output directory.
+
+Use `dataset eval` to ask OpenAI or Claude to review generated or managed data before training. It does not mutate the dataset. The report directory contains `eval-report.json`, `eval-report.md`, `prompt.md`, and `provider-output.raw.txt`. Use `--criteria` or `-c` for project-specific checks such as style, language, or refusal behavior.
 
 Most common long options have short aliases. Run `tentgent <command> --help` to see them; help always supports `-h`.
 

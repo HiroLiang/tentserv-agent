@@ -24,12 +24,7 @@ tentgent dataset validate <PATH>
 tentgent dataset template [-t|--task <KIND>] [-l|--language <LANG>] [-o|--output <PATH>]
 tentgent dataset synth -p|--provider <openai|anthropic|claude> -m|--model <MODEL> -o|--output <DIR> (-b|--brief <TEXT> | -s|--spec <PATH>) [OPTIONS]
 tentgent dataset synth -P|--print-prompt (-b|--brief <TEXT> | -s|--spec <PATH>) [OPTIONS]
-```
-
-Planned provider-backed commands:
-
-```text
-tentgent dataset eval <DATASET_REF|PATH> --provider <openai|anthropic> [OPTIONS]
+tentgent dataset eval <DATASET_REF|PATH> -p|--provider <openai|anthropic|claude> -m|--model <MODEL> -o|--output <DIR> [OPTIONS]
 ```
 
 Command intent:
@@ -155,6 +150,8 @@ Implementation notes:
 
 Implement `dataset eval` for local paths and managed datasets.
 
+Status: implemented.
+
 Goals:
 
 - evaluate whether answers stay inside provided context
@@ -165,6 +162,13 @@ Goals:
 Review target:
 
 - users get a review artifact before training on generated data
+
+Implementation notes:
+
+- Rust accepts either a local dataset path or a managed dataset reference and passes the resolved source path to the Python runtime.
+- Python samples records from `train`, `valid`, `test`, `eval_cases`, or all detected splits, then asks the selected provider for a structured `tentgent.dataset.eval.report.v1` report.
+- Reports are file-first and non-mutating: `eval-report.json`, `eval-report.md`, `prompt.md`, and `provider-output.raw.txt` are written under the requested output directory.
+- `--criteria` / `-c` supports project-specific checks such as language quality, style drift, refusal behavior, or a desired verbal habit.
 
 ## Dataset Contract
 

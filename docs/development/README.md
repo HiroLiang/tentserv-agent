@@ -56,6 +56,7 @@ Inspect layered help:
 make run-cli ARGS='auth --help'
 make run-cli ARGS='model --help'
 make run-cli ARGS='adapter --help'
+make run-cli ARGS='dataset eval --help'
 make run-cli ARGS='server run --help'
 ```
 
@@ -141,11 +142,16 @@ Import a local `.jsonl` file or dataset directory:
   --timeout-seconds 300 \
   -b "Generate 20 concise support examples in Traditional Chinese."
 ./target/debug/tentgent dataset synth --print-prompt -b "Generate 20 concise support examples in Traditional Chinese."
+./target/debug/tentgent dataset eval /path/to/generated-dataset \
+  -p openai \
+  -m gpt-4.1-mini \
+  -o /path/to/generated-dataset-eval \
+  -c "Check language consistency and style drift."
 ./target/debug/tentgent dataset add /path/to/dataset.jsonl
 ./target/debug/tentgent dataset add /path/to/dataset-dir
 ```
 
-Use `dataset template` to generate the manual prompt for OpenAI, Claude, or another agent. Its `--task` and `--language` options are prompt hints, not schema changes. Use `dataset synth` to call a provider directly and write a local package. Use `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. Failed provider parsing writes `_debug` files under an empty output directory. Use `dataset validate` before `dataset add` when working with generated JSONL.
+Use `dataset template` to generate the manual prompt for OpenAI, Claude, or another agent. Its `--task` and `--language` options are prompt hints, not schema changes. Use `dataset synth` to call a provider directly and write a local package. Use `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. Failed provider parsing writes `_debug` files under an empty output directory. Use `dataset eval` to write a report-only provider review before training. Use `dataset validate` before `dataset add` when working with generated JSONL.
 
 Inspect dataset state:
 
@@ -153,7 +159,7 @@ Inspect dataset state:
 ./target/debug/tentgent dataset ls
 ./target/debug/tentgent dataset inspect <dataset-ref>
 ./target/debug/tentgent dataset diff <left-dataset-ref> <right-dataset-ref>
-./target/debug/tentgent dataset diff <dataset-ref> --path /path/to/work-dir
+./target/debug/tentgent dataset diff <dataset-ref> -p /path/to/work-dir
 ./target/debug/tentgent dataset rm <dataset-ref>
 ```
 

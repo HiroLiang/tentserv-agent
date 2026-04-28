@@ -103,6 +103,45 @@ pub enum DatasetCommands {
         )]
         print_prompt: bool,
     },
+    /// Evaluate a local or managed dataset with OpenAI or Claude.
+    #[command(
+        name = "eval",
+        about = "Evaluate a local or managed dataset with OpenAI or Claude.",
+        long_about = "Evaluate a local dataset path or managed dataset reference with OpenAI or Claude and write a local report directory. The dataset is not modified.",
+        override_usage = "tentgent dataset eval <DATASET_REF|PATH> -p <openai|anthropic|claude> -m <MODEL> -o <DIR> [OPTIONS]"
+    )]
+    Eval {
+        /// Local dataset path, full dataset_ref, or unique short-ref prefix.
+        #[arg(value_name = "DATASET_REF|PATH")]
+        input: String,
+        /// Cloud provider to call for dataset evaluation.
+        #[arg(short = 'p', long, value_name = "PROVIDER", value_parser = ["openai", "anthropic", "claude"])]
+        provider: String,
+        /// Provider model name to use for evaluation.
+        #[arg(short = 'm', long, value_name = "MODEL")]
+        model: String,
+        /// Local output directory for the evaluation report.
+        #[arg(short = 'o', long, value_name = "DIR")]
+        output: PathBuf,
+        /// Split to review.
+        #[arg(short = 'S', long, value_name = "SPLIT", default_value = "train", value_parser = ["train", "valid", "test", "eval_cases", "all"])]
+        split: String,
+        /// Maximum JSONL records to send to the provider for review.
+        #[arg(short = 'n', long, value_name = "N", default_value_t = 20)]
+        max_records: u32,
+        /// Extra evaluation criteria, such as style or language requirements.
+        #[arg(short = 'c', long, value_name = "TEXT")]
+        criteria: Option<String>,
+        /// Provider output token limit.
+        #[arg(long, value_name = "TOKENS")]
+        max_tokens: Option<u32>,
+        /// Provider sampling temperature.
+        #[arg(short = 'T', long, value_name = "FLOAT", default_value_t = 0.0)]
+        temperature: f32,
+        /// Provider request timeout in seconds.
+        #[arg(long, value_name = "SECONDS", default_value_t = 180.0)]
+        timeout_seconds: f32,
+    },
     /// List managed datasets.
     #[command(
         name = "ls",

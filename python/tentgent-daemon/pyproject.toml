@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 tentgent-chat-once = "tentgent_daemon.cli.chat_once:main"
+tentgent-dataset-eval = "tentgent_daemon.cli.dataset_eval:main"
 tentgent-dataset-synth = "tentgent_daemon.cli.dataset_synth:main"
 tentgent-server = "tentgent_daemon.cli.server:main"
 tentgent-train-lora-run = "tentgent_daemon.cli.train_lora_run:main"

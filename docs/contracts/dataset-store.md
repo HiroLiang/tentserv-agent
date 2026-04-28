@@ -2,7 +2,7 @@
 
 This document defines the dataset-store boundary for Tentgent training and evaluation workflows.
 
-The current implementation supports local dataset validation, manual generation templates, file-first provider-backed dataset synthesis, local dataset imports, deterministic manifests, content-derived references, deduplication, split detection, safe export to working directories, listing, and inspection.
+The current implementation supports local dataset validation, manual generation templates, file-first provider-backed dataset synthesis, provider-backed dataset evaluation reports, local dataset imports, deterministic manifests, content-derived references, deduplication, split detection, safe export to working directories, listing, and inspection.
 
 ## Command Shape
 
@@ -14,6 +14,7 @@ tentgent dataset validate <PATH>
 tentgent dataset template [-t|--task <KIND>] [-l|--language <LANG>] [-o|--output <PATH>]
 tentgent dataset synth -p|--provider <PROVIDER> -m|--model <MODEL> -o|--output <DIR> (-b|--brief <TEXT> | -s|--spec <PATH>) [OPTIONS]
 tentgent dataset synth -P|--print-prompt (-b|--brief <TEXT> | -s|--spec <PATH>) [OPTIONS]
+tentgent dataset eval <DATASET_REF|PATH> -p|--provider <PROVIDER> -m|--model <MODEL> -o|--output <DIR> [OPTIONS]
 tentgent dataset ls
 tentgent dataset inspect <DATASET_REF>
 tentgent dataset export <DATASET_REF> <PATH>
@@ -22,11 +23,7 @@ tentgent dataset diff <LEFT_REF> [-p|--path <PATH>]
 tentgent dataset rm <DATASET_REF>
 ```
 
-Planned future commands:
-
-```text
-tentgent dataset eval <DATASET_REF> ...
-```
+Planned future commands may add hosted dataset imports and richer evaluator presets.
 
 ## Supported Inputs
 
@@ -40,6 +37,8 @@ The canonical chat and tool-use schema is defined in [dataset-schema.md](./datas
 Use `dataset validate <PATH>` to check local JSONL files or dataset directories against the canonical schema before import. Use `dataset template` to print or write a deterministic prompt that asks OpenAI, Claude, or another agent to produce `tentgent.chat.v1` JSONL.
 
 Use `dataset synth` to ask OpenAI or Claude to write a local dataset package. Synthesis is file-first: Tentgent writes the selected split and source `manifest.json` to a missing or empty output directory, but does not import the result until the user runs `dataset add`. Use `--print-prompt` to inspect the exact provider prompt without auth or network calls. If provider output fails local parsing and the output directory is missing or empty, Tentgent writes `_debug/prompt.md`, `_debug/provider-output.raw.txt`, and `_debug/error.txt` under that output directory.
+
+Use `dataset eval <DATASET_REF|PATH>` to ask OpenAI or Claude to review local or managed dataset content before training. Evaluation is report-only: Tentgent samples records from the requested split, sends the sample and optional criteria to the provider, and writes `eval-report.json`, `eval-report.md`, `prompt.md`, and `provider-output.raw.txt` under the requested output directory.
 
 ## Training Package Shape
 
@@ -164,6 +163,19 @@ Diff compares manifest entries and reports:
 
 For `--path`, the local path is treated as the right side. Tentgent computes its manifest temporarily and does not write it into the managed store.
 
+## Dataset Eval Reports
+
+Use `dataset eval <DATASET_REF|PATH> -p <PROVIDER> -m <MODEL> -o <DIR>` to review generated or managed data before training.
+
+The report directory must be missing or empty. It contains:
+
+- `eval-report.json`: structured `tentgent.dataset.eval.report.v1` report
+- `eval-report.md`: human-readable summary
+- `prompt.md`: exact provider evaluation prompt
+- `provider-output.raw.txt`: raw provider response
+
+The evaluator supports `--split train|valid|test|eval_cases|all`, `--max-records <N>`, and `--criteria <TEXT>`. Criteria are useful for project-specific style checks, such as whether final assistant replies follow a desired verbal habit.
+
 ## Removal
 
 Use `dataset rm <DATASET_REF>` to remove one managed dataset store record and its local source index.
@@ -172,7 +184,6 @@ Removal does not delete exported working copies. Future training-run registries 
 
 ## Non-Goals
 
-- no cloud dataset generation
 - no Hugging Face dataset pull
 - no training integration
 - no training-run reference protection yet

@@ -107,7 +107,7 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
                     "missing required option `--output`; use `--print-prompt` to inspect the prompt without an output directory"
                 )
             })?;
-            let auth = preflight_dataset_provider_auth(&provider).await?;
+            let auth = preflight_dataset_provider_auth(&provider, "dataset synth").await?;
             let outcome = run_dataset_synth_runtime(
                 &auth,
                 &model,
@@ -121,6 +121,40 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             )
             .await?;
             render_synth_outcome(&outcome);
+        }
+        DatasetCommands::Eval {
+            input,
+            provider,
+            model,
+            output,
+            split,
+            max_records,
+            criteria,
+            max_tokens,
+            temperature,
+            timeout_seconds,
+        } => {
+            if is_help_token(&input) {
+                print_dataset_subcommand_help("eval")?;
+                return Ok(());
+            }
+
+            let input_path = resolve_dataset_eval_input(&input)?;
+            let auth = preflight_dataset_provider_auth(&provider, "dataset eval").await?;
+            let outcome = run_dataset_eval_runtime(
+                &auth,
+                &model,
+                &input_path,
+                &output,
+                &split,
+                max_records,
+                criteria.as_deref(),
+                max_tokens,
+                temperature,
+                timeout_seconds,
+            )
+            .await?;
+            render_eval_outcome(&outcome);
         }
         DatasetCommands::Ls => {
             let manager = DatasetManager::new().into_diagnostic()?;
@@ -394,6 +428,78 @@ fn render_synth_outcome(outcome: &Value) {
     table.add_row(vec![
         Cell::new("import"),
         Cell::new(format!("tentgent dataset add {output_dir}")),
+    ]);
+    println!("{table}");
+
+    if let Some(warnings) = outcome.get("warnings").and_then(Value::as_array) {
+        if !warnings.is_empty() {
+            println!("{} Warnings", style("note").yellow().bold());
+            for warning in warnings.iter().filter_map(Value::as_str) {
+                println!("- {warning}");
+            }
+        }
+    }
+
+    println!();
+}
+
+fn render_eval_outcome(outcome: &Value) {
+    println!(
+        "{} {}",
+        style("==>").cyan().bold(),
+        style("Dataset evaluated").bold()
+    );
+
+    let output_dir = json_field(outcome, "output_dir");
+    let mut table = base_table();
+    table.add_row(vec![
+        Cell::new("provider"),
+        Cell::new(json_field(outcome, "provider")),
+    ]);
+    table.add_row(vec![
+        Cell::new("model"),
+        Cell::new(json_field(outcome, "model")),
+    ]);
+    table.add_row(vec![
+        Cell::new("split"),
+        Cell::new(json_field(outcome, "split")),
+    ]);
+    table.add_row(vec![
+        Cell::new("reviewed"),
+        Cell::new(format!(
+            "{} / {}",
+            json_usize_field(outcome, "reviewed_records"),
+            json_usize_field(outcome, "total_records")
+        )),
+    ]);
+    table.add_row(vec![
+        Cell::new("local_issues"),
+        Cell::new(json_usize_field(outcome, "local_issue_count")),
+    ]);
+    table.add_row(vec![
+        Cell::new("findings"),
+        Cell::new(json_usize_field(outcome, "finding_count")),
+    ]);
+    table.add_row(vec![
+        Cell::new("overall_score"),
+        Cell::new(json_optional_number_field(outcome, "overall_score")),
+    ]);
+    table.add_row(vec![Cell::new("output_dir"), Cell::new(output_dir)]);
+    table.add_row(vec![
+        Cell::new("report_json"),
+        Cell::new(json_field(outcome, "report_json_path")),
+    ]);
+    table.add_row(vec![
+        Cell::new("report_md"),
+        Cell::new(json_field(outcome, "report_md_path")),
+    ]);
+    table.add_row(vec![
+        Cell::new("prompt"),
+        Cell::new(json_field(outcome, "prompt_path")),
+    ]);
+    table.add_row(vec![
+        Cell::new("raw_output"),
+        Cell::new(json_field(outcome, "raw_output_path")),
     ]);
     println!("{table}");
 
@@ -742,12 +848,28 @@ fn size_transition(left: Option<u64>, right: Option<u64>) -> String {
     }
 }
 
-async fn preflight_dataset_provider_auth(provider_name: &str) -> Result<DatasetProviderAuth> {
-    let (provider, normalized_provider) = auth_provider_for_dataset_synth(provider_name)?;
+fn resolve_dataset_eval_input(input: &str) -> Result<PathBuf> {
+    let candidate = PathBuf::from(input);
+    if candidate.exists() {
+        return absolutize_cli_path(&candidate);
+    }
+
+    let manager = DatasetManager::new().into_diagnostic()?;
+    match manager.inspect(input) {
+        Ok(inspection) => Ok(inspection.source_path),
+        Err(err) => Err(explain_dataset_lookup_error("eval", err)),
+    }
+}
+
+async fn preflight_dataset_provider_auth(
+    provider_name: &str,
+    purpose: &'static str,
+) -> Result<DatasetProviderAuth> {
+    let (provider, normalized_provider) = auth_provider_for_dataset(provider_name)?;
     let auth = AuthManager::new().into_diagnostic()?;
     let Some((source, secret)) = auth.effective_secret(provider).into_diagnostic()? else {
         return Err(miette!(
-            "{} key is missing for dataset synth; run `tentgent auth {} set` or set `{}` before launch",
+            "{} key is missing for {purpose}; run `tentgent auth {} set` or set `{}` before launch",
             provider.display_name(),
             provider.cli_name(),
             provider.env_var()
@@ -756,7 +878,7 @@ async fn preflight_dataset_provider_auth(provider_name: &str) -> Result<DatasetP
 
     match auth.validate_secret(provider, &secret).await {
         KeyValidationState::Verified => {
-            render_dataset_provider_auth_preflight(provider, source);
+            render_dataset_provider_auth_preflight(provider, source, purpose);
             Ok(DatasetProviderAuth {
                 provider,
                 normalized_provider,
@@ -764,24 +886,96 @@ async fn preflight_dataset_provider_auth(provider_name: &str) -> Result<DatasetP
             })
         }
         KeyValidationState::Invalid { reason } => Err(miette!(
-            "{} key from {} is invalid for dataset synth: {}",
+            "{} key from {} is invalid for {purpose}: {}",
             provider.display_name(),
             source,
             reason
         )),
         KeyValidationState::Unknown { reason } => Err(miette!(
-            "{} key from {} could not be verified for dataset synth: {}",
+            "{} key from {} could not be verified for {purpose}: {}",
             provider.display_name(),
             source,
             reason
         )),
         KeyValidationState::Missing => Err(miette!(
-            "{} key is missing for dataset synth; run `tentgent auth {} set` or set `{}` before launch",
+            "{} key is missing for {purpose}; run `tentgent auth {} set` or set `{}` before launch",
             provider.display_name(),
             provider.cli_name(),
             provider.env_var()
         )),
     }
+}
+
+async fn run_dataset_eval_runtime(
+    auth: &DatasetProviderAuth,
+    model: &str,
+    input: &Path,
+    output: &Path,
+    split: &str,
+    max_records: u32,
+    criteria: Option<&str>,
+    max_tokens: Option<u32>,
+    temperature: f32,
+    timeout_seconds: f32,
+) -> Result<Value> {
+    let python_runtime = resolve_python_runtime()?;
+    let python = require_python_interpreter(&python_runtime, "python dataset eval runtime")?;
+    let input_path = absolutize_cli_path(input)?;
+    let output_path = absolutize_cli_path(output)?;
+
+    let mut process = Command::new(&python);
+    process
+        .current_dir(python_runtime.project_dir())
+        .env("PYTHONPATH", python_runtime.python_src_dir())
+        .env(auth.provider.env_var(), &auth.secret)
+        .arg("-m")
+        .arg("tentgent_daemon.cli.dataset_eval")
+        .arg("--provider")
+        .arg(auth.normalized_provider)
+        .arg("--model")
+        .arg(model)
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--output")
+        .arg(&output_path)
+        .arg("--split")
+        .arg(split)
+        .arg("--max-records")
+        .arg(max_records.to_string())
+        .arg("--temperature")
+        .arg(temperature.to_string())
+        .arg("--timeout-seconds")
+        .arg(timeout_seconds.to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+
+    if let Some(criteria) = criteria {
+        process.arg("--criteria").arg(criteria);
+    }
+    if let Some(max_tokens) = max_tokens {
+        process.arg("--max-tokens").arg(max_tokens.to_string());
+    }
+
+    let output = process.output().await.into_diagnostic()?;
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !output.status.success() {
+        if stderr.is_empty() {
+            return Err(miette!(
+                "dataset eval runtime exited with status {}",
+                output.status
+            ));
+        }
+        return Err(miette!(
+            "dataset eval runtime exited with status {}\n\n{}",
+            output.status,
+            stderr
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    serde_json::from_str::<Value>(&stdout)
+        .map_err(|err| miette!("dataset eval runtime returned invalid JSON: {err}\n\n{stdout}"))
 }
 
 async fn run_dataset_synth_runtime(
@@ -910,20 +1104,25 @@ fn absolutize_cli_path(path: &Path) -> Result<PathBuf> {
     Ok(env::current_dir().into_diagnostic()?.join(path))
 }
 
-fn auth_provider_for_dataset_synth(provider: &str) -> Result<(Provider, &'static str)> {
+fn auth_provider_for_dataset(provider: &str) -> Result<(Provider, &'static str)> {
     match provider {
         "openai" => Ok((Provider::OpenAI, "openai")),
         "anthropic" | "claude" => Ok((Provider::Anthropic, "anthropic")),
-        other => Err(miette!("unsupported dataset synth provider `{other}`")),
+        other => Err(miette!("unsupported dataset provider `{other}`")),
     }
 }
 
-fn render_dataset_provider_auth_preflight(provider: Provider, source: KeySource) {
+fn render_dataset_provider_auth_preflight(
+    provider: Provider,
+    source: KeySource,
+    purpose: &'static str,
+) {
     println!(
-        "{} {} key verified from {} for dataset synth.",
+        "{} {} key verified from {} for {}.",
         style("verified").green().bold(),
         provider.display_name(),
-        source
+        source,
+        purpose
     );
 }
 
@@ -941,6 +1140,13 @@ fn json_usize_field(value: &Value, key: &str) -> String {
         .and_then(Value::as_u64)
         .map(|value| value.to_string())
         .unwrap_or_else(|| "-".to_string())
+}
+
+fn json_optional_number_field(value: &Value, key: &str) -> String {
+    match value.get(key) {
+        Some(Value::Number(number)) => number.to_string(),
+        _ => "-".to_string(),
+    }
 }
 
 fn is_help_path(path: &Path) -> bool {
@@ -998,10 +1204,11 @@ fn export_child_path(path: &Path, reference: &str) -> PathBuf {
 
 fn usage_for_command(command: &str) -> &'static str {
     match command {
-        "diff" => "tentgent dataset diff <LEFT_REF> <RIGHT_REF>\n       tentgent dataset diff <LEFT_REF> --path <PATH>",
+        "diff" => "tentgent dataset diff <LEFT_REF> <RIGHT_REF>\n       tentgent dataset diff <LEFT_REF> -p <PATH>",
+        "eval" => "tentgent dataset eval <DATASET_REF|PATH> -p <openai|anthropic|claude> -m <MODEL> -o <DIR>",
         "export" => "tentgent dataset export <DATASET_REF> <PATH>",
         "rm" => "tentgent dataset rm <DATASET_REF>",
-        "synth" => "tentgent dataset synth --provider <openai|anthropic|claude> --model <MODEL> --output <DIR> (--brief <TEXT> | --spec <PATH>)",
+        "synth" => "tentgent dataset synth -p <openai|anthropic|claude> -m <MODEL> -o <DIR> (-b <TEXT> | -s <PATH>)",
         "validate" => "tentgent dataset validate <PATH>",
         _ => "tentgent dataset inspect <DATASET_REF>",
     }
