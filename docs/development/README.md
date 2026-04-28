@@ -129,9 +129,14 @@ Remove an adapter:
 Import a local `.jsonl` file or dataset directory:
 
 ```bash
+./target/debug/tentgent dataset validate /path/to/dataset.jsonl
+./target/debug/tentgent dataset validate /path/to/dataset-dir
+./target/debug/tentgent dataset template --task chat --language zh-TW --output /path/to/dataset-template.md
 ./target/debug/tentgent dataset add /path/to/dataset.jsonl
 ./target/debug/tentgent dataset add /path/to/dataset-dir
 ```
+
+Use `dataset template` to generate the manual prompt for OpenAI, Claude, or another agent. Use `dataset validate` before `dataset add` when working with generated JSONL.
 
 Inspect dataset state:
 

@@ -2,7 +2,7 @@
 
 This document defines the dataset-store boundary for Tentgent training and evaluation workflows.
 
-The current implementation supports local dataset imports, deterministic manifests, content-derived references, deduplication, split detection, safe export to working directories, listing, and inspection.
+The current implementation supports local dataset validation, manual generation templates, local dataset imports, deterministic manifests, content-derived references, deduplication, split detection, safe export to working directories, listing, and inspection.
 
 ## Command Shape
 
@@ -10,6 +10,8 @@ Implemented command group:
 
 ```text
 tentgent dataset add <PATH>
+tentgent dataset validate <PATH>
+tentgent dataset template [--task <KIND>] [--language <LANG>] [--output <PATH>]
 tentgent dataset ls
 tentgent dataset inspect <DATASET_REF>
 tentgent dataset export <DATASET_REF> <PATH>
@@ -33,6 +35,8 @@ The local import path accepts:
 - a directory containing dataset files
 
 The canonical chat and tool-use schema is defined in [dataset-schema.md](./dataset-schema.md). The store remains responsible for content identity, layout, and indexes; schema validation and backend rendering are separate concerns.
+
+Use `dataset validate <PATH>` to check local JSONL files or dataset directories against the canonical schema before import. Use `dataset template` to print or write a deterministic prompt that asks OpenAI, Claude, or another agent to produce `tentgent.chat.v1` JSONL.
 
 ## Training Package Shape
 

@@ -17,11 +17,16 @@ Use OpenAI and Claude to help users produce valid Tentgent tuning data. This tra
 
 ## Command Surface
 
-Planned commands:
+Implemented foundation commands:
 
 ```text
 tentgent dataset validate <PATH>
 tentgent dataset template [--task <KIND>] [--language <LANG>] [--output <PATH>]
+```
+
+Planned provider-backed commands:
+
+```text
 tentgent dataset synth --provider <openai|anthropic> --output <DIR> (--brief <TEXT> | --spec <PATH>) [OPTIONS]
 tentgent dataset eval <DATASET_REF|PATH> --provider <openai|anthropic> [OPTIONS]
 ```
@@ -43,6 +48,8 @@ Command intent:
 
 Implement `dataset validate <PATH>` first.
 
+Status: implemented.
+
 Goals:
 
 - validate single JSONL files and dataset directories
@@ -58,6 +65,8 @@ Review target:
 ### Slice 2: Manual Generation Template
 
 Implement `dataset template`.
+
+Status: implemented.
 
 Goals:
 

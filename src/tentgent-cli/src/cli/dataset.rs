@@ -5,9 +5,10 @@ use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, C
 use console::style;
 use miette::{miette, IntoDiagnostic, Result};
 use tentgent_core::dataset::{
-    DatasetDiffOutcome, DatasetDiffStatus, DatasetError, DatasetExportOutcome,
-    DatasetImportOutcome, DatasetInspection, DatasetManager, DatasetMetadata,
-    DatasetRemovalOutcome, DatasetSummary,
+    render_dataset_template, validate_dataset_path, write_dataset_template, DatasetDiffOutcome,
+    DatasetDiffStatus, DatasetError, DatasetExportOutcome, DatasetImportOutcome, DatasetInspection,
+    DatasetManager, DatasetMetadata, DatasetRemovalOutcome, DatasetSummary, DatasetTemplateRequest,
+    DatasetValidationOutcome,
 };
 
 use super::app::Cli;
@@ -24,6 +25,35 @@ pub fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             let manager = DatasetManager::new().into_diagnostic()?;
             let outcome = manager.add_path(path).into_diagnostic()?;
             render_import_outcome(&outcome);
+        }
+        DatasetCommands::Validate { path } => {
+            if is_help_path(&path) {
+                print_dataset_subcommand_help("validate")?;
+                return Ok(());
+            }
+
+            let outcome = validate_dataset_path(&path).into_diagnostic()?;
+            render_validation_outcome(&outcome);
+            if !outcome.is_valid() {
+                return Err(miette!(
+                    "dataset validation failed with {} error(s)",
+                    outcome.errors.len()
+                ));
+            }
+        }
+        DatasetCommands::Template {
+            task,
+            language,
+            output,
+        } => {
+            let request = DatasetTemplateRequest::new(task, language);
+            let body = render_dataset_template(&request);
+            if let Some(path) = output {
+                write_dataset_template(&path, &body).into_diagnostic()?;
+                render_template_written(&path, &request);
+            } else {
+                print!("{body}");
+            }
         }
         DatasetCommands::Ls => {
             let manager = DatasetManager::new().into_diagnostic()?;
@@ -142,6 +172,112 @@ fn render_import_outcome(outcome: &DatasetImportOutcome) {
         Cell::new(outcome.source_index_path.display().to_string()),
     ]);
 
+    println!("{table}");
+    println!();
+}
+
+fn render_validation_outcome(outcome: &DatasetValidationOutcome) {
+    println!(
+        "{} {}",
+        style("==>").cyan().bold(),
+        style("Dataset validation").bold()
+    );
+
+    let status = if outcome.is_valid() {
+        style("valid").green().bold()
+    } else {
+        style("invalid").red().bold()
+    };
+    println!(
+        "{} {} record(s) across {} split(s)",
+        status,
+        outcome.record_count(),
+        outcome.splits.len()
+    );
+
+    let mut table = base_table();
+    table.add_row(vec![
+        Cell::new("path"),
+        Cell::new(outcome.path.display().to_string()),
+    ]);
+    table.add_row(vec![
+        Cell::new("target"),
+        Cell::new(outcome.target_kind.as_str()),
+    ]);
+    table.add_row(vec![
+        Cell::new("tuning_ready"),
+        Cell::new(yes_no(outcome.tuning_ready)),
+    ]);
+    table.add_row(vec![
+        Cell::new("records"),
+        Cell::new(outcome.record_count()),
+    ]);
+    table.add_row(vec![Cell::new("errors"), Cell::new(outcome.errors.len())]);
+    println!("{table}");
+
+    if !outcome.splits.is_empty() {
+        let mut splits = Table::new();
+        splits
+            .load_preset(UTF8_FULL_CONDENSED)
+            .apply_modifier(UTF8_ROUND_CORNERS)
+            .set_header(vec!["split", "path", "records", "errors"]);
+
+        for split in &outcome.splits {
+            splits.add_row(vec![
+                Cell::new(&split.name),
+                Cell::new(split.path.display().to_string()),
+                Cell::new(split.records),
+                Cell::new(split.errors),
+            ]);
+        }
+        println!("{splits}");
+    }
+
+    if !outcome.warnings.is_empty() {
+        println!("{} Warnings", style("note").yellow().bold());
+        for warning in &outcome.warnings {
+            println!("- {warning}");
+        }
+    }
+
+    if !outcome.errors.is_empty() {
+        let mut errors = Table::new();
+        errors
+            .load_preset(UTF8_FULL_CONDENSED)
+            .apply_modifier(UTF8_ROUND_CORNERS)
+            .set_header(vec!["path", "line", "message"]);
+
+        for error in &outcome.errors {
+            errors.add_row(vec![
+                Cell::new(error.path.display().to_string()),
+                Cell::new(error.line),
+                Cell::new(&error.message),
+            ]);
+        }
+        println!("{errors}");
+    }
+
+    println!();
+}
+
+fn render_template_written(path: &Path, request: &DatasetTemplateRequest) {
+    println!(
+        "{} {}",
+        style("==>").cyan().bold(),
+        style("Dataset template written").bold()
+    );
+
+    let mut table = base_table();
+    table.add_row(vec![
+        Cell::new("path"),
+        Cell::new(path.display().to_string()),
+    ]);
+    table.add_row(vec![Cell::new("task"), Cell::new(&request.task)]);
+    table.add_row(vec![Cell::new("language"), Cell::new(&request.language)]);
+    table.add_row(vec![
+        Cell::new("next step"),
+        Cell::new("paste this template into OpenAI, Claude, or another agent"),
+    ]);
     println!("{table}");
     println!();
 }
@@ -537,6 +673,7 @@ fn usage_for_command(command: &str) -> &'static str {
         "diff" => "tentgent dataset diff <LEFT_REF> <RIGHT_REF>\n       tentgent dataset diff <LEFT_REF> --path <PATH>",
         "export" => "tentgent dataset export <DATASET_REF> <PATH>",
         "rm" => "tentgent dataset rm <DATASET_REF>",
+        "validate" => "tentgent dataset validate <PATH>",
         _ => "tentgent dataset inspect <DATASET_REF>",
     }
 }

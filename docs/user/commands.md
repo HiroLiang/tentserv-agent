@@ -117,6 +117,9 @@ Adapter requests should visibly change answer style when the adapter is compatib
 Import local datasets for training or evaluation:
 
 ```bash
+tentgent dataset validate /path/to/dataset.jsonl
+tentgent dataset validate /path/to/dataset-dir
+tentgent dataset template --task chat --language zh-TW --output dataset-template.md
 tentgent dataset add /path/to/dataset.jsonl
 tentgent dataset add /path/to/dataset-dir
 tentgent dataset ls
@@ -130,6 +133,8 @@ tentgent dataset rm <dataset-ref>
 A training dataset directory is ready when it contains `train.jsonl`. Optional companions include `valid.jsonl`, `test.jsonl`, `eval_cases.jsonl`, and source `manifest.json`.
 
 New chat and tool-use datasets should use the canonical `tentgent.chat.v1` schema in [docs/contracts/dataset-schema.md](../contracts/dataset-schema.md).
+
+Use `dataset template` when you want a paste-ready prompt for OpenAI, Claude, or another agent to produce JSONL that should pass `dataset validate`.
 
 To edit a managed dataset, export it to a working directory, edit there, then run `dataset add` again to create a new content-derived reference.
 

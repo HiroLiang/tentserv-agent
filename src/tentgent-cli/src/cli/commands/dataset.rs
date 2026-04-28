@@ -15,6 +15,32 @@ pub enum DatasetCommands {
         #[arg(value_name = "PATH")]
         path: PathBuf,
     },
+    /// Validate a local dataset file or directory before import.
+    #[command(
+        name = "validate",
+        about = "Validate a local dataset file or directory before import.",
+        long_about = "Validate a local JSONL file or dataset directory against the Tentgent canonical chat dataset schema without importing it.",
+        override_usage = "tentgent dataset validate <PATH>"
+    )]
+    Validate {
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+    },
+    /// Print or write a paste-ready dataset generation template.
+    #[command(
+        name = "template",
+        about = "Print or write a paste-ready dataset generation template.",
+        long_about = "Print or write a deterministic Markdown prompt template for generating tentgent.chat.v1 JSONL with OpenAI, Claude, or another agent.",
+        override_usage = "tentgent dataset template [--task <KIND>] [--language <LANG>] [--output <PATH>]"
+    )]
+    Template {
+        #[arg(long, value_name = "KIND")]
+        task: Option<String>,
+        #[arg(long, value_name = "LANG")]
+        language: Option<String>,
+        #[arg(long, value_name = "PATH")]
+        output: Option<PathBuf>,
+    },
     /// List managed datasets.
     #[command(
         name = "ls",
