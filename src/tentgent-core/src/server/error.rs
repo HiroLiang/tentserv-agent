@@ -6,6 +6,10 @@ pub enum ServerError {
     ProjectDirsUnavailable,
     #[error("server host must not be empty")]
     EmptyHost,
+    #[error("cloud provider `{provider}` requires a non-empty model name")]
+    EmptyCloudProviderModel { provider: String },
+    #[error("local server spec `{0}` is missing model_ref")]
+    MissingLocalModelRef(String),
     #[error("server reference `{0}` was not found")]
     NotFound(String),
     #[error("server reference `{0}` is ambiguous; multiple stored servers share that prefix")]

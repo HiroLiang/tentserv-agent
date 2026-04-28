@@ -105,7 +105,8 @@ struct HfProgressLine {
 #[derive(Debug, Deserialize)]
 struct StoredServerSpec {
     short_ref: String,
-    model_ref: String,
+    #[serde(default)]
+    model_ref: Option<String>,
 }
 
 impl ModelManager {
@@ -422,7 +423,11 @@ impl ModelManager {
                 }
             })?;
 
-            if spec.model_ref == model_ref || model_ref.starts_with(&spec.model_ref) {
+            let Some(spec_model_ref) = spec.model_ref else {
+                continue;
+            };
+
+            if spec_model_ref == model_ref || model_ref.starts_with(&spec_model_ref) {
                 server_refs.push(spec.short_ref);
             }
         }

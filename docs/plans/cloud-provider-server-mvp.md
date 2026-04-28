@@ -31,6 +31,8 @@ tentgent server run openai:<MODEL_NAME> --host 127.0.0.1 --port 8780
 tentgent server run anthropic:<MODEL_NAME> --host 127.0.0.1 --port 8781
 ```
 
+`claude:<MODEL_NAME>` is accepted as an alias for `anthropic:<MODEL_NAME>` and stores the provider as `anthropic`.
+
 Keep existing local model syntax unchanged:
 
 ```text
@@ -65,9 +67,11 @@ Rules:
 
 Lock the cloud runtime reference syntax and persisted spec shape.
 
+Status: implemented in the active workspace.
+
 Goals:
 
-- parse `openai:<MODEL_NAME>` and `anthropic:<MODEL_NAME>`
+- parse `openai:<MODEL_NAME>`, `anthropic:<MODEL_NAME>`, and the `claude:<MODEL_NAME>` alias
 - keep existing `<MODEL_REF>` behavior unchanged
 - add cloud runtime fields to server spec serialization
 - update server list and inspect rendering to show local vs cloud runtimes
@@ -171,6 +175,5 @@ Review target:
 
 ## Open Questions
 
-- Should `claude:<MODEL_NAME>` be accepted as an alias for `anthropic:<MODEL_NAME>`?
 - Should provider model names have defaults, or should the user always pass one explicitly?
 - Should `auth status` be required to show `verified` before launch, or should `unknown` be allowed with a warning and explicit flag?

@@ -18,12 +18,96 @@ pub const DEFAULT_SERVER_PORT: u16 = 8000;
 pub struct ServerSpec {
     pub server_ref: String,
     pub short_ref: String,
-    pub model_ref: String,
+    #[serde(default)]
+    pub runtime_kind: ServerRuntimeKind,
+    #[serde(default)]
+    pub model_ref: Option<String>,
+    #[serde(default)]
+    pub provider: Option<CloudProvider>,
+    #[serde(default)]
+    pub provider_model: Option<String>,
     pub host: String,
     pub port: u16,
     pub lazy_load: bool,
     pub idle_seconds: Option<u64>,
     pub created_at: String,
+}
+
+impl ServerSpec {
+    pub fn is_cloud(&self) -> bool {
+        self.runtime_kind == ServerRuntimeKind::Cloud
+    }
+
+    pub fn local_model_ref(&self) -> Option<&str> {
+        if self.runtime_kind == ServerRuntimeKind::Local {
+            self.model_ref.as_deref()
+        } else {
+            None
+        }
+    }
+
+    pub fn runtime_model_label(&self) -> &str {
+        match self.runtime_kind {
+            ServerRuntimeKind::Local => self.model_ref.as_deref().unwrap_or("(missing)"),
+            ServerRuntimeKind::Cloud => self.provider_model.as_deref().unwrap_or("(missing)"),
+        }
+    }
+
+    pub fn provider_label(&self) -> &str {
+        self.provider.map(CloudProvider::as_str).unwrap_or("-")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ServerRuntimeKind {
+    #[serde(rename = "local")]
+    Local,
+    #[serde(rename = "cloud")]
+    Cloud,
+}
+
+impl Default for ServerRuntimeKind {
+    fn default() -> Self {
+        Self::Local
+    }
+}
+
+impl ServerRuntimeKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Cloud => "cloud",
+        }
+    }
+}
+
+impl fmt::Display for ServerRuntimeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CloudProvider {
+    #[serde(rename = "openai")]
+    OpenAI,
+    #[serde(rename = "anthropic")]
+    Anthropic,
+}
+
+impl CloudProvider {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAI => "openai",
+            Self::Anthropic => "anthropic",
+        }
+    }
+}
+
+impl fmt::Display for CloudProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

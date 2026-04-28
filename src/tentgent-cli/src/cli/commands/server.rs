@@ -8,7 +8,7 @@ pub enum ServerCommands {
     #[command(
         name = "run",
         about = "Create a server spec and launch it in foreground mode by default.",
-        long_about = "Create or reuse one stored server spec for a single model reference and launch it immediately. `MODEL_REF` can be a full Tentgent model reference or a unique short-ref prefix.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address.\n`--lazy-load` delays model loading until the first chat request arrives.\n`--idle-seconds` releases a loaded model after inactivity when the next health or chat access checks lifecycle state.\n`--detach` launches the initial server process in background mode and returns immediately."
+        long_about = "Create or reuse one stored server spec for a local model reference or cloud runtime reference and launch it immediately. `RUNTIME_REF` can be a full Tentgent model reference, a unique short-ref prefix, `openai:<MODEL_NAME>`, `anthropic:<MODEL_NAME>`, or `claude:<MODEL_NAME>`.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address.\n`--lazy-load` delays local model loading until the first chat request arrives.\n`--idle-seconds` releases a loaded local model after inactivity when the next health or chat access checks lifecycle state.\n`--detach` launches the initial server process in background mode and returns immediately."
     )]
     Run(ServerRunCommand),
     /// List registered server specs and their current runtime state.
@@ -100,9 +100,9 @@ pub enum ServerCommands {
 
 #[derive(Debug, Args)]
 pub struct ServerRunCommand {
-    /// Stored Tentgent model reference to bind to this server.
-    #[arg(value_name = "MODEL_REF")]
-    pub model_ref: String,
+    /// Local model ref, or cloud runtime ref such as openai:gpt-4.1-mini.
+    #[arg(value_name = "RUNTIME_REF")]
+    pub runtime_ref: String,
     /// Optional Tentgent runtime home override for server state and model lookup.
     #[arg(long, value_name = "HOME")]
     pub home: Option<PathBuf>,

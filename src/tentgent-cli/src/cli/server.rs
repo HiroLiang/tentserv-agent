@@ -6,7 +6,7 @@ use console::style;
 use miette::{miette, IntoDiagnostic};
 use tentgent_core::server::{
     LaunchMode, ServerInspection, ServerManager, ServerPrepareOutcome, ServerRunRequest,
-    ServerStopOutcome, ServerSummary,
+    ServerSpec, ServerStopOutcome, ServerSummary,
 };
 use tokio::process::Command;
 
@@ -50,6 +50,7 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
 
             let manager = ServerManager::new(home.as_deref()).into_diagnostic()?;
             let inspection = manager.resolve_for_start(&reference).into_diagnostic()?;
+            ensure_local_runtime_launchable(&inspection.spec)?;
             let python_runtime = resolve_python_runtime()?;
             let python_interpreter =
                 require_python_interpreter(&python_runtime, "python server interpreter")?;
@@ -96,7 +97,7 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
 }
 
 async fn run_server(command: ServerRunCommand) -> miette::Result<()> {
-    if is_help_token(&command.model_ref) {
+    if is_help_token(&command.runtime_ref) {
         print_server_subcommand_help("run")?;
         return Ok(());
     }
@@ -104,7 +105,7 @@ async fn run_server(command: ServerRunCommand) -> miette::Result<()> {
     let manager = ServerManager::new(command.home.as_deref()).into_diagnostic()?;
     let outcome = manager
         .prepare_run(ServerRunRequest {
-            model_ref: command.model_ref,
+            runtime_ref: command.runtime_ref,
             host: command.host,
             port: command.port,
             lazy_load: command.lazy_load,
@@ -114,6 +115,8 @@ async fn run_server(command: ServerRunCommand) -> miette::Result<()> {
 
     let detached = command.detach;
     render_server_spec_outcome(&outcome, detached);
+
+    ensure_local_runtime_launchable(&outcome.spec)?;
 
     let python_runtime = resolve_python_runtime()?;
     let python_interpreter =
@@ -157,11 +160,18 @@ fn render_server_spec_outcome(outcome: &ServerPrepareOutcome, detached: bool) {
         outcome.spec.short_ref,
         outcome.spec_path.display()
     );
-    println!(
-        "{} launching the Python server in {} mode.",
-        style("starting").green().bold(),
-        if detached { "background" } else { "foreground" }
-    );
+    if outcome.spec.is_cloud() {
+        println!(
+            "{} cloud runtime launch is planned for the next slice.",
+            style("ready").green().bold()
+        );
+    } else {
+        println!(
+            "{} launching the Python server in {} mode.",
+            style("starting").green().bold(),
+            if detached { "background" } else { "foreground" }
+        );
+    }
 
     let inspection = inspection_from_prepare_outcome(outcome);
     println!("{}", render_server_table(&inspection));
@@ -201,7 +211,9 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
             "short_ref",
             "status",
             "mode",
-            "model_ref",
+            "runtime",
+            "provider",
+            "model",
             "host",
             "port",
             "pid",
@@ -231,7 +243,9 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
             Cell::new(&server.spec.short_ref),
             Cell::new(if server.running { "running" } else { "stopped" }),
             Cell::new(mode),
-            Cell::new(&server.spec.model_ref),
+            Cell::new(server.spec.runtime_kind.as_str()),
+            Cell::new(server.spec.provider_label()),
+            Cell::new(server.spec.runtime_model_label()),
             Cell::new(&server.spec.host),
             Cell::new(server.spec.port),
             Cell::new(pid),
@@ -329,9 +343,24 @@ fn render_server_table(inspection: &ServerInspection) -> Table {
         Cell::new(&inspection.spec.short_ref),
     ]);
     table.add_row(vec![
-        Cell::new("model_ref"),
-        Cell::new(&inspection.spec.model_ref),
+        Cell::new("runtime"),
+        Cell::new(inspection.spec.runtime_kind.as_str()),
     ]);
+    if inspection.spec.is_cloud() {
+        table.add_row(vec![
+            Cell::new("provider"),
+            Cell::new(inspection.spec.provider_label()),
+        ]);
+        table.add_row(vec![
+            Cell::new("provider_model"),
+            Cell::new(inspection.spec.runtime_model_label()),
+        ]);
+    } else {
+        table.add_row(vec![
+            Cell::new("model_ref"),
+            Cell::new(inspection.spec.runtime_model_label()),
+        ]);
+    }
     table.add_row(vec![
         Cell::new("status"),
         Cell::new(if inspection.running {
@@ -433,7 +462,7 @@ async fn launch_foreground_server_runtime(
         python_interpreter,
         &outcome.spec,
         &outcome.home_dir,
-    );
+    )?;
     process
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -465,6 +494,7 @@ async fn launch_background_server_runtime(
     python_interpreter: &Path,
     inspection: &ServerInspection,
 ) -> miette::Result<ServerInspection> {
+    let model_ref = ensure_local_runtime_launchable(&inspection.spec)?;
     let mut process = Command::new("sh");
     process
         .current_dir(python_runtime.project_dir())
@@ -481,7 +511,7 @@ async fn launch_background_server_runtime(
         .arg("--server-ref")
         .arg(&inspection.spec.server_ref)
         .arg("--model-ref")
-        .arg(&inspection.spec.model_ref)
+        .arg(model_ref)
         .arg("--host")
         .arg(&inspection.spec.host)
         .arg("--port")
@@ -528,9 +558,10 @@ async fn launch_background_server_runtime(
 fn server_process_command(
     python_runtime: &PythonRuntime,
     python_interpreter: &Path,
-    spec: &tentgent_core::server::ServerSpec,
+    spec: &ServerSpec,
     home_dir: &Path,
-) -> Command {
+) -> miette::Result<Command> {
+    let model_ref = ensure_local_runtime_launchable(spec)?;
     let mut process = Command::new(python_interpreter);
     process
         .current_dir(python_runtime.project_dir())
@@ -539,7 +570,7 @@ fn server_process_command(
         .arg("--server-ref")
         .arg(&spec.server_ref)
         .arg("--model-ref")
-        .arg(&spec.model_ref)
+        .arg(model_ref)
         .arg("--host")
         .arg(&spec.host)
         .arg("--port")
@@ -555,7 +586,20 @@ fn server_process_command(
         process.arg("--idle-seconds").arg(idle_seconds.to_string());
     }
 
-    process
+    Ok(process)
+}
+
+fn ensure_local_runtime_launchable(spec: &ServerSpec) -> miette::Result<&str> {
+    spec.local_model_ref().ok_or_else(|| {
+        if spec.is_cloud() {
+            miette!(
+                "cloud provider runtime launch is planned for the next slice; server spec `{}` is ready",
+                spec.short_ref
+            )
+        } else {
+            miette!("local server spec `{}` is missing model_ref", spec.short_ref)
+        }
+    })
 }
 
 fn is_help_token(value: &str) -> bool {
