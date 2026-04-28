@@ -253,6 +253,16 @@ Run a detached server:
   --detach
 ```
 
+Run a cloud provider server:
+
+```bash
+./target/debug/tentgent server run openai:gpt-4.1-mini \
+  --home "$PWD/.tentgent-test" \
+  --host 127.0.0.1 \
+  --port 8780 \
+  --detach
+```
+
 Inspect and manage servers:
 
 ```bash
@@ -274,7 +284,22 @@ Exercise the Python server module directly:
 PYTHONPATH=python/tentgent-daemon/src \
 python/tentgent-daemon/.venv/bin/python -m tentgent_daemon.cli.server \
   --server-ref <server-ref> \
+  --runtime-kind local \
   --model-ref <model-ref> \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
+Run the Python server module directly for a cloud provider:
+
+```bash
+OPENAI_API_KEY=<key> \
+PYTHONPATH=python/tentgent-daemon/src \
+python/tentgent-daemon/.venv/bin/python -m tentgent_daemon.cli.server \
+  --server-ref <server-ref> \
+  --runtime-kind cloud \
+  --provider openai \
+  --provider-model gpt-4.1-mini \
   --host 127.0.0.1 \
   --port 8000
 ```

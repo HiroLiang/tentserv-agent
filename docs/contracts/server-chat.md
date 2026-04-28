@@ -71,6 +71,8 @@ Cloud provider runtimes should reuse the same normalized `messages`, `max_tokens
 - OpenAI maps normalized messages directly to chat-completion messages.
 - Anthropic maps `system` messages to the top-level `system` field and sends only `user` and `assistant` messages in `messages`.
 - Provider API keys must be supplied by launch-time environment and must not be stored in server specs or response errors.
+- Cloud provider runtimes do not load local model records and report `cloud_proxy` in health snapshots.
+- `adapter_ref` is not supported for cloud provider runtimes and should return a clear `501`.
 - Provider request and response parsing should live outside HTTP handlers so it can be tested with mocked transports.
 
 ## Error Mapping

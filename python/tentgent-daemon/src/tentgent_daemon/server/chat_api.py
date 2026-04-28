@@ -4,6 +4,11 @@ import json
 from http import HTTPStatus
 from typing import Any
 
+from tentgent_daemon.providers import (
+    ProviderRequestError,
+    ProviderResponseError,
+    ProviderTransportError,
+)
 from tentgent_daemon.runtime.adapters import (
     AdapterAmbiguousError,
     AdapterBackendUnsupportedError,
@@ -68,6 +73,21 @@ def handle_chat_request(raw_body: bytes, session: RuntimeSession) -> tuple[HTTPS
         return (
             HTTPStatus.NOT_IMPLEMENTED,
             {"error": "adapter_execution_not_implemented", "message": str(exc)},
+        )
+    except ProviderRequestError as exc:
+        return (
+            HTTPStatus.BAD_REQUEST,
+            {"error": "provider_request_invalid", "message": str(exc)},
+        )
+    except ProviderResponseError as exc:
+        return (
+            HTTPStatus.BAD_GATEWAY,
+            {"error": "provider_response_failed", "message": str(exc)},
+        )
+    except ProviderTransportError as exc:
+        return (
+            HTTPStatus.BAD_GATEWAY,
+            {"error": "provider_transport_failed", "message": str(exc)},
         )
     except NotImplementedError as exc:
         return (

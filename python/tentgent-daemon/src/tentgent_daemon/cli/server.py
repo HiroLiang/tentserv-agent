@@ -13,7 +13,15 @@ def parse_args() -> argparse.Namespace:
         description="Run the Tentgent long-lived server skeleton."
     )
     parser.add_argument("--server-ref", required=True, help="Tentgent server ref")
-    parser.add_argument("--model-ref", required=True, help="Stored Tentgent model ref")
+    parser.add_argument(
+        "--runtime-kind",
+        choices=("local", "cloud"),
+        default="local",
+        help="Server runtime kind.",
+    )
+    parser.add_argument("--model-ref", help="Stored Tentgent model ref")
+    parser.add_argument("--provider", choices=("openai", "anthropic"), help="Cloud provider")
+    parser.add_argument("--provider-model", help="Cloud provider model name")
     parser.add_argument("--host", required=True, help="HTTP bind host")
     parser.add_argument("--port", required=True, type=int, help="HTTP bind port")
     parser.add_argument("--home", help="Optional Tentgent runtime home override")
@@ -32,9 +40,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.runtime_kind == "local" and not args.model_ref:
+        raise SystemExit("--model-ref is required for local server runtimes")
+    if args.runtime_kind == "cloud" and (not args.provider or not args.provider_model):
+        raise SystemExit("--provider and --provider-model are required for cloud server runtimes")
+
     config = ServerConfig(
         server_ref=args.server_ref,
+        runtime_kind=args.runtime_kind,
         model_ref=args.model_ref,
+        provider=args.provider,
+        provider_model=args.provider_model,
         host=args.host,
         port=args.port,
         home=Path(args.home).expanduser().resolve() if args.home else None,

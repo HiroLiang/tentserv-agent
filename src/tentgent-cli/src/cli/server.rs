@@ -18,6 +18,12 @@ use super::commands::{ServerCommands, ServerRunCommand};
 use super::python_runtime::{require_python_interpreter, resolve_python_runtime};
 use tentgent_core::runtime_assets::PythonRuntime;
 
+#[derive(Debug, Clone)]
+struct CloudRuntimeAuth {
+    provider: Provider,
+    secret: String,
+}
+
 pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()> {
     match action {
         ServerCommands::Run(command) => run_server(command).await?,
@@ -53,11 +59,12 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
 
             let manager = ServerManager::new(home.as_deref()).into_diagnostic()?;
             let inspection = manager.resolve_for_start(&reference).into_diagnostic()?;
-            if inspection.spec.is_cloud() {
-                preflight_cloud_runtime_auth(&inspection.spec).await?;
-                return Err(cloud_runtime_launch_pending(&inspection.spec));
-            }
-            ensure_local_runtime_launchable(&inspection.spec)?;
+            let cloud_auth = if inspection.spec.is_cloud() {
+                Some(preflight_cloud_runtime_auth(&inspection.spec).await?)
+            } else {
+                ensure_local_runtime_launchable(&inspection.spec)?;
+                None
+            };
             let python_runtime = resolve_python_runtime()?;
             let python_interpreter =
                 require_python_interpreter(&python_runtime, "python server interpreter")?;
@@ -66,6 +73,7 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
                 &python_runtime,
                 &python_interpreter,
                 &inspection,
+                cloud_auth.as_ref(),
             )
             .await?;
             render_server_started(&inspection, details);
@@ -123,12 +131,12 @@ async fn run_server(command: ServerRunCommand) -> miette::Result<()> {
     let detached = command.detach;
     render_server_spec_outcome(&outcome, detached);
 
-    if outcome.spec.is_cloud() {
-        preflight_cloud_runtime_auth(&outcome.spec).await?;
-        return Err(cloud_runtime_launch_pending(&outcome.spec));
-    }
-
-    ensure_local_runtime_launchable(&outcome.spec)?;
+    let cloud_auth = if outcome.spec.is_cloud() {
+        Some(preflight_cloud_runtime_auth(&outcome.spec).await?)
+    } else {
+        ensure_local_runtime_launchable(&outcome.spec)?;
+        None
+    };
 
     let python_runtime = resolve_python_runtime()?;
     let python_interpreter =
@@ -140,12 +148,19 @@ async fn run_server(command: ServerRunCommand) -> miette::Result<()> {
             &python_runtime,
             &python_interpreter,
             &inspection,
+            cloud_auth.as_ref(),
         )
         .await?;
         render_server_inspection("Server started", &inspection);
     } else {
-        launch_foreground_server_runtime(&manager, &python_runtime, &python_interpreter, &outcome)
-            .await?;
+        launch_foreground_server_runtime(
+            &manager,
+            &python_runtime,
+            &python_interpreter,
+            &outcome,
+            cloud_auth.as_ref(),
+        )
+        .await?;
     }
 
     Ok(())
@@ -468,12 +483,14 @@ async fn launch_foreground_server_runtime(
     python_runtime: &PythonRuntime,
     python_interpreter: &Path,
     outcome: &ServerPrepareOutcome,
+    cloud_auth: Option<&CloudRuntimeAuth>,
 ) -> miette::Result<()> {
     let mut process = server_process_command(
         python_runtime,
         python_interpreter,
         &outcome.spec,
         &outcome.home_dir,
+        cloud_auth,
     )?;
     process
         .stdin(Stdio::inherit())
@@ -505,8 +522,8 @@ async fn launch_background_server_runtime(
     python_runtime: &PythonRuntime,
     python_interpreter: &Path,
     inspection: &ServerInspection,
+    cloud_auth: Option<&CloudRuntimeAuth>,
 ) -> miette::Result<ServerInspection> {
-    let model_ref = ensure_local_runtime_launchable(&inspection.spec)?;
     let mut process = Command::new("sh");
     process
         .current_dir(python_runtime.project_dir())
@@ -518,30 +535,17 @@ async fn launch_background_server_runtime(
         )
         .arg("sh")
         .arg(python_interpreter)
-        .arg("-m")
-        .arg("tentgent_daemon.cli.server")
-        .arg("--server-ref")
-        .arg(&inspection.spec.server_ref)
-        .arg("--model-ref")
-        .arg(model_ref)
-        .arg("--host")
-        .arg(&inspection.spec.host)
-        .arg("--port")
-        .arg(inspection.spec.port.to_string())
-        .arg("--home")
-        .arg(&inspection.home_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(false);
 
-    if inspection.spec.lazy_load {
-        process.arg("--lazy-load");
-    }
-
-    if let Some(idle_seconds) = inspection.spec.idle_seconds {
-        process.arg("--idle-seconds").arg(idle_seconds.to_string());
-    }
+    append_server_runtime_args(
+        &mut process,
+        &inspection.spec,
+        &inspection.home_dir,
+        cloud_auth,
+    )?;
 
     let output = process.output().await.into_diagnostic()?;
     if !output.status.success() {
@@ -572,23 +576,64 @@ fn server_process_command(
     python_interpreter: &Path,
     spec: &ServerSpec,
     home_dir: &Path,
+    cloud_auth: Option<&CloudRuntimeAuth>,
 ) -> miette::Result<Command> {
-    let model_ref = ensure_local_runtime_launchable(spec)?;
     let mut process = Command::new(python_interpreter);
+    process.current_dir(python_runtime.project_dir());
+    append_server_runtime_args(&mut process, spec, home_dir, cloud_auth)?;
+    Ok(process)
+}
+
+fn append_server_runtime_args(
+    process: &mut Command,
+    spec: &ServerSpec,
+    home_dir: &Path,
+    cloud_auth: Option<&CloudRuntimeAuth>,
+) -> miette::Result<()> {
     process
-        .current_dir(python_runtime.project_dir())
         .arg("-m")
         .arg("tentgent_daemon.cli.server")
         .arg("--server-ref")
         .arg(&spec.server_ref)
-        .arg("--model-ref")
-        .arg(model_ref)
+        .arg("--runtime-kind")
+        .arg(spec.runtime_kind.as_str())
         .arg("--host")
         .arg(&spec.host)
         .arg("--port")
         .arg(spec.port.to_string())
         .arg("--home")
         .arg(home_dir);
+
+    if spec.is_cloud() {
+        let provider = spec.provider.ok_or_else(|| {
+            miette!(
+                "cloud server spec `{}` is missing provider metadata",
+                spec.short_ref
+            )
+        })?;
+        let provider_model = spec.provider_model.as_deref().ok_or_else(|| {
+            miette!(
+                "cloud server spec `{}` is missing provider_model metadata",
+                spec.short_ref
+            )
+        })?;
+        let cloud_auth = cloud_auth.ok_or_else(|| {
+            miette!(
+                "cloud server spec `{}` is missing launch-time provider auth",
+                spec.short_ref
+            )
+        })?;
+        process
+            .env(cloud_auth.provider.env_var(), &cloud_auth.secret)
+            .arg("--provider")
+            .arg(provider.as_str())
+            .arg("--provider-model")
+            .arg(provider_model);
+    } else {
+        process
+            .arg("--model-ref")
+            .arg(ensure_local_runtime_launchable(spec)?);
+    }
 
     if spec.lazy_load {
         process.arg("--lazy-load");
@@ -598,13 +643,16 @@ fn server_process_command(
         process.arg("--idle-seconds").arg(idle_seconds.to_string());
     }
 
-    Ok(process)
+    Ok(())
 }
 
 fn ensure_local_runtime_launchable(spec: &ServerSpec) -> miette::Result<&str> {
     spec.local_model_ref().ok_or_else(|| {
         if spec.is_cloud() {
-            cloud_runtime_launch_pending(spec)
+            miette!(
+                "cloud server spec `{}` cannot be launched through the local model path",
+                spec.short_ref
+            )
         } else {
             miette!(
                 "local server spec `{}` is missing model_ref",
@@ -614,7 +662,7 @@ fn ensure_local_runtime_launchable(spec: &ServerSpec) -> miette::Result<&str> {
     })
 }
 
-async fn preflight_cloud_runtime_auth(spec: &ServerSpec) -> miette::Result<()> {
+async fn preflight_cloud_runtime_auth(spec: &ServerSpec) -> miette::Result<CloudRuntimeAuth> {
     let cloud_provider = spec.provider.ok_or_else(|| {
         miette!(
             "cloud server spec `{}` is missing provider metadata",
@@ -636,7 +684,7 @@ async fn preflight_cloud_runtime_auth(spec: &ServerSpec) -> miette::Result<()> {
     match auth.validate_secret(provider, &secret).await {
         KeyValidationState::Verified => {
             render_cloud_auth_preflight(provider, source);
-            Ok(())
+            Ok(CloudRuntimeAuth { provider, secret })
         }
         KeyValidationState::Invalid { reason } => Err(miette!(
             "{} key from {} is invalid for cloud server `{}`: {}",
@@ -676,13 +724,6 @@ fn auth_provider_for_cloud(provider: CloudProvider) -> Provider {
         CloudProvider::OpenAI => Provider::OpenAI,
         CloudProvider::Anthropic => Provider::Anthropic,
     }
-}
-
-fn cloud_runtime_launch_pending(spec: &ServerSpec) -> miette::Report {
-    miette!(
-        "cloud provider runtime HTTP handler is planned for the next slice; server spec `{}` passed auth preflight",
-        spec.short_ref
-    )
 }
 
 fn is_help_token(value: &str) -> bool {

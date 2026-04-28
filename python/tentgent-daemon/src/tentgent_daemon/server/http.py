@@ -100,7 +100,7 @@ def serve(config: ServerConfig, session: RuntimeSession) -> int:
     try:
         print(
             f"Tentgent server skeleton listening on http://{config.host}:{config.port} "
-            f"for model {config.model_ref}",
+            f"for {config.runtime_kind} runtime {config.runtime_label}",
             flush=True,
         )
         server.serve_forever()

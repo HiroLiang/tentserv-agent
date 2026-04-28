@@ -90,7 +90,7 @@ tentgent server ps
 tentgent server stop <server-ref>
 ```
 
-Prepare a cloud provider server spec:
+Run a cloud provider server:
 
 ```bash
 tentgent auth openai set
@@ -98,7 +98,7 @@ tentgent server run openai:gpt-4.1-mini --host 127.0.0.1 --port 8780
 tentgent server ls
 ```
 
-Cloud provider server launch currently verifies provider auth before runtime work and then stops at the planned cloud HTTP handler boundary.
+Cloud provider servers run as local HTTP proxies. Provider keys are resolved at launch and are not written to `server.toml`.
 
 ## Adapters
 

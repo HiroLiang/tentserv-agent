@@ -121,6 +121,8 @@ Review target:
 
 Teach the Python server runtime to handle cloud specs.
 
+Status: implemented in the active workspace.
+
 Goals:
 
 - bypass local model loading for cloud runtimes

@@ -29,6 +29,7 @@ Use this directory as the standalone Python subproject for Tentgent runtime and 
 - Prefer direct calls to `python/tentgent-daemon/.venv/bin/...` when manually testing Python entry points from the repository root; this avoids `uv` workspace warnings from the parent repo.
 - `tentgent-chat-once` currently runs the `safetensors -> transformers`, `mlx -> mlx-lm`, and `gguf -> llama.cpp` paths, all with `--stream`.
 - `tentgent-server` now provides the Slice 5 long-lived server skeleton with `GET /healthz` and `POST /v1/chat`.
+- `tentgent-server` can run local model runtimes or cloud provider proxy runtimes selected by `--runtime-kind`.
 - HTTP `stream=true` is intentionally not implemented yet; the server returns `501` until the streaming protocol is chosen.
 - `tentgent-server` now applies explicit lifecycle policy:
   - eager load when `--lazy-load` is absent

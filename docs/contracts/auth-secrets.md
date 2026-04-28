@@ -43,7 +43,7 @@ Use these environment variables:
 - Cloud provider server specs must not store provider secrets.
 - `server run` and `server start` must resolve and validate the effective provider secret before starting cloud provider runtime work.
 - Missing, invalid, and unknown validation states must fail before runtime launch.
-- When cloud runtime process launch is implemented, the selected secret should be passed to the child process only through the provider's standard environment variable.
+- Cloud runtime launch passes the selected secret to the child process only through the provider's standard environment variable.
 
 ## CLI Surface
 
