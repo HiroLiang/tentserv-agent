@@ -64,6 +64,15 @@ The first implemented paths are conservative:
 - changing the active MLX adapter reloads the MLX model because MLX adapter loading mutates model structure
 - clearing an MLX adapter reloads the base model to avoid adapter state leaking into base-model requests
 
+## Cloud Provider Client Boundary
+
+Cloud provider runtimes should reuse the same normalized `messages`, `max_tokens`, and `temperature` request fields before provider-specific mapping.
+
+- OpenAI maps normalized messages directly to chat-completion messages.
+- Anthropic maps `system` messages to the top-level `system` field and sends only `user` and `assistant` messages in `messages`.
+- Provider API keys must be supplied by launch-time environment and must not be stored in server specs or response errors.
+- Provider request and response parsing should live outside HTTP handlers so it can be tested with mocked transports.
+
 ## Error Mapping
 
 - `400 invalid_request`

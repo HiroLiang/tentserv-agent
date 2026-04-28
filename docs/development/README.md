@@ -32,6 +32,13 @@ Check the Rust workspace:
 cargo check --workspace
 ```
 
+Run Python unit tests that do not require provider network access:
+
+```bash
+PYTHONPATH=python/tentgent-daemon/src \
+python3 -m unittest discover -s python/tentgent-daemon/tests
+```
+
 Use the Makefile wrappers:
 
 ```bash

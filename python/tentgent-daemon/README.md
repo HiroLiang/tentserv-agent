@@ -16,6 +16,8 @@ Use this directory as the standalone Python subproject for Tentgent runtime and 
   Backend-specific runtime integrations such as `mlx`, `transformers + peft`, and `llama_cpp`.
 - `src/tentgent_daemon/server/`
   Long-lived server configuration and HTTP skeleton logic.
+- `src/tentgent_daemon/providers/`
+  Cloud provider request/response normalization for OpenAI and Anthropic.
 - `src/tentgent_daemon/tools/`
   Internal helper tools such as the Hugging Face snapshot helper used by the Rust model-store MVP.
 
@@ -40,6 +42,7 @@ Use this directory as the standalone Python subproject for Tentgent runtime and 
 
 - Keep backend-specific details in the closest backend folder under `src/tentgent_daemon/backends/`.
 - Keep Python-direct runtime logic inside `src/tentgent_daemon/runtime/`.
+- Keep cloud provider HTTP payload and response parsing inside `src/tentgent_daemon/providers/`.
 - Keep reusable entry logic inside the package and expose commands through `pyproject.toml` entry points.
 - Keep internal helper tools inside `src/tentgent_daemon/tools/` instead of ad hoc top-level scripts.
 - Add a local `README.md` or `AGENTS.md` in a backend subtree when that backend grows large enough to need its own routing document.

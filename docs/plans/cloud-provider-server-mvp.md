@@ -103,6 +103,8 @@ Review target:
 
 Add a small provider client layer in the Python daemon.
 
+Status: implemented in the active workspace.
+
 Goals:
 
 - support OpenAI and Anthropic non-streaming chat calls
