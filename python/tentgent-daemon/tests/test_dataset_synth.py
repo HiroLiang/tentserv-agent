@@ -11,6 +11,7 @@ from tentgent_daemon.datasets.synth import (
     build_dataset_generation_prompt,
     write_dataset_synth_package,
 )
+from tentgent_daemon.cli.dataset_synth import write_failure_debug
 
 
 class DatasetSynthTests(unittest.TestCase):
@@ -68,6 +69,44 @@ class DatasetSynthTests(unittest.TestCase):
                     max_tokens=None,
                     temperature=0.0,
                 )
+
+    def test_write_failure_debug_writes_prompt_raw_output_and_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "failed"
+            debug_dir = write_failure_debug(
+                output_dir,
+                prompt="Generate rows.",
+                raw_text='{"bad":true}',
+                error="provider row failed",
+            )
+
+            self.assertEqual(debug_dir, output_dir / "_debug")
+            self.assertEqual(
+                (debug_dir / "prompt.md").read_text(encoding="utf-8"),
+                "Generate rows.",
+            )
+            self.assertEqual(
+                (debug_dir / "provider-output.raw.txt").read_text(encoding="utf-8"),
+                '{"bad":true}',
+            )
+            self.assertEqual(
+                (debug_dir / "error.txt").read_text(encoding="utf-8"),
+                "provider row failed\n",
+            )
+
+    def test_write_failure_debug_refuses_non_empty_output_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            (output_dir / "existing.txt").write_text("occupied", encoding="utf-8")
+
+            self.assertIsNone(
+                write_failure_debug(
+                    output_dir,
+                    prompt="Generate rows.",
+                    raw_text='{"bad":true}',
+                    error="provider row failed",
+                )
+            )
 
 
 if __name__ == "__main__":

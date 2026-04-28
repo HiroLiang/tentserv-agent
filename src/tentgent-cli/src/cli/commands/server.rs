@@ -20,7 +20,7 @@ pub enum ServerCommands {
     )]
     Ls {
         /// Optional Tentgent runtime home override for server state lookup.
-        #[arg(long, value_name = "HOME")]
+        #[arg(short = 'H', long, value_name = "HOME")]
         home: Option<PathBuf>,
     },
     /// List only live server processes.
@@ -31,7 +31,7 @@ pub enum ServerCommands {
     )]
     Ps {
         /// Optional Tentgent runtime home override for server state lookup.
-        #[arg(long, value_name = "HOME")]
+        #[arg(short = 'H', long, value_name = "HOME")]
         home: Option<PathBuf>,
     },
     /// Show one stored server spec together with runtime state and log paths.
@@ -41,10 +41,11 @@ pub enum ServerCommands {
         long_about = "Show one stored server spec together with runtime state and log paths. Tentgent accepts either the full server_ref or a unique short_ref prefix."
     )]
     Inspect {
+        /// Full server_ref or unique short-ref prefix.
         #[arg(value_name = "SERVER_REF")]
         reference: String,
         /// Optional Tentgent runtime home override for server state lookup.
-        #[arg(long, value_name = "HOME")]
+        #[arg(short = 'H', long, value_name = "HOME")]
         home: Option<PathBuf>,
     },
     /// Launch one stored server spec in background mode.
@@ -54,13 +55,14 @@ pub enum ServerCommands {
         long_about = "Launch one stored server spec in background mode. Tentgent accepts either the full server_ref or a unique short_ref prefix, starts the Python server with stdout and stderr redirected to server-local log files, and returns immediately.\n\nBy default `start` prints a concise status summary. Add `--details` to include the full inspection table."
     )]
     Start {
+        /// Full server_ref or unique short-ref prefix.
         #[arg(value_name = "SERVER_REF")]
         reference: String,
         /// Optional Tentgent runtime home override for server state lookup.
-        #[arg(long, value_name = "HOME")]
+        #[arg(short = 'H', long, value_name = "HOME")]
         home: Option<PathBuf>,
         /// Show the full inspection table after the server starts.
-        #[arg(long)]
+        #[arg(short = 'd', long)]
         details: bool,
     },
     /// Stop one live server process without deleting its stored spec.
@@ -70,13 +72,14 @@ pub enum ServerCommands {
         long_about = "Stop one live server process without deleting its stored spec. Tentgent accepts either the full server_ref or a unique short_ref prefix.\n\nBy default `stop` prints a concise status summary. Add `--details` to include the full inspection table after shutdown."
     )]
     Stop {
+        /// Full server_ref or unique short-ref prefix.
         #[arg(value_name = "SERVER_REF")]
         reference: String,
         /// Optional Tentgent runtime home override for server state lookup.
-        #[arg(long, value_name = "HOME")]
+        #[arg(short = 'H', long, value_name = "HOME")]
         home: Option<PathBuf>,
         /// Show the full inspection table after the server stops.
-        #[arg(long)]
+        #[arg(short = 'd', long)]
         details: bool,
     },
     /// Remove one stored server spec after it is stopped.
@@ -87,13 +90,14 @@ pub enum ServerCommands {
         long_about = "Remove one stored server spec after it is stopped. Tentgent accepts either the full server_ref or a unique short_ref prefix and removes the full server directory under TENTGENT_HOME/servers/<server_ref>.\n\nBy default `rm` prints a concise status summary. Add `--details` to include the full inspection table before removal."
     )]
     Rm {
+        /// Full server_ref or unique short-ref prefix.
         #[arg(value_name = "SERVER_REF")]
         reference: String,
         /// Optional Tentgent runtime home override for server state lookup.
-        #[arg(long, value_name = "HOME")]
+        #[arg(short = 'H', long, value_name = "HOME")]
         home: Option<PathBuf>,
         /// Show the full inspection table captured before the server is removed.
-        #[arg(long)]
+        #[arg(short = 'd', long)]
         details: bool,
     },
 }
@@ -104,21 +108,21 @@ pub struct ServerRunCommand {
     #[arg(value_name = "RUNTIME_REF")]
     pub runtime_ref: String,
     /// Optional Tentgent runtime home override for server state and model lookup.
-    #[arg(long, value_name = "HOME")]
+    #[arg(short = 'H', long, value_name = "HOME")]
     pub home: Option<PathBuf>,
     /// Host interface for the future HTTP listener.
-    #[arg(long, value_name = "HOST")]
+    #[arg(short = 'a', long, value_name = "HOST")]
     pub host: Option<String>,
     /// TCP port for the future HTTP listener.
-    #[arg(long, value_name = "PORT")]
+    #[arg(short = 'p', long, value_name = "PORT")]
     pub port: Option<u16>,
     /// Delay model loading until the first request arrives.
-    #[arg(long)]
+    #[arg(short = 'l', long)]
     pub lazy_load: bool,
     /// Auto-release the loaded model after N idle seconds.
-    #[arg(long = "idle-seconds", value_name = "N")]
+    #[arg(short = 'i', long = "idle-seconds", value_name = "N")]
     pub idle_seconds: Option<u64>,
     /// Launch the initial server process in background mode and return immediately.
-    #[arg(long)]
+    #[arg(short = 'd', long)]
     pub detach: bool,
 }

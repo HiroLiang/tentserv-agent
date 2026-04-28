@@ -27,8 +27,8 @@ pub fn render_dataset_template(request: &DatasetTemplateRequest) -> String {
 
 Template version: `{template_version}`
 Canonical schema: `tentgent.chat.v1`
-Task hint: `{task}`
-Language hint: `{language}`
+Task/domain hint: `{task}`
+Language/content hint: `{language}`
 
 You are generating tuning data for Tentgent.
 
@@ -45,8 +45,8 @@ Required output rules:
 - Use `tool` messages for tool results.
 - Keep `metadata` factual and non-training-critical.
 - Do not output MLX, PEFT, ChatML, OpenAI-specific, or Anthropic-specific rendered prompt text.
-- Keep generated content in language `{language}` unless the task requires quoting another language.
-- Prefer realistic, diverse, non-duplicated examples for task `{task}`.
+- Keep generated content in language/content style `{language}` unless the task requires quoting another language.
+- Prefer realistic, diverse, non-duplicated examples for task/domain `{task}`.
 
 Minimal valid JSONL example:
 

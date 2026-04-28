@@ -11,13 +11,14 @@ Implemented command group:
 ```text
 tentgent dataset add <PATH>
 tentgent dataset validate <PATH>
-tentgent dataset template [--task <KIND>] [--language <LANG>] [--output <PATH>]
-tentgent dataset synth --provider <PROVIDER> --model <MODEL> --output <DIR> (--brief <TEXT> | --spec <PATH>) [OPTIONS]
+tentgent dataset template [-t|--task <KIND>] [-l|--language <LANG>] [-o|--output <PATH>]
+tentgent dataset synth -p|--provider <PROVIDER> -m|--model <MODEL> -o|--output <DIR> (-b|--brief <TEXT> | -s|--spec <PATH>) [OPTIONS]
+tentgent dataset synth -P|--print-prompt (-b|--brief <TEXT> | -s|--spec <PATH>) [OPTIONS]
 tentgent dataset ls
 tentgent dataset inspect <DATASET_REF>
 tentgent dataset export <DATASET_REF> <PATH>
 tentgent dataset diff <LEFT_REF> <RIGHT_REF>
-tentgent dataset diff <LEFT_REF> --path <PATH>
+tentgent dataset diff <LEFT_REF> [-p|--path <PATH>]
 tentgent dataset rm <DATASET_REF>
 ```
 
@@ -38,7 +39,7 @@ The canonical chat and tool-use schema is defined in [dataset-schema.md](./datas
 
 Use `dataset validate <PATH>` to check local JSONL files or dataset directories against the canonical schema before import. Use `dataset template` to print or write a deterministic prompt that asks OpenAI, Claude, or another agent to produce `tentgent.chat.v1` JSONL.
 
-Use `dataset synth` to ask OpenAI or Claude to write a local dataset package. Synthesis is file-first: Tentgent writes the selected split and source `manifest.json` to a missing or empty output directory, but does not import the result until the user runs `dataset add`.
+Use `dataset synth` to ask OpenAI or Claude to write a local dataset package. Synthesis is file-first: Tentgent writes the selected split and source `manifest.json` to a missing or empty output directory, but does not import the result until the user runs `dataset add`. Use `--print-prompt` to inspect the exact provider prompt without auth or network calls. If provider output fails local parsing and the output directory is missing or empty, Tentgent writes `_debug/prompt.md`, `_debug/provider-output.raw.txt`, and `_debug/error.txt` under that output directory.
 
 ## Training Package Shape
 

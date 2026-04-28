@@ -88,6 +88,10 @@ class DatasetProviderRequestError(DatasetProviderError):
 class DatasetProviderParseError(DatasetProviderError):
     """The provider returned content that cannot be used as a dataset."""
 
+    def __init__(self, message: str, *, raw_text: str | None = None) -> None:
+        super().__init__(message)
+        self.raw_text = raw_text
+
 
 def call_dataset_provider(
     request: DatasetProviderCallRequest,
@@ -146,7 +150,12 @@ def generate_dataset_jsonl(
         api_key=api_key,
         client=client,
     )
-    parsed = parse_dataset_jsonl(call_response.text, split=request.split)
+    try:
+        parsed = parse_dataset_jsonl(call_response.text, split=request.split)
+    except DatasetProviderParseError as exc:
+        if exc.raw_text is None:
+            exc.raw_text = call_response.text
+        raise
     return DatasetJsonlGenerationResponse(
         provider=call_response.provider,
         model=call_response.model,

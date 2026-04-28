@@ -105,6 +105,22 @@ class DatasetProviderTests(unittest.TestCase):
                 '{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Hi"}]}'
             )
 
+    def test_generate_dataset_jsonl_attaches_raw_text_to_parse_errors(self) -> None:
+        raw_text = '{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Hi"}]}'
+        client = FakeProviderClient(raw_text)
+
+        with self.assertRaisesRegex(DatasetProviderParseError, "mask_prompt=true") as raised:
+            generate_dataset_jsonl(
+                DatasetJsonlGenerationRequest(
+                    provider="openai",
+                    model="gpt-4.1-mini",
+                    prompt="Generate one row.",
+                ),
+                client=client,
+            )
+
+        self.assertEqual(raised.exception.raw_text, raw_text)
+
     def test_parse_dataset_jsonl_rejects_empty_provider_output(self) -> None:
         with self.assertRaisesRegex(DatasetProviderParseError, "provider output must not be empty"):
             parse_dataset_jsonl("   ")

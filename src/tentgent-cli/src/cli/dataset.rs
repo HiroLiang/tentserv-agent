@@ -82,7 +82,31 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             max_tokens,
             temperature,
             timeout_seconds,
+            print_prompt,
         } => {
+            if print_prompt {
+                let prompt =
+                    run_dataset_synth_prompt_runtime(brief.as_deref(), spec.as_deref(), &split)
+                        .await?;
+                print!("{prompt}");
+                return Ok(());
+            }
+
+            let provider = provider.ok_or_else(|| {
+                miette!(
+                    "missing required option `--provider`; use `--print-prompt` to inspect the prompt without provider settings"
+                )
+            })?;
+            let model = model.ok_or_else(|| {
+                miette!(
+                    "missing required option `--model`; use `--print-prompt` to inspect the prompt without provider settings"
+                )
+            })?;
+            let output = output.ok_or_else(|| {
+                miette!(
+                    "missing required option `--output`; use `--print-prompt` to inspect the prompt without an output directory"
+                )
+            })?;
             let auth = preflight_dataset_provider_auth(&provider).await?;
             let outcome = run_dataset_synth_runtime(
                 &auth,
@@ -828,6 +852,54 @@ async fn run_dataset_synth_runtime(
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     serde_json::from_str::<Value>(&stdout)
         .map_err(|err| miette!("dataset synth runtime returned invalid JSON: {err}\n\n{stdout}"))
+}
+
+async fn run_dataset_synth_prompt_runtime(
+    brief: Option<&str>,
+    spec: Option<&Path>,
+    split: &str,
+) -> Result<String> {
+    let python_runtime = resolve_python_runtime()?;
+    let python = require_python_interpreter(&python_runtime, "python dataset synth runtime")?;
+    let spec_path = spec.map(absolutize_cli_path).transpose()?;
+
+    let mut process = Command::new(&python);
+    process
+        .current_dir(python_runtime.project_dir())
+        .env("PYTHONPATH", python_runtime.python_src_dir())
+        .arg("-m")
+        .arg("tentgent_daemon.cli.dataset_synth")
+        .arg("--print-prompt")
+        .arg("--split")
+        .arg(split)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+
+    if let Some(brief) = brief {
+        process.arg("--brief").arg(brief);
+    }
+    if let Some(spec) = &spec_path {
+        process.arg("--spec").arg(spec);
+    }
+
+    let output = process.output().await.into_diagnostic()?;
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !output.status.success() {
+        if stderr.is_empty() {
+            return Err(miette!(
+                "dataset synth prompt runtime exited with status {}",
+                output.status
+            ));
+        }
+        return Err(miette!(
+            "dataset synth prompt runtime exited with status {}\n\n{}",
+            output.status,
+            stderr
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn absolutize_cli_path(path: &Path) -> Result<PathBuf> {

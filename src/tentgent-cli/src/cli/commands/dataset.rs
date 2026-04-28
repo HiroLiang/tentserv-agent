@@ -12,6 +12,7 @@ pub enum DatasetCommands {
         override_usage = "tentgent dataset add <PATH>"
     )]
     Add {
+        /// Local dataset JSONL file or directory to import.
         #[arg(value_name = "PATH")]
         path: PathBuf,
     },
@@ -23,6 +24,7 @@ pub enum DatasetCommands {
         override_usage = "tentgent dataset validate <PATH>"
     )]
     Validate {
+        /// Local dataset JSONL file or directory to validate.
         #[arg(value_name = "PATH")]
         path: PathBuf,
     },
@@ -30,44 +32,76 @@ pub enum DatasetCommands {
     #[command(
         name = "template",
         about = "Print or write a paste-ready dataset generation template.",
-        long_about = "Print or write a deterministic Markdown prompt template for generating tentgent.chat.v1 JSONL with OpenAI, Claude, or another agent.",
-        override_usage = "tentgent dataset template [--task <KIND>] [--language <LANG>] [--output <PATH>]"
+        long_about = "Print or write a deterministic Markdown prompt template for generating tentgent.chat.v1 JSONL with OpenAI, Claude, or another agent. The task and language options are prompt hints only; they do not change the dataset schema.",
+        override_usage = "tentgent dataset template [-t <KIND>] [-l <LANG>] [-o <PATH>]"
     )]
     Template {
-        #[arg(long, value_name = "KIND")]
+        #[arg(
+            short = 't',
+            long,
+            value_name = "KIND",
+            help = "Task/domain hint to insert into the template",
+            long_help = "Task/domain hint to insert into the template, such as chat, support, summarization, tool-use, or polite-refusal. This guides generated examples but does not change the dataset schema."
+        )]
         task: Option<String>,
-        #[arg(long, value_name = "LANG")]
+        #[arg(
+            short = 'l',
+            long,
+            value_name = "LANG",
+            help = "Language hint for generated record content",
+            long_help = "Language hint for generated record content, such as en, zh-TW, or ja. This guides the natural-language examples but does not change the dataset schema."
+        )]
         language: Option<String>,
-        #[arg(long, value_name = "PATH")]
+        #[arg(
+            short = 'o',
+            long,
+            value_name = "PATH",
+            help = "Write the template to a file instead of stdout"
+        )]
         output: Option<PathBuf>,
     },
     /// Generate a local dataset package with OpenAI or Claude.
     #[command(
         name = "synth",
         about = "Generate a local dataset package with OpenAI or Claude.",
-        long_about = "Generate a file-first Tentgent dataset package by asking OpenAI or Claude to produce tentgent.chat.v1 JSONL. The output directory is created locally and is not imported until you run dataset add.",
-        override_usage = "tentgent dataset synth --provider <openai|anthropic|claude> --model <MODEL> --output <DIR> (--brief <TEXT> | --spec <PATH>) [OPTIONS]",
+        long_about = "Generate a file-first Tentgent dataset package by asking OpenAI or Claude to produce tentgent.chat.v1 JSONL. The output directory is created locally and is not imported until you run dataset add. Use --print-prompt to inspect the exact provider prompt without auth or network calls.",
+        override_usage = "tentgent dataset synth -p <openai|anthropic|claude> -m <MODEL> -o <DIR> (-b <TEXT> | -s <PATH>) [OPTIONS]\n       tentgent dataset synth --print-prompt (-b <TEXT> | -s <PATH>) [OPTIONS]",
         group(clap::ArgGroup::new("input").required(true).args(["brief", "spec"]))
     )]
     Synth {
-        #[arg(long, value_name = "PROVIDER", value_parser = ["openai", "anthropic", "claude"])]
-        provider: String,
-        #[arg(long, value_name = "MODEL")]
-        model: String,
-        #[arg(long, value_name = "DIR")]
-        output: PathBuf,
-        #[arg(long, value_name = "TEXT", conflicts_with = "spec")]
+        /// Cloud provider to call for dataset generation.
+        #[arg(short = 'p', long, value_name = "PROVIDER", value_parser = ["openai", "anthropic", "claude"])]
+        provider: Option<String>,
+        /// Provider model name to use for generation.
+        #[arg(short = 'm', long, value_name = "MODEL")]
+        model: Option<String>,
+        /// Local output directory for the generated dataset package.
+        #[arg(short = 'o', long, value_name = "DIR")]
+        output: Option<PathBuf>,
+        /// Inline generation request to wrap in the Tentgent dataset prompt.
+        #[arg(short = 'b', long, value_name = "TEXT", conflicts_with = "spec")]
         brief: Option<String>,
-        #[arg(long, value_name = "PATH", conflicts_with = "brief")]
+        /// Path to a generation spec or edited template file.
+        #[arg(short = 's', long, value_name = "PATH", conflicts_with = "brief")]
         spec: Option<PathBuf>,
-        #[arg(long, value_name = "SPLIT", default_value = "train", value_parser = ["train", "valid", "test", "eval_cases"])]
+        /// Dataset split file to generate.
+        #[arg(short = 'S', long, value_name = "SPLIT", default_value = "train", value_parser = ["train", "valid", "test", "eval_cases"])]
         split: String,
-        #[arg(long, value_name = "TOKENS")]
+        /// Provider output token limit.
+        #[arg(short = 'n', long, value_name = "TOKENS")]
         max_tokens: Option<u32>,
-        #[arg(long, value_name = "FLOAT", default_value_t = 0.0)]
+        /// Provider sampling temperature.
+        #[arg(short = 'T', long, value_name = "FLOAT", default_value_t = 0.0)]
         temperature: f32,
+        /// Provider request timeout in seconds.
         #[arg(long, value_name = "SECONDS", default_value_t = 180.0)]
         timeout_seconds: f32,
+        #[arg(
+            short = 'P',
+            long,
+            help = "Print the exact provider prompt and exit without auth or network calls"
+        )]
+        print_prompt: bool,
     },
     /// List managed datasets.
     #[command(
@@ -84,6 +118,7 @@ pub enum DatasetCommands {
         override_usage = "tentgent dataset inspect <DATASET_REF>"
     )]
     Inspect {
+        /// Full dataset_ref or unique short-ref prefix.
         #[arg(value_name = "DATASET_REF")]
         reference: String,
     },
@@ -95,8 +130,10 @@ pub enum DatasetCommands {
         override_usage = "tentgent dataset export <DATASET_REF> <PATH>"
     )]
     Export {
+        /// Full dataset_ref or unique short-ref prefix.
         #[arg(value_name = "DATASET_REF")]
         reference: String,
+        /// Destination directory for exported dataset source files.
         #[arg(value_name = "PATH")]
         path: Option<PathBuf>,
     },
@@ -105,14 +142,17 @@ pub enum DatasetCommands {
         name = "diff",
         about = "Diff two managed datasets.",
         long_about = "Diff two managed datasets, or diff one managed dataset against a local working copy. The MVP compares manifest entries and reports added, removed, modified, and unchanged files.",
-        override_usage = "tentgent dataset diff <LEFT_REF> <RIGHT_REF>\n       tentgent dataset diff <LEFT_REF> --path <PATH>"
+        override_usage = "tentgent dataset diff <LEFT_REF> <RIGHT_REF>\n       tentgent dataset diff <LEFT_REF> -p <PATH>"
     )]
     Diff {
+        /// Full dataset_ref or unique short-ref prefix for the left side.
         #[arg(value_name = "LEFT_REF")]
         left: String,
+        /// Full dataset_ref or unique short-ref prefix for the right side.
         #[arg(value_name = "RIGHT_REF")]
         right: Option<String>,
-        #[arg(long, value_name = "PATH", conflicts_with = "right")]
+        /// Local dataset directory or JSONL file to compare with the managed dataset.
+        #[arg(short = 'p', long, value_name = "PATH", conflicts_with = "right")]
         path: Option<PathBuf>,
     },
     /// Remove one managed dataset.
@@ -123,6 +163,7 @@ pub enum DatasetCommands {
         override_usage = "tentgent dataset rm <DATASET_REF>"
     )]
     Rm {
+        /// Full dataset_ref or unique short-ref prefix.
         #[arg(value_name = "DATASET_REF")]
         reference: String,
     },

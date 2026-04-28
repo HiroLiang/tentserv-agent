@@ -19,7 +19,7 @@ use clap::{Args, Subcommand};
 #[derive(Debug, Args)]
 pub struct DoctorCommand {
     /// Developer bootstrap: create or sync the managed Python environment with uv before checking health.
-    #[arg(long)]
+    #[arg(short = 'f', long)]
     pub fix: bool,
 }
 

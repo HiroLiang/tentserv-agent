@@ -2,6 +2,8 @@
 
 This document collects user-facing command examples. Short references are accepted anywhere a local `model_ref`, `adapter_ref`, `dataset_ref`, or `server_ref` is requested, as long as the prefix is unique.
 
+Most common options have short aliases, such as `-m` for model/message-like inputs, `-o` for output, `-p` for provider/path/port depending on the subcommand, and `-H` for runtime home. Run `tentgent <command> --help`; every help screen also supports `-h`.
+
 ## Auth
 
 Check all provider keys:
@@ -119,20 +121,21 @@ Import local datasets for training or evaluation:
 ```bash
 tentgent dataset validate /path/to/dataset.jsonl
 tentgent dataset validate /path/to/dataset-dir
-tentgent dataset template --task chat --language zh-TW --output dataset-template.md
+tentgent dataset template -t chat -l zh-TW -o dataset-template.md
 tentgent dataset synth \
-  --provider openai \
-  --model gpt-4.1-mini \
-  --output ./generated-dataset \
+  -p openai \
+  -m gpt-4.1-mini \
+  -o ./generated-dataset \
   --timeout-seconds 300 \
-  --brief "Generate 20 concise support examples in Traditional Chinese."
+  -b "Generate 20 concise support examples in Traditional Chinese."
+tentgent dataset synth --print-prompt -b "Generate 20 concise support examples in Traditional Chinese."
 tentgent dataset add /path/to/dataset.jsonl
 tentgent dataset add /path/to/dataset-dir
 tentgent dataset ls
 tentgent dataset inspect <dataset-ref>
 tentgent dataset export <dataset-ref> /path/to/work-dir
 tentgent dataset diff <left-dataset-ref> <right-dataset-ref>
-tentgent dataset diff <dataset-ref> --path /path/to/work-dir
+tentgent dataset diff <dataset-ref> -p /path/to/work-dir
 tentgent dataset rm <dataset-ref>
 ```
 
@@ -141,8 +144,11 @@ A training dataset directory is ready when it contains `train.jsonl`. Optional c
 New chat and tool-use datasets should use the canonical `tentgent.chat.v1` schema in [docs/contracts/dataset-schema.md](../contracts/dataset-schema.md).
 
 Use `dataset template` when you want a paste-ready prompt for OpenAI, Claude, or another agent to produce JSONL that should pass `dataset validate`.
+Its `--task` and `--language` options are prompt hints only. For example, `--task support` asks the template to prefer support-style examples, and `--language zh-TW` asks for Traditional Chinese content; both still produce the same `tentgent.chat.v1` schema.
 
-Use `dataset synth` to ask OpenAI or Claude to generate a local dataset directory. The output directory must be missing or empty. It writes files only; run `dataset validate ./generated-dataset` and then `dataset add ./generated-dataset` when the result looks good.
+Use `dataset synth` to ask OpenAI or Claude to generate a local dataset directory. The output directory must be missing or empty. It writes files only; run `dataset validate ./generated-dataset` and then `dataset add ./generated-dataset` when the result looks good. Add `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. When provider output fails local parsing and the output directory is missing or empty, Tentgent writes `_debug/prompt.md`, `_debug/provider-output.raw.txt`, and `_debug/error.txt` under the output directory.
+
+Most common long options have short aliases. Run `tentgent <command> --help` to see them; help always supports `-h`.
 
 To edit a managed dataset, export it to a working directory, edit there, then run `dataset add` again to create a new content-derived reference.
 

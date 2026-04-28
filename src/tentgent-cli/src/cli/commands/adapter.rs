@@ -11,10 +11,11 @@ pub enum AdapterCommands {
         long_about = "Import a local adapter directory into the managed adapter store. The first implementation targets PEFT-style LoRA adapter directories and will store managed adapter metadata under TENTGENT_HOME/adapters."
     )]
     Add {
+        /// Local adapter directory to import.
         #[arg(value_name = "PATH")]
         path: PathBuf,
         /// Local base model reference this adapter was trained for.
-        #[arg(long = "base-model-ref", value_name = "MODEL_REF")]
+        #[arg(short = 'b', long = "base-model-ref", value_name = "MODEL_REF")]
         base_model_ref: Option<String>,
     },
     /// Pull an adapter snapshot from Hugging Face into the managed adapter store.
@@ -22,15 +23,17 @@ pub enum AdapterCommands {
         name = "pull",
         about = "Pull an adapter snapshot from Hugging Face into the managed adapter store.",
         long_about = "Pull an adapter snapshot from Hugging Face into the managed adapter store. Tentgent resolves the repository revision first, downloads that exact snapshot, computes a content-derived adapter reference, and deduplicates identical content.",
-        override_usage = "tentgent adapter pull <HF_REPO> [--revision <REV>] [--base-model-ref <MODEL_REF>]"
+        override_usage = "tentgent adapter pull <HF_REPO> [-r <REV>] [-b <MODEL_REF>]"
     )]
     Pull {
+        /// Hugging Face adapter repository id, such as owner/name.
         #[arg(value_name = "HF_REPO")]
         repo_id: String,
-        #[arg(long, value_name = "REV")]
+        /// Hugging Face revision to resolve before downloading.
+        #[arg(short = 'r', long, value_name = "REV")]
         revision: Option<String>,
         /// Local base model reference this adapter was trained for.
-        #[arg(long = "base-model-ref", value_name = "MODEL_REF")]
+        #[arg(short = 'b', long = "base-model-ref", value_name = "MODEL_REF")]
         base_model_ref: Option<String>,
     },
     /// List managed adapters.
@@ -48,6 +51,7 @@ pub enum AdapterCommands {
         override_usage = "tentgent adapter inspect <ADAPTER_REF>"
     )]
     Inspect {
+        /// Full adapter_ref or unique short-ref prefix.
         #[arg(value_name = "ADAPTER_REF")]
         reference: String,
     },
@@ -56,13 +60,14 @@ pub enum AdapterCommands {
         name = "bind",
         about = "Bind an adapter to one local managed base model.",
         long_about = "Bind an adapter to one local managed base model. Tentgent validates adapter_config.json base-model hints when available and writes a by-base index for later server compatibility checks.",
-        override_usage = "tentgent adapter bind <ADAPTER_REF> --base-model-ref <MODEL_REF>"
+        override_usage = "tentgent adapter bind <ADAPTER_REF> -b <MODEL_REF>"
     )]
     Bind {
+        /// Full adapter_ref or unique short-ref prefix.
         #[arg(value_name = "ADAPTER_REF")]
         adapter_ref: String,
         /// Local managed base model reference this adapter should target.
-        #[arg(long = "base-model-ref", value_name = "MODEL_REF")]
+        #[arg(short = 'b', long = "base-model-ref", value_name = "MODEL_REF")]
         base_model_ref: Option<String>,
     },
     /// Remove one managed adapter by hash reference.
@@ -74,6 +79,7 @@ pub enum AdapterCommands {
         override_usage = "tentgent adapter rm <ADAPTER_REF>"
     )]
     Rm {
+        /// Full adapter_ref or unique short-ref prefix.
         #[arg(value_name = "ADAPTER_REF")]
         reference: String,
     },

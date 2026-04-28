@@ -32,7 +32,7 @@ pub enum TrainLoraCommands {
         name = "run",
         about = "Run one managed LoRA training plan.",
         long_about = "Run one managed LoRA training plan by full ref or unique short-ref prefix. Tentgent creates run.toml, metrics.jsonl, raw.log, keeps raw backend logs out of the default CLI output, executes MLX plans through mlx_lm.lora, and executes safetensors plans through Transformers plus PEFT.",
-        override_usage = "tentgent train lora run <PLAN_REF> [--verbose] [--debug]"
+        override_usage = "tentgent train lora run <PLAN_REF> [-v] [-d]"
     )]
     Run(TrainLoraRunCommand),
 }
@@ -44,7 +44,7 @@ pub enum TrainLoraPlanCommands {
         name = "create",
         about = "Create a managed LoRA train plan.",
         long_about = "Create a managed LoRA train plan without running training. Tentgent resolves the model and dataset, chooses backend defaults, stores a plan.toml, and returns the plan ref. Use --review to preview before saving, or --interactive to edit common overrides before the final review.",
-        override_usage = "tentgent train lora plan create --model <MODEL_REF> --dataset <DATASET_REF> [OPTIONS]"
+        override_usage = "tentgent train lora plan create -m <MODEL_REF> -d <DATASET_REF> [OPTIONS]"
     )]
     Create(TrainLoraPlanCreateCommand),
     /// List managed LoRA train plans.
@@ -83,49 +83,49 @@ pub enum TrainLoraPlanCommands {
 #[derive(Debug, Args)]
 pub struct TrainLoraPlanCreateCommand {
     /// Managed model ref or unique short-ref prefix.
-    #[arg(long, value_name = "MODEL_REF")]
+    #[arg(short = 'm', long, value_name = "MODEL_REF")]
     pub model: String,
     /// Managed dataset ref or unique short-ref prefix.
-    #[arg(long, value_name = "DATASET_REF")]
+    #[arg(short = 'd', long, value_name = "DATASET_REF")]
     pub dataset: String,
     /// Optional human-readable plan name.
-    #[arg(long)]
+    #[arg(short = 'n', long)]
     pub name: Option<String>,
     /// Preview the generated plan and ask before saving it.
-    #[arg(long)]
+    #[arg(short = 'R', long)]
     pub review: bool,
     /// Prompt for common overrides, then review before saving.
-    #[arg(long)]
+    #[arg(short = 'i', long)]
     pub interactive: bool,
     /// Override dataset max sequence length.
-    #[arg(long, value_name = "TOKENS")]
+    #[arg(short = 'L', long, value_name = "TOKENS")]
     pub max_seq_length: Option<u32>,
     /// Train only assistant output tokens while keeping prompt tokens as context.
-    #[arg(long)]
+    #[arg(short = 'p', long)]
     pub mask_prompt: bool,
     /// Override LoRA rank.
-    #[arg(long, value_name = "RANK")]
+    #[arg(short = 'r', long, value_name = "RANK")]
     pub rank: Option<u32>,
     /// Override optimization learning rate.
-    #[arg(long, value_name = "LR")]
+    #[arg(short = 'l', long, value_name = "LR")]
     pub learning_rate: Option<f64>,
     /// Override per-device batch size.
-    #[arg(long, value_name = "N")]
+    #[arg(short = 'b', long, value_name = "N")]
     pub batch_size: Option<u32>,
     /// Override gradient accumulation steps.
-    #[arg(long, value_name = "N")]
+    #[arg(short = 'g', long, value_name = "N")]
     pub grad_accum: Option<u32>,
     /// Override max training steps.
-    #[arg(long, value_name = "STEPS")]
+    #[arg(short = 's', long, value_name = "STEPS")]
     pub max_steps: Option<u32>,
     /// Override random seed.
-    #[arg(long, value_name = "SEED")]
+    #[arg(short = 'S', long, value_name = "SEED")]
     pub seed: Option<u64>,
     /// Override MLX tuned layer count.
-    #[arg(long, value_name = "LAYERS")]
+    #[arg(short = 'N', long, value_name = "LAYERS")]
     pub num_layers: Option<u32>,
     /// Enable MLX gradient checkpointing.
-    #[arg(long)]
+    #[arg(short = 'c', long)]
     pub grad_checkpoint: bool,
     /// Enable PEFT 4-bit loading.
     #[arg(long)]
@@ -134,7 +134,7 @@ pub struct TrainLoraPlanCreateCommand {
     #[arg(long)]
     pub load_in_8bit: bool,
     /// Backend selection. Use auto unless you need to verify an explicit backend.
-    #[arg(long, value_enum, default_value_t = TrainBackendArg::Auto)]
+    #[arg(short = 'B', long, value_enum, default_value_t = TrainBackendArg::Auto)]
     pub backend: TrainBackendArg,
 }
 
@@ -144,10 +144,10 @@ pub struct TrainLoraRunCommand {
     #[arg(value_name = "PLAN_REF")]
     pub reference: String,
     /// Show eval, checkpoint, and backend summary events.
-    #[arg(long)]
+    #[arg(short = 'v', long)]
     pub verbose: bool,
     /// Stream raw backend output in addition to writing raw.log.
-    #[arg(long)]
+    #[arg(short = 'd', long)]
     pub debug: bool,
 }
 

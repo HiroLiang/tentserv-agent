@@ -4,6 +4,8 @@ This document collects repository-local developer commands that are useful while
 
 For user-facing setup and usage, start with the root [README.md](../../README.md).
 
+Run any command with `--help` or `-h` to see available short option aliases for that command.
+
 ## Local Runtime Home
 
 Run manual tests from the repository root.
@@ -131,18 +133,19 @@ Import a local `.jsonl` file or dataset directory:
 ```bash
 ./target/debug/tentgent dataset validate /path/to/dataset.jsonl
 ./target/debug/tentgent dataset validate /path/to/dataset-dir
-./target/debug/tentgent dataset template --task chat --language zh-TW --output /path/to/dataset-template.md
+./target/debug/tentgent dataset template -t chat -l zh-TW -o /path/to/dataset-template.md
 ./target/debug/tentgent dataset synth \
-  --provider openai \
-  --model gpt-4.1-mini \
-  --output /path/to/generated-dataset \
+  -p openai \
+  -m gpt-4.1-mini \
+  -o /path/to/generated-dataset \
   --timeout-seconds 300 \
-  --brief "Generate 20 concise support examples in Traditional Chinese."
+  -b "Generate 20 concise support examples in Traditional Chinese."
+./target/debug/tentgent dataset synth --print-prompt -b "Generate 20 concise support examples in Traditional Chinese."
 ./target/debug/tentgent dataset add /path/to/dataset.jsonl
 ./target/debug/tentgent dataset add /path/to/dataset-dir
 ```
 
-Use `dataset template` to generate the manual prompt for OpenAI, Claude, or another agent. Use `dataset synth` to call a provider directly and write a local package. Use `dataset validate` before `dataset add` when working with generated JSONL.
+Use `dataset template` to generate the manual prompt for OpenAI, Claude, or another agent. Its `--task` and `--language` options are prompt hints, not schema changes. Use `dataset synth` to call a provider directly and write a local package. Use `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. Failed provider parsing writes `_debug` files under an empty output directory. Use `dataset validate` before `dataset add` when working with generated JSONL.
 
 Inspect dataset state:
 

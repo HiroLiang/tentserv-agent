@@ -21,8 +21,9 @@ Implemented commands:
 
 ```text
 tentgent dataset validate <PATH>
-tentgent dataset template [--task <KIND>] [--language <LANG>] [--output <PATH>]
-tentgent dataset synth --provider <openai|anthropic|claude> --model <MODEL> --output <DIR> (--brief <TEXT> | --spec <PATH>) [OPTIONS]
+tentgent dataset template [-t|--task <KIND>] [-l|--language <LANG>] [-o|--output <PATH>]
+tentgent dataset synth -p|--provider <openai|anthropic|claude> -m|--model <MODEL> -o|--output <DIR> (-b|--brief <TEXT> | -s|--spec <PATH>) [OPTIONS]
+tentgent dataset synth -P|--print-prompt (-b|--brief <TEXT> | -s|--spec <PATH>) [OPTIONS]
 ```
 
 Planned provider-backed commands:
@@ -38,7 +39,7 @@ Command intent:
 - `template`
   Print a stable Markdown prompt users can paste into OpenAI, Claude, or another agent to create compliant JSONL.
 - `synth`
-  Call OpenAI or Claude directly and write a local dataset package.
+  Call OpenAI or Claude directly and write a local dataset package, or print the exact provider prompt with `--print-prompt`.
 - `eval`
   Ask a provider to review a generated or managed dataset and write a local report.
 
@@ -127,6 +128,28 @@ Implementation notes:
 - Rust CLI performs provider auth preflight and passes the selected key to the Python runtime through the provider environment variable.
 - Python writes only to a missing or empty output directory and emits a JSON summary for the Rust CLI to render.
 - The generated package contains the requested split JSONL plus `manifest.json`; the user must run `dataset validate` and `dataset add` explicitly.
+
+### Slice 4.1: Dataset Synth Debug And CLI Short Flags
+
+Harden `dataset synth` and improve command help after real provider testing.
+
+Status: implemented.
+
+Goals:
+
+- add `--print-prompt` / `-P` to show the exact provider prompt without auth or network calls
+- write provider parse-failure debug artifacts under an empty output directory
+- add conservative short aliases for common CLI options across command groups
+- keep `-h, --help` visible and ensure help text describes new aliases
+
+Review target:
+
+- users can copy/debug provider prompts and discover common short flags directly from `--help`
+
+Implementation notes:
+
+- Failed provider parsing writes `_debug/prompt.md`, `_debug/provider-output.raw.txt`, and `_debug/error.txt` when the requested output directory is missing or empty.
+- Common short flags now include examples such as `dataset synth -p/-m/-o/-b/-s`, `dataset template -t/-l/-o`, `server run -H/-a/-p/-d`, and `chat -m/-n/-T/-s`.
 
 ### Slice 5: Dataset Eval
 

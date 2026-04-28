@@ -11,6 +11,7 @@ pub enum ModelCommands {
         long_about = "Import a local file or directory into the managed model store. Tentgent copies the source into staging, builds a manifest, computes a content-derived model reference, and deduplicates if the same content already exists."
     )]
     Add {
+        /// Local model file or directory to import.
         #[arg(value_name = "PATH")]
         path: PathBuf,
     },
@@ -21,9 +22,11 @@ pub enum ModelCommands {
         long_about = "Pull a full model snapshot from Hugging Face into the managed store. Tentgent resolves the repository revision first, downloads that exact snapshot, computes a content-derived model reference, and deduplicates identical content."
     )]
     Pull {
+        /// Hugging Face model repository id, such as owner/name.
         #[arg(value_name = "MODEL_FULL_NAME")]
         repo_id: String,
-        #[arg(long, value_name = "REV")]
+        /// Hugging Face revision to resolve before downloading.
+        #[arg(short = 'r', long, value_name = "REV")]
         revision: Option<String>,
     },
     /// List managed models in the local Tentgent model store.
@@ -42,6 +45,7 @@ pub enum ModelCommands {
         long_about = "Remove one managed model and its source indexes by hash reference. Tentgent accepts either the full model_ref hash or a unique short_ref hash prefix, deletes the canonical store directory under TENTGENT_HOME/models/store/<model_ref>, and removes matching local and Hugging Face source index entries."
     )]
     Rm {
+        /// Full model_ref or unique short-ref prefix.
         #[arg(value_name = "HASH")]
         hash: String,
     },
@@ -52,6 +56,7 @@ pub enum ModelCommands {
         long_about = "Inspect one managed model by full or short reference. Tentgent accepts either the full model_ref or a unique short_ref prefix and prints metadata, source details, and store paths."
     )]
     Inspect {
+        /// Full model_ref or unique short-ref prefix.
         #[arg(value_name = "REF")]
         reference: String,
     },
