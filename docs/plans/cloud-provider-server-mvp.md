@@ -85,6 +85,8 @@ Review target:
 
 Wire provider auth into server launch.
 
+Status: implemented in the active workspace for auth preflight. Environment handoff is constrained to the future cloud runtime process launch because Slice 1 still blocks before starting cloud runtime code.
+
 Goals:
 
 - resolve effective provider secret through existing auth rules

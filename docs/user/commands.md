@@ -90,6 +90,16 @@ tentgent server ps
 tentgent server stop <server-ref>
 ```
 
+Prepare a cloud provider server spec:
+
+```bash
+tentgent auth openai set
+tentgent server run openai:gpt-4.1-mini --host 127.0.0.1 --port 8780
+tentgent server ls
+```
+
+Cloud provider server launch currently verifies provider auth before runtime work and then stops at the planned cloud HTTP handler boundary.
+
 ## Adapters
 
 Import or pull adapters:

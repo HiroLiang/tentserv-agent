@@ -4,9 +4,12 @@ use clap::CommandFactory;
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
 use miette::{miette, IntoDiagnostic};
-use tentgent_core::server::{
-    LaunchMode, ServerInspection, ServerManager, ServerPrepareOutcome, ServerRunRequest,
-    ServerSpec, ServerStopOutcome, ServerSummary,
+use tentgent_core::{
+    auth::{AuthManager, KeySource, KeyValidationState, Provider},
+    server::{
+        CloudProvider, LaunchMode, ServerInspection, ServerManager, ServerPrepareOutcome,
+        ServerRunRequest, ServerSpec, ServerStopOutcome, ServerSummary,
+    },
 };
 use tokio::process::Command;
 
@@ -50,6 +53,10 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
 
             let manager = ServerManager::new(home.as_deref()).into_diagnostic()?;
             let inspection = manager.resolve_for_start(&reference).into_diagnostic()?;
+            if inspection.spec.is_cloud() {
+                preflight_cloud_runtime_auth(&inspection.spec).await?;
+                return Err(cloud_runtime_launch_pending(&inspection.spec));
+            }
             ensure_local_runtime_launchable(&inspection.spec)?;
             let python_runtime = resolve_python_runtime()?;
             let python_interpreter =
@@ -116,6 +123,11 @@ async fn run_server(command: ServerRunCommand) -> miette::Result<()> {
     let detached = command.detach;
     render_server_spec_outcome(&outcome, detached);
 
+    if outcome.spec.is_cloud() {
+        preflight_cloud_runtime_auth(&outcome.spec).await?;
+        return Err(cloud_runtime_launch_pending(&outcome.spec));
+    }
+
     ensure_local_runtime_launchable(&outcome.spec)?;
 
     let python_runtime = resolve_python_runtime()?;
@@ -162,8 +174,8 @@ fn render_server_spec_outcome(outcome: &ServerPrepareOutcome, detached: bool) {
     );
     if outcome.spec.is_cloud() {
         println!(
-            "{} cloud runtime launch is planned for the next slice.",
-            style("ready").green().bold()
+            "{} cloud provider auth will be verified before runtime launch.",
+            style("checking").yellow().bold()
         );
     } else {
         println!(
@@ -592,14 +604,85 @@ fn server_process_command(
 fn ensure_local_runtime_launchable(spec: &ServerSpec) -> miette::Result<&str> {
     spec.local_model_ref().ok_or_else(|| {
         if spec.is_cloud() {
+            cloud_runtime_launch_pending(spec)
+        } else {
             miette!(
-                "cloud provider runtime launch is planned for the next slice; server spec `{}` is ready",
+                "local server spec `{}` is missing model_ref",
                 spec.short_ref
             )
-        } else {
-            miette!("local server spec `{}` is missing model_ref", spec.short_ref)
         }
     })
+}
+
+async fn preflight_cloud_runtime_auth(spec: &ServerSpec) -> miette::Result<()> {
+    let cloud_provider = spec.provider.ok_or_else(|| {
+        miette!(
+            "cloud server spec `{}` is missing provider metadata",
+            spec.short_ref
+        )
+    })?;
+    let provider = auth_provider_for_cloud(cloud_provider);
+    let auth = AuthManager::new().into_diagnostic()?;
+    let Some((source, secret)) = auth.effective_secret(provider).into_diagnostic()? else {
+        return Err(miette!(
+            "{} key is missing for cloud server `{}`; run `tentgent auth {} set` or set `{}` before launch",
+            provider.display_name(),
+            spec.short_ref,
+            provider.cli_name(),
+            provider.env_var()
+        ));
+    };
+
+    match auth.validate_secret(provider, &secret).await {
+        KeyValidationState::Verified => {
+            render_cloud_auth_preflight(provider, source);
+            Ok(())
+        }
+        KeyValidationState::Invalid { reason } => Err(miette!(
+            "{} key from {} is invalid for cloud server `{}`: {}",
+            provider.display_name(),
+            source,
+            spec.short_ref,
+            reason
+        )),
+        KeyValidationState::Unknown { reason } => Err(miette!(
+            "{} key from {} could not be verified for cloud server `{}`: {}",
+            provider.display_name(),
+            source,
+            spec.short_ref,
+            reason
+        )),
+        KeyValidationState::Missing => Err(miette!(
+            "{} key is missing for cloud server `{}`; run `tentgent auth {} set` or set `{}` before launch",
+            provider.display_name(),
+            spec.short_ref,
+            provider.cli_name(),
+            provider.env_var()
+        )),
+    }
+}
+
+fn render_cloud_auth_preflight(provider: Provider, source: KeySource) {
+    println!(
+        "{} {} key verified from {} for cloud runtime.",
+        style("verified").green().bold(),
+        provider.display_name(),
+        source
+    );
+}
+
+fn auth_provider_for_cloud(provider: CloudProvider) -> Provider {
+    match provider {
+        CloudProvider::OpenAI => Provider::OpenAI,
+        CloudProvider::Anthropic => Provider::Anthropic,
+    }
+}
+
+fn cloud_runtime_launch_pending(spec: &ServerSpec) -> miette::Report {
+    miette!(
+        "cloud provider runtime HTTP handler is planned for the next slice; server spec `{}` passed auth preflight",
+        spec.short_ref
+    )
 }
 
 fn is_help_token(value: &str) -> bool {

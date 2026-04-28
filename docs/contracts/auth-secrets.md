@@ -35,8 +35,15 @@ Use these environment variables:
 
 - On macOS, a system Keychain prompt is expected when Tentgent reads a stored secret from the system keychain.
 - Commands that only inspect local model-store metadata, such as `model ls` and `model inspect`, should not trigger provider-secret reads.
-- Commands that resolve provider secrets, such as `auth <provider>` status checks or `model pull` for Hugging Face, may trigger the prompt when no environment-variable override is present.
+- Commands that resolve provider secrets, such as `auth <provider>` status checks, `model pull` for Hugging Face, or cloud provider server launch preflight, may trigger the prompt when no environment-variable override is present.
 - Environment-variable overrides should bypass Keychain reads because secret resolution prefers `.env/env` first and the system keychain second.
+
+## Cloud Server Launch Rule
+
+- Cloud provider server specs must not store provider secrets.
+- `server run` and `server start` must resolve and validate the effective provider secret before starting cloud provider runtime work.
+- Missing, invalid, and unknown validation states must fail before runtime launch.
+- When cloud runtime process launch is implemented, the selected secret should be passed to the child process only through the provider's standard environment variable.
 
 ## CLI Surface
 
