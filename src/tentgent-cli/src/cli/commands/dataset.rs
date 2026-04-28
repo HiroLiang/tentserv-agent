@@ -66,6 +66,8 @@ pub enum DatasetCommands {
         max_tokens: Option<u32>,
         #[arg(long, value_name = "FLOAT", default_value_t = 0.0)]
         temperature: f32,
+        #[arg(long, value_name = "SECONDS", default_value_t = 180.0)]
+        timeout_seconds: f32,
     },
     /// List managed datasets.
     #[command(

@@ -81,6 +81,7 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             split,
             max_tokens,
             temperature,
+            timeout_seconds,
         } => {
             let auth = preflight_dataset_provider_auth(&provider).await?;
             let outcome = run_dataset_synth_runtime(
@@ -92,6 +93,7 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
                 &split,
                 max_tokens,
                 temperature,
+                timeout_seconds,
             )
             .await?;
             render_synth_outcome(&outcome);
@@ -767,6 +769,7 @@ async fn run_dataset_synth_runtime(
     split: &str,
     max_tokens: Option<u32>,
     temperature: f32,
+    timeout_seconds: f32,
 ) -> Result<Value> {
     let python_runtime = resolve_python_runtime()?;
     let python = require_python_interpreter(&python_runtime, "python dataset synth runtime")?;
@@ -790,6 +793,8 @@ async fn run_dataset_synth_runtime(
         .arg(split)
         .arg("--temperature")
         .arg(temperature.to_string())
+        .arg("--timeout-seconds")
+        .arg(timeout_seconds.to_string())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);

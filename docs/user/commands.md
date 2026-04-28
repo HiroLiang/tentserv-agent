@@ -124,6 +124,7 @@ tentgent dataset synth \
   --provider openai \
   --model gpt-4.1-mini \
   --output ./generated-dataset \
+  --timeout-seconds 300 \
   --brief "Generate 20 concise support examples in Traditional Chinese."
 tentgent dataset add /path/to/dataset.jsonl
 tentgent dataset add /path/to/dataset-dir

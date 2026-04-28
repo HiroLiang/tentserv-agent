@@ -136,6 +136,7 @@ Import a local `.jsonl` file or dataset directory:
   --provider openai \
   --model gpt-4.1-mini \
   --output /path/to/generated-dataset \
+  --timeout-seconds 300 \
   --brief "Generate 20 concise support examples in Traditional Chinese."
 ./target/debug/tentgent dataset add /path/to/dataset.jsonl
 ./target/debug/tentgent dataset add /path/to/dataset-dir

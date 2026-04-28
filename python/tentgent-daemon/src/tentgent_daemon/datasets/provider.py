@@ -15,6 +15,7 @@ from typing import Any, Literal
 from tentgent_daemon.providers import (
     ProviderChatClient,
     ProviderChatRequest,
+    UrlLibProviderTransport,
     create_provider_chat_client,
 )
 from tentgent_daemon.runtime.chat import Message
@@ -37,6 +38,7 @@ class DatasetProviderCallRequest:
     messages: tuple[Message, ...]
     max_tokens: int | None = None
     temperature: float | None = None
+    timeout_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,7 @@ class DatasetJsonlGenerationRequest:
     split: DatasetSplitKind = "train"
     max_tokens: int | None = None
     temperature: float | None = 0.0
+    timeout_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -100,7 +103,15 @@ def call_dataset_provider(
     chat_client = client
     if chat_client is None:
         secret = require_non_empty(api_key or "", "api_key")
-        chat_client = create_provider_chat_client(provider, secret)
+        chat_client = create_provider_chat_client(
+            provider,
+            secret,
+            transport=UrlLibProviderTransport(
+                timeout_seconds=request.timeout_seconds
+                if request.timeout_seconds is not None
+                else 180.0
+            ),
+        )
 
     response = chat_client.generate(
         ProviderChatRequest(
@@ -130,6 +141,7 @@ def generate_dataset_jsonl(
             ),
             max_tokens=request.max_tokens,
             temperature=request.temperature,
+            timeout_seconds=request.timeout_seconds,
         ),
         api_key=api_key,
         client=client,

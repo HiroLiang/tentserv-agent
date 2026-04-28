@@ -42,6 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 split=args.split,
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
+                timeout_seconds=args.timeout_seconds,
             ),
             api_key=provider_api_key(args.provider),
         )
@@ -98,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--max-tokens", type=int)
     parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--timeout-seconds", type=float, default=180.0)
     return parser
 
 
