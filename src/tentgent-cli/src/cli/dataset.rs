@@ -1,4 +1,5 @@
 use std::{
+    env,
     path::{Path, PathBuf},
     process::Stdio,
 };
@@ -769,6 +770,8 @@ async fn run_dataset_synth_runtime(
 ) -> Result<Value> {
     let python_runtime = resolve_python_runtime()?;
     let python = require_python_interpreter(&python_runtime, "python dataset synth runtime")?;
+    let output_path = absolutize_cli_path(output)?;
+    let spec_path = spec.map(absolutize_cli_path).transpose()?;
 
     let mut process = Command::new(&python);
     process
@@ -782,7 +785,7 @@ async fn run_dataset_synth_runtime(
         .arg("--model")
         .arg(model)
         .arg("--output")
-        .arg(output)
+        .arg(&output_path)
         .arg("--split")
         .arg(split)
         .arg("--temperature")
@@ -794,7 +797,7 @@ async fn run_dataset_synth_runtime(
     if let Some(brief) = brief {
         process.arg("--brief").arg(brief);
     }
-    if let Some(spec) = spec {
+    if let Some(spec) = &spec_path {
         process.arg("--spec").arg(spec);
     }
     if let Some(max_tokens) = max_tokens {
@@ -820,6 +823,14 @@ async fn run_dataset_synth_runtime(
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     serde_json::from_str::<Value>(&stdout)
         .map_err(|err| miette!("dataset synth runtime returned invalid JSON: {err}\n\n{stdout}"))
+}
+
+fn absolutize_cli_path(path: &Path) -> Result<PathBuf> {
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
+    }
+
+    Ok(env::current_dir().into_diagnostic()?.join(path))
 }
 
 fn auth_provider_for_dataset_synth(provider: &str) -> Result<(Provider, &'static str)> {
