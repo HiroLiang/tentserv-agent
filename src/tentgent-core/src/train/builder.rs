@@ -87,7 +87,7 @@ pub fn build_plan(
             validation_examples,
             source_path: dataset.source_path.display().to_string(),
             max_seq_length: defaults.max_seq_length,
-            mask_prompt: false,
+            mask_prompt: true,
         },
         lora: defaults.lora,
         optimization: defaults.optimization,

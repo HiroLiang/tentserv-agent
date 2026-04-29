@@ -100,9 +100,12 @@ pub struct TrainLoraPlanCreateCommand {
     /// Override dataset max sequence length.
     #[arg(short = 'L', long, value_name = "TOKENS")]
     pub max_seq_length: Option<u32>,
-    /// Train only assistant output tokens while keeping prompt tokens as context.
-    #[arg(short = 'p', long)]
+    /// Explicitly keep the default behavior: train only assistant output tokens while keeping prompt/context tokens visible.
+    #[arg(short = 'p', long, conflicts_with = "no_mask_prompt")]
     pub mask_prompt: bool,
+    /// Opt out of prompt masking and train full rendered text, including prompt/context framing tokens.
+    #[arg(long, conflicts_with = "mask_prompt")]
+    pub no_mask_prompt: bool,
     /// Override LoRA rank.
     #[arg(short = 'r', long, value_name = "RANK")]
     pub rank: Option<u32>,
@@ -155,7 +158,11 @@ impl TrainLoraPlanCreateCommand {
     pub fn overrides(&self) -> LoraTrainOverrides {
         LoraTrainOverrides {
             max_seq_length: self.max_seq_length,
-            mask_prompt: self.mask_prompt.then_some(true),
+            mask_prompt: if self.no_mask_prompt {
+                Some(false)
+            } else {
+                self.mask_prompt.then_some(true)
+            },
             rank: self.rank,
             learning_rate: self.learning_rate,
             batch_size: self.batch_size,

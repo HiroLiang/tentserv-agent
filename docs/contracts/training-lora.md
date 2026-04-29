@@ -97,7 +97,7 @@ The canonical chat and tool-use dataset schema is [dataset-schema.md](./dataset-
 
 PEFT and MLX should both consume `tentgent.chat.v1` records through the shared Tentgent renderer. They must render the same canonical record consistently, including tool calls and tool results, before applying backend-specific tokenization or file-writing details.
 
-When `mask_prompt = true`, records should end with a final assistant answer; prompt tokens are used as context but excluded from loss. Only the final assistant answer is trainable. Use `--mask-prompt` during plan creation to enable this behavior.
+`mask_prompt = true` is the default for new LoRA plans. Records should end with a final assistant answer; prompt and context tokens remain visible to the model but are excluded from loss. Only the final assistant answer is trainable. This keeps role labels, tool context, and generation prompts out of the target output while still providing them as input context. Use `--no-mask-prompt` only when intentionally training a plain full-text continuation dataset.
 
 Legacy `prompt` plus `completion` and plain `text` records may remain accepted for simple datasets, but new generated datasets should use `messages`.
 
@@ -124,7 +124,7 @@ The initial automatic profile uses model size and detected train-example count. 
 
 `plan create` may override selected fields before identity is computed:
 
-- shared: `--max-seq-length`, `--mask-prompt`, `--rank`, `--learning-rate`, `--batch-size`, `--grad-accum`, `--max-steps`, `--seed`
+- shared: `--max-seq-length`, `--mask-prompt`, `--no-mask-prompt`, `--rank`, `--learning-rate`, `--batch-size`, `--grad-accum`, `--max-steps`, `--seed`
 - MLX: `--num-layers`, `--grad-checkpoint`
 - PEFT: `--load-in-4bit`, `--load-in-8bit`
 
@@ -137,7 +137,8 @@ Override meanings:
 - `--max-steps`: training step limit
 - `--seed`: reproducibility seed
 - `--max-seq-length`: token-length cap for training examples
-- `--mask-prompt`: keep prompt/context visible to the model but train loss only on assistant output
+- `--mask-prompt`: keep prompt/context visible to the model but train loss only on assistant output; this is the default for new plans
+- `--no-mask-prompt`: train full rendered text, including prompt/context framing tokens
 - `--num-layers`: MLX layer count to tune
 - `--grad-checkpoint`: MLX memory reduction at a speed cost
 - `--load-in-4bit` / `--load-in-8bit`: PEFT base-model quantized loading; mutually exclusive

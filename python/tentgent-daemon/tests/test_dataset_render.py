@@ -99,6 +99,31 @@ class DatasetRenderTests(unittest.TestCase):
 
         self.assertIn("Assistant tool_call call_1 get_profile", rendered["text"])
 
+    def test_mask_prompt_keeps_context_out_of_completion_target(self) -> None:
+        record = {
+            "schema": "tentgent.chat.v1",
+            "messages": [
+                {"role": "system", "content": "Return JSON only."},
+                {"role": "user", "content": "Summarize Taipei in JSON."},
+                {
+                    "role": "assistant",
+                    "content": '{"city":"Taipei","summary":"compact"}',
+                },
+            ],
+        }
+
+        rendered = render_backend_record(record, mask_prompt=True)
+
+        self.assertIn("System: Return JSON only.", rendered["prompt"])
+        self.assertIn("User: Summarize Taipei in JSON.", rendered["prompt"])
+        self.assertTrue(rendered["prompt"].rstrip().endswith("Assistant:"))
+        self.assertEqual(
+            rendered["completion"],
+            '{"city":"Taipei","summary":"compact"}',
+        )
+        self.assertNotIn("Assistant:", rendered["completion"])
+        self.assertNotIn("User:", rendered["completion"])
+
 
 def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text(

@@ -182,4 +182,4 @@ Tentgent auto-selects the backend from the model format: `mlx` models use MLX, `
 
 Common plan overrides: `--rank`, `--learning-rate`, `--batch-size`, `--grad-accum`, `--max-steps`, `--seed`, and `--max-seq-length`.
 
-Use `--mask-prompt` for chat-style datasets when you want the model to see system, user, and tool context but train loss only on assistant output.
+New LoRA plans mask prompt/context by default: the model still sees system, user, and tool context, but train loss only applies to the final assistant output. Use `--no-mask-prompt` only for plain continuation experiments where role labels and prompt framing should also be trained.
