@@ -23,88 +23,131 @@ from .session import ChatRequestPayload, RuntimeSession
 
 def handle_chat_request(raw_body: bytes, session: RuntimeSession) -> tuple[HTTPStatus, dict[str, Any]]:
     try:
-        payload = json.loads(raw_body.decode("utf-8"))
-    except json.JSONDecodeError as exc:
+        request = decode_chat_request(raw_body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         return (
             HTTPStatus.BAD_REQUEST,
             {"error": "invalid_json", "message": str(exc)},
         )
-
-    try:
-        request = parse_chat_request(payload)
     except ValueError as exc:
         return (
             HTTPStatus.BAD_REQUEST,
             {"error": "invalid_request", "message": str(exc)},
         )
 
+    return handle_parsed_chat_request(request, session)
+
+
+def decode_chat_request(raw_body: bytes) -> ChatRequestPayload:
+    payload = json.loads(raw_body.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("request body must be a JSON object")
+    return parse_chat_request(payload)
+
+
+def handle_parsed_chat_request(
+    request: ChatRequestPayload,
+    session: RuntimeSession,
+) -> tuple[HTTPStatus, dict[str, Any]]:
     if request.stream:
-        return (
-            HTTPStatus.NOT_IMPLEMENTED,
-            {
-                "error": "stream_not_implemented",
-                "message": "Slice 5 does not define the HTTP streaming protocol yet.",
-            },
+        return stream_not_implemented_response(
+            "HTTP chat streaming is handled by the SSE server path."
         )
 
     try:
         text = session.generate(request)
-    except AdapterNotFoundError as exc:
-        return (
-            HTTPStatus.NOT_FOUND,
-            {"error": "adapter_not_found", "message": str(exc)},
-        )
-    except AdapterAmbiguousError as exc:
-        return (
-            HTTPStatus.CONFLICT,
-            {"error": "adapter_ambiguous", "message": str(exc)},
-        )
-    except AdapterIncompatibleError as exc:
-        return (
-            HTTPStatus.CONFLICT,
-            {"error": "adapter_incompatible", "message": str(exc)},
-        )
-    except AdapterBackendUnsupportedError as exc:
-        return (
-            HTTPStatus.NOT_IMPLEMENTED,
-            {"error": "adapter_backend_unsupported", "message": str(exc)},
-        )
-    except AdapterExecutionNotImplementedError as exc:
-        return (
-            HTTPStatus.NOT_IMPLEMENTED,
-            {"error": "adapter_execution_not_implemented", "message": str(exc)},
-        )
-    except ProviderRequestError as exc:
-        return (
-            HTTPStatus.BAD_REQUEST,
-            {"error": "provider_request_invalid", "message": str(exc)},
-        )
-    except ProviderResponseError as exc:
-        return (
-            HTTPStatus.BAD_GATEWAY,
-            {"error": "provider_response_failed", "message": str(exc)},
-        )
-    except ProviderTransportError as exc:
-        return (
-            HTTPStatus.BAD_GATEWAY,
-            {"error": "provider_transport_failed", "message": str(exc)},
-        )
-    except NotImplementedError as exc:
-        return (
-            HTTPStatus.NOT_IMPLEMENTED,
-            {"error": "not_implemented", "message": str(exc)},
-        )
     except Exception as exc:  # pragma: no cover - backend runtime surface.
-        return (
-            HTTPStatus.INTERNAL_SERVER_ERROR,
-            {"error": "generation_failed", "message": str(exc)},
-        )
+        return chat_generation_error_response(exc)
 
     return (
         HTTPStatus.OK,
         {
             "text": text,
             "stream": False,
+        },
+    )
+
+
+def chat_generation_error_response(exc: Exception) -> tuple[HTTPStatus, dict[str, Any]]:
+    if isinstance(exc, AdapterNotFoundError):
+        return (
+            HTTPStatus.NOT_FOUND,
+            {"error": "adapter_not_found", "message": str(exc)},
+        )
+    if isinstance(exc, AdapterAmbiguousError):
+        return (
+            HTTPStatus.CONFLICT,
+            {"error": "adapter_ambiguous", "message": str(exc)},
+        )
+    if isinstance(exc, AdapterIncompatibleError):
+        return (
+            HTTPStatus.CONFLICT,
+            {"error": "adapter_incompatible", "message": str(exc)},
+        )
+    if isinstance(exc, AdapterBackendUnsupportedError):
+        return (
+            HTTPStatus.NOT_IMPLEMENTED,
+            {"error": "adapter_backend_unsupported", "message": str(exc)},
+        )
+    if isinstance(exc, AdapterExecutionNotImplementedError):
+        return (
+            HTTPStatus.NOT_IMPLEMENTED,
+            {"error": "adapter_execution_not_implemented", "message": str(exc)},
+        )
+    if isinstance(exc, ProviderRequestError):
+        return (
+            HTTPStatus.BAD_REQUEST,
+            {"error": "provider_request_invalid", "message": str(exc)},
+        )
+    if isinstance(exc, ProviderResponseError):
+        return (
+            HTTPStatus.BAD_GATEWAY,
+            {"error": "provider_response_failed", "message": str(exc)},
+        )
+    if isinstance(exc, ProviderTransportError):
+        return (
+            HTTPStatus.BAD_GATEWAY,
+            {"error": "provider_transport_failed", "message": str(exc)},
+        )
+    if isinstance(exc, NotImplementedError):
+        return (
+            HTTPStatus.NOT_IMPLEMENTED,
+            {"error": "not_implemented", "message": str(exc)},
+        )
+    return (
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        {"error": "generation_failed", "message": str(exc)},
+    )
+
+
+def stream_preflight_error_response(exc: Exception) -> tuple[HTTPStatus, dict[str, Any]]:
+    if isinstance(
+        exc,
+        (
+            AdapterNotFoundError,
+            AdapterAmbiguousError,
+            AdapterIncompatibleError,
+            AdapterBackendUnsupportedError,
+            AdapterExecutionNotImplementedError,
+            ProviderRequestError,
+            ProviderResponseError,
+            ProviderTransportError,
+        ),
+    ):
+        return chat_generation_error_response(exc)
+    if isinstance(exc, NotImplementedError):
+        return stream_not_implemented_response(str(exc))
+    return chat_generation_error_response(exc)
+
+
+def stream_not_implemented_response(
+    message: str,
+) -> tuple[HTTPStatus, dict[str, Any]]:
+    return (
+        HTTPStatus.NOT_IMPLEMENTED,
+        {
+            "error": "stream_not_implemented",
+            "message": message,
         },
     )
 

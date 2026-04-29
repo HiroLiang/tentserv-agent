@@ -11,7 +11,7 @@ Do this before provider-backed dataset synthesis. The provider client, auth pref
 - Add OpenAI and Anthropic as cloud runtime providers for `tentgent server`.
 - Reuse `auth openai` and `auth anthropic` for secret resolution.
 - Keep provider secrets out of persisted server specs.
-- Reuse the existing non-streaming `POST /v1/chat` request shape.
+- Reuse the existing `POST /v1/chat` request shape.
 - Keep local managed models separate from cloud provider model names.
 
 ## Non-Goals
@@ -20,7 +20,7 @@ Do this before provider-backed dataset synthesis. The provider client, auth pref
 - Do not support LoRA adapters for cloud provider servers.
 - Do not implement cloud dataset generation in this track.
 - Do not implement full OpenAI-compatible API routing.
-- Do not implement streaming in the first pass.
+- Keep streaming work in the separate HTTP chat streaming plan.
 
 ## Command Shape
 
@@ -129,7 +129,7 @@ Goals:
 - keep `GET /healthz` meaningful for cloud servers
 - use provider client generation for `POST /v1/chat`
 - return `501` for adapter requests against cloud runtimes
-- return `501 stream_not_implemented` for `stream=true`
+- delegate `stream=true` behavior to the HTTP chat streaming plan
 
 Review target:
 
@@ -169,7 +169,7 @@ Review target:
 
 Defer streaming until the non-streaming path is stable.
 
-Status: split into [http-chat-streaming-mvp.md](./http-chat-streaming-mvp.md).
+Status: completed in [http-chat-streaming-mvp.md](./archive/http-chat-streaming-mvp.md).
 
 Goals:
 

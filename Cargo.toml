@@ -10,7 +10,7 @@ default-members = ["src/tentgent-cli"]
 [workspace.package]
 edition = "2021"
 rust-version = "1.81"
-version = "0.1.3"
+version = "0.1.4"
 
 [workspace.dependencies]
 clap = { version = "4.5", features = ["derive"] }

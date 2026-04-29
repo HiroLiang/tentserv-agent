@@ -26,3 +26,5 @@ Use this directory for completed plans that are no longer the active execution t
   Completed adapter, dataset, LoRA training, and request-time adapter execution milestone.
 - [cloud-dataset-mvp.md](./cloud-dataset-mvp.md)
   Completed OpenAI/Claude-assisted dataset validation, prompt-template generation, synthesis, debugging, and evaluation.
+- [http-chat-streaming-mvp.md](./http-chat-streaming-mvp.md)
+  Completed Server-Sent Events streaming for local base-model, local adapter, and cloud provider chat.

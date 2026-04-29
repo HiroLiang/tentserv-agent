@@ -333,7 +333,16 @@ The server exposes:
 - `GET /healthz`
 - `POST /v1/chat`
 
-HTTP `stream=true` is not implemented yet and returns `501`.
+HTTP `stream=true` returns Server-Sent Events for local runtimes, compatible
+local adapters, and OpenAI or Anthropic cloud provider runtimes.
+
+Smoke-test streaming with:
+
+```bash
+curl -N http://127.0.0.1:8000/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":32,"stream":true}'
+```
 
 ## Documentation Rules
 

@@ -55,7 +55,9 @@ Environment variables are read when a process starts. Tentgent does not rewrite 
 - `gguf` models run through `llama-cpp-python` when that dependency is installed.
 - PEFT LoRA adapters can be selected per request with `adapter_ref`.
 - MLX adapters can be selected per request; changing adapters reloads the MLX model for correctness.
-- HTTP `/v1/chat` is non-streaming; `stream=true` currently returns `501`.
+- HTTP `/v1/chat` returns non-streaming JSON by default.
+- Local base-model and compatible adapter requests can use `stream=true` for Server-Sent Events.
+- OpenAI and Anthropic cloud provider runtimes can use the same `stream=true` Server-Sent Events shape.
 - Windows x86_64 is packaged, but MLX is blocked on Windows.
 
 ## Keychain Prompts

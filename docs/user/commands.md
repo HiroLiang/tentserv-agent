@@ -83,6 +83,37 @@ curl -s http://127.0.0.1:8780/v1/chat \
   }'
 ```
 
+Stream a local base-model response with Server-Sent Events:
+
+```bash
+curl -N http://127.0.0.1:8780/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "幫我列三個今天下午安排工作的建議。"}
+    ],
+    "max_tokens": 160,
+    "temperature": 0.2,
+    "stream": true
+  }'
+```
+
+Stream with a compatible local adapter:
+
+```bash
+curl -N http://127.0.0.1:8780/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "請用繁體中文簡短介紹你自己。"}
+    ],
+    "adapter_ref": "<adapter-ref>",
+    "max_tokens": 128,
+    "temperature": 0.0,
+    "stream": true
+  }'
+```
+
 Use background server mode:
 
 ```bash
@@ -101,6 +132,24 @@ tentgent server ls
 ```
 
 Cloud provider servers run as local HTTP proxies. Provider keys are resolved at launch and are not written to `server.toml`.
+Cloud provider servers support the same `stream=true` SSE response shape as local servers.
+Cloud provider servers do not support `adapter_ref`; adapters are local-runtime only.
+
+Stream from a cloud provider server:
+
+```bash
+curl -N http://127.0.0.1:8780/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "messages": [
+      {"role": "system", "content": "Be concise."},
+      {"role": "user", "content": "Say hello in Traditional Chinese."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "stream": true
+  }'
+```
 
 ## Adapters
 

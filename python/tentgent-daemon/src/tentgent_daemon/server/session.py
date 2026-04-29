@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -123,6 +124,42 @@ class RuntimeSession:
             self._mark_activity_locked()
             return text
 
+    def stream_generate(self, payload: ChatRequestPayload) -> Iterator[str]:
+        with self._lock:
+            if self._config.is_cloud:
+                return self._stream_generate_cloud_locked(payload)
+
+            self._release_if_idle_locked()
+            adapter = self._resolve_adapter_request_locked(payload.adapter_ref)
+            self._ensure_loaded_locked()
+            assert self._backend is not None
+            self._backend.select_adapter(adapter)
+            request = ChatRequest(
+                model_ref=_require_local_model_ref(self._config),
+                messages=payload.messages,
+                max_tokens=payload.max_tokens,
+                temperature=payload.temperature,
+                adapter_ref=adapter.adapter_ref if adapter else None,
+            )
+
+        return self._stream_generate_local(request, adapter)
+
+    def _stream_generate_local(
+        self,
+        request: ChatRequest,
+        adapter: StoredAdapterRecord | None,
+    ) -> Iterator[str]:
+        with self._lock:
+            self._ensure_loaded_locked()
+            assert self._backend is not None
+            self._backend.select_adapter(adapter)
+            try:
+                for chunk in self._backend.stream_generate(request):
+                    if chunk:
+                        yield chunk
+            finally:
+                self._mark_activity_locked()
+
     def _resolve_adapter_request_locked(
         self,
         adapter_ref: str | None,
@@ -190,6 +227,31 @@ class RuntimeSession:
         )
         self._mark_activity_locked()
         return response.text
+
+    def _stream_generate_cloud_locked(self, payload: ChatRequestPayload) -> Iterator[str]:
+        if payload.adapter_ref:
+            raise AdapterExecutionNotImplementedError(
+                "cloud provider runtimes do not support adapter_ref"
+            )
+        assert self._provider_client is not None
+        chunks = self._provider_client.stream_generate(
+            ProviderChatRequest(
+                model=_require_cloud_field(self._config.provider_model, "provider_model"),
+                messages=payload.messages,
+                max_tokens=payload.max_tokens,
+                temperature=payload.temperature,
+            )
+        )
+        return self._stream_cloud(chunks)
+
+    def _stream_cloud(self, chunks: Iterator[str]) -> Iterator[str]:
+        try:
+            for chunk in chunks:
+                if chunk:
+                    yield chunk
+        finally:
+            with self._lock:
+                self._mark_activity_locked()
 
 
 def _utc_now() -> str:

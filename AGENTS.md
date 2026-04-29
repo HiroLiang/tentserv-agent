@@ -74,8 +74,6 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
-- `docs/plans/http-chat-streaming-mvp.md`
-  Highest-priority active plan for adding Server-Sent Events streaming to `POST /v1/chat`.
 - `docs/plans/cloud-provider-server-mvp.md`
   Active polish and documentation plan for exposing OpenAI and Claude through local `tentgent server` chat.
 - `docs/plans/http-daemon-mvp.md`
@@ -84,6 +82,8 @@ Key current documents:
   Future terminal UI plan for selectable workflows and coarse chat session context management.
 - `docs/plans/archive/README.md`
   Router for completed plans that should be consulted only when historical implementation context is needed.
+- `docs/plans/archive/http-chat-streaming-mvp.md`
+  Completed Server-Sent Events streaming plan for local base-model, local adapter, and cloud provider chat.
 
 ## Project Naming
 

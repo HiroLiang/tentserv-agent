@@ -20,8 +20,50 @@ Request body:
 }
 ```
 
-Responses are JSON encoded as UTF-8. Non-ASCII text should remain readable in
-the response body rather than being escaped as `\uXXXX` sequences.
+Non-streaming responses are JSON encoded as UTF-8. Non-ASCII text should remain
+readable in the response body rather than being escaped as `\uXXXX` sequences.
+
+## Streaming Contract
+
+When `stream = true` is supported by the selected runtime, the response uses
+Server-Sent Events:
+
+```text
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-cache
+```
+
+Delta events carry incremental text:
+
+```text
+event: delta
+data: {"delta":"..."}
+```
+
+Completion events end the stream:
+
+```text
+event: done
+data: {"finish_reason":"stop"}
+```
+
+If a runtime error happens after the stream has started, the server emits an
+SSE error event instead of switching back to a JSON response:
+
+```text
+event: error
+data: {"error":"runtime_error","message":"..."}
+```
+
+Preflight validation errors, adapter lookup errors, provider setup errors, and
+runtimes without streaming support must return normal JSON errors before SSE
+headers are sent.
+
+Current streaming support is intentionally staged:
+
+- local base-model requests can stream through the selected backend
+- compatible local adapter requests can stream after adapter validation and request-time adapter selection
+- OpenAI and Anthropic cloud provider runtimes stream through the same SSE events after provider delta normalization
 
 ## Adapter Contract
 
@@ -76,6 +118,7 @@ Cloud provider runtimes should reuse the same normalized `messages`, `max_tokens
 - Provider API keys must be supplied by launch-time environment and must not be stored in server specs or response errors.
 - Cloud provider runtimes do not load local model records and report `cloud_proxy` in health snapshots.
 - `adapter_ref` is not supported for cloud provider runtimes and should return a clear `501`.
+- Cloud provider streaming must normalize provider-specific delta events into the same SSE `delta` events used by local runtimes.
 - Provider request and response parsing should live outside HTTP handlers so it can be tested with mocked transports.
 
 ## Error Mapping
@@ -93,4 +136,4 @@ Cloud provider runtimes should reuse the same normalized `messages`, `max_tokens
 - `501 adapter_execution_not_implemented`
   The adapter is recognized and compatible, but runtime execution is not implemented yet.
 - `501 stream_not_implemented`
-  HTTP streaming is requested before the streaming protocol is implemented.
+  HTTP streaming is requested for a runtime path that has not wired token streaming yet.

@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tentgent_daemon.providers import ProviderChatResponse
+from tentgent_daemon.runtime.adapters import AdapterExecutionNotImplementedError
 from tentgent_daemon.runtime.chat import Message
 from tentgent_daemon.server.chat_api import handle_chat_request
 from tentgent_daemon.server.config import ServerConfig
@@ -16,10 +17,15 @@ from tentgent_daemon.server.session import ChatRequestPayload, RuntimeSession
 class FakeProviderClient:
     def __init__(self) -> None:
         self.requests = []
+        self.stream_requests = []
 
     def generate(self, request):
         self.requests.append(request)
         return ProviderChatResponse(text="hello from cloud")
+
+    def stream_generate(self, request):
+        self.stream_requests.append(request)
+        return iter(["hello", " stream"])
 
 
 class CloudRuntimeSessionTests(unittest.TestCase):
@@ -55,6 +61,39 @@ class CloudRuntimeSessionTests(unittest.TestCase):
         self.assertFalse(snapshot.loaded)
         self.assertEqual(snapshot.startup_mode, "cloud_proxy")
         self.assertEqual(snapshot.idle_policy, "stateless_proxy")
+        self.assertIsNotNone(snapshot.last_activity_at)
+
+    def test_cloud_session_streams_with_provider_client(self) -> None:
+        client = FakeProviderClient()
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}), patch(
+            "tentgent_daemon.server.session.create_provider_chat_client",
+            return_value=client,
+        ):
+            session = RuntimeSession(cloud_config())
+
+        chunks = list(
+            session.stream_generate(
+                ChatRequestPayload(
+                    messages=(Message(role="user", content="Hi"),),
+                    max_tokens=32,
+                    temperature=0.3,
+                    adapter_ref=None,
+                    stream=True,
+                )
+            )
+        )
+
+        self.assertEqual(chunks, ["hello", " stream"])
+        self.assertEqual(len(client.stream_requests), 1)
+        request = client.stream_requests[0]
+        self.assertEqual(request.model, "gpt-4.1-mini")
+        self.assertEqual(request.messages, (Message(role="user", content="Hi"),))
+        self.assertEqual(request.max_tokens, 32)
+        self.assertEqual(request.temperature, 0.3)
+
+        snapshot = session.snapshot()
+        self.assertFalse(snapshot.loaded)
+        self.assertEqual(snapshot.startup_mode, "cloud_proxy")
         self.assertIsNotNone(snapshot.last_activity_at)
 
     def test_cloud_chat_request_uses_provider_client(self) -> None:
@@ -99,6 +138,26 @@ class CloudRuntimeSessionTests(unittest.TestCase):
 
         self.assertEqual(status.value, 501)
         self.assertEqual(payload["error"], "adapter_execution_not_implemented")
+
+    def test_cloud_stream_rejects_adapter_ref(self) -> None:
+        client = FakeProviderClient()
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}), patch(
+            "tentgent_daemon.server.session.create_provider_chat_client",
+            return_value=client,
+        ):
+            session = RuntimeSession(cloud_config())
+
+        with self.assertRaises(AdapterExecutionNotImplementedError):
+            session.stream_generate(
+                ChatRequestPayload(
+                    messages=(Message(role="user", content="Hi"),),
+                    max_tokens=32,
+                    temperature=0.3,
+                    adapter_ref="adapter-ref",
+                    stream=True,
+                )
+            )
+        self.assertEqual(client.stream_requests, [])
 
     def test_cloud_health_reports_provider_runtime(self) -> None:
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}), patch(

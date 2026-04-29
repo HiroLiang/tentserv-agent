@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
@@ -52,9 +53,20 @@ class ProviderTransport(Protocol):
     ) -> tuple[int, dict[str, Any]]:
         ...
 
+    def post_sse_json(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+    ) -> tuple[int, dict[str, Any] | None, Iterator[dict[str, Any]]]:
+        ...
+
 
 class ProviderChatClient(Protocol):
     def generate(self, request: ProviderChatRequest) -> ProviderChatResponse:
+        ...
+
+    def stream_generate(self, request: ProviderChatRequest) -> Iterator[str]:
         ...
 
 
@@ -84,6 +96,29 @@ class UrlLibProviderTransport:
         except URLError as exc:
             raise ProviderTransportError(f"provider request failed: {exc}") from exc
 
+    def post_sse_json(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+    ) -> tuple[int, dict[str, Any] | None, Iterator[dict[str, Any]]]:
+        body = json.dumps(payload).encode("utf-8")
+        request = Request(
+            url,
+            data=body,
+            headers=headers,
+            method="POST",
+        )
+
+        try:
+            response = urlopen(request, timeout=self._timeout_seconds)
+        except HTTPError as exc:
+            return exc.code, _decode_json_body(exc.read()), iter(())
+        except URLError as exc:
+            raise ProviderTransportError(f"provider request failed: {exc}") from exc
+
+        return response.status, None, _iter_sse_json_response(response)
+
 
 class OpenAIChatClient:
     def __init__(
@@ -97,11 +132,7 @@ class OpenAIChatClient:
         self._url = url
 
     def generate(self, request: ProviderChatRequest) -> ProviderChatResponse:
-        payload = {
-            "model": _require_model(request.model),
-            "messages": [_message_payload(message) for message in request.messages],
-        }
-        _apply_optional_generation_args(payload, request)
+        payload = _openai_payload(request)
 
         status, body = self._transport.post_json(
             self._url,
@@ -113,6 +144,22 @@ class OpenAIChatClient:
         )
         _ensure_success("OpenAI", status, body)
         return ProviderChatResponse(text=_parse_openai_text(body))
+
+    def stream_generate(self, request: ProviderChatRequest) -> Iterator[str]:
+        payload = _openai_payload(request)
+        payload["stream"] = True
+
+        status, error_body, events = self._transport.post_sse_json(
+            self._url,
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            },
+            payload=payload,
+        )
+        _ensure_success("OpenAI", status, error_body or {})
+        return _iter_openai_stream_text(events)
 
 
 class AnthropicChatClient:
@@ -127,36 +174,7 @@ class AnthropicChatClient:
         self._url = url
 
     def generate(self, request: ProviderChatRequest) -> ProviderChatResponse:
-        system_messages: list[str] = []
-        messages: list[dict[str, str]] = []
-        for message in request.messages:
-            if message.role == "system":
-                system_messages.append(_message_content(message))
-            elif message.role in {"user", "assistant"}:
-                messages.append(_message_payload(message))
-            else:
-                raise ProviderRequestError(
-                    "message role must be one of: system, user, assistant"
-                )
-
-        if not messages:
-            raise ProviderRequestError(
-                "Anthropic requests require at least one user or assistant message"
-            )
-
-        payload: dict[str, Any] = {
-            "model": _require_model(request.model),
-            "messages": messages,
-            "max_tokens": (
-                request.max_tokens
-                if request.max_tokens is not None
-                else DEFAULT_ANTHROPIC_MAX_TOKENS
-            ),
-        }
-        if system_messages:
-            payload["system"] = "\n\n".join(system_messages)
-        if request.temperature is not None:
-            payload["temperature"] = request.temperature
+        payload = _anthropic_payload(request)
 
         status, body = self._transport.post_json(
             self._url,
@@ -169,6 +187,23 @@ class AnthropicChatClient:
         )
         _ensure_success("Anthropic", status, body)
         return ProviderChatResponse(text=_parse_anthropic_text(body))
+
+    def stream_generate(self, request: ProviderChatRequest) -> Iterator[str]:
+        payload = _anthropic_payload(request)
+        payload["stream"] = True
+
+        status, error_body, events = self._transport.post_sse_json(
+            self._url,
+            headers={
+                "x-api-key": self._api_key,
+                "anthropic-version": ANTHROPIC_VERSION,
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            },
+            payload=payload,
+        )
+        _ensure_success("Anthropic", status, error_body or {})
+        return _iter_anthropic_stream_text(events)
 
 
 def create_provider_chat_client(
@@ -192,6 +227,44 @@ def _decode_json_body(body: bytes) -> dict[str, Any]:
         raise ProviderTransportError("provider returned invalid JSON") from exc
     if not isinstance(payload, dict):
         raise ProviderTransportError("provider returned a non-object JSON payload")
+    return payload
+
+
+def _iter_sse_json_response(response: Any) -> Iterator[dict[str, Any]]:
+    data_lines: list[str] = []
+    try:
+        for raw_line in response:
+            line = raw_line.decode("utf-8").rstrip("\r\n")
+            if not line:
+                if data_lines:
+                    data = "\n".join(data_lines)
+                    data_lines = []
+                    if data == "[DONE]":
+                        return
+                    yield _decode_sse_json_data(data)
+                continue
+            if line.startswith(":"):
+                continue
+            if line.startswith("data:"):
+                data_lines.append(line.removeprefix("data:").lstrip())
+
+        if data_lines:
+            data = "\n".join(data_lines)
+            if data != "[DONE]":
+                yield _decode_sse_json_data(data)
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+
+
+def _decode_sse_json_data(data: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(data)
+    except json.JSONDecodeError as exc:
+        raise ProviderTransportError("provider returned invalid SSE JSON") from exc
+    if not isinstance(payload, dict):
+        raise ProviderTransportError("provider returned a non-object SSE JSON payload")
     return payload
 
 
@@ -220,6 +293,49 @@ def _message_content(message: Message) -> str:
     if not content:
         raise ProviderRequestError("message content must not be empty")
     return content
+
+
+def _openai_payload(request: ProviderChatRequest) -> dict[str, Any]:
+    payload = {
+        "model": _require_model(request.model),
+        "messages": [_message_payload(message) for message in request.messages],
+    }
+    _apply_optional_generation_args(payload, request)
+    return payload
+
+
+def _anthropic_payload(request: ProviderChatRequest) -> dict[str, Any]:
+    system_messages: list[str] = []
+    messages: list[dict[str, str]] = []
+    for message in request.messages:
+        if message.role == "system":
+            system_messages.append(_message_content(message))
+        elif message.role in {"user", "assistant"}:
+            messages.append(_message_payload(message))
+        else:
+            raise ProviderRequestError(
+                "message role must be one of: system, user, assistant"
+            )
+
+    if not messages:
+        raise ProviderRequestError(
+            "Anthropic requests require at least one user or assistant message"
+        )
+
+    payload: dict[str, Any] = {
+        "model": _require_model(request.model),
+        "messages": messages,
+        "max_tokens": (
+            request.max_tokens
+            if request.max_tokens is not None
+            else DEFAULT_ANTHROPIC_MAX_TOKENS
+        ),
+    }
+    if system_messages:
+        payload["system"] = "\n\n".join(system_messages)
+    if request.temperature is not None:
+        payload["temperature"] = request.temperature
+    return payload
 
 
 def _apply_optional_generation_args(
@@ -286,6 +402,55 @@ def _parse_anthropic_text(body: dict[str, Any]) -> str:
     return text
 
 
+def _iter_openai_stream_text(events: Iterator[dict[str, Any]]) -> Iterator[str]:
+    for event in events:
+        error = event.get("error")
+        if error is not None:
+            raise ProviderResponseError(
+                f"OpenAI stream error: {_provider_error_detail(event)}"
+            )
+
+        choices = event.get("choices")
+        if not isinstance(choices, list):
+            raise ProviderResponseError("OpenAI stream event did not include choices")
+        for choice in choices:
+            if not isinstance(choice, dict):
+                raise ProviderResponseError("OpenAI stream choice is not an object")
+            delta = choice.get("delta")
+            if not isinstance(delta, dict):
+                continue
+            text = _coerce_delta_text_content(delta.get("content"))
+            if text:
+                yield text
+
+
+def _iter_anthropic_stream_text(events: Iterator[dict[str, Any]]) -> Iterator[str]:
+    for event in events:
+        event_type = event.get("type")
+        if event_type == "error":
+            raise ProviderResponseError(
+                f"Anthropic stream error: {_provider_error_detail(event)}"
+            )
+        if event_type == "content_block_start":
+            block = event.get("content_block")
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text")
+                if isinstance(text, str) and text:
+                    yield text
+            continue
+        if event_type != "content_block_delta":
+            continue
+
+        delta = event.get("delta")
+        if not isinstance(delta, dict):
+            raise ProviderResponseError("Anthropic stream delta is not an object")
+        if delta.get("type") != "text_delta":
+            continue
+        text = delta.get("text")
+        if isinstance(text, str) and text:
+            yield text
+
+
 def _coerce_text_content(content: Any) -> str:
     if isinstance(content, str):
         return content.strip()
@@ -295,4 +460,16 @@ def _coerce_text_content(content: Any) -> str:
             if isinstance(part, dict) and isinstance(part.get("text"), str):
                 parts.append(part["text"])
         return "".join(parts).strip()
+    return ""
+
+
+def _coerce_delta_text_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                parts.append(part["text"])
+        return "".join(parts)
     return ""

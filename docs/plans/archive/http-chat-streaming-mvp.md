@@ -1,5 +1,9 @@
 # HTTP Chat Streaming MVP
 
+Status: archived. This plan completed Server-Sent Events streaming for local
+base-model chat, request-time local adapter chat, and OpenAI/Anthropic cloud
+provider chat through the existing `POST /v1/chat` endpoint.
+
 Add a streaming response path for `POST /v1/chat` so local servers can return tokens incrementally when clients send `stream: true`.
 
 ## Priority
@@ -74,6 +78,9 @@ Preflight validation errors should still return normal JSON errors before the st
 
 ### Slice 1: SSE Response Contract
 
+Status: implemented. The SSE event serializer and HTTP header writer are in
+place; local base-model runtime token streaming is now wired by Slice 2.
+
 Define the HTTP writer boundary and tests.
 
 Goals:
@@ -88,6 +95,10 @@ Review target:
 - `/v1/chat` has a stable streaming wire format even before runtime token streaming is wired in
 
 ### Slice 2: Local Runtime Stream Boundary
+
+Status: implemented. Local requests can now stream backend deltas through the
+existing `/v1/chat` route with `stream: true`; Slice 3 extends the same route to
+compatible adapters.
 
 Expose an iterator or callback from the Python runtime session.
 
@@ -104,6 +115,10 @@ Review target:
 
 ### Slice 3: Adapter Streaming Path
 
+Status: implemented. Streaming requests with `adapter_ref` now reuse the same
+adapter lookup, compatibility check, backend support check, and request-time
+selection path as non-streaming chat before SSE headers are sent.
+
 Make request-time adapters work through the same streaming route.
 
 Goals:
@@ -119,6 +134,10 @@ Review target:
 
 ### Slice 4: Cloud Runtime Streaming Follow-Up
 
+Status: implemented. OpenAI and Anthropic provider stream events are normalized
+inside the provider client layer and exposed through the same SSE `delta`,
+`done`, and `error` contract as local runtimes.
+
 Add provider streaming only after the local streaming contract is stable.
 
 Goals:
@@ -132,6 +151,10 @@ Review target:
 - cloud servers preserve the same client protocol as local servers
 
 ### Slice 5: User Docs And Smoke Commands
+
+Status: implemented. User and development docs now include non-streaming JSON,
+local SSE, adapter SSE, and cloud SSE smoke commands, plus the current
+local-only adapter limit for cloud provider servers.
 
 Document the user-facing command and curl shape.
 

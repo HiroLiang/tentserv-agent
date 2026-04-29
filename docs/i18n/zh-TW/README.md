@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 若你想要可重現的固定版本安裝，請指定版本：
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.2/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.4/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.2/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.4/install.ps1 | iex
 ```
 
 接著確認預設安裝位置在 `PATH` 中，並檢查 runtime：
@@ -50,16 +50,16 @@ tentgent doctor
 
 ## 目前版本
 
-`v0.1.2` 在第一個可安裝 MVP 上加入 cloud provider server routing 與 provider-assisted dataset workflows。
+`v0.1.4` 加入 `/v1/chat` 的 Server-Sent Events streaming，支援本地模型、本地相容 adapter，以及 OpenAI / Anthropic cloud provider server。
 
 已包含：
 
 - Hugging Face、OpenAI、Anthropic 的 provider auth key 管理
 - content-addressed model、adapter、dataset stores
 - OpenAI 與 Anthropic local server proxy runtimes
-- dataset validation、prompt templates、provider synthesis、provider evaluation
+- dataset validation、prompt templates、multi-split provider synthesis、provider evaluation
 - MLX、PEFT safetensors、llama-cpp GGUF 路徑的單次本地 chat
-- 本地 HTTP chat server，包含 registry 與 process lifecycle commands
+- 本地 HTTP chat server，包含 registry、process lifecycle commands 與 SSE streaming
 - managed LoRA train plans，以及可執行的 MLX / PEFT training loops
 - 一般安裝用的 installer-managed Python runtime bootstrap
 
@@ -67,7 +67,8 @@ tentgent doctor
 
 - macOS 與 Windows x86_64 是第一批 packaged install targets
 - MLX 需要 Apple Silicon macOS
-- HTTP chat streaming 已規劃但尚未實作
+- Cloud provider server 不支援 request-time local adapter
+- generated dataset splits 尚未彼此去重
 - macOS signing 與 notarization 會留到後續 slice
 
 版本功能與限制請看 [docs/user/version.md](../../../docs/user/version.md)。

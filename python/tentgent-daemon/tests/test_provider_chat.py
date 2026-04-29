@@ -19,9 +19,15 @@ from tentgent_daemon.runtime.chat import Message
 
 
 class FakeTransport:
-    def __init__(self, status: int, body: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        status: int,
+        body: dict[str, Any],
+        events: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.status = status
         self.body = body
+        self.events = events or []
         self.calls: list[tuple[str, dict[str, str], dict[str, Any]]] = []
 
     def post_json(
@@ -32,6 +38,16 @@ class FakeTransport:
     ) -> tuple[int, dict[str, Any]]:
         self.calls.append((url, headers, payload))
         return self.status, self.body
+
+    def post_sse_json(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+    ):
+        self.calls.append((url, headers, payload))
+        error_body = self.body if self.status < 200 or self.status >= 300 else None
+        return self.status, error_body, iter(self.events)
 
 
 class ProviderChatTests(unittest.TestCase):
@@ -112,6 +128,98 @@ class ProviderChatTests(unittest.TestCase):
                     messages=(Message(role="system", content="Only system"),),
                 )
             )
+
+    def test_openai_stream_maps_request_and_yields_delta_text(self) -> None:
+        transport = FakeTransport(
+            200,
+            {},
+            events=[
+                {"choices": [{"delta": {"role": "assistant"}}]},
+                {"choices": [{"delta": {"content": "Hello"}}]},
+                {"choices": [{"delta": {"content": " "}}]},
+                {"choices": [{"delta": {"content": "stream"}}]},
+                {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+            ],
+        )
+        client = OpenAIChatClient("sk-test", transport=transport)
+
+        chunks = list(
+            client.stream_generate(
+                ProviderChatRequest(
+                    model="gpt-4.1-mini",
+                    messages=(Message(role="user", content="Hi"),),
+                    max_tokens=16,
+                    temperature=0.0,
+                )
+            )
+        )
+
+        self.assertEqual(chunks, ["Hello", " ", "stream"])
+        url, headers, payload = transport.calls[0]
+        self.assertEqual(url, OPENAI_CHAT_COMPLETIONS_URL)
+        self.assertEqual(headers["Accept"], "text/event-stream")
+        self.assertTrue(payload["stream"])
+        self.assertEqual(payload["model"], "gpt-4.1-mini")
+        self.assertEqual(payload["max_tokens"], 16)
+
+    def test_anthropic_stream_maps_request_and_yields_text_deltas(self) -> None:
+        transport = FakeTransport(
+            200,
+            {},
+            events=[
+                {"type": "message_start"},
+                {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "你"},
+                },
+                {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "好"},
+                },
+                {"type": "message_stop"},
+            ],
+        )
+        client = AnthropicChatClient("sk-ant-test", transport=transport)
+
+        chunks = list(
+            client.stream_generate(
+                ProviderChatRequest(
+                    model="claude-3-5-sonnet-latest",
+                    messages=(
+                        Message(role="system", content="Be concise."),
+                        Message(role="user", content="Hi"),
+                    ),
+                )
+            )
+        )
+
+        self.assertEqual(chunks, ["你", "好"])
+        url, headers, payload = transport.calls[0]
+        self.assertEqual(url, ANTHROPIC_MESSAGES_URL)
+        self.assertEqual(headers["Accept"], "text/event-stream")
+        self.assertTrue(payload["stream"])
+        self.assertEqual(payload["system"], "Be concise.")
+        self.assertEqual(payload["messages"], [{"role": "user", "content": "Hi"}])
+
+    def test_provider_stream_error_does_not_include_secret(self) -> None:
+        transport = FakeTransport(
+            401,
+            {"error": {"message": "bad key"}},
+        )
+        client = OpenAIChatClient("super-secret-key", transport=transport)
+
+        with self.assertRaises(ProviderResponseError) as captured:
+            client.stream_generate(
+                ProviderChatRequest(
+                    model="gpt-4.1-mini",
+                    messages=(Message(role="user", content="Hi"),),
+                )
+            )
+
+        message = str(captured.exception)
+        self.assertIn("OpenAI returned HTTP 401", message)
+        self.assertIn("bad key", message)
+        self.assertNotIn("super-secret-key", message)
 
     def test_provider_error_does_not_include_secret(self) -> None:
         transport = FakeTransport(

@@ -5,10 +5,15 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from .chat_api import handle_chat_request
+from .chat_api import (
+    decode_chat_request,
+    handle_parsed_chat_request,
+    stream_preflight_error_response,
+)
 from .config import ServerConfig
 from .health import build_health_payload
-from .session import RuntimeSession
+from .session import ChatRequestPayload, RuntimeSession
+from .sse import SSE_CACHE_CONTROL, SSE_CONTENT_TYPE, encode_sse_event
 
 
 class TentgentServer(ThreadingHTTPServer):
@@ -83,8 +88,53 @@ class TentgentRequestHandler(BaseHTTPRequestHandler):
             return
 
         raw_body = self.rfile.read(body_length)
-        status, payload = handle_chat_request(raw_body, self.session)
+        try:
+            request = decode_chat_request(raw_body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_json", "message": str(exc)},
+            )
+            return
+        except ValueError as exc:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_request", "message": str(exc)},
+            )
+            return
+
+        if request.stream:
+            self._handle_chat_stream(request)
+            return
+
+        status, payload = handle_parsed_chat_request(request, self.session)
         self._write_json(status, payload)
+
+    def _handle_chat_stream(self, request: ChatRequestPayload) -> None:
+        try:
+            chunks = self.session.stream_generate(request)
+        except Exception as exc:  # pragma: no cover - mapped by tests via fake sessions.
+            status, payload = stream_preflight_error_response(exc)
+            self._write_json(status, payload)
+            return
+
+        self._write_sse_headers()
+        try:
+            for chunk in chunks:
+                self._write_sse_event("delta", {"delta": chunk})
+            self._write_sse_event("done", {"finish_reason": "stop"})
+        except (BrokenPipeError, ConnectionResetError):  # pragma: no cover - client abort.
+            close = getattr(chunks, "close", None)
+            if callable(close):
+                close()
+        except Exception as exc:  # pragma: no cover - backend runtime surface.
+            self._write_sse_event(
+                "error",
+                {
+                    "error": "runtime_error",
+                    "message": str(exc),
+                },
+            )
 
     def _write_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -93,6 +143,16 @@ class TentgentRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _write_sse_headers(self, status: HTTPStatus = HTTPStatus.OK) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", SSE_CONTENT_TYPE)
+        self.send_header("Cache-Control", SSE_CACHE_CONTROL)
+        self.end_headers()
+
+    def _write_sse_event(self, event: str, data: dict[str, Any]) -> None:
+        self.wfile.write(encode_sse_event(event, data))
+        self.wfile.flush()
 
 
 def serve(config: ServerConfig, session: RuntimeSession) -> int:

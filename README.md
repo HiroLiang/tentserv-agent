@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 Install a pinned version when you want a reproducible setup:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.3/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.4/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.3/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.1.4/install.ps1 | iex
 ```
 
 Then make sure the default install location is on `PATH` and verify the runtime:
@@ -50,6 +50,7 @@ See [docs/user/install.md](./docs/user/install.md) for install, upgrade, pinned 
 
 ## Versions
 
+- `v0.1.4`: HTTP chat streaming release with Server-Sent Events for local models, local adapters, and OpenAI/Anthropic cloud servers.
 - `v0.1.3`: dataset synthesis stability release with multi-split generation, per-split retry, and stronger provider output normalization.
 - `v0.1.2`: cloud provider server routing and provider-assisted dataset workflows.
 - `v0.1.1`: first installable MVP with macOS and Windows release artifacts.
@@ -65,7 +66,7 @@ Included:
 - OpenAI and Anthropic local server proxy runtimes
 - dataset validation, prompt templates, multi-split provider synthesis, and provider evaluation
 - one-shot local chat for MLX, PEFT safetensors, and llama-cpp GGUF paths
-- local HTTP chat server with registry and process lifecycle commands
+- local HTTP chat server with registry, process lifecycle commands, and SSE streaming
 - managed LoRA train plans and runnable MLX / PEFT training loops
 - installer-managed Python runtime bootstrap for normal installs
 
@@ -73,7 +74,7 @@ Known limits:
 
 - macOS and Windows x86_64 are the first packaged install targets
 - MLX requires Apple Silicon macOS
-- HTTP chat streaming is planned but not implemented yet
+- Cloud provider servers do not support request-time local adapters
 - generated dataset splits are not deduplicated against each other yet
 - macOS signing and notarization are deferred to a later slice
 

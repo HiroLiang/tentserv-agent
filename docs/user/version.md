@@ -2,6 +2,24 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.1.4
+
+`v0.1.4` adds HTTP chat streaming through Server-Sent Events.
+
+Added:
+
+- `/v1/chat` supports `stream=true` with SSE `delta`, `done`, and `error` events.
+- Local base-model servers can stream backend output incrementally.
+- Compatible local adapters can stream through the same `adapter_ref` request shape as non-streaming chat.
+- OpenAI and Anthropic cloud provider servers normalize provider stream deltas into the same Tentgent SSE response shape.
+- Streaming request validation preserves JSON errors before SSE headers when adapter, auth, model, or request preflight fails.
+
+Known limits:
+
+- Cloud provider servers do not support request-time local adapters.
+- Streaming chunks follow backend or provider tokenization and may not align to full words.
+- Generated dataset splits are not deduplicated against each other yet.
+
 ## v0.1.3
 
 `v0.1.3` hardens provider-assisted dataset synthesis for tuning-data workflows.
@@ -19,7 +37,7 @@ Known limits:
 
 - Generated train, valid, and test splits are not deduplicated against each other yet.
 - Dataset synthesis quality still depends on provider output and should be validated before import or training.
-- HTTP chat streaming is planned but not implemented yet.
+- Cloud provider servers do not support request-time local adapters.
 
 ## v0.1.2
 
@@ -34,7 +52,6 @@ Added:
 
 Known limits:
 
-- HTTP chat streaming is planned but not implemented yet.
 - Cloud provider servers do not support request-time LoRA adapters.
 - Dataset synthesis quality still depends on provider output and should be validated before import or training.
 
