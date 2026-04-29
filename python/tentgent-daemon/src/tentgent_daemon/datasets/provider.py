@@ -212,9 +212,20 @@ def parse_jsonl_candidate(
         try:
             record = json.loads(stripped)
         except json.JSONDecodeError as exc:
-            raise DatasetProviderParseError(
-                f"invalid JSON at provider output line {line_number}: {exc}"
-            ) from exc
+            repaired = repair_common_json_line(stripped)
+            if repaired is None:
+                raise DatasetProviderParseError(
+                    f"invalid JSON at provider output line {line_number}: {exc}"
+                ) from exc
+            try:
+                record = json.loads(repaired)
+            except json.JSONDecodeError:
+                raise DatasetProviderParseError(
+                    f"invalid JSON at provider output line {line_number}: {exc}"
+                ) from exc
+            warnings.append(
+                f"repaired invalid JSON at provider output line {line_number}"
+            )
         if not isinstance(record, dict):
             raise DatasetProviderParseError(
                 f"provider output line {line_number} must decode to a JSON object"
@@ -234,6 +245,18 @@ def parse_jsonl_candidate(
     )
 
 
+def repair_common_json_line(line: str) -> str | None:
+    repaired = re.sub(
+        r"\}\s*\}\s*\}\s*,\s*\{\"role\"\s*:\s*\"assistant\"",
+        r'}},{"role":"assistant"',
+        line,
+        count=1,
+    )
+    if repaired != line:
+        return repaired
+    return None
+
+
 def validate_provider_record(
     record: dict[str, Any],
     *,
@@ -244,12 +267,33 @@ def validate_provider_record(
         if split == "eval_cases":
             validate_eval_case(record)
         else:
+            explain_common_training_shape_errors(record)
             render_backend_record(record, mask_prompt=False)
             render_backend_record(record, mask_prompt=True)
     except Exception as exc:
         raise DatasetProviderParseError(
             f"provider output line {line_number} is not {split}-compatible: {exc}"
         ) from exc
+
+
+def explain_common_training_shape_errors(record: dict[str, Any]) -> None:
+    if "completion" not in record:
+        return
+    messages = record.get("messages")
+    final_role = None
+    if isinstance(messages, list) and messages:
+        final = messages[-1]
+        if isinstance(final, dict):
+            final_role = str(final.get("role") or "").strip().lower()
+    completion = record.get("completion")
+    completion_role = None
+    if isinstance(completion, dict):
+        completion_role = str(completion.get("role") or "").strip().lower()
+    if final_role != "assistant" and completion_role == "assistant":
+        raise ValueError(
+            "top-level `completion` is not Tentgent training JSONL; "
+            "move that assistant answer into `messages` as the final assistant message"
+        )
 
 
 def records_to_jsonl(records: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> str:

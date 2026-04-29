@@ -2,6 +2,25 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.1.3
+
+`v0.1.3` hardens provider-assisted dataset synthesis for tuning-data workflows.
+
+Added:
+
+- `dataset synth` can generate `train.jsonl`, `valid.jsonl`, `test.jsonl`, and `eval_cases.jsonl` in one package with split-specific count options.
+- `dataset synth --retries` / `-r` retries each split independently after invalid provider JSON, schema mismatches, or transient provider errors.
+- Multi-split synthesis writes successful split files immediately, so later split failures preserve earlier work.
+- Provider generation prompts now include split-specific JSONL shape examples and stronger `tentgent.chat.v1` rules.
+- Provider output parsing can repair a narrow class of extra-brace JSON mistakes around tool-result records and reports the repair as a warning.
+- Synthesis failures write split-scoped debug artifacts under `_debug/<split>/`.
+
+Known limits:
+
+- Generated train, valid, and test splits are not deduplicated against each other yet.
+- Dataset synthesis quality still depends on provider output and should be validated before import or training.
+- HTTP chat streaming is planned but not implemented yet.
+
 ## v0.1.2
 
 `v0.1.2` adds cloud provider server routing and provider-assisted dataset workflows.

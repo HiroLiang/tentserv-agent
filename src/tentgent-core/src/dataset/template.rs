@@ -37,20 +37,26 @@ Return only JSONL. Do not wrap the output in Markdown fences. Each line must be 
 Required output rules:
 
 - Use `schema: "tentgent.chat.v1"` on every record.
-- Use `messages` as the only training conversation body.
+- Use `messages` as the only conversation body.
 - Supported message roles are `system`, `user`, `assistant`, and `tool`.
-- Each record should end with a final `assistant` answer.
+- For `train.jsonl`, `valid.jsonl`, and `test.jsonl`, each record must end with a final `assistant` answer inside `messages`.
 - Use `tools` only to describe tools available to that record.
 - Use assistant `tool_calls` for tool requests.
 - Use `tool` messages for tool results.
 - Keep `metadata` factual and non-training-critical.
+- Do not use top-level `completion`, `answer`, `prompt`, `input`, or `output` fields.
 - Do not output MLX, PEFT, ChatML, OpenAI-specific, or Anthropic-specific rendered prompt text.
 - Keep generated content in language/content style `{language}` unless the task requires quoting another language.
 - Prefer realistic, diverse, non-duplicated examples for task/domain `{task}`.
 
-Minimal valid JSONL example:
+Training split JSONL examples for `train.jsonl`, `valid.jsonl`, and `test.jsonl`:
 
 {{"schema":"tentgent.chat.v1","id":"example-001","messages":[{{"role":"system","content":"You are a concise assistant."}},{{"role":"user","content":"Say hello in one short sentence."}},{{"role":"assistant","content":"Hello! How can I help?"}}],"metadata":{{"task":"{task}","language":"{language}","source":"synthetic"}}}}
+{{"schema":"tentgent.chat.v1","id":"tool-example-001","messages":[{{"role":"user","content":"Look up order A123."}},{{"role":"assistant","content":"","tool_calls":[{{"id":"call_1","name":"lookup_order","arguments":{{"order_id":"A123"}}}}]}},{{"role":"tool","tool_call_id":"call_1","name":"lookup_order","content":{{"status":"shipped"}}}},{{"role":"assistant","content":"Order A123 has shipped."}}],"tools":[{{"name":"lookup_order","description":"Look up one order status.","parameters":{{"type":"object","properties":{{"order_id":{{"type":"string"}}}},"required":["order_id"]}}}}],"metadata":{{"task":"tool_use","language":"{language}","source":"synthetic"}}}}
+
+Eval case JSONL example for `eval_cases.jsonl`:
+
+{{"schema":"tentgent.chat.v1","id":"eval-example-001","messages":[{{"role":"user","content":"Explain the refund policy briefly."}}],"expected_behavior":{{"answer_language":"{language}","checks":["answers directly","does not invent policy details"]}},"metadata":{{"task":"{task}","language":"{language}","source":"synthetic","split":"eval_cases"}}}}
 
 When generating many rows:
 

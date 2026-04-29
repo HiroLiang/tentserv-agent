@@ -105,6 +105,40 @@ class DatasetProviderTests(unittest.TestCase):
                 '{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Hi"}]}'
             )
 
+    def test_parse_dataset_jsonl_explains_top_level_completion_shape(self) -> None:
+        with self.assertRaisesRegex(
+            DatasetProviderParseError,
+            "top-level `completion` is not Tentgent training JSONL",
+        ):
+            parse_dataset_jsonl(
+                '{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Hi"}],'
+                '"completion":{"role":"assistant","content":"Hello"}}'
+            )
+
+    def test_parse_dataset_jsonl_repairs_extra_tool_result_brace(self) -> None:
+        row = (
+            '{"schema":"tentgent.chat.v1","messages":['
+            '{"role":"user","content":"查詢天氣。"},'
+            '{"role":"assistant","content":"","tool_calls":['
+            '{"id":"call_1","name":"get_weather","arguments":{"location":"台北"}}]},'
+            '{"role":"tool","tool_call_id":"call_1","name":"get_weather",'
+            '"content":{"temperature":"22°C","condition":"多雲"}}},'
+            '{"role":"assistant","content":"台北目前多雲，約22度。"}]}'
+        )
+
+        parsed = parse_dataset_jsonl(row)
+
+        self.assertEqual(len(parsed.records), 1)
+        self.assertEqual(
+            parsed.warnings,
+            ("repaired invalid JSON at provider output line 1",),
+        )
+        self.assertIn('"role":"tool"', parsed.jsonl)
+        self.assertEqual(
+            parsed.records[0]["messages"][-1],
+            {"role": "assistant", "content": "台北目前多雲，約22度。"},
+        )
+
     def test_generate_dataset_jsonl_attaches_raw_text_to_parse_errors(self) -> None:
         raw_text = '{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Hi"}]}'
         client = FakeProviderClient(raw_text)

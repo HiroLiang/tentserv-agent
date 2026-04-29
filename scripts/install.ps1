@@ -1,7 +1,7 @@
 param(
     [string]$Archive = "",
     [string]$Checksums = "",
-    [string]$Version = "0.1.2",
+    [string]$Version = "0.1.3",
     [string]$Prefix = "",
     [string]$Target = "",
     [switch]$DryRun,

@@ -7,6 +7,7 @@ use std::{
 use clap::CommandFactory;
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
+use indicatif::{ProgressBar, ProgressStyle};
 use miette::{miette, IntoDiagnostic, Result};
 use serde_json::Value;
 use tentgent_core::{
@@ -18,6 +19,7 @@ use tentgent_core::{
         DatasetTemplateRequest, DatasetValidationOutcome,
     },
 };
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 
 use super::app::Cli;
@@ -29,6 +31,38 @@ struct DatasetProviderAuth {
     provider: Provider,
     normalized_provider: &'static str,
     secret: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct DatasetSynthCounts {
+    count: Option<u32>,
+    train_count: Option<u32>,
+    valid_count: Option<u32>,
+    test_count: Option<u32>,
+    eval_count: Option<u32>,
+}
+
+impl DatasetSynthCounts {
+    fn split_specific_count(&self) -> usize {
+        [
+            self.train_count,
+            self.valid_count,
+            self.test_count,
+            self.eval_count,
+        ]
+        .into_iter()
+        .flatten()
+        .count()
+    }
+
+    fn expected_jobs(&self) -> u64 {
+        let split_jobs = self.split_specific_count();
+        if split_jobs == 0 {
+            1
+        } else {
+            split_jobs as u64
+        }
+    }
 }
 
 pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
@@ -79,15 +113,32 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             brief,
             spec,
             split,
+            count,
+            train_count,
+            valid_count,
+            test_count,
+            eval_count,
             max_tokens,
             temperature,
             timeout_seconds,
+            retries,
             print_prompt,
         } => {
+            let counts = DatasetSynthCounts {
+                count,
+                train_count,
+                valid_count,
+                test_count,
+                eval_count,
+            };
             if print_prompt {
-                let prompt =
-                    run_dataset_synth_prompt_runtime(brief.as_deref(), spec.as_deref(), &split)
-                        .await?;
+                let prompt = run_dataset_synth_prompt_runtime(
+                    brief.as_deref(),
+                    spec.as_deref(),
+                    &split,
+                    &counts,
+                )
+                .await?;
                 print!("{prompt}");
                 return Ok(());
             }
@@ -115,9 +166,11 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
                 brief.as_deref(),
                 spec.as_deref(),
                 &split,
+                &counts,
                 max_tokens,
                 temperature,
                 timeout_seconds,
+                retries,
             )
             .await?;
             render_synth_outcome(&outcome);
@@ -391,6 +444,11 @@ fn render_synth_outcome(outcome: &Value) {
     );
 
     let output_dir = json_field(outcome, "output_dir");
+    let splits = outcome
+        .get("splits")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let mut table = base_table();
     table.add_row(vec![
         Cell::new("provider"),
@@ -402,17 +460,27 @@ fn render_synth_outcome(outcome: &Value) {
     ]);
     table.add_row(vec![
         Cell::new("split"),
-        Cell::new(json_field(outcome, "split")),
+        Cell::new(if splits.len() > 1 {
+            splits
+                .iter()
+                .filter_map(|split| split.get("split").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            json_field(outcome, "split")
+        }),
     ]);
     table.add_row(vec![
         Cell::new("records"),
         Cell::new(json_usize_field(outcome, "record_count")),
     ]);
     table.add_row(vec![Cell::new("output_dir"), Cell::new(output_dir.clone())]);
-    table.add_row(vec![
-        Cell::new("split_path"),
-        Cell::new(json_field(outcome, "split_path")),
-    ]);
+    if outcome.get("split_path").is_some() {
+        table.add_row(vec![
+            Cell::new("split_path"),
+            Cell::new(json_field(outcome, "split_path")),
+        ]);
+    }
     table.add_row(vec![
         Cell::new("manifest_path"),
         Cell::new(json_field(outcome, "manifest_path")),
@@ -430,6 +498,22 @@ fn render_synth_outcome(outcome: &Value) {
         Cell::new(format!("tentgent dataset add {output_dir}")),
     ]);
     println!("{table}");
+
+    if splits.len() > 1 {
+        let mut split_table = Table::new();
+        split_table
+            .load_preset(UTF8_FULL_CONDENSED)
+            .apply_modifier(UTF8_ROUND_CORNERS)
+            .set_header(vec!["split", "records", "path"]);
+        for split in &splits {
+            split_table.add_row(vec![
+                Cell::new(json_field(split, "split")),
+                Cell::new(json_usize_field(split, "record_count")),
+                Cell::new(json_field(split, "split_path")),
+            ]);
+        }
+        println!("{split_table}");
+    }
 
     if let Some(warnings) = outcome.get("warnings").and_then(Value::as_array) {
         if !warnings.is_empty() {
@@ -985,9 +1069,11 @@ async fn run_dataset_synth_runtime(
     brief: Option<&str>,
     spec: Option<&Path>,
     split: &str,
+    counts: &DatasetSynthCounts,
     max_tokens: Option<u32>,
     temperature: f32,
     timeout_seconds: f32,
+    retries: u32,
 ) -> Result<Value> {
     let python_runtime = resolve_python_runtime()?;
     let python = require_python_interpreter(&python_runtime, "python dataset synth runtime")?;
@@ -1013,10 +1099,14 @@ async fn run_dataset_synth_runtime(
         .arg(temperature.to_string())
         .arg("--timeout-seconds")
         .arg(timeout_seconds.to_string())
+        .arg("--retries")
+        .arg(retries.to_string())
+        .arg("--progress-json")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
 
+    append_dataset_synth_count_args(&mut process, counts);
     if let Some(brief) = brief {
         process.arg("--brief").arg(brief);
     }
@@ -1027,23 +1117,76 @@ async fn run_dataset_synth_runtime(
         process.arg("--max-tokens").arg(max_tokens.to_string());
     }
 
-    let output = process.output().await.into_diagnostic()?;
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if !output.status.success() {
-        if stderr.is_empty() {
+    let progress = ProgressBar::new(counts.expected_jobs());
+    progress.set_style(
+        ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {pos}/{len} {msg}")
+            .map_err(|err| miette!("invalid dataset synth progress template: {err}"))?
+            .progress_chars("=> "),
+    );
+    progress.set_message("starting dataset synth");
+
+    let mut child = process.spawn().into_diagnostic()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| miette!("failed to capture dataset synth stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| miette!("failed to capture dataset synth stderr"))?;
+
+    let stdout_task = tokio::spawn(async move {
+        let mut stdout_text = String::new();
+        let mut reader = BufReader::new(stdout);
+        reader.read_to_string(&mut stdout_text).await?;
+        Ok::<String, std::io::Error>(stdout_text)
+    });
+
+    let progress_for_stderr = progress.clone();
+    let stderr_task = tokio::spawn(async move {
+        let mut stderr_lines = Vec::new();
+        let mut lines = BufReader::new(stderr).lines();
+        while let Some(line) = lines.next_line().await? {
+            if let Ok(event) = serde_json::from_str::<Value>(&line) {
+                if event.get("type").and_then(Value::as_str) == Some("progress") {
+                    render_dataset_synth_progress(&progress_for_stderr, &event);
+                    continue;
+                }
+            }
+            stderr_lines.push(line);
+        }
+        Ok::<Vec<String>, std::io::Error>(stderr_lines)
+    });
+
+    let status = child.wait().await.into_diagnostic()?;
+    let stdout_result = stdout_task
+        .await
+        .map_err(|err| miette!("dataset synth stdout reader panicked: {err}"))?
+        .into_diagnostic();
+    let stderr_result = stderr_task
+        .await
+        .map_err(|err| miette!("dataset synth stderr reader panicked: {err}"))?
+        .into_diagnostic();
+    progress.finish_and_clear();
+    let stdout = stdout_result?;
+    let stderr_lines = stderr_result?;
+
+    let stderr = stderr_lines.join("\n");
+    if !status.success() {
+        if stderr.trim().is_empty() {
             return Err(miette!(
                 "dataset synth runtime exited with status {}",
-                output.status
+                status
             ));
         }
         return Err(miette!(
             "dataset synth runtime exited with status {}\n\n{}",
-            output.status,
+            status,
             stderr
         ));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stdout = stdout.trim().to_string();
     serde_json::from_str::<Value>(&stdout)
         .map_err(|err| miette!("dataset synth runtime returned invalid JSON: {err}\n\n{stdout}"))
 }
@@ -1052,6 +1195,7 @@ async fn run_dataset_synth_prompt_runtime(
     brief: Option<&str>,
     spec: Option<&Path>,
     split: &str,
+    counts: &DatasetSynthCounts,
 ) -> Result<String> {
     let python_runtime = resolve_python_runtime()?;
     let python = require_python_interpreter(&python_runtime, "python dataset synth runtime")?;
@@ -1070,6 +1214,7 @@ async fn run_dataset_synth_prompt_runtime(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
 
+    append_dataset_synth_count_args(&mut process, counts);
     if let Some(brief) = brief {
         process.arg("--brief").arg(brief);
     }
@@ -1094,6 +1239,82 @@ async fn run_dataset_synth_prompt_runtime(
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn append_dataset_synth_count_args(process: &mut Command, counts: &DatasetSynthCounts) {
+    if let Some(count) = counts.count {
+        process.arg("--count").arg(count.to_string());
+    }
+    if let Some(count) = counts.train_count {
+        process.arg("--train-count").arg(count.to_string());
+    }
+    if let Some(count) = counts.valid_count {
+        process.arg("--valid-count").arg(count.to_string());
+    }
+    if let Some(count) = counts.test_count {
+        process.arg("--test-count").arg(count.to_string());
+    }
+    if let Some(count) = counts.eval_count {
+        process.arg("--eval-count").arg(count.to_string());
+    }
+}
+
+fn render_dataset_synth_progress(progress: &ProgressBar, event: &Value) {
+    let stage = event.get("stage").and_then(Value::as_str).unwrap_or("");
+    let split = event
+        .get("split")
+        .and_then(Value::as_str)
+        .unwrap_or("dataset");
+    match stage {
+        "start" => {
+            let index = event.get("index").and_then(Value::as_u64).unwrap_or(1);
+            let total = event
+                .get("total")
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| progress.length().unwrap_or(1));
+            let attempt = event.get("attempt").and_then(Value::as_u64).unwrap_or(1);
+            let max_attempts = event
+                .get("max_attempts")
+                .and_then(Value::as_u64)
+                .unwrap_or(1);
+            progress.set_length(total);
+            let attempt_suffix = if max_attempts > 1 {
+                format!(", attempt {attempt}/{max_attempts}")
+            } else {
+                String::new()
+            };
+            progress.set_message(format!(
+                "generating {split} ({index}/{total}{attempt_suffix})"
+            ));
+        }
+        "retry" => {
+            let attempt = event.get("attempt").and_then(Value::as_u64).unwrap_or(1);
+            let max_attempts = event
+                .get("max_attempts")
+                .and_then(Value::as_u64)
+                .unwrap_or(attempt);
+            let reason = event.get("reason").and_then(Value::as_str).unwrap_or("");
+            let suffix = if reason.is_empty() {
+                String::new()
+            } else {
+                format!(": {reason}")
+            };
+            progress.set_message(format!(
+                "retrying {split} ({attempt}/{max_attempts}){suffix}"
+            ));
+        }
+        "written" => {
+            let records = event.get("records").and_then(Value::as_u64).unwrap_or(0);
+            let path = event.get("path").and_then(Value::as_str).unwrap_or("-");
+            progress.inc(1);
+            progress.set_message(format!("wrote {split} {records} record(s) to {path}"));
+        }
+        "manifest" => {
+            let path = event.get("path").and_then(Value::as_str).unwrap_or("-");
+            progress.set_message(format!("wrote manifest {path}"));
+        }
+        _ => {}
+    }
 }
 
 fn absolutize_cli_path(path: &Path) -> Result<PathBuf> {

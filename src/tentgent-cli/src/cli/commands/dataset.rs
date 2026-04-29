@@ -64,7 +64,7 @@ pub enum DatasetCommands {
     #[command(
         name = "synth",
         about = "Generate a local dataset package with OpenAI or Claude.",
-        long_about = "Generate a file-first Tentgent dataset package by asking OpenAI or Claude to produce tentgent.chat.v1 JSONL. The output directory is created locally and is not imported until you run dataset add. Use --print-prompt to inspect the exact provider prompt without auth or network calls.",
+        long_about = "Generate a file-first Tentgent dataset package by asking OpenAI or Claude to produce tentgent.chat.v1 JSONL. The output directory is created locally and is not imported until you run dataset add. Use --print-prompt to inspect the exact provider prompt without auth or network calls. Use split-specific count options to generate train, validation, test, and eval files in one package.",
         override_usage = "tentgent dataset synth -p <openai|anthropic|claude> -m <MODEL> -o <DIR> (-b <TEXT> | -s <PATH>) [OPTIONS]\n       tentgent dataset synth --print-prompt (-b <TEXT> | -s <PATH>) [OPTIONS]",
         group(clap::ArgGroup::new("input").required(true).args(["brief", "spec"]))
     )]
@@ -87,6 +87,21 @@ pub enum DatasetCommands {
         /// Dataset split file to generate.
         #[arg(short = 'S', long, value_name = "SPLIT", default_value = "train", value_parser = ["train", "valid", "test", "eval_cases"])]
         split: String,
+        /// Exact record count for the selected split.
+        #[arg(long, value_name = "N")]
+        count: Option<u32>,
+        /// Generate train.jsonl with this exact record count.
+        #[arg(long, value_name = "N")]
+        train_count: Option<u32>,
+        /// Generate valid.jsonl with this exact record count.
+        #[arg(long, value_name = "N")]
+        valid_count: Option<u32>,
+        /// Generate test.jsonl with this exact record count.
+        #[arg(long, value_name = "N")]
+        test_count: Option<u32>,
+        /// Generate eval_cases.jsonl with this exact record count.
+        #[arg(long, value_name = "N")]
+        eval_count: Option<u32>,
         /// Provider output token limit.
         #[arg(short = 'n', long, value_name = "TOKENS")]
         max_tokens: Option<u32>,
@@ -96,6 +111,9 @@ pub enum DatasetCommands {
         /// Provider request timeout in seconds.
         #[arg(long, value_name = "SECONDS", default_value_t = 180.0)]
         timeout_seconds: f32,
+        /// Retry provider generation per split after invalid output or transient provider errors.
+        #[arg(short = 'r', long, value_name = "N", default_value_t = 1)]
+        retries: u32,
         #[arg(
             short = 'P',
             long,

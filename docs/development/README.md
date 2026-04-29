@@ -139,9 +139,13 @@ Import a local `.jsonl` file or dataset directory:
   -p openai \
   -m gpt-4.1-mini \
   -o /path/to/generated-dataset \
+  --train-count 40 \
+  --valid-count 8 \
+  --test-count 8 \
   --timeout-seconds 300 \
-  -b "Generate 20 concise support examples in Traditional Chinese."
-./target/debug/tentgent dataset synth --print-prompt -b "Generate 20 concise support examples in Traditional Chinese."
+  --retries 1 \
+  -b "Generate concise support examples in Traditional Chinese."
+./target/debug/tentgent dataset synth --print-prompt --train-count 20 -b "Generate concise support examples in Traditional Chinese."
 ./target/debug/tentgent dataset eval /path/to/generated-dataset \
   -p openai \
   -m gpt-4.1-mini \
@@ -151,7 +155,7 @@ Import a local `.jsonl` file or dataset directory:
 ./target/debug/tentgent dataset add /path/to/dataset-dir
 ```
 
-Use `dataset template` to generate the manual prompt for OpenAI, Claude, or another agent. Its `--task` and `--language` options are prompt hints, not schema changes. Use `dataset synth` to call a provider directly and write a local package. Use `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. Failed provider parsing writes `_debug` files under an empty output directory. Use `dataset eval` to write a report-only provider review before training. Use `dataset validate` before `dataset add` when working with generated JSONL.
+Use `dataset template` to generate the manual prompt for OpenAI, Claude, or another agent. Its `--task` and `--language` options are prompt hints, not schema changes. Use `dataset synth` to call a provider directly and write a local package. Split-specific count options can generate train, validation, test, and eval files in one package. Use `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. `--retries` / `-r` retries each split independently after invalid provider output or transient provider failures. Failed provider parsing writes split-scoped `_debug/<split>` files under the output directory. Use `dataset eval` to write a report-only provider review before training. Use `dataset validate` before `dataset add` when working with generated JSONL.
 
 Inspect dataset state:
 

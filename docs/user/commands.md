@@ -126,9 +126,13 @@ tentgent dataset synth \
   -p openai \
   -m gpt-4.1-mini \
   -o ./generated-dataset \
+  --train-count 40 \
+  --valid-count 8 \
+  --test-count 8 \
   --timeout-seconds 300 \
-  -b "Generate 20 concise support examples in Traditional Chinese."
-tentgent dataset synth --print-prompt -b "Generate 20 concise support examples in Traditional Chinese."
+  --retries 1 \
+  -b "Generate concise support examples in Traditional Chinese."
+tentgent dataset synth --print-prompt --train-count 20 -b "Generate concise support examples in Traditional Chinese."
 tentgent dataset eval ./generated-dataset \
   -p openai \
   -m gpt-4.1-mini \
@@ -151,7 +155,7 @@ New chat and tool-use datasets should use the canonical `tentgent.chat.v1` schem
 Use `dataset template` when you want a paste-ready prompt for OpenAI, Claude, or another agent to produce JSONL that should pass `dataset validate`.
 Its `--task` and `--language` options are prompt hints only. For example, `--task support` asks the template to prefer support-style examples, and `--language zh-TW` asks for Traditional Chinese content; both still produce the same `tentgent.chat.v1` schema.
 
-Use `dataset synth` to ask OpenAI or Claude to generate a local dataset directory. The output directory must be missing or empty. It writes files only; run `dataset validate ./generated-dataset` and then `dataset add ./generated-dataset` when the result looks good. Add `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. When provider output fails local parsing and the output directory is missing or empty, Tentgent writes `_debug/prompt.md`, `_debug/provider-output.raw.txt`, and `_debug/error.txt` under the output directory.
+Use `dataset synth` to ask OpenAI or Claude to generate a local dataset directory. The output directory must be missing or empty. By default it writes one split, controlled by `--split` and optional `--count`. For a training-ready package with held-out files, use `--train-count`, `--valid-count`, `--test-count`, and optionally `--eval-count`; Tentgent writes each split file as soon as that provider call succeeds, so long multi-split runs leave visible file progress. It writes files only; run `dataset validate ./generated-dataset` and then `dataset add ./generated-dataset` when the result looks good. Add `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. `--retries` or `-r` defaults to `1` and retries each split independently after invalid provider JSON, schema mismatches, or transient provider errors; use `--retries 0` to disable retry. When provider output still fails local parsing or a later split times out, Tentgent writes `_debug/<split>/prompt.md`, `_debug/<split>/provider-output.raw.txt` when available, and `_debug/<split>/error.txt` under the output directory.
 
 Use `dataset eval` to ask OpenAI or Claude to review generated or managed data before training. It does not mutate the dataset. The report directory contains `eval-report.json`, `eval-report.md`, `prompt.md`, and `provider-output.raw.txt`. Use `--criteria` or `-c` for project-specific checks such as style, language, or refusal behavior.
 

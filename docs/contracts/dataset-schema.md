@@ -195,6 +195,8 @@ Prompt requirements for OpenAI or Claude dataset generation:
 - Use assistant `tool_calls` for tool requests.
 - Use `tool` messages for tool results.
 - Keep `metadata` factual and non-training-critical.
+- Do not use top-level `completion`, `answer`, `prompt`, `input`, or `output` fields for new cloud-generated data.
+- Put assistant answers inside `messages`; training splits should end with a final assistant message.
 - Do not pre-render MLX, PEFT, ChatML, or provider-specific text formats.
 
 ## Compatibility
