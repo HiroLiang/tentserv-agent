@@ -19,8 +19,6 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Active Plan Index
 
-- [cloud-provider-server-mvp.md](./cloud-provider-server-mvp.md)
-  Active polish and documentation plan for exposing OpenAI and Claude through local `tentgent server` chat.
 - [http-daemon-mvp.md](./http-daemon-mvp.md)
   Future service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
 - [tui-session-mvp.md](./tui-session-mvp.md)
@@ -28,9 +26,8 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Recommended Order
 
-1. Finish remaining cloud provider server polish and docs.
-2. Build the HTTP daemon entry after the chat protocol is stable.
-3. Build TUI session management after daemon/server behavior settles.
+1. Build the HTTP daemon entry after the chat protocol is stable.
+2. Build TUI session management after daemon/server behavior settles.
 
 ## Deferred Plans
 

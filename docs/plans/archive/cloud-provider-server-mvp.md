@@ -1,10 +1,12 @@
 # Cloud Provider Server MVP
 
-This plan defines the next active track: let `tentgent server` expose OpenAI and Claude through the same local HTTP chat surface used by local model servers.
+Status: completed and archived.
+
+This plan tracked the work that lets `tentgent server` expose OpenAI and Claude through the same local HTTP chat surface used by local model servers.
 
 ## Priority
 
-Do this before provider-backed dataset synthesis. The provider client, auth preflight, and response normalization can then be reused by `dataset synth` and `dataset eval`.
+This track was completed before provider-backed dataset synthesis. The provider client, auth preflight, and response normalization were reused by `dataset synth` and `dataset eval`.
 
 ## Scope
 
@@ -67,7 +69,7 @@ Rules:
 
 Lock the cloud runtime reference syntax and persisted spec shape.
 
-Status: implemented in the active workspace.
+Status: implemented.
 
 Goals:
 
@@ -85,7 +87,7 @@ Review target:
 
 Wire provider auth into server launch.
 
-Status: implemented in the active workspace for auth preflight. Environment handoff is constrained to the future cloud runtime process launch because Slice 1 still blocks before starting cloud runtime code.
+Status: implemented.
 
 Goals:
 
@@ -103,7 +105,7 @@ Review target:
 
 Add a small provider client layer in the Python daemon.
 
-Status: implemented in the active workspace.
+Status: implemented.
 
 Goals:
 
@@ -121,7 +123,7 @@ Review target:
 
 Teach the Python server runtime to handle cloud specs.
 
-Status: implemented in the active workspace.
+Status: implemented.
 
 Goals:
 
@@ -139,6 +141,8 @@ Review target:
 
 Make cloud servers feel consistent with local servers.
 
+Status: implemented.
+
 Goals:
 
 - support foreground and `--detach` launch modes
@@ -153,6 +157,8 @@ Review target:
 ### Slice 6: Smoke Tests And Docs
 
 Add reviewable verification around the new path.
+
+Status: implemented.
 
 Goals:
 
@@ -169,7 +175,7 @@ Review target:
 
 Defer streaming until the non-streaming path is stable.
 
-Status: completed in [http-chat-streaming-mvp.md](./archive/http-chat-streaming-mvp.md).
+Status: completed in [http-chat-streaming-mvp.md](./http-chat-streaming-mvp.md).
 
 Goals:
 
@@ -181,7 +187,7 @@ Review target:
 
 - streaming can be reviewed independently from core provider routing
 
-## Open Questions
+## Closed Decisions
 
-- Should provider model names have defaults, or should the user always pass one explicitly?
-- Should `auth status` be required to show `verified` before launch, or should `unknown` be allowed with a warning and explicit flag?
+- Provider model names remain explicit in runtime refs, such as `openai:gpt-4.1-mini` or `claude:<MODEL_NAME>`.
+- `server run` and `server start` require the effective provider auth to validate before cloud runtime launch.

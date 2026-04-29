@@ -2,7 +2,7 @@
 
 Status: archived. This plan completed dataset validation, deterministic generation templates, provider-backed dataset synthesis, synthesis debugging, and provider-backed dataset evaluation.
 
-Use OpenAI and Claude to help users produce valid Tentgent tuning data. This track reused the provider client boundary from [cloud-provider-server-mvp.md](../cloud-provider-server-mvp.md) once cloud chat routing became stable.
+Use OpenAI and Claude to help users produce valid Tentgent tuning data. This track reused the provider client boundary from [cloud-provider-server-mvp.md](./cloud-provider-server-mvp.md) once cloud chat routing became stable.
 
 ## Scope
 
