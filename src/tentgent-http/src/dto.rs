@@ -681,6 +681,146 @@ pub(crate) struct TrainPlanItem {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct TrainRunStartResponse {
+    pub(crate) run: TrainRunItem,
+    pub(crate) plan: TrainPlanItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunsResponse {
+    pub(crate) runs: Vec<TrainRunSummaryItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunResponse {
+    pub(crate) run: TrainRunItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunMetricsResponse {
+    pub(crate) run: TrainRunRefItem,
+    pub(crate) metrics_path: String,
+    pub(crate) tail: usize,
+    pub(crate) total_events: usize,
+    pub(crate) truncated: bool,
+    pub(crate) events: Vec<TrainRunMetricItem>,
+    pub(crate) warnings: Vec<TrainRunWarningItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunLogsResponse {
+    pub(crate) logs: TrainRunLogsItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunLogsItem {
+    pub(crate) raw: TrainRunLogMetadataItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunLogResponse {
+    pub(crate) log: TrainRunLogContentItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunLogMetadataItem {
+    pub(crate) kind: &'static str,
+    pub(crate) path: String,
+    pub(crate) exists: bool,
+    pub(crate) total_bytes: u64,
+    pub(crate) modified_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunLogContentItem {
+    pub(crate) owner: &'static str,
+    pub(crate) run_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) kind: &'static str,
+    pub(crate) path: String,
+    pub(crate) exists: bool,
+    pub(crate) total_bytes: u64,
+    pub(crate) modified_at: Option<String>,
+    pub(crate) tail_bytes: u64,
+    pub(crate) truncated: bool,
+    pub(crate) encoding: &'static str,
+    pub(crate) content: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunRefItem {
+    pub(crate) run_ref: String,
+    pub(crate) short_ref: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunMetricItem {
+    pub(crate) index: usize,
+    pub(crate) event: Value,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunWarningItem {
+    pub(crate) code: String,
+    pub(crate) message: String,
+    pub(crate) line: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunSummaryItem {
+    pub(crate) run_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) status: String,
+    pub(crate) process_running: bool,
+    pub(crate) stale: bool,
+    pub(crate) phase: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) plan_ref: String,
+    pub(crate) model_ref: String,
+    pub(crate) dataset_ref: String,
+    pub(crate) backend: Option<String>,
+    pub(crate) pid: Option<u32>,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) adapter_ref: Option<String>,
+    pub(crate) created_at: String,
+    pub(crate) started_at: Option<String>,
+    pub(crate) ended_at: Option<String>,
+    pub(crate) run_dir: String,
+    pub(crate) run_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainRunItem {
+    pub(crate) run_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) status: String,
+    pub(crate) process_running: bool,
+    pub(crate) stale: bool,
+    pub(crate) phase: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) plan_ref: String,
+    pub(crate) plan_short_ref: String,
+    pub(crate) model_ref: String,
+    pub(crate) dataset_ref: String,
+    pub(crate) backend: Option<String>,
+    pub(crate) recipe_hash: String,
+    pub(crate) pid: Option<u32>,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) exit_signal: Option<String>,
+    pub(crate) adapter_ref: Option<String>,
+    pub(crate) adapter_path: Option<String>,
+    pub(crate) adapter_output_path: Option<String>,
+    pub(crate) adapter_store_path: Option<String>,
+    pub(crate) created_at: String,
+    pub(crate) started_at: Option<String>,
+    pub(crate) ended_at: Option<String>,
+    pub(crate) run_dir: String,
+    pub(crate) run_path: String,
+    pub(crate) metrics_path: String,
+    pub(crate) raw_log_path: String,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct ErrorResponse<'a> {
     pub(crate) error: &'a str,
     pub(crate) message: String,
@@ -819,6 +959,10 @@ pub(crate) struct TrainPlanRequest {
     pub(crate) backend: Option<TrainPlanBackendRequest>,
     pub(crate) overrides: Option<TrainPlanOverridesRequest>,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TrainRunStartRequest {}
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]

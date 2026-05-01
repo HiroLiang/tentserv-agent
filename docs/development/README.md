@@ -263,8 +263,15 @@ curl -sS http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>
 curl -sS -X DELETE http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>
 ```
 
-HTTP plan deletion refuses plans with run records. Use the CLI for actual
-training runs until the daemon run API is implemented.
+HTTP plan deletion refuses plans with run records. The daemon can also start
+and observe runs:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>/runs
+curl -sS http://127.0.0.1:8790/v1/train/lora/runs
+curl -sS http://127.0.0.1:8790/v1/train/lora/runs/<run-ref>/metrics
+curl -sS http://127.0.0.1:8790/v1/train/lora/runs/<run-ref>/logs/raw
+```
 
 Run the current orchestration scaffold:
 

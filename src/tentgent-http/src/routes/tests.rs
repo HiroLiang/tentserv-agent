@@ -1027,6 +1027,102 @@ async fn train_plan_errors_auth_blocked_and_in_use_are_mapped() {
 }
 
 #[tokio::test]
+async fn train_run_list_inspect_metrics_and_logs_work() {
+    let home = unique_home("train-run-read");
+    let model_ref = "555555555555000000000000";
+    let dataset_ref = "656565656565000000000000";
+    write_model_fixture(&home, model_ref);
+    write_dataset_fixture(&home, dataset_ref);
+    let state = state_for(home.clone());
+
+    let create = route_request(
+        &post(
+            "/v1/train/lora/plans",
+            br#"{"model_ref":"555555555555","dataset_ref":"656565656565","backend":"auto"}"#,
+        ),
+        &state,
+    )
+    .await;
+    let create_body: Value = serde_json::from_slice(response_buffer(&create)).expect("json");
+    assert_eq!(create.status_code, 200);
+    let plan_ref = create_body["plan"]["plan_ref"].as_str().expect("plan ref");
+    let run_ref = "777777777777000000000000";
+    write_train_run_fixture_full(&home, plan_ref, run_ref, model_ref, dataset_ref);
+
+    let global = route_request(&get("/v1/train/lora/runs"), &state).await;
+    let global_body: Value = serde_json::from_slice(response_buffer(&global)).expect("json");
+    assert_eq!(global.status_code, 200);
+    assert_eq!(global_body["runs"].as_array().expect("runs").len(), 1);
+    assert_eq!(global_body["runs"][0]["run_ref"], run_ref);
+    assert_eq!(global_body["runs"][0]["status"], "succeeded");
+
+    let plan_runs = route_request(
+        &get(&format!("/v1/train/lora/plans/{}/runs", &plan_ref[..12])),
+        &state,
+    )
+    .await;
+    let plan_runs_body: Value = serde_json::from_slice(response_buffer(&plan_runs)).expect("json");
+    assert_eq!(plan_runs.status_code, 200);
+    assert_eq!(plan_runs_body["runs"][0]["plan_ref"], plan_ref);
+
+    let inspect = route_request(&get("/v1/train/lora/runs/777777777777"), &state).await;
+    let inspect_body: Value = serde_json::from_slice(response_buffer(&inspect)).expect("json");
+    assert_eq!(inspect.status_code, 200);
+    assert_eq!(inspect_body["run"]["run_ref"], run_ref);
+    assert_eq!(inspect_body["run"]["process_running"], false);
+    assert_eq!(inspect_body["run"]["stale"], false);
+
+    let metrics = route_request(
+        &get("/v1/train/lora/runs/777777777777/metrics?tail=1"),
+        &state,
+    )
+    .await;
+    let metrics_body: Value = serde_json::from_slice(response_buffer(&metrics)).expect("json");
+    assert_eq!(metrics.status_code, 200);
+    assert_eq!(metrics_body["total_events"], 2);
+    assert_eq!(metrics_body["truncated"], true);
+    assert_eq!(metrics_body["events"].as_array().expect("events").len(), 1);
+    assert_eq!(metrics_body["events"][0]["index"], 1);
+    assert_eq!(metrics_body["warnings"][0]["code"], "malformed_metric");
+    assert!(!metrics_body["warnings"][0]["message"]
+        .as_str()
+        .expect("warning")
+        .contains("not-json"));
+
+    let invalid_tail = route_request(
+        &get("/v1/train/lora/runs/777777777777/metrics?tail=0"),
+        &state,
+    )
+    .await;
+    assert_eq!(invalid_tail.status_code, 400);
+
+    let logs = route_request(&get("/v1/train/lora/runs/777777777777/logs"), &state).await;
+    let logs_body: Value = serde_json::from_slice(response_buffer(&logs)).expect("json");
+    assert_eq!(logs.status_code, 200);
+    assert_eq!(logs_body["logs"]["raw"]["exists"], true);
+
+    let raw = route_request(
+        &get("/v1/train/lora/runs/777777777777/logs/raw?tail_bytes=4"),
+        &state,
+    )
+    .await;
+    let raw_body: Value = serde_json::from_slice(response_buffer(&raw)).expect("json");
+    assert_eq!(raw.status_code, 200);
+    assert_eq!(raw_body["log"]["kind"], "raw");
+    assert_eq!(raw_body["log"]["content"], "ne2\n");
+
+    let bad_start_body = route_request(
+        &post(
+            &format!("/v1/train/lora/plans/{}/runs", &plan_ref[..12]),
+            br#"{"force":true}"#,
+        ),
+        &state,
+    )
+    .await;
+    assert_eq!(bad_start_body.status_code, 400);
+}
+
+#[tokio::test]
 async fn dataset_synth_route_validates_modes_before_provider_calls() {
     let home = unique_home("dataset-synth-route-validation");
     fs::create_dir_all(&home).expect("home");
@@ -2696,6 +2792,62 @@ fn write_train_run_fixture(home: &Path, plan_ref: &str, run_ref: &str) {
         .join(run_ref);
     fs::create_dir_all(&run_dir).expect("run dir");
     fs::write(run_dir.join("run.toml"), "status = \"running\"\n").expect("run metadata");
+}
+
+fn write_train_run_fixture_full(
+    home: &Path,
+    plan_ref: &str,
+    run_ref: &str,
+    model_ref: &str,
+    dataset_ref: &str,
+) {
+    let run_dir = home
+        .join("train/lora/plans")
+        .join(plan_ref)
+        .join("runs")
+        .join(run_ref);
+    fs::create_dir_all(&run_dir).expect("run dir");
+    let run_path = run_dir.join("run.toml");
+    let metrics_path = run_dir.join("metrics.jsonl");
+    let raw_log_path = run_dir.join("raw.log");
+    fs::write(
+        &run_path,
+        format!(
+            r#"schema_version = 1
+run_ref = "{run_ref}"
+short_ref = "{}"
+status = "succeeded"
+phase = "done"
+created_at = "2026-05-01T00:00:00Z"
+started_at = "2026-05-01T00:00:00Z"
+ended_at = "2026-05-01T00:00:01Z"
+plan_ref = "{plan_ref}"
+plan_short_ref = "{}"
+model_ref = "{model_ref}"
+dataset_ref = "{dataset_ref}"
+backend = "peft"
+recipe_hash = "{plan_ref}"
+exit_code = 0
+run_dir = "{}"
+run_path = "{}"
+metrics_path = "{}"
+raw_log_path = "{}"
+"#,
+            &run_ref[..12],
+            &plan_ref[..12],
+            path_string(&run_dir),
+            path_string(&run_path),
+            path_string(&metrics_path),
+            path_string(&raw_log_path),
+        ),
+    )
+    .expect("run toml");
+    fs::write(
+        &metrics_path,
+        "{\"type\":\"train\",\"step\":1}\nnot-json-secret\n{\"type\":\"done\"}\n",
+    )
+    .expect("metrics");
+    fs::write(&raw_log_path, "line1\nline2\n").expect("raw log");
 }
 
 fn write_session_fixture(

@@ -100,6 +100,13 @@ GET /v1/train/lora/plans
 POST /v1/train/lora/plans/preview
 POST /v1/train/lora/plans
 GET /v1/train/lora/plans/{plan_ref}
+POST /v1/train/lora/plans/{plan_ref}/runs
+GET /v1/train/lora/plans/{plan_ref}/runs
+GET /v1/train/lora/runs
+GET /v1/train/lora/runs/{run_ref}
+GET /v1/train/lora/runs/{run_ref}/metrics
+GET /v1/train/lora/runs/{run_ref}/logs
+GET /v1/train/lora/runs/{run_ref}/logs/raw
 DELETE /v1/train/lora/plans/{plan_ref}
 DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
@@ -534,13 +541,16 @@ Review target:
 
 ### Slice 16: Training Run API
 
-Status: planned.
+Status: implemented in the active workspace.
 
 Goals:
 
 - expose LoRA run start, list, inspect, logs, and metrics endpoints
 - keep run state and adapter registration consistent with CLI behavior
 - make long-running training status observable without tailing files manually
+- launch runs through detached Rust worker processes instead of synchronous
+  HTTP requests
+- enforce one live LoRA run at a time as the MVP resource guard
 
 Review target:
 

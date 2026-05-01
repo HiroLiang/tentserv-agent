@@ -14,7 +14,10 @@ pub use daemon::{DaemonCommands, DaemonRunCommand};
 pub use dataset::DatasetCommands;
 pub use model::ModelCommands;
 pub use server::{ServerCommands, ServerRunCommand};
-pub use train::{TrainCommands, TrainLoraCommands, TrainLoraPlanCommands, TrainLoraRunCommand};
+pub use train::{
+    TrainCommands, TrainLoraCommands, TrainLoraPlanCommands, TrainLoraRunCommand,
+    TrainLoraRunWorkerCommand,
+};
 
 use clap::{Args, Subcommand};
 

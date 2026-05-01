@@ -3,9 +3,11 @@ use tentgent_core::{
     dataset::DatasetError,
     model::ModelError,
     train::{
-        LoraTrainBackendRequest, LoraTrainOverrides, LoraTrainPlan, LoraTrainPlanCreateOutcome,
-        LoraTrainPlanInspection, LoraTrainPlanManager, LoraTrainPlanPreviewOutcome,
-        LoraTrainPlanSummary, TrainError,
+        launch_detached_lora_run_worker, LoraTrainBackendRequest, LoraTrainMetricsTail,
+        LoraTrainOverrides, LoraTrainPlan, LoraTrainPlanCreateOutcome, LoraTrainPlanInspection,
+        LoraTrainPlanManager, LoraTrainPlanPreviewOutcome, LoraTrainPlanSummary,
+        LoraTrainRunInspection, LoraTrainRunManager, TrainError, TrainRunLogMetadata,
+        TrainRunLogTail,
     },
 };
 
@@ -15,12 +17,21 @@ use crate::{
         ErrorResponse, RemoveTrainPlanResponse, RemovedTrainPlanItem, TrainPlanBackendRequest,
         TrainPlanCreateResponse, TrainPlanItem, TrainPlanPreviewItem, TrainPlanPreviewResponse,
         TrainPlanRequest, TrainPlanResponse, TrainPlanSummaryItem, TrainPlansResponse,
+        TrainRunItem, TrainRunLogContentItem, TrainRunLogMetadataItem, TrainRunLogResponse,
+        TrainRunLogsItem, TrainRunLogsResponse, TrainRunMetricItem, TrainRunMetricsResponse,
+        TrainRunRefItem, TrainRunResponse, TrainRunStartRequest, TrainRunStartResponse,
+        TrainRunSummaryItem, TrainRunWarningItem, TrainRunsResponse,
     },
     http::{HttpRequest, HttpResponse},
     response::{bad_request_response, json_response, parse_json_body},
 };
 
 use super::store::path_string;
+
+const DEFAULT_METRICS_TAIL: usize = 200;
+const MAX_METRICS_TAIL: usize = 1_000;
+const DEFAULT_RAW_LOG_TAIL_BYTES: u64 = 65_536;
+const MAX_RAW_LOG_TAIL_BYTES: u64 = 262_144;
 
 pub(crate) fn list_train_plans_response(state: &DaemonHttpState) -> HttpResponse {
     let manager = match LoraTrainPlanManager::open_readonly_with_home(Some(state.home_dir())) {
@@ -50,6 +61,198 @@ pub(crate) fn list_train_plans_response(state: &DaemonHttpState) -> HttpResponse
     });
 
     json_response(200, TrainPlansResponse { plans: items })
+}
+
+pub(crate) async fn start_train_run_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    plan_reference: &str,
+) -> HttpResponse {
+    if let Err(response) = parse_start_run_body(request) {
+        return response;
+    }
+
+    let manager = match LoraTrainRunManager::new_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return train_run_error_response(error),
+    };
+    let outcome = match manager.start_run(plan_reference) {
+        Ok(outcome) => outcome,
+        Err(error) => return train_run_error_response(error),
+    };
+
+    let home_dir = state.home_dir().to_path_buf();
+    let run_ref = outcome.run.run_ref.clone();
+    let launch =
+        tokio::task::spawn_blocking(move || launch_detached_lora_run_worker(&home_dir, &run_ref))
+            .await;
+
+    let pid = match launch {
+        Ok(Ok(pid)) => pid,
+        Ok(Err(error)) => {
+            let _ = manager.mark_run_failed(
+                &outcome.run.run_ref,
+                "worker_spawn",
+                error.to_string(),
+                None,
+            );
+            return train_run_error_response(error);
+        }
+        Err(error) => {
+            let message = format!("failed to join LoRA training worker launch task: {error}");
+            let _ = manager.mark_run_failed(
+                &outcome.run.run_ref,
+                "worker_spawn",
+                message.clone(),
+                None,
+            );
+            return json_response(
+                500,
+                ErrorResponse {
+                    error: "train_run_failed",
+                    message,
+                },
+            );
+        }
+    };
+
+    let run = match manager.record_worker_started(&outcome.run.run_ref, pid) {
+        Ok(run) => run,
+        Err(error) => return train_run_error_response(error),
+    };
+    let inspection = match manager.inspect_run(&run.run_ref) {
+        Ok(inspection) => inspection,
+        Err(error) => return train_run_error_response(error),
+    };
+
+    json_response(
+        202,
+        TrainRunStartResponse {
+            run: train_run_item(inspection),
+            plan: train_plan_item(&outcome.plan),
+        },
+    )
+}
+
+pub(crate) fn list_train_runs_response(state: &DaemonHttpState) -> HttpResponse {
+    let manager = match LoraTrainRunManager::open_readonly_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return train_run_error_response(error),
+    };
+    match manager.list_runs() {
+        Ok(runs) => json_response(
+            200,
+            TrainRunsResponse {
+                runs: runs.into_iter().map(train_run_summary_item).collect(),
+            },
+        ),
+        Err(error) => train_run_error_response(error),
+    }
+}
+
+pub(crate) fn list_plan_runs_response(
+    state: &DaemonHttpState,
+    plan_reference: &str,
+) -> HttpResponse {
+    let manager = match LoraTrainRunManager::open_readonly_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return train_run_error_response(error),
+    };
+    match manager.list_plan_runs(plan_reference) {
+        Ok(runs) => json_response(
+            200,
+            TrainRunsResponse {
+                runs: runs.into_iter().map(train_run_summary_item).collect(),
+            },
+        ),
+        Err(error) => train_run_error_response(error),
+    }
+}
+
+pub(crate) fn inspect_train_run_response(
+    state: &DaemonHttpState,
+    run_reference: &str,
+) -> HttpResponse {
+    let manager = match LoraTrainRunManager::open_readonly_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return train_run_error_response(error),
+    };
+    match manager.inspect_run(run_reference) {
+        Ok(inspection) => json_response(
+            200,
+            TrainRunResponse {
+                run: train_run_item(inspection),
+            },
+        ),
+        Err(error) => train_run_error_response(error),
+    }
+}
+
+pub(crate) fn train_run_metrics_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    run_reference: &str,
+) -> HttpResponse {
+    let tail = match metrics_tail(request) {
+        Ok(tail) => tail,
+        Err(response) => return response,
+    };
+    let manager = match LoraTrainRunManager::open_readonly_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return train_run_error_response(error),
+    };
+    let inspection = match manager.inspect_run(run_reference) {
+        Ok(inspection) => inspection,
+        Err(error) => return train_run_error_response(error),
+    };
+    match manager.metrics_tail(run_reference, tail) {
+        Ok(metrics) => json_response(200, train_run_metrics_response_body(inspection, metrics)),
+        Err(error) => train_run_error_response(error),
+    }
+}
+
+pub(crate) fn train_run_logs_response(
+    state: &DaemonHttpState,
+    run_reference: &str,
+) -> HttpResponse {
+    let manager = match LoraTrainRunManager::open_readonly_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return train_run_error_response(error),
+    };
+    match manager.raw_log_metadata(run_reference) {
+        Ok(metadata) => json_response(
+            200,
+            TrainRunLogsResponse {
+                logs: TrainRunLogsItem {
+                    raw: train_run_log_metadata_item(metadata),
+                },
+            },
+        ),
+        Err(error) => train_run_error_response(error),
+    }
+}
+
+pub(crate) fn train_run_raw_log_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    run_reference: &str,
+) -> HttpResponse {
+    let tail_bytes = match raw_log_tail_bytes(request) {
+        Ok(tail_bytes) => tail_bytes,
+        Err(response) => return response,
+    };
+    let manager = match LoraTrainRunManager::open_readonly_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return train_run_error_response(error),
+    };
+    let inspection = match manager.inspect_run(run_reference) {
+        Ok(inspection) => inspection,
+        Err(error) => return train_run_error_response(error),
+    };
+    match manager.raw_log_tail(run_reference, tail_bytes) {
+        Ok(log) => json_response(200, train_run_log_response_body(inspection, log)),
+        Err(error) => train_run_error_response(error),
+    }
 }
 
 pub(crate) fn preview_train_plan_response(
@@ -193,6 +396,13 @@ fn parse_train_plan_request(request: &HttpRequest) -> Result<ParsedTrainPlanRequ
         backend,
         overrides,
     })
+}
+
+fn parse_start_run_body(request: &HttpRequest) -> Result<(), HttpResponse> {
+    if request.body.is_empty() {
+        return Ok(());
+    }
+    parse_json_body::<TrainRunStartRequest>(request).map(|_| ())
 }
 
 fn normalize_required_ref(value: String, field: &'static str) -> Result<String, HttpResponse> {
@@ -372,6 +582,190 @@ fn train_plan_item(plan: &LoraTrainPlan) -> TrainPlanItem {
     }
 }
 
+fn train_run_summary_item(inspection: LoraTrainRunInspection) -> TrainRunSummaryItem {
+    let run = inspection.run;
+    TrainRunSummaryItem {
+        run_ref: run.run_ref,
+        short_ref: run.short_ref,
+        status: effective_run_status(&run.status, inspection.stale),
+        process_running: inspection.process_running,
+        stale: inspection.stale,
+        phase: run.phase,
+        error: run.error.or_else(|| stale_error(inspection.stale)),
+        plan_ref: run.plan_ref,
+        model_ref: run.model_ref,
+        dataset_ref: run.dataset_ref,
+        backend: run.backend.map(|backend| backend.as_str().to_string()),
+        pid: run.pid,
+        exit_code: run.exit_code,
+        adapter_ref: run.adapter_ref,
+        created_at: run.created_at,
+        started_at: run.started_at,
+        ended_at: run.ended_at,
+        run_dir: path_string(&inspection.run_dir),
+        run_path: path_string(&inspection.run_path),
+    }
+}
+
+fn train_run_item(inspection: LoraTrainRunInspection) -> TrainRunItem {
+    let run = inspection.run;
+    TrainRunItem {
+        run_ref: run.run_ref,
+        short_ref: run.short_ref,
+        status: effective_run_status(&run.status, inspection.stale),
+        process_running: inspection.process_running,
+        stale: inspection.stale,
+        phase: run.phase,
+        error: run.error.or_else(|| stale_error(inspection.stale)),
+        plan_ref: run.plan_ref,
+        plan_short_ref: run.plan_short_ref,
+        model_ref: run.model_ref,
+        dataset_ref: run.dataset_ref,
+        backend: run.backend.map(|backend| backend.as_str().to_string()),
+        recipe_hash: run.recipe_hash,
+        pid: run.pid,
+        exit_code: run.exit_code,
+        exit_signal: run.exit_signal,
+        adapter_ref: run.adapter_ref,
+        adapter_path: run.adapter_path,
+        adapter_output_path: run.adapter_output_path,
+        adapter_store_path: run.adapter_store_path,
+        created_at: run.created_at,
+        started_at: run.started_at,
+        ended_at: run.ended_at,
+        run_dir: path_string(&inspection.run_dir),
+        run_path: path_string(&inspection.run_path),
+        metrics_path: path_string(&inspection.metrics_path),
+        raw_log_path: path_string(&inspection.raw_log_path),
+    }
+}
+
+fn train_run_metrics_response_body(
+    inspection: LoraTrainRunInspection,
+    metrics: LoraTrainMetricsTail,
+) -> TrainRunMetricsResponse {
+    TrainRunMetricsResponse {
+        run: TrainRunRefItem {
+            run_ref: inspection.run.run_ref,
+            short_ref: inspection.run.short_ref,
+        },
+        metrics_path: path_string(&metrics.metrics_path),
+        tail: metrics.tail,
+        total_events: metrics.total_events,
+        truncated: metrics.truncated,
+        events: metrics
+            .events
+            .into_iter()
+            .map(|event| TrainRunMetricItem {
+                index: event.index,
+                event: event.event,
+            })
+            .collect(),
+        warnings: metrics
+            .warnings
+            .into_iter()
+            .map(|warning| TrainRunWarningItem {
+                code: warning.code,
+                message: warning.message,
+                line: warning.line,
+            })
+            .collect(),
+    }
+}
+
+fn train_run_log_response_body(
+    inspection: LoraTrainRunInspection,
+    log: TrainRunLogTail,
+) -> TrainRunLogResponse {
+    TrainRunLogResponse {
+        log: TrainRunLogContentItem {
+            owner: "train_run",
+            run_ref: inspection.run.run_ref,
+            short_ref: inspection.run.short_ref,
+            kind: "raw",
+            path: path_string(&log.metadata.path),
+            exists: log.metadata.exists,
+            total_bytes: log.metadata.total_bytes,
+            modified_at: log.metadata.modified_at,
+            tail_bytes: log.tail_bytes,
+            truncated: log.truncated,
+            encoding: log.encoding,
+            content: log.content,
+        },
+    }
+}
+
+fn train_run_log_metadata_item(metadata: TrainRunLogMetadata) -> TrainRunLogMetadataItem {
+    TrainRunLogMetadataItem {
+        kind: "raw",
+        path: path_string(&metadata.path),
+        exists: metadata.exists,
+        total_bytes: metadata.total_bytes,
+        modified_at: metadata.modified_at,
+    }
+}
+
+fn effective_run_status(status: &tentgent_core::train::LoraTrainRunStatus, stale: bool) -> String {
+    if stale {
+        "stale".to_string()
+    } else {
+        status.as_str().to_string()
+    }
+}
+
+fn stale_error(stale: bool) -> Option<String> {
+    stale
+        .then(|| "run process is no longer running but no terminal status was recorded".to_string())
+}
+
+fn metrics_tail(request: &HttpRequest) -> Result<usize, HttpResponse> {
+    let values = request.query_values("tail").collect::<Vec<_>>();
+    match values.as_slice() {
+        [] => Ok(DEFAULT_METRICS_TAIL),
+        [value] => parse_metrics_tail(value),
+        _ => Err(bad_request_response("`tail` must be provided at most once")),
+    }
+}
+
+fn parse_metrics_tail(value: &str) -> Result<usize, HttpResponse> {
+    let parsed = value.parse::<usize>().map_err(|_| {
+        bad_request_response(format!(
+            "`tail` must be an integer between 1 and {MAX_METRICS_TAIL}"
+        ))
+    })?;
+    if parsed == 0 || parsed > MAX_METRICS_TAIL {
+        return Err(bad_request_response(format!(
+            "`tail` must be between 1 and {MAX_METRICS_TAIL}"
+        )));
+    }
+    Ok(parsed)
+}
+
+fn raw_log_tail_bytes(request: &HttpRequest) -> Result<u64, HttpResponse> {
+    let values = request.query_values("tail_bytes").collect::<Vec<_>>();
+    match values.as_slice() {
+        [] => Ok(DEFAULT_RAW_LOG_TAIL_BYTES),
+        [value] => parse_raw_log_tail_bytes(value),
+        _ => Err(bad_request_response(
+            "`tail_bytes` must be provided at most once",
+        )),
+    }
+}
+
+fn parse_raw_log_tail_bytes(value: &str) -> Result<u64, HttpResponse> {
+    let parsed = value.parse::<u64>().map_err(|_| {
+        bad_request_response(format!(
+            "`tail_bytes` must be an integer between 1 and {MAX_RAW_LOG_TAIL_BYTES}"
+        ))
+    })?;
+    if parsed == 0 || parsed > MAX_RAW_LOG_TAIL_BYTES {
+        return Err(bad_request_response(format!(
+            "`tail_bytes` must be between 1 and {MAX_RAW_LOG_TAIL_BYTES}"
+        )));
+    }
+    Ok(parsed)
+}
+
 fn value_or_null(value: &impl serde::Serialize) -> Value {
     to_value(value).unwrap_or(Value::Null)
 }
@@ -403,6 +797,54 @@ fn train_error_response(error: TrainError) -> HttpResponse {
             ErrorResponse {
                 error: "train_plan_failed",
                 message: format!("failed to manage LoRA train plans: {other}"),
+            },
+        ),
+    }
+}
+
+fn train_run_error_response(error: TrainError) -> HttpResponse {
+    match error {
+        TrainError::Model(ModelError::NotFound(reference))
+        | TrainError::Dataset(DatasetError::NotFound(reference))
+        | TrainError::PlanNotFound(reference)
+        | TrainError::RunNotFound(reference) => json_response(
+            404,
+            ErrorResponse {
+                error: "not_found",
+                message: format!("training reference `{reference}` was not found"),
+            },
+        ),
+        TrainError::Model(ModelError::AmbiguousRef(reference))
+        | TrainError::Dataset(DatasetError::AmbiguousRef(reference))
+        | TrainError::AmbiguousPlanRef(reference)
+        | TrainError::AmbiguousRunRef(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "ambiguous_ref",
+                message: format!(
+                    "training reference `{reference}` is ambiguous; use a longer prefix"
+                ),
+            },
+        ),
+        TrainError::PlanBlocked { plan_ref, reasons } => json_response(
+            409,
+            ErrorResponse {
+                error: "plan_blocked",
+                message: format!("LoRA train plan `{plan_ref}` is blocked: {reasons}"),
+            },
+        ),
+        TrainError::RunAlreadyRunning(run_ref) => json_response(
+            409,
+            ErrorResponse {
+                error: "run_already_running",
+                message: format!("another LoRA train run is already running: {run_ref}"),
+            },
+        ),
+        other => json_response(
+            500,
+            ErrorResponse {
+                error: "train_run_failed",
+                message: format!("failed to manage LoRA train runs: {other}"),
             },
         ),
     }

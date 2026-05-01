@@ -29,6 +29,7 @@ fn handle_lora_command(action: TrainLoraCommands) -> Result<()> {
     match action {
         TrainLoraCommands::Plan { action } => handle_lora_plan_command(action)?,
         TrainLoraCommands::Run(command) => run_lora_plan(command)?,
+        TrainLoraCommands::RunWorker(command) => run::run_lora_worker(command)?,
     }
 
     Ok(())

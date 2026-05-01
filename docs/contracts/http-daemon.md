@@ -802,6 +802,72 @@ path, and runs path. `DELETE` succeeds only for plans with zero runs and returns
 pre-removal metadata. Plans with run records return `409 in_use`; callers should
 use future run cleanup APIs before deleting those plans.
 
+## LoRA Train Runs
+
+The daemon can launch and observe saved LoRA training plans:
+
+```text
+POST /v1/train/lora/plans/{plan_ref}/runs
+GET /v1/train/lora/plans/{plan_ref}/runs
+GET /v1/train/lora/runs
+GET /v1/train/lora/runs/{run_ref}
+GET /v1/train/lora/runs/{run_ref}/metrics
+GET /v1/train/lora/runs/{run_ref}/logs
+GET /v1/train/lora/runs/{run_ref}/logs/raw
+```
+
+`POST /runs` accepts an empty body or `{}` only. It creates durable run
+artifacts, launches a detached `tentgent train lora run-worker` process, and
+returns `202 Accepted` after the worker starts. Run configuration always comes
+from the saved plan; HTTP run start has no override fields.
+
+Only one live LoRA run is allowed at a time in this MVP. Attempts to start a
+second live run return `409 run_already_running`. Blocked plans return
+`409 plan_blocked`.
+
+Run inspect responses include persisted state and derived process state:
+
+```json
+{
+  "run": {
+    "run_ref": "run-ref",
+    "short_ref": "run-short",
+    "status": "running",
+    "process_running": true,
+    "stale": false,
+    "phase": "train",
+    "error": null,
+    "plan_ref": "plan-ref",
+    "model_ref": "model-ref",
+    "dataset_ref": "dataset-ref",
+    "backend": "peft",
+    "pid": 12345,
+    "exit_code": null,
+    "adapter_ref": null,
+    "created_at": "2026-05-01T00:00:00Z",
+    "started_at": "2026-05-01T00:00:00Z",
+    "ended_at": null,
+    "run_dir": "/path/to/run",
+    "run_path": "/path/to/run/run.toml",
+    "metrics_path": "/path/to/run/metrics.jsonl",
+    "raw_log_path": "/path/to/run/raw.log"
+  }
+}
+```
+
+`stale:true` is derived when `run.toml` records a live status but the recorded
+pid is no longer running. `stale` is not written as a terminal status.
+
+`GET /metrics?tail=N` returns the last metric events in chronological order.
+The default tail is `200`, the maximum is `1000`, and malformed metric lines
+produce structured warnings without echoing raw line content.
+
+`GET /logs` returns raw log metadata. `GET /logs/raw?tail_bytes=N` uses the
+same byte-tail rules as daemon log diagnostics: default `65536`, maximum
+`262144`, UTF-8 lossy decoding, and `200 exists:false` for missing logs.
+Training raw logs are local diagnostics and may contain dataset text or local
+paths; no redaction is promised in this slice.
+
 ## Store Inspect And Remove Mutations
 
 The daemon exposes safe remove parity for managed store entries:

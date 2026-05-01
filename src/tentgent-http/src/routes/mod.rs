@@ -69,6 +69,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         "/v1/servers" => store::list_servers_response(state),
         "/v1/sessions" => session::list_sessions_response(state),
         "/v1/train/lora/plans" => train::list_train_plans_response(state),
+        "/v1/train/lora/runs" => train::list_train_runs_response(state),
         "/v1/daemon/logs" => diagnostics::daemon_logs_metadata_response(state),
         "/v1/daemon/logs/stdout" => {
             diagnostics::daemon_log_content_response(state, request, "stdout")
@@ -86,11 +87,32 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
             session::session_messages_response(state, request, reference)
         }
         path if train_plan_static_path(path) => method_not_allowed(request),
+        path if train_plan_runs_path(path).is_some() => {
+            let reference = train_plan_runs_path(path).expect("checked path");
+            train::list_plan_runs_response(state, reference)
+        }
         path if train_plan_ref_path(path).is_some() => {
             let reference = train_plan_ref_path(path).expect("checked path");
             train::inspect_train_plan_response(state, reference)
         }
         path if path.starts_with("/v1/train/lora/plans/") => not_found_response(&request.path),
+        path if train_run_metrics_path(path).is_some() => {
+            let reference = train_run_metrics_path(path).expect("checked path");
+            train::train_run_metrics_response(state, request, reference)
+        }
+        path if train_run_raw_log_path(path).is_some() => {
+            let reference = train_run_raw_log_path(path).expect("checked path");
+            train::train_run_raw_log_response(state, request, reference)
+        }
+        path if train_run_logs_path(path).is_some() => {
+            let reference = train_run_logs_path(path).expect("checked path");
+            train::train_run_logs_response(state, reference)
+        }
+        path if train_run_ref_path(path).is_some() => {
+            let reference = train_run_ref_path(path).expect("checked path");
+            train::inspect_train_run_response(state, reference)
+        }
+        path if path.starts_with("/v1/train/lora/runs/") => not_found_response(&request.path),
         path if dataset_tool_path(path) => method_not_allowed(request),
         path if store_mutation_path(path) => method_not_allowed(request),
         path if path.starts_with("/v1/sessions/") => {
@@ -200,7 +222,12 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
         {
             method_not_allowed(request)
         }
+        path if train_plan_runs_path(path).is_some() => {
+            let reference = train_plan_runs_path(path).expect("checked path");
+            train::start_train_run_response(state, request, reference).await
+        }
         path if path.starts_with("/v1/train/lora/plans") => method_not_allowed(request),
+        path if path.starts_with("/v1/train/lora/runs") => method_not_allowed(request),
         path if path.starts_with("/v1/servers/") => match server_action_path(path) {
             Some((reference, ServerAction::Start)) => {
                 lifecycle::start_server_response(state, reference, request).await
@@ -283,6 +310,55 @@ fn dataset_diff_path(path: &str) -> Option<&str> {
 fn train_plan_ref_path(path: &str) -> Option<&str> {
     let reference = path.strip_prefix("/v1/train/lora/plans/")?;
     if reference.is_empty() || reference == "preview" || reference.contains('/') {
+        None
+    } else {
+        Some(reference)
+    }
+}
+
+fn train_plan_runs_path(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/v1/train/lora/plans/")?;
+    let reference = rest.strip_suffix("/runs")?;
+    if reference.is_empty() || reference.contains('/') || reference == "preview" {
+        None
+    } else {
+        Some(reference)
+    }
+}
+
+fn train_run_ref_path(path: &str) -> Option<&str> {
+    let reference = path.strip_prefix("/v1/train/lora/runs/")?;
+    if reference.is_empty() || reference.contains('/') {
+        None
+    } else {
+        Some(reference)
+    }
+}
+
+fn train_run_metrics_path(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/v1/train/lora/runs/")?;
+    let reference = rest.strip_suffix("/metrics")?;
+    if reference.is_empty() || reference.contains('/') {
+        None
+    } else {
+        Some(reference)
+    }
+}
+
+fn train_run_logs_path(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/v1/train/lora/runs/")?;
+    let reference = rest.strip_suffix("/logs")?;
+    if reference.is_empty() || reference.contains('/') {
+        None
+    } else {
+        Some(reference)
+    }
+}
+
+fn train_run_raw_log_path(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/v1/train/lora/runs/")?;
+    let reference = rest.strip_suffix("/logs/raw")?;
+    if reference.is_empty() || reference.contains('/') {
         None
     } else {
         Some(reference)

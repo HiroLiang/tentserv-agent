@@ -35,6 +35,8 @@ pub enum TrainLoraCommands {
         override_usage = "tentgent train lora run <PLAN_REF> [-v] [-d]"
     )]
     Run(TrainLoraRunCommand),
+    #[command(name = "run-worker", hide = true)]
+    RunWorker(TrainLoraRunWorkerCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -152,6 +154,16 @@ pub struct TrainLoraRunCommand {
     /// Stream raw backend output in addition to writing raw.log.
     #[arg(short = 'd', long)]
     pub debug: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct TrainLoraRunWorkerCommand {
+    /// Runtime home used by the daemon that launched this worker.
+    #[arg(long, value_name = "HOME")]
+    pub home: std::path::PathBuf,
+    /// Exact managed LoRA training run ref.
+    #[arg(long, value_name = "RUN_REF")]
+    pub run_ref: String,
 }
 
 impl TrainLoraPlanCreateCommand {

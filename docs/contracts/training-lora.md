@@ -1,6 +1,6 @@
 # LoRA Training
 
-This document defines the managed LoRA training-plan boundary.
+This document defines the managed LoRA training-plan and training-run boundary.
 
 ## Command Shape
 
@@ -17,7 +17,11 @@ Implemented execution scaffold:
 
 ```text
 tentgent train lora run <PLAN_REF>
+tentgent train lora run-worker --home <HOME> --run-ref <RUN_REF>
 ```
+
+The `run-worker` command is hidden. It is an internal detached worker entry for
+the HTTP daemon and should not be treated as user-facing CLI.
 
 Current slice memory:
 
@@ -46,9 +50,12 @@ train/
     └── staging/
 ```
 
-Each future run creates a new `run_ref`. A successful run creates a new `adapter_ref`; runs never overwrite prior adapters.
+Each run creates a new `run_ref`. A successful run creates a new `adapter_ref`;
+runs never overwrite prior adapters.
 
-`plan rm` removes the plan directory and any run records stored under it. It does not remove adapters already imported into `adapters/store`.
+The HTTP daemon refuses to delete plans with existing run records. CLI `plan rm`
+may remove the plan directory and stored run records, but it does not remove
+adapters already imported into `adapters/store`.
 
 `--review` previews the generated plan and asks before saving. Answering `n` writes nothing.
 
@@ -82,6 +89,24 @@ The minimum run artifact contract is:
 - `run.toml`: durable run status, refs, backend, timestamps, process info, exit info, paths, and result adapter ref
 - `metrics.jsonl`: one JSON object per train, eval, checkpoint, or lifecycle event
 - `raw.log`: combined raw backend stdout/stderr for debugging
+
+Persisted run statuses are `starting`, `running`, `succeeded`, and `failed`.
+HTTP inspection derives `stale` when a run is recorded as live but the recorded
+process is no longer running. `stale` is an effective HTTP status, not a
+persisted terminal state.
+
+The HTTP daemon starts LoRA runs through a detached worker process. The worker
+uses the saved plan as the source of truth; start requests do not accept run
+overrides. `TENTGENT_DAEMON_TOKEN` must not be inherited by the worker. Adapter
+import is part of run success: if training completes but adapter import fails,
+the run is marked `failed`.
+
+Only one live LoRA run is allowed globally in the daemon MVP. Additional starts
+return a conflict until the existing live run reaches a terminal state or is
+derived as stale.
+
+Training logs are local diagnostics. They may contain local paths, dataset text,
+or backend output, and they are not redacted.
 
 CLI output modes:
 

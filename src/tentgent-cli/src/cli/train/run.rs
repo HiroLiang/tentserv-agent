@@ -13,10 +13,10 @@ use miette::{miette, IntoDiagnostic, Result};
 use serde_json::Value;
 use tentgent_core::{
     adapter::AdapterManager,
-    train::{LoraTrainRun, LoraTrainRunManager, LoraTrainRunStatus},
+    train::{execute_lora_run_worker, LoraTrainRun, LoraTrainRunManager, LoraTrainRunStatus},
 };
 
-use crate::cli::commands::TrainLoraRunCommand;
+use crate::cli::commands::{TrainLoraRunCommand, TrainLoraRunWorkerCommand};
 use crate::cli::python_runtime::{require_python_interpreter, resolve_python_runtime};
 
 use super::{
@@ -77,6 +77,9 @@ pub fn run_lora_plan(command: TrainLoraRunCommand) -> Result<()> {
 
     let mut child = process.spawn().into_diagnostic()?;
     run.pid = Some(child.id());
+    run.status = LoraTrainRunStatus::Running;
+    run.phase = Some("train".to_string());
+    run.error = None;
     manager.write_run(&run).into_diagnostic()?;
 
     let stderr = child
@@ -203,6 +206,11 @@ pub fn run_lora_plan(command: TrainLoraRunCommand) -> Result<()> {
         );
     }
     println!();
+    Ok(())
+}
+
+pub fn run_lora_worker(command: TrainLoraRunWorkerCommand) -> Result<()> {
+    execute_lora_run_worker(Some(&command.home), &command.run_ref).into_diagnostic()?;
     Ok(())
 }
 

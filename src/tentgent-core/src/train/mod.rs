@@ -23,4 +23,9 @@ pub use records::{
     LoraTrainPlanCreateOutcome, LoraTrainPlanInspection, LoraTrainPlanPreviewOutcome,
     LoraTrainPlanRemovalOutcome, LoraTrainPlanSummary,
 };
-pub use run::{LoraTrainRun, LoraTrainRunManager, LoraTrainRunStartOutcome, LoraTrainRunStatus};
+pub use run::{
+    execute_lora_run_worker, launch_detached_lora_run_worker, IndexedMetricEvent,
+    LoraTrainMetricsTail, LoraTrainRun, LoraTrainRunInspection, LoraTrainRunManager,
+    LoraTrainRunStartOutcome, LoraTrainRunStatus, TrainRunLogMetadata, TrainRunLogTail,
+    TrainRunWarning,
+};

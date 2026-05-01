@@ -466,5 +466,18 @@ curl -sS -X DELETE http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>
 
 If `TENTGENT_DAEMON_TOKEN` is enabled, add
 `-H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"`. HTTP deletion only removes
-plans with zero run records; training execution remains a CLI command until the
-daemon run API lands.
+plans with zero run records.
+
+Start and monitor a run through the daemon:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>/runs
+curl -sS http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>/runs
+curl -sS http://127.0.0.1:8790/v1/train/lora/runs/<run-ref>
+curl -sS http://127.0.0.1:8790/v1/train/lora/runs/<run-ref>/metrics
+curl -sS http://127.0.0.1:8790/v1/train/lora/runs/<run-ref>/logs/raw
+```
+
+Run start returns after a detached worker process starts. Only one live LoRA run
+is allowed at a time in the MVP. Training raw logs may include local paths or
+dataset content and are not redacted.
