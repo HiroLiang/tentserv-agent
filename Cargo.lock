@@ -1784,6 +1784,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tentgent-core",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",

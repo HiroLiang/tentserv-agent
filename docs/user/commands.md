@@ -169,12 +169,18 @@ curl -s http://127.0.0.1:8790/v1/models
 curl -s http://127.0.0.1:8790/v1/adapters
 curl -s http://127.0.0.1:8790/v1/datasets
 curl -s http://127.0.0.1:8790/v1/servers
+curl -s http://127.0.0.1:8790/v1/servers \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"runtime_ref":"openai:gpt-4.1-mini","host":"127.0.0.1","port":8780}'
+curl -s http://127.0.0.1:8790/v1/servers/<server-ref>/start -X POST
+curl -s http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
 tentgent daemon stop
 ```
 
 The daemon records process metadata under `TENTGENT_HOME/runtime` and exposes
-Rust HTTP health/status plus read-only store discovery endpoints. Server
-lifecycle APIs are added by later daemon slices.
+Rust HTTP health/status, read-only store discovery, and controlled server
+lifecycle endpoints. Chat proxying is added by a later daemon slice.
 
 ## Adapters
 

@@ -1,14 +1,22 @@
+pub mod server_runtime;
+
 use std::{net::SocketAddr, path::Path, time::Instant};
 
 use miette::{miette, IntoDiagnostic};
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::json;
+use server_runtime::{
+    launch_background_server_runtime, resolve_server_runtime_auth, ServerRuntimeError,
+};
 use tentgent_core::{
     adapter::{AdapterManager, AdapterSummary},
     daemon::DaemonInspection,
     dataset::{DatasetManager, DatasetSummary},
     model::{ModelManager, ModelSummary},
-    server::{ServerError, ServerInspection, ServerManager, ServerProcessMetadata, ServerSummary},
+    server::{
+        ServerError, ServerInspection, ServerManager, ServerPrepareOutcome, ServerProcessMetadata,
+        ServerRunRequest, ServerStopOutcome, ServerSummary,
+    },
     VERSION,
 };
 use tokio::{
@@ -17,7 +25,8 @@ use tokio::{
 };
 
 const SERVICE_NAME: &str = "tentgent-daemon";
-const MAX_REQUEST_BYTES: usize = 16 * 1024;
+const MAX_HEADER_BYTES: usize = 16 * 1024;
+const MAX_BODY_BYTES: usize = 64 * 1024;
 
 #[derive(Debug)]
 pub struct DaemonHttpServer {
@@ -199,6 +208,18 @@ struct ServerResponse {
 }
 
 #[derive(Debug, Serialize)]
+struct CreateServerResponse {
+    server: ServerInspectionItem,
+    created: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct StopServerResponse {
+    server: ServerInspectionItem,
+    stopped_pid: u32,
+}
+
+#[derive(Debug, Serialize)]
 struct ServerSummaryItem {
     server_ref: String,
     short_ref: String,
@@ -251,6 +272,16 @@ struct ErrorResponse<'a> {
     message: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct CreateServerRequest {
+    runtime_ref: String,
+    host: Option<String>,
+    port: Option<u16>,
+    #[serde(default)]
+    lazy_load: bool,
+    idle_seconds: Option<u64>,
+}
+
 async fn handle_connection(
     mut stream: TcpStream,
     peer_addr: SocketAddr,
@@ -258,7 +289,7 @@ async fn handle_connection(
 ) -> miette::Result<()> {
     let started = Instant::now();
     let request = read_request(&mut stream).await?;
-    let response = route_request(&request, &state);
+    let response = route_request(&request, &state).await;
     eprintln!(
         "tentgent-http request peer={} method={} path={} status={} elapsed_ms={}",
         peer_addr,
@@ -283,12 +314,16 @@ async fn read_request(stream: &mut TcpStream) -> miette::Result<HttpRequest> {
         if buffer.windows(4).any(|window| window == b"\r\n\r\n") {
             break;
         }
-        if buffer.len() > MAX_REQUEST_BYTES {
-            return Ok(HttpRequest::too_large());
+        if buffer.len() > MAX_HEADER_BYTES {
+            return Ok(HttpRequest::header_too_large());
         }
     }
 
-    let request = String::from_utf8_lossy(&buffer);
+    let Some(header_end) = find_header_end(&buffer) else {
+        return Ok(HttpRequest::invalid());
+    };
+    let headers = &buffer[..header_end];
+    let request = String::from_utf8_lossy(headers);
     let Some(request_line) = request.lines().next() else {
         return Ok(HttpRequest::invalid());
     };
@@ -304,21 +339,56 @@ async fn read_request(stream: &mut TcpStream) -> miette::Result<HttpRequest> {
         return Ok(HttpRequest::invalid());
     };
 
+    let mut content_length = 0_usize;
+    for header in request.lines().skip(1) {
+        let Some((name, value)) = header.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("content-length") {
+            content_length = match value.trim().parse::<usize>() {
+                Ok(length) => length,
+                Err(_) => {
+                    return Ok(HttpRequest::bad_request(
+                        "invalid Content-Length header".to_string(),
+                    ))
+                }
+            };
+        }
+    }
+    if content_length > MAX_BODY_BYTES {
+        return Ok(HttpRequest::body_too_large());
+    }
+
+    let body_start = header_end + 4;
+    let mut body = buffer[body_start..].to_vec();
+    while body.len() < content_length {
+        let read = stream.read(&mut chunk).await.into_diagnostic()?;
+        if read == 0 {
+            break;
+        }
+        body.extend_from_slice(&chunk[..read]);
+        if body.len() > MAX_BODY_BYTES {
+            return Ok(HttpRequest::body_too_large());
+        }
+    }
+    body.truncate(content_length);
+
     Ok(HttpRequest {
         method: method.to_string(),
         path: target.split('?').next().unwrap_or(target).to_string(),
         version: version.to_string(),
+        body,
         parse_error: None,
     })
 }
 
-fn route_request(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
+async fn route_request(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
     if let Some(error) = &request.parse_error {
         return json_response(
-            400,
+            error.status_code,
             ErrorResponse {
                 error: "bad_request",
-                message: error.clone(),
+                message: error.message.clone(),
             },
         );
     }
@@ -333,16 +403,14 @@ fn route_request(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse
         );
     }
 
-    if request.method != "GET" {
-        return json_response(
-            405,
-            ErrorResponse {
-                error: "method_not_allowed",
-                message: format!("{} is not supported for {}", request.method, request.path),
-            },
-        );
+    match request.method.as_str() {
+        "GET" => route_get(request, state),
+        "POST" => route_post(request, state).await,
+        _ => method_not_allowed(request),
     }
+}
 
+fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
     match request.path.as_str() {
         "/healthz" => json_response(
             200,
@@ -357,27 +425,28 @@ fn route_request(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse
         "/v1/adapters" => list_adapters_response(state),
         "/v1/datasets" => list_datasets_response(state),
         "/v1/servers" => list_servers_response(state),
+        path if server_action_path(path).is_some() => method_not_allowed(request),
         path if path.starts_with("/v1/servers/") => {
             let reference = path.trim_start_matches("/v1/servers/");
             if reference.is_empty() {
-                json_response(
-                    404,
-                    ErrorResponse {
-                        error: "not_found",
-                        message: format!("route `{}` was not found", request.path),
-                    },
-                )
+                not_found_response(&request.path)
             } else {
                 inspect_server_response(state, reference)
             }
         }
-        _ => json_response(
-            404,
-            ErrorResponse {
-                error: "not_found",
-                message: format!("route `{}` was not found", request.path),
-            },
-        ),
+        _ => not_found_response(&request.path),
+    }
+}
+
+async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
+    match request.path.as_str() {
+        "/v1/servers" => create_server_response(state, request),
+        path if path.starts_with("/v1/servers/") => match server_action_path(path) {
+            Some((reference, ServerAction::Start)) => start_server_response(state, reference).await,
+            Some((reference, ServerAction::Stop)) => stop_server_response(state, reference),
+            None => not_found_response(&request.path),
+        },
+        _ => not_found_response(&request.path),
     }
 }
 
@@ -459,6 +528,89 @@ fn inspect_server_response(state: &DaemonHttpState, reference: &str) -> HttpResp
         ),
         Err(error) => server_error_response(error),
     }
+}
+
+fn create_server_response(state: &DaemonHttpState, request: &HttpRequest) -> HttpResponse {
+    let body = match parse_json_body::<CreateServerRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let runtime_ref = body.runtime_ref.trim();
+    if runtime_ref.is_empty() {
+        return bad_request_response("`runtime_ref` must not be empty");
+    }
+
+    let manager = match ServerManager::new(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return server_error_response(error),
+    };
+    let outcome = match manager.prepare_run(ServerRunRequest {
+        runtime_ref: runtime_ref.to_string(),
+        host: body.host,
+        port: body.port,
+        lazy_load: body.lazy_load,
+        idle_seconds: body.idle_seconds,
+    }) {
+        Ok(outcome) => outcome,
+        Err(error @ (ServerError::EmptyHost | ServerError::EmptyCloudProviderModel { .. })) => {
+            return bad_request_response(error.to_string())
+        }
+        Err(error) => return server_error_response(error),
+    };
+    let created = outcome.created;
+
+    json_response(
+        200,
+        CreateServerResponse {
+            created,
+            server: server_prepare_item(outcome),
+        },
+    )
+}
+
+async fn start_server_response(state: &DaemonHttpState, reference: &str) -> HttpResponse {
+    let manager = match ServerManager::new(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return server_error_response(error),
+    };
+    let inspection = match manager.resolve_for_start(reference) {
+        Ok(inspection) => inspection,
+        Err(error) => return server_error_response(error),
+    };
+    let cloud_auth = match resolve_server_runtime_auth(&inspection.spec).await {
+        Ok(auth) => auth,
+        Err(error) => return runtime_error_response(error),
+    };
+    match launch_background_server_runtime(&manager, &inspection, cloud_auth.as_ref()).await {
+        Ok(server) => json_response(
+            200,
+            ServerResponse {
+                server: server_inspection_item(server),
+            },
+        ),
+        Err(error) => runtime_error_response(error),
+    }
+}
+
+fn stop_server_response(state: &DaemonHttpState, reference: &str) -> HttpResponse {
+    let manager = match ServerManager::new(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return server_error_response(error),
+    };
+    match manager.stop(reference) {
+        Ok(outcome) => stop_server_outcome_response(outcome),
+        Err(error) => server_error_response(error),
+    }
+}
+
+fn stop_server_outcome_response(outcome: ServerStopOutcome) -> HttpResponse {
+    json_response(
+        200,
+        StopServerResponse {
+            stopped_pid: outcome.stopped_pid,
+            server: server_inspection_item(outcome.inspection),
+        },
+    )
 }
 
 fn model_item(summary: ModelSummary) -> ModelItem {
@@ -580,6 +732,20 @@ fn server_inspection_item(inspection: ServerInspection) -> ServerInspectionItem 
     }
 }
 
+fn server_prepare_item(outcome: ServerPrepareOutcome) -> ServerInspectionItem {
+    server_inspection_item(ServerInspection {
+        spec: outcome.spec,
+        home_dir: outcome.home_dir,
+        server_dir: outcome.server_dir,
+        spec_path: outcome.spec_path,
+        process_path: outcome.process_path,
+        stdout_log_path: outcome.stdout_log_path,
+        stderr_log_path: outcome.stderr_log_path,
+        running: false,
+        process: None,
+    })
+}
+
 fn server_process_item(process: ServerProcessMetadata) -> ServerProcessItem {
     ServerProcessItem {
         pid: process.pid,
@@ -626,6 +792,15 @@ fn manager_error_response(context: &str, error: impl std::fmt::Display) -> HttpR
 
 fn server_error_response(error: ServerError) -> HttpResponse {
     match error {
+        bad_request @ (ServerError::EmptyHost | ServerError::EmptyCloudProviderModel { .. }) => {
+            json_response(
+                400,
+                ErrorResponse {
+                    error: "bad_request",
+                    message: bad_request.to_string(),
+                },
+            )
+        }
         ServerError::NotFound(reference) => json_response(
             404,
             ErrorResponse {
@@ -642,6 +817,20 @@ fn server_error_response(error: ServerError) -> HttpResponse {
                 ),
             },
         ),
+        ServerError::AlreadyRunning(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "already_running",
+                message: format!("server `{reference}` is already running"),
+            },
+        ),
+        ServerError::NotRunning(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "not_running",
+                message: format!("server `{reference}` is not running"),
+            },
+        ),
         other => json_response(
             500,
             ErrorResponse {
@@ -649,6 +838,136 @@ fn server_error_response(error: ServerError) -> HttpResponse {
                 message: format!("failed to read servers: {other}"),
             },
         ),
+    }
+}
+
+fn runtime_error_response(error: ServerRuntimeError) -> HttpResponse {
+    if error.is_provider_auth_error() {
+        return json_response(
+            409,
+            ErrorResponse {
+                error: "provider_auth_failed",
+                message: error.to_string(),
+            },
+        );
+    }
+    if let Some(server_error) = error.as_server_error() {
+        return server_error_response_for_ref(server_error);
+    }
+
+    json_response(
+        500,
+        ErrorResponse {
+            error: "runtime_launch_failed",
+            message: error.to_string(),
+        },
+    )
+}
+
+fn server_error_response_for_ref(error: &ServerError) -> HttpResponse {
+    match error {
+        ServerError::EmptyHost | ServerError::EmptyCloudProviderModel { .. } => json_response(
+            400,
+            ErrorResponse {
+                error: "bad_request",
+                message: error.to_string(),
+            },
+        ),
+        ServerError::NotFound(reference) => json_response(
+            404,
+            ErrorResponse {
+                error: "not_found",
+                message: format!("server reference `{reference}` was not found"),
+            },
+        ),
+        ServerError::AmbiguousRef(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "ambiguous_ref",
+                message: format!(
+                    "server reference `{reference}` is ambiguous; use a longer prefix"
+                ),
+            },
+        ),
+        ServerError::AlreadyRunning(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "already_running",
+                message: format!("server `{reference}` is already running"),
+            },
+        ),
+        ServerError::NotRunning(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "not_running",
+                message: format!("server `{reference}` is not running"),
+            },
+        ),
+        other => json_response(
+            500,
+            ErrorResponse {
+                error: "server_read_failed",
+                message: format!("failed to read servers: {other}"),
+            },
+        ),
+    }
+}
+
+fn parse_json_body<T: DeserializeOwned>(request: &HttpRequest) -> Result<T, HttpResponse> {
+    if request.body.is_empty() {
+        return Err(bad_request_response("request body must not be empty"));
+    }
+    serde_json::from_slice(&request.body)
+        .map_err(|error| bad_request_response(format!("invalid JSON request body: {error}")))
+}
+
+fn bad_request_response(message: impl Into<String>) -> HttpResponse {
+    json_response(
+        400,
+        ErrorResponse {
+            error: "bad_request",
+            message: message.into(),
+        },
+    )
+}
+
+fn method_not_allowed(request: &HttpRequest) -> HttpResponse {
+    json_response(
+        405,
+        ErrorResponse {
+            error: "method_not_allowed",
+            message: format!("{} is not supported for {}", request.method, request.path),
+        },
+    )
+}
+
+fn not_found_response(path: &str) -> HttpResponse {
+    json_response(
+        404,
+        ErrorResponse {
+            error: "not_found",
+            message: format!("route `{path}` was not found"),
+        },
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ServerAction {
+    Start,
+    Stop,
+}
+
+fn server_action_path(path: &str) -> Option<(&str, ServerAction)> {
+    let rest = path.strip_prefix("/v1/servers/")?;
+    let (reference, action) = rest.rsplit_once('/')?;
+    if reference.is_empty() {
+        return None;
+    }
+
+    match action {
+        "start" => Some((reference, ServerAction::Start)),
+        "stop" => Some((reference, ServerAction::Stop)),
+        _ => None,
     }
 }
 
@@ -695,12 +1014,23 @@ fn reason_phrase(status_code: u16) -> &'static str {
     }
 }
 
+fn find_header_end(buffer: &[u8]) -> Option<usize> {
+    buffer.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
 #[derive(Debug)]
 struct HttpRequest {
     method: String,
     path: String,
     version: String,
-    parse_error: Option<String>,
+    body: Vec<u8>,
+    parse_error: Option<HttpParseError>,
+}
+
+#[derive(Debug)]
+struct HttpParseError {
+    status_code: u16,
+    message: String,
 }
 
 impl HttpRequest {
@@ -725,16 +1055,50 @@ impl HttpRequest {
             method: String::new(),
             path: String::new(),
             version: String::new(),
-            parse_error: Some("invalid HTTP request line".to_string()),
+            body: Vec::new(),
+            parse_error: Some(HttpParseError {
+                status_code: 400,
+                message: "invalid HTTP request line".to_string(),
+            }),
         }
     }
 
-    fn too_large() -> Self {
+    fn bad_request(message: String) -> Self {
         Self {
             method: String::new(),
             path: String::new(),
             version: String::new(),
-            parse_error: Some("request headers exceeded the size limit".to_string()),
+            body: Vec::new(),
+            parse_error: Some(HttpParseError {
+                status_code: 400,
+                message,
+            }),
+        }
+    }
+
+    fn header_too_large() -> Self {
+        Self {
+            method: String::new(),
+            path: String::new(),
+            version: String::new(),
+            body: Vec::new(),
+            parse_error: Some(HttpParseError {
+                status_code: 413,
+                message: "request headers exceeded the size limit".to_string(),
+            }),
+        }
+    }
+
+    fn body_too_large() -> Self {
+        Self {
+            method: String::new(),
+            path: String::new(),
+            version: String::new(),
+            body: Vec::new(),
+            parse_error: Some(HttpParseError {
+                status_code: 413,
+                message: "request body exceeded the size limit".to_string(),
+            }),
         }
     }
 }
@@ -760,16 +1124,11 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn healthz_returns_ok_payload() {
-        let request = HttpRequest {
-            method: "GET".to_string(),
-            path: "/healthz".to_string(),
-            version: "HTTP/1.1".to_string(),
-            parse_error: None,
-        };
+    #[tokio::test]
+    async fn healthz_returns_ok_payload() {
+        let request = get("/healthz");
         let state = state_for(unique_home("healthz"));
-        let response = route_request(&request, &state);
+        let response = route_request(&request, &state).await;
         let body: Value = serde_json::from_slice(&response.body).expect("json");
 
         assert_eq!(response.status_code, 200);
@@ -777,16 +1136,11 @@ mod tests {
         assert_eq!(body["service"], "tentgent-daemon");
     }
 
-    #[test]
-    fn status_returns_daemon_metadata() {
-        let request = HttpRequest {
-            method: "GET".to_string(),
-            path: "/v1/status".to_string(),
-            version: "HTTP/1.1".to_string(),
-            parse_error: None,
-        };
+    #[tokio::test]
+    async fn status_returns_daemon_metadata() {
+        let request = get("/v1/status");
         let state = state_for(unique_home("status"));
-        let response = route_request(&request, &state);
+        let response = route_request(&request, &state).await;
         let body: Value = serde_json::from_slice(&response.body).expect("json");
 
         assert_eq!(response.status_code, 200);
@@ -796,57 +1150,52 @@ mod tests {
         assert_eq!(body["pid"], 1234);
     }
 
-    #[test]
-    fn unknown_route_returns_json_error() {
-        let request = HttpRequest {
-            method: "GET".to_string(),
-            path: "/v1/missing".to_string(),
-            version: "HTTP/1.1".to_string(),
-            parse_error: None,
-        };
+    #[tokio::test]
+    async fn unknown_route_returns_json_error() {
+        let request = get("/v1/missing");
         let state = state_for(unique_home("missing-route"));
-        let response = route_request(&request, &state);
+        let response = route_request(&request, &state).await;
         let body: Value = serde_json::from_slice(&response.body).expect("json");
 
         assert_eq!(response.status_code, 404);
         assert_eq!(body["error"], "not_found");
     }
 
-    #[test]
-    fn models_returns_empty_array_for_isolated_home() {
+    #[tokio::test]
+    async fn models_returns_empty_array_for_isolated_home() {
         let request = get("/v1/models");
         let state = state_for(unique_home("models-empty"));
-        let response = route_request(&request, &state);
+        let response = route_request(&request, &state).await;
         let body: Value = serde_json::from_slice(&response.body).expect("json");
 
         assert_eq!(response.status_code, 200);
         assert_eq!(body["models"].as_array().expect("models").len(), 0);
     }
 
-    #[test]
-    fn adapters_returns_empty_array_for_isolated_home() {
+    #[tokio::test]
+    async fn adapters_returns_empty_array_for_isolated_home() {
         let request = get("/v1/adapters");
         let state = state_for(unique_home("adapters-empty"));
-        let response = route_request(&request, &state);
+        let response = route_request(&request, &state).await;
         let body: Value = serde_json::from_slice(&response.body).expect("json");
 
         assert_eq!(response.status_code, 200);
         assert_eq!(body["adapters"].as_array().expect("adapters").len(), 0);
     }
 
-    #[test]
-    fn datasets_returns_empty_array_for_isolated_home() {
+    #[tokio::test]
+    async fn datasets_returns_empty_array_for_isolated_home() {
         let request = get("/v1/datasets");
         let state = state_for(unique_home("datasets-empty"));
-        let response = route_request(&request, &state);
+        let response = route_request(&request, &state).await;
         let body: Value = serde_json::from_slice(&response.body).expect("json");
 
         assert_eq!(response.status_code, 200);
         assert_eq!(body["datasets"].as_array().expect("datasets").len(), 0);
     }
 
-    #[test]
-    fn servers_returns_stored_server_summaries() {
+    #[tokio::test]
+    async fn servers_returns_stored_server_summaries() {
         let home = unique_home("servers-list");
         let manager = ServerManager::new(Some(&home)).expect("server manager");
         let outcome = manager
@@ -861,7 +1210,7 @@ mod tests {
 
         let request = get("/v1/servers");
         let state = state_for(home);
-        let response = route_request(&request, &state);
+        let response = route_request(&request, &state).await;
         let body: Value = serde_json::from_slice(&response.body).expect("json");
         let servers = body["servers"].as_array().expect("servers");
 
@@ -874,8 +1223,8 @@ mod tests {
         assert_eq!(servers[0]["running"], false);
     }
 
-    #[test]
-    fn server_inspect_accepts_short_ref() {
+    #[tokio::test]
+    async fn server_inspect_accepts_short_ref() {
         let home = unique_home("server-inspect");
         let manager = ServerManager::new(Some(&home)).expect("server manager");
         let outcome = manager
@@ -890,7 +1239,7 @@ mod tests {
 
         let request = get(&format!("/v1/servers/{}", outcome.spec.short_ref));
         let state = state_for(home.clone());
-        let response = route_request(&request, &state);
+        let response = route_request(&request, &state).await;
         let body: Value = serde_json::from_slice(&response.body).expect("json");
 
         assert_eq!(response.status_code, 200);
@@ -900,15 +1249,130 @@ mod tests {
         assert_eq!(body["server"]["provider"], "anthropic");
     }
 
-    #[test]
-    fn missing_server_returns_json_404() {
+    #[tokio::test]
+    async fn missing_server_returns_json_404() {
         let request = get("/v1/servers/missing");
         let state = state_for(unique_home("server-missing"));
-        let response = route_request(&request, &state);
+        let response = route_request(&request, &state).await;
         let body: Value = serde_json::from_slice(&response.body).expect("json");
 
         assert_eq!(response.status_code, 404);
         assert_eq!(body["error"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn post_servers_creates_cloud_server_spec() {
+        let request = post(
+            "/v1/servers",
+            br#"{"runtime_ref":"openai:gpt-4.1-mini","host":"127.0.0.1","port":8793,"lazy_load":true,"idle_seconds":45}"#,
+        );
+        let state = state_for(unique_home("server-create"));
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(&response.body).expect("json");
+
+        assert_eq!(response.status_code, 200);
+        assert_eq!(body["created"], true);
+        assert_eq!(body["server"]["runtime_kind"], "cloud");
+        assert_eq!(body["server"]["provider"], "openai");
+        assert_eq!(body["server"]["provider_model"], "gpt-4.1-mini");
+        assert_eq!(body["server"]["host"], "127.0.0.1");
+        assert_eq!(body["server"]["port"], 8793);
+        assert_eq!(body["server"]["lazy_load"], true);
+        assert_eq!(body["server"]["idle_seconds"], 45);
+    }
+
+    #[tokio::test]
+    async fn post_servers_reuses_existing_cloud_server_spec() {
+        let home = unique_home("server-reuse");
+        let state = state_for(home);
+        let request = post(
+            "/v1/servers",
+            br#"{"runtime_ref":"openai:gpt-4.1-mini","host":"127.0.0.1","port":8794,"lazy_load":false}"#,
+        );
+
+        let first = route_request(&request, &state).await;
+        let second = route_request(&request, &state).await;
+        let first_body: Value = serde_json::from_slice(&first.body).expect("json");
+        let second_body: Value = serde_json::from_slice(&second.body).expect("json");
+
+        assert_eq!(first.status_code, 200);
+        assert_eq!(second.status_code, 200);
+        assert_eq!(first_body["created"], true);
+        assert_eq!(second_body["created"], false);
+        assert_eq!(
+            first_body["server"]["server_ref"],
+            second_body["server"]["server_ref"]
+        );
+    }
+
+    #[tokio::test]
+    async fn post_servers_invalid_json_returns_400() {
+        let request = post("/v1/servers", br#"{"runtime_ref":"openai:gpt-4.1-mini""#);
+        let state = state_for(unique_home("server-invalid-json"));
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(&response.body).expect("json");
+
+        assert_eq!(response.status_code, 400);
+        assert_eq!(body["error"], "bad_request");
+    }
+
+    #[tokio::test]
+    async fn post_servers_missing_runtime_ref_returns_400() {
+        let request = post("/v1/servers", br#"{"host":"127.0.0.1"}"#);
+        let state = state_for(unique_home("server-missing-runtime"));
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(&response.body).expect("json");
+
+        assert_eq!(response.status_code, 400);
+        assert_eq!(body["error"], "bad_request");
+    }
+
+    #[tokio::test]
+    async fn start_missing_server_returns_json_404() {
+        let request = post("/v1/servers/missing/start", b"{}");
+        let state = state_for(unique_home("server-start-missing"));
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(&response.body).expect("json");
+
+        assert_eq!(response.status_code, 404);
+        assert_eq!(body["error"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn stop_missing_server_returns_json_404() {
+        let request = post("/v1/servers/missing/stop", b"{}");
+        let state = state_for(unique_home("server-stop-missing"));
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(&response.body).expect("json");
+
+        assert_eq!(response.status_code, 404);
+        assert_eq!(body["error"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn stop_stopped_server_returns_json_409() {
+        let home = unique_home("server-stop-stopped");
+        let manager = ServerManager::new(Some(&home)).expect("server manager");
+        let outcome = manager
+            .prepare_run(ServerRunRequest {
+                runtime_ref: "openai:gpt-4.1-mini".to_string(),
+                host: Some("127.0.0.1".to_string()),
+                port: Some(8795),
+                lazy_load: false,
+                idle_seconds: None,
+            })
+            .expect("server spec");
+
+        let request = post(
+            &format!("/v1/servers/{}/stop", outcome.spec.short_ref),
+            b"{}",
+        );
+        let state = state_for(home);
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(&response.body).expect("json");
+
+        assert_eq!(response.status_code, 409);
+        assert_eq!(body["error"], "not_running");
     }
 
     fn get(path: &str) -> HttpRequest {
@@ -916,6 +1380,17 @@ mod tests {
             method: "GET".to_string(),
             path: path.to_string(),
             version: "HTTP/1.1".to_string(),
+            body: Vec::new(),
+            parse_error: None,
+        }
+    }
+
+    fn post(path: &str, body: &[u8]) -> HttpRequest {
+        HttpRequest {
+            method: "POST".to_string(),
+            path: path.to_string(),
+            version: "HTTP/1.1".to_string(),
+            body: body.to_vec(),
             parse_error: None,
         }
     }

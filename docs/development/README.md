@@ -362,6 +362,12 @@ curl -s http://127.0.0.1:8790/v1/models
 curl -s http://127.0.0.1:8790/v1/adapters
 curl -s http://127.0.0.1:8790/v1/datasets
 curl -s http://127.0.0.1:8790/v1/servers
+curl -s http://127.0.0.1:8790/v1/servers \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"runtime_ref":"openai:gpt-4.1-mini","host":"127.0.0.1","port":8780}'
+curl -s http://127.0.0.1:8790/v1/servers/<server-ref>/start -X POST
+curl -s http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
 cargo run -- daemon stop
 ```
 
@@ -373,7 +379,7 @@ cargo run -p tentgent-http --bin tentgent-http -- --host 127.0.0.1 --port 8790
 
 At this stage the daemon records process metadata and serves `GET /healthz`,
 `GET /v1/status`, and read-only discovery endpoints for models, adapters,
-datasets, and server specs.
+datasets, server specs, and controlled server lifecycle mutations.
 Request logs are emitted to stderr with peer, method, path, status, and elapsed
 time fields.
 

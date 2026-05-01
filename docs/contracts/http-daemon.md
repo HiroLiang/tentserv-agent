@@ -7,7 +7,7 @@ This document defines the first stable HTTP daemon boundary for the Rust
 
 - Bind locally by default through `127.0.0.1`.
 - Serve JSON responses for every route, including errors.
-- Expose daemon health, status, and read-only store discovery before adding
+- Expose daemon health, status, read-only store discovery, and controlled server
   lifecycle mutations.
 - Keep the first daemon unauthenticated only for loopback-local MVP usage.
 
@@ -42,6 +42,8 @@ Rules:
 - unsupported methods return a JSON `405`
 - invalid requests return a JSON `400`
 - ambiguous store references return a JSON `409`
+- already-running, not-running, and provider-auth lifecycle conflicts return a
+  JSON `409`
 - manager parse, IO, and unexpected read errors return a JSON `500` without
   secret values
 
@@ -69,7 +71,7 @@ specific directory overrides still win when set:
 - `TENTGENT_ADAPTERS_DIR`
 - `TENTGENT_DATASETS_DIR`
 
-The endpoints do not mutate state, start servers, stop servers, or proxy chat.
+These endpoints do not mutate state, start servers, stop servers, or proxy chat.
 
 `GET /v1/models` returns:
 
@@ -206,6 +208,93 @@ and returns:
     "stdout_log": "/path/to/tentgent-home/servers/25ee.../stdout.log",
     "stderr_log": "/path/to/tentgent-home/servers/25ee.../stderr.log"
   }
+}
+```
+
+## Server Lifecycle
+
+Lifecycle endpoints use the same daemon runtime home as the read-only discovery
+routes. They mutate only stored server specs and server process state.
+
+`POST /v1/servers` creates or reuses a stored server spec. It does not start the
+server:
+
+```json
+{
+  "runtime_ref": "openai:gpt-4.1-mini",
+  "host": "127.0.0.1",
+  "port": 8780,
+  "lazy_load": false,
+  "idle_seconds": null
+}
+```
+
+An abbreviated response is:
+
+```json
+{
+  "server": {
+    "server_ref": "25ee...",
+    "short_ref": "25ee5888595d",
+    "runtime_kind": "cloud",
+    "model_ref": null,
+    "provider": "openai",
+    "provider_model": "gpt-4.1-mini",
+    "host": "127.0.0.1",
+    "port": 8780,
+    "lazy_load": false,
+    "idle_seconds": null,
+    "created_at": "2026-04-28T00:00:00Z",
+    "running": false,
+    "process": null,
+    "home_dir": "/path/to/tentgent-home",
+    "server_dir": "/path/to/tentgent-home/servers/25ee...",
+    "spec_path": "/path/to/tentgent-home/servers/25ee.../server.toml",
+    "process_path": "/path/to/tentgent-home/servers/25ee.../process.toml",
+    "stdout_log": "/path/to/tentgent-home/servers/25ee.../stdout.log",
+    "stderr_log": "/path/to/tentgent-home/servers/25ee.../stderr.log"
+  },
+  "created": true
+}
+```
+
+`POST /v1/servers/{server_ref}/start` starts one existing server spec in
+background mode. `{server_ref}` accepts a full server ref or unique short prefix.
+Cloud server starts validate launch-time provider auth from env/keychain and
+never persist secrets in the server spec or response.
+
+An abbreviated response is:
+
+```json
+{
+  "server": {
+    "server_ref": "25ee...",
+    "short_ref": "25ee5888595d",
+    "runtime_kind": "cloud",
+    "provider": "openai",
+    "provider_model": "gpt-4.1-mini",
+    "running": true,
+    "process": {
+      "pid": 12345,
+      "launch_mode": "background",
+      "started_at": "2026-04-28T00:00:00Z"
+    }
+  }
+}
+```
+
+`POST /v1/servers/{server_ref}/stop` stops one running server process without
+removing its stored spec. The response is:
+
+```json
+{
+  "server": {
+    "server_ref": "25ee...",
+    "short_ref": "25ee5888595d",
+    "running": false,
+    "process": null
+  },
+  "stopped_pid": 12345
 }
 ```
 

@@ -149,12 +149,15 @@ Review target:
 
 Add controlled mutations for stored model servers.
 
+Status: implemented in the active workspace.
+
 Goals:
 
 - start an existing server spec
 - stop a running server
 - create a new server spec with explicit model, host, port, and lazy-load policy
 - prevent unsafe deletion or mutation while a server is live
+- keep chat proxying and server deletion out of this slice
 
 Review target:
 
