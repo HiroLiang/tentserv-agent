@@ -157,6 +157,36 @@ Import a local `.jsonl` file or dataset directory:
 
 Use `dataset template` to generate the manual prompt for OpenAI, Claude, or another agent. Its `--task` and `--language` options are prompt hints, not schema changes. Use `dataset synth` to call a provider directly and write a local package. Split-specific count options can generate train, validation, test, and eval files in one package. Use `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. `--retries` / `-r` retries each split independently after invalid provider output or transient provider failures. Failed provider parsing writes split-scoped `_debug/<split>` files under the output directory. Use `dataset eval` to write a report-only provider review before training. Use `dataset validate` before `dataset add` when working with generated JSONL.
 
+The HTTP daemon exposes deterministic dataset tooling for local integrations:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/datasets/validate \
+  -H 'Content-Type: application/json' \
+  -d '{"path":"/absolute/path/on/daemon-host/dataset"}'
+curl -sS http://127.0.0.1:8790/v1/datasets/template \
+  -H 'Content-Type: application/json' \
+  -d '{"task":"support","language":"zh-TW"}'
+curl -sS http://127.0.0.1:8790/v1/datasets/synth \
+  -H 'Content-Type: application/json' \
+  -d '{"print_prompt":true,"brief":"Generate support examples in Traditional Chinese.","split":"train","count":20}'
+curl -sS http://127.0.0.1:8790/v1/datasets/eval \
+  -H 'Content-Type: application/json' \
+  -d '{"input_content":"{\"schema\":\"tentgent.chat.v1\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"},{\"role\":\"assistant\",\"content\":\"Hello\"}]}\n","provider":"openai","model":"gpt-4.1-mini","output_path":"/absolute/path/on/daemon-host/eval-report","max_records":1}'
+curl -sS http://127.0.0.1:8790/v1/datasets/<dataset-ref>/export \
+  -H 'Content-Type: application/json' \
+  -d '{"output_path":"/absolute/path/on/daemon-host/work-dir"}'
+curl -sS http://127.0.0.1:8790/v1/datasets/<dataset-ref>/diff \
+  -H 'Content-Type: application/json' \
+  -d '{"right_dataset_ref":"<other-dataset-ref>"}'
+```
+
+Validation failures are tool results: the daemon returns `200` with
+`valid:false` when the request is well-formed but the dataset schema is invalid.
+All paths are resolved on the daemon host filesystem. Cloud synth/eval HTTP
+calls are synchronous provider workflows; prompt-only synth does not require
+auth, while provider synth/eval may send selected path or content data to the
+configured provider and return debug artifact paths on failure.
+
 Inspect dataset state:
 
 ```bash

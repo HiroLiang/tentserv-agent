@@ -12,8 +12,8 @@ This document defines the first stable HTTP daemon boundary for the Rust
 - Expose a limited OpenAI-style chat-completions compatibility route at
   `POST /v1/chat/completions`.
 - Expose daemon health, status, read-only store discovery, controlled server
-  lifecycle mutations, store import/pull mutations, chat proxying, log
-  diagnostics, and read-only session discovery.
+  lifecycle mutations, store import/pull mutations, deterministic dataset
+  tooling, chat proxying, log diagnostics, and read-only session discovery.
 - Keep loopback-local daemon development usable without auth, while requiring a
   token or explicit unsafe flag for non-loopback and wildcard binds.
 
@@ -468,6 +468,259 @@ failures return `502 pull_failed`; unexpected store mutation failures return
 
 These endpoints are synchronous MVP calls. Large local imports or Hugging Face
 pulls may exceed client timeouts until future job/progress APIs exist.
+
+## Dataset Deterministic Tools
+
+The daemon exposes provider-free dataset tooling over HTTP:
+
+```text
+POST /v1/datasets/validate
+POST /v1/datasets/template
+POST /v1/datasets/synth
+POST /v1/datasets/eval
+POST /v1/datasets/{dataset_ref}/export
+POST /v1/datasets/{dataset_ref}/diff
+```
+
+All path fields are absolute paths on the daemon host filesystem, not the HTTP
+client machine. Path fields may expose local filesystem layout and are intended
+for loopback-local daemon usage.
+
+`POST /v1/datasets/validate` accepts exactly one source:
+
+```json
+{ "path": "/absolute/path/on/daemon-host" }
+{ "dataset_ref": "managed-ref-or-prefix" }
+```
+
+Dataset schema failures are successful tool results, not request errors. A
+valid request for an invalid dataset returns `200` with `valid: false`:
+
+```json
+{
+  "valid": false,
+  "source": {
+    "kind": "path",
+    "path": "/absolute/path/on/daemon-host",
+    "dataset_ref": null,
+    "short_ref": null
+  },
+  "target": "directory",
+  "tuning_ready": true,
+  "records": 56,
+  "errors_count": 2,
+  "splits": [
+    { "name": "train", "path": "/path/train.jsonl", "records": 40, "errors": 0 }
+  ],
+  "warnings": [],
+  "errors": [
+    { "path": "/path/train.jsonl", "line": 12, "message": "..." }
+  ]
+}
+```
+
+`POST /v1/datasets/template` returns the deterministic prompt template without
+writing a file:
+
+```json
+{ "task": "support", "language": "zh-TW" }
+```
+
+Response:
+
+```json
+{
+  "template_version": "tentgent.dataset.synth.v1",
+  "task": "support",
+  "language": "zh-TW",
+  "content": "..."
+}
+```
+
+`POST /v1/datasets/{dataset_ref}/export` writes a managed dataset to a missing
+or empty daemon-host directory:
+
+```json
+{ "output_path": "/absolute/path/on/daemon-host" }
+```
+
+Existing non-empty destinations return `409 output_exists`. Successful export
+returns the dataset inspect shape plus output metadata:
+
+```json
+{
+  "dataset": {
+    "...": "same shape as GET /v1/datasets/{dataset_ref}"
+  },
+  "export": {
+    "output_path": "/path/to/work-dir",
+    "managed_source_path": "/path/to/tentgent-home/datasets/store/ref/source",
+    "file_count": 3,
+    "total_bytes": 1234
+  }
+}
+```
+
+`POST /v1/datasets/{dataset_ref}/diff` compares one managed left dataset with
+exactly one right side:
+
+```json
+{ "right_dataset_ref": "managed-ref-or-prefix" }
+{ "right_path": "/absolute/path/on/daemon-host" }
+```
+
+The response includes a bounded file list. `files` is capped at `500`; when the
+underlying diff is larger, `truncated` is `true`.
+
+```json
+{
+  "left": { "label": "8fac...", "short_ref": "8fac...", "path": null, "tuning_ready": true, "splits": "train,valid" },
+  "right": { "label": "/path/to/work-dir", "short_ref": null, "path": "/path/to/work-dir", "tuning_ready": true, "splits": "train" },
+  "diff": {
+    "summary": {
+      "added": 0,
+      "removed": 0,
+      "modified": 1,
+      "unchanged": 2,
+      "left_total_bytes": 100,
+      "right_total_bytes": 120
+    },
+    "files": [
+      { "status": "modified", "relative_path": "train.jsonl", "left_size_bytes": 100, "right_size_bytes": 120 }
+    ],
+    "file_limit": 500,
+    "truncated": false
+  }
+}
+```
+
+Malformed JSON, unknown request fields, invalid one-of fields, and relative
+paths return `400 bad_request`. Missing local paths return `404 path_not_found`;
+missing dataset refs return `404 not_found`; ambiguous refs return
+`409 ambiguous_ref`; unsupported dataset layouts return `400 unsupported_layout`;
+unexpected local failures return `500 dataset_tool_failed`.
+
+## Dataset Cloud Tools
+
+The daemon exposes synchronous provider-backed dataset tooling:
+
+```text
+POST /v1/datasets/synth
+POST /v1/datasets/eval
+```
+
+These endpoints follow daemon auth rules and may call OpenAI or Anthropic with
+selected local content. All path fields are daemon-host paths. Direct content is
+for dataset/spec-sized inputs only; multipart upload and background jobs are
+future work.
+
+`POST /v1/datasets/synth` accepts exactly one prompt source: `brief`,
+`spec_content`, or absolute `spec_path`. Prompt-only mode does not require
+provider auth:
+
+```json
+{
+  "print_prompt": true,
+  "brief": "Generate support examples in Traditional Chinese.",
+  "split": "train",
+  "count": 20
+}
+```
+
+Provider mode requires `provider`, `model`, `output_path`, and explicit counts:
+
+```json
+{
+  "provider": "openai",
+  "model": "gpt-4.1-mini",
+  "output_path": "/absolute/path/on/daemon-host/generated",
+  "brief": "Generate support examples in Traditional Chinese.",
+  "split": "train",
+  "count": 20,
+  "timeout_seconds": 300,
+  "retries": 1
+}
+```
+
+Single-split mode uses `split` plus `count`. Multi-split mode uses one or more
+of `train_count`, `valid_count`, `test_count`, and `eval_count`; zero-valued
+split counts are ignored, and at least one split count must be greater than
+zero. `spec_content` is limited to 256 KiB. `output_path` must be missing or an
+empty directory. Failed provider runs may leave partial output or `_debug`
+artifacts and are not rolled back.
+
+Prompt-only responses return:
+
+```json
+{
+  "prompt": {
+    "content": "...",
+    "split": "train",
+    "source_kind": "brief"
+  }
+}
+```
+
+Provider responses return the Python runtime outcome and capped progress events:
+
+```json
+{
+  "synth": {
+    "provider": "openai",
+    "model": "gpt-4.1-mini",
+    "output_dir": "/path/generated",
+    "manifest_path": "/path/generated/manifest.json",
+    "record_count": 20,
+    "splits": []
+  },
+  "progress_events": [],
+  "progress_truncated": false
+}
+```
+
+`POST /v1/datasets/eval` accepts exactly one input source: managed
+`dataset_ref`, direct `input_content`, or absolute `input_path`.
+
+```json
+{
+  "dataset_ref": "managed-ref-or-prefix",
+  "provider": "openai",
+  "model": "gpt-4.1-mini",
+  "output_path": "/absolute/path/on/daemon-host/eval-report",
+  "max_records": 20
+}
+```
+
+`dataset_ref` resolves to the managed dataset store path, not the original
+source path. `input_content` defaults to `input_format: "jsonl"` and is limited
+to 10 MiB; it is staged under the daemon runtime home before the provider
+runtime runs. `output_path` must be missing or empty. Successful eval responses
+wrap the Python report outcome:
+
+```json
+{
+  "eval": {
+    "provider": "openai",
+    "model": "gpt-4.1-mini",
+    "input_path": "/path/input",
+    "output_dir": "/path/eval-report",
+    "report_json_path": "/path/eval-report/eval-report.json",
+    "report_md_path": "/path/eval-report/eval-report.md",
+    "reviewed_records": 20,
+    "overall_score": 0.82,
+    "warnings": []
+  }
+}
+```
+
+Bad JSON, unknown fields, invalid modes, invalid counts, relative paths, or
+oversized content return `400 bad_request`. Missing input/spec paths return
+`404 path_not_found`; missing/ambiguous dataset refs return `404 not_found` or
+`409 ambiguous_ref`; non-empty output directories return `409 output_exists`;
+provider auth failures return `409 provider_auth_failed`. Provider/runtime
+failures return `502 dataset_synth_failed` or `502 dataset_eval_failed` with
+debug artifact paths when available, but never raw provider output or raw
+request content.
 
 ## Store Inspect And Remove Mutations
 

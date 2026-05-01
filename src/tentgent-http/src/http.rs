@@ -6,7 +6,7 @@ use tokio::{
 };
 
 const MAX_HEADER_BYTES: usize = 16 * 1024;
-const MAX_BODY_BYTES: usize = 64 * 1024;
+const MAX_BODY_BYTES: usize = 12 * 1024 * 1024;
 
 pub(crate) async fn read_request(stream: &mut TcpStream) -> miette::Result<HttpRequest> {
     let mut buffer = Vec::new();

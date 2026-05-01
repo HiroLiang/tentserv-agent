@@ -1,4 +1,6 @@
 pub(crate) mod chat;
+pub(crate) mod dataset_cloud;
+pub(crate) mod dataset_tools;
 pub(crate) mod diagnostics;
 pub(crate) mod lifecycle;
 pub(crate) mod openai;
@@ -81,6 +83,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
             let reference = session::session_messages_path(path).expect("checked path");
             session::session_messages_response(state, request, reference)
         }
+        path if dataset_tool_path(path) => method_not_allowed(request),
         path if store_mutation_path(path) => method_not_allowed(request),
         path if path.starts_with("/v1/sessions/") => {
             let reference = path.trim_start_matches("/v1/sessions/");
@@ -123,6 +126,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
 
 async fn route_delete(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
     match request.path.as_str() {
+        path if dataset_tool_path(path) => method_not_allowed(request),
         path if store_mutation_path(path) => method_not_allowed(request),
         path if store_ref_path(path, "/v1/models/").is_some() => {
             let reference = store_ref_path(path, "/v1/models/").expect("checked path");
@@ -159,9 +163,21 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
         "/v1/adapters/import" => store_mutation::import_adapter_response(state, request).await,
         "/v1/adapters/pull" => store_mutation::pull_adapter_response(state, request).await,
         "/v1/datasets/import" => store_mutation::import_dataset_response(state, request).await,
+        "/v1/datasets/validate" => dataset_tools::validate_dataset_response(state, request).await,
+        "/v1/datasets/template" => dataset_tools::dataset_template_response(request),
+        "/v1/datasets/synth" => dataset_cloud::synth_dataset_response(state, request).await,
+        "/v1/datasets/eval" => dataset_cloud::eval_dataset_response(state, request).await,
         path if adapter_bind_path(path).is_some() => {
             let reference = adapter_bind_path(path).expect("checked path");
             store_mutation::bind_adapter_response(state, request, reference).await
+        }
+        path if dataset_export_path(path).is_some() => {
+            let reference = dataset_export_path(path).expect("checked path");
+            dataset_tools::export_dataset_response(state, request, reference).await
+        }
+        path if dataset_diff_path(path).is_some() => {
+            let reference = dataset_diff_path(path).expect("checked path");
+            dataset_tools::diff_dataset_response(state, request, reference).await
         }
         path if path.starts_with("/v1/models/")
             || path.starts_with("/v1/adapters/")
@@ -228,6 +244,35 @@ fn adapter_bind_path(path: &str) -> Option<&str> {
         return None;
     }
     Some(reference)
+}
+
+fn dataset_export_path(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/v1/datasets/")?;
+    let reference = rest.strip_suffix("/export")?;
+    if reference.is_empty() || reference.contains('/') {
+        return None;
+    }
+    Some(reference)
+}
+
+fn dataset_diff_path(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/v1/datasets/")?;
+    let reference = rest.strip_suffix("/diff")?;
+    if reference.is_empty() || reference.contains('/') {
+        return None;
+    }
+    Some(reference)
+}
+
+fn dataset_tool_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/v1/datasets/validate"
+            | "/v1/datasets/template"
+            | "/v1/datasets/synth"
+            | "/v1/datasets/eval"
+    ) || dataset_export_path(path).is_some()
+        || dataset_diff_path(path).is_some()
 }
 
 fn store_mutation_path(path: &str) -> bool {

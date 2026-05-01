@@ -1,69 +1,30 @@
 use std::{
     env,
     path::{Path, PathBuf},
-    process::Stdio,
 };
 
 use clap::CommandFactory;
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
-use indicatif::{ProgressBar, ProgressStyle};
 use miette::{miette, IntoDiagnostic, Result};
 use serde_json::Value;
 use tentgent_core::{
-    auth::{AuthManager, KeySource, KeyValidationState, Provider},
+    auth::{KeySource, Provider},
     dataset::{
         render_dataset_template, validate_dataset_path, write_dataset_template, DatasetDiffOutcome,
         DatasetDiffStatus, DatasetError, DatasetExportOutcome, DatasetImportOutcome,
         DatasetInspection, DatasetManager, DatasetMetadata, DatasetRemovalOutcome, DatasetSummary,
         DatasetTemplateRequest, DatasetValidationOutcome,
     },
+    dataset_runtime::{
+        preflight_dataset_provider_auth, run_dataset_eval_runtime,
+        run_dataset_synth_prompt_runtime, run_dataset_synth_runtime, DatasetEvalRuntimeRequest,
+        DatasetSynthCounts, DatasetSynthPromptRuntimeRequest, DatasetSynthRuntimeRequest,
+    },
 };
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
-use tokio::process::Command;
 
 use super::app::Cli;
 use super::commands::DatasetCommands;
-use super::python_runtime::{require_python_interpreter, resolve_python_runtime};
-
-#[derive(Debug, Clone)]
-struct DatasetProviderAuth {
-    provider: Provider,
-    normalized_provider: &'static str,
-    secret: String,
-}
-
-#[derive(Debug, Clone, Default)]
-struct DatasetSynthCounts {
-    count: Option<u32>,
-    train_count: Option<u32>,
-    valid_count: Option<u32>,
-    test_count: Option<u32>,
-    eval_count: Option<u32>,
-}
-
-impl DatasetSynthCounts {
-    fn split_specific_count(&self) -> usize {
-        [
-            self.train_count,
-            self.valid_count,
-            self.test_count,
-            self.eval_count,
-        ]
-        .into_iter()
-        .flatten()
-        .count()
-    }
-
-    fn expected_jobs(&self) -> u64 {
-        let split_jobs = self.split_specific_count();
-        if split_jobs == 0 {
-            1
-        } else {
-            split_jobs as u64
-        }
-    }
-}
 
 pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
     match action {
@@ -132,13 +93,14 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
                 eval_count,
             };
             if print_prompt {
-                let prompt = run_dataset_synth_prompt_runtime(
-                    brief.as_deref(),
-                    spec.as_deref(),
-                    &split,
-                    &counts,
-                )
-                .await?;
+                let prompt = run_dataset_synth_prompt_runtime(DatasetSynthPromptRuntimeRequest {
+                    brief: brief.clone(),
+                    spec: spec.as_deref().map(absolutize_cli_path).transpose()?,
+                    split: split.clone(),
+                    counts: counts.clone(),
+                })
+                .await
+                .into_diagnostic()?;
                 print!("{prompt}");
                 return Ok(());
             }
@@ -158,22 +120,26 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
                     "missing required option `--output`; use `--print-prompt` to inspect the prompt without an output directory"
                 )
             })?;
-            let auth = preflight_dataset_provider_auth(&provider, "dataset synth").await?;
-            let outcome = run_dataset_synth_runtime(
-                &auth,
-                &model,
-                &output,
-                brief.as_deref(),
-                spec.as_deref(),
-                &split,
-                &counts,
+            let auth = preflight_dataset_provider_auth(&provider, "dataset synth")
+                .await
+                .into_diagnostic()?;
+            render_dataset_provider_auth_preflight(auth.provider(), auth.source(), "dataset synth");
+            let outcome = run_dataset_synth_runtime(DatasetSynthRuntimeRequest {
+                auth,
+                model,
+                output: absolutize_cli_path(&output)?,
+                brief: brief.clone(),
+                spec: spec.as_deref().map(absolutize_cli_path).transpose()?,
+                split,
+                counts,
                 max_tokens,
                 temperature,
                 timeout_seconds,
                 retries,
-            )
-            .await?;
-            render_synth_outcome(&outcome);
+            })
+            .await
+            .into_diagnostic()?;
+            render_synth_outcome(&outcome.outcome);
         }
         DatasetCommands::Eval {
             input,
@@ -193,20 +159,24 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             }
 
             let input_path = resolve_dataset_eval_input(&input)?;
-            let auth = preflight_dataset_provider_auth(&provider, "dataset eval").await?;
-            let outcome = run_dataset_eval_runtime(
-                &auth,
-                &model,
-                &input_path,
-                &output,
-                &split,
+            let auth = preflight_dataset_provider_auth(&provider, "dataset eval")
+                .await
+                .into_diagnostic()?;
+            render_dataset_provider_auth_preflight(auth.provider(), auth.source(), "dataset eval");
+            let outcome = run_dataset_eval_runtime(DatasetEvalRuntimeRequest {
+                auth,
+                model,
+                input: input_path,
+                output: absolutize_cli_path(&output)?,
+                split,
                 max_records,
-                criteria.as_deref(),
+                criteria: criteria.clone(),
                 max_tokens,
                 temperature,
                 timeout_seconds,
-            )
-            .await?;
+            })
+            .await
+            .into_diagnostic()?;
             render_eval_outcome(&outcome);
         }
         DatasetCommands::Ls => {
@@ -945,392 +915,12 @@ fn resolve_dataset_eval_input(input: &str) -> Result<PathBuf> {
     }
 }
 
-async fn preflight_dataset_provider_auth(
-    provider_name: &str,
-    purpose: &'static str,
-) -> Result<DatasetProviderAuth> {
-    let (provider, normalized_provider) = auth_provider_for_dataset(provider_name)?;
-    let auth = AuthManager::new().into_diagnostic()?;
-    let Some((source, secret)) = auth.effective_secret(provider).into_diagnostic()? else {
-        return Err(miette!(
-            "{} key is missing for {purpose}; run `tentgent auth {} set` or set `{}` before launch",
-            provider.display_name(),
-            provider.cli_name(),
-            provider.env_var()
-        ));
-    };
-
-    match auth.validate_secret(provider, &secret).await {
-        KeyValidationState::Verified => {
-            render_dataset_provider_auth_preflight(provider, source, purpose);
-            Ok(DatasetProviderAuth {
-                provider,
-                normalized_provider,
-                secret,
-            })
-        }
-        KeyValidationState::Invalid { reason } => Err(miette!(
-            "{} key from {} is invalid for {purpose}: {}",
-            provider.display_name(),
-            source,
-            reason
-        )),
-        KeyValidationState::Unknown { reason } => Err(miette!(
-            "{} key from {} could not be verified for {purpose}: {}",
-            provider.display_name(),
-            source,
-            reason
-        )),
-        KeyValidationState::Missing => Err(miette!(
-            "{} key is missing for {purpose}; run `tentgent auth {} set` or set `{}` before launch",
-            provider.display_name(),
-            provider.cli_name(),
-            provider.env_var()
-        )),
-    }
-}
-
-async fn run_dataset_eval_runtime(
-    auth: &DatasetProviderAuth,
-    model: &str,
-    input: &Path,
-    output: &Path,
-    split: &str,
-    max_records: u32,
-    criteria: Option<&str>,
-    max_tokens: Option<u32>,
-    temperature: f32,
-    timeout_seconds: f32,
-) -> Result<Value> {
-    let python_runtime = resolve_python_runtime()?;
-    let python = require_python_interpreter(&python_runtime, "python dataset eval runtime")?;
-    let input_path = absolutize_cli_path(input)?;
-    let output_path = absolutize_cli_path(output)?;
-
-    let mut process = Command::new(&python);
-    process
-        .current_dir(python_runtime.project_dir())
-        .env("PYTHONPATH", python_runtime.python_src_dir())
-        .env(auth.provider.env_var(), &auth.secret)
-        .arg("-m")
-        .arg("tentgent_daemon.cli.dataset_eval")
-        .arg("--provider")
-        .arg(auth.normalized_provider)
-        .arg("--model")
-        .arg(model)
-        .arg("--input")
-        .arg(&input_path)
-        .arg("--output")
-        .arg(&output_path)
-        .arg("--split")
-        .arg(split)
-        .arg("--max-records")
-        .arg(max_records.to_string())
-        .arg("--temperature")
-        .arg(temperature.to_string())
-        .arg("--timeout-seconds")
-        .arg(timeout_seconds.to_string())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-
-    if let Some(criteria) = criteria {
-        process.arg("--criteria").arg(criteria);
-    }
-    if let Some(max_tokens) = max_tokens {
-        process.arg("--max-tokens").arg(max_tokens.to_string());
-    }
-
-    let output = process.output().await.into_diagnostic()?;
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if !output.status.success() {
-        if stderr.is_empty() {
-            return Err(miette!(
-                "dataset eval runtime exited with status {}",
-                output.status
-            ));
-        }
-        return Err(miette!(
-            "dataset eval runtime exited with status {}\n\n{}",
-            output.status,
-            stderr
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    serde_json::from_str::<Value>(&stdout)
-        .map_err(|err| miette!("dataset eval runtime returned invalid JSON: {err}\n\n{stdout}"))
-}
-
-async fn run_dataset_synth_runtime(
-    auth: &DatasetProviderAuth,
-    model: &str,
-    output: &Path,
-    brief: Option<&str>,
-    spec: Option<&Path>,
-    split: &str,
-    counts: &DatasetSynthCounts,
-    max_tokens: Option<u32>,
-    temperature: f32,
-    timeout_seconds: f32,
-    retries: u32,
-) -> Result<Value> {
-    let python_runtime = resolve_python_runtime()?;
-    let python = require_python_interpreter(&python_runtime, "python dataset synth runtime")?;
-    let output_path = absolutize_cli_path(output)?;
-    let spec_path = spec.map(absolutize_cli_path).transpose()?;
-
-    let mut process = Command::new(&python);
-    process
-        .current_dir(python_runtime.project_dir())
-        .env("PYTHONPATH", python_runtime.python_src_dir())
-        .env(auth.provider.env_var(), &auth.secret)
-        .arg("-m")
-        .arg("tentgent_daemon.cli.dataset_synth")
-        .arg("--provider")
-        .arg(auth.normalized_provider)
-        .arg("--model")
-        .arg(model)
-        .arg("--output")
-        .arg(&output_path)
-        .arg("--split")
-        .arg(split)
-        .arg("--temperature")
-        .arg(temperature.to_string())
-        .arg("--timeout-seconds")
-        .arg(timeout_seconds.to_string())
-        .arg("--retries")
-        .arg(retries.to_string())
-        .arg("--progress-json")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-
-    append_dataset_synth_count_args(&mut process, counts);
-    if let Some(brief) = brief {
-        process.arg("--brief").arg(brief);
-    }
-    if let Some(spec) = &spec_path {
-        process.arg("--spec").arg(spec);
-    }
-    if let Some(max_tokens) = max_tokens {
-        process.arg("--max-tokens").arg(max_tokens.to_string());
-    }
-
-    let progress = ProgressBar::new(counts.expected_jobs());
-    progress.set_style(
-        ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {pos}/{len} {msg}")
-            .map_err(|err| miette!("invalid dataset synth progress template: {err}"))?
-            .progress_chars("=> "),
-    );
-    progress.set_message("starting dataset synth");
-
-    let mut child = process.spawn().into_diagnostic()?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| miette!("failed to capture dataset synth stdout"))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| miette!("failed to capture dataset synth stderr"))?;
-
-    let stdout_task = tokio::spawn(async move {
-        let mut stdout_text = String::new();
-        let mut reader = BufReader::new(stdout);
-        reader.read_to_string(&mut stdout_text).await?;
-        Ok::<String, std::io::Error>(stdout_text)
-    });
-
-    let progress_for_stderr = progress.clone();
-    let stderr_task = tokio::spawn(async move {
-        let mut stderr_lines = Vec::new();
-        let mut lines = BufReader::new(stderr).lines();
-        while let Some(line) = lines.next_line().await? {
-            if let Ok(event) = serde_json::from_str::<Value>(&line) {
-                if event.get("type").and_then(Value::as_str) == Some("progress") {
-                    render_dataset_synth_progress(&progress_for_stderr, &event);
-                    continue;
-                }
-            }
-            stderr_lines.push(line);
-        }
-        Ok::<Vec<String>, std::io::Error>(stderr_lines)
-    });
-
-    let status = child.wait().await.into_diagnostic()?;
-    let stdout_result = stdout_task
-        .await
-        .map_err(|err| miette!("dataset synth stdout reader panicked: {err}"))?
-        .into_diagnostic();
-    let stderr_result = stderr_task
-        .await
-        .map_err(|err| miette!("dataset synth stderr reader panicked: {err}"))?
-        .into_diagnostic();
-    progress.finish_and_clear();
-    let stdout = stdout_result?;
-    let stderr_lines = stderr_result?;
-
-    let stderr = stderr_lines.join("\n");
-    if !status.success() {
-        if stderr.trim().is_empty() {
-            return Err(miette!(
-                "dataset synth runtime exited with status {}",
-                status
-            ));
-        }
-        return Err(miette!(
-            "dataset synth runtime exited with status {}\n\n{}",
-            status,
-            stderr
-        ));
-    }
-
-    let stdout = stdout.trim().to_string();
-    serde_json::from_str::<Value>(&stdout)
-        .map_err(|err| miette!("dataset synth runtime returned invalid JSON: {err}\n\n{stdout}"))
-}
-
-async fn run_dataset_synth_prompt_runtime(
-    brief: Option<&str>,
-    spec: Option<&Path>,
-    split: &str,
-    counts: &DatasetSynthCounts,
-) -> Result<String> {
-    let python_runtime = resolve_python_runtime()?;
-    let python = require_python_interpreter(&python_runtime, "python dataset synth runtime")?;
-    let spec_path = spec.map(absolutize_cli_path).transpose()?;
-
-    let mut process = Command::new(&python);
-    process
-        .current_dir(python_runtime.project_dir())
-        .env("PYTHONPATH", python_runtime.python_src_dir())
-        .arg("-m")
-        .arg("tentgent_daemon.cli.dataset_synth")
-        .arg("--print-prompt")
-        .arg("--split")
-        .arg(split)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-
-    append_dataset_synth_count_args(&mut process, counts);
-    if let Some(brief) = brief {
-        process.arg("--brief").arg(brief);
-    }
-    if let Some(spec) = &spec_path {
-        process.arg("--spec").arg(spec);
-    }
-
-    let output = process.output().await.into_diagnostic()?;
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if !output.status.success() {
-        if stderr.is_empty() {
-            return Err(miette!(
-                "dataset synth prompt runtime exited with status {}",
-                output.status
-            ));
-        }
-        return Err(miette!(
-            "dataset synth prompt runtime exited with status {}\n\n{}",
-            output.status,
-            stderr
-        ));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-fn append_dataset_synth_count_args(process: &mut Command, counts: &DatasetSynthCounts) {
-    if let Some(count) = counts.count {
-        process.arg("--count").arg(count.to_string());
-    }
-    if let Some(count) = counts.train_count {
-        process.arg("--train-count").arg(count.to_string());
-    }
-    if let Some(count) = counts.valid_count {
-        process.arg("--valid-count").arg(count.to_string());
-    }
-    if let Some(count) = counts.test_count {
-        process.arg("--test-count").arg(count.to_string());
-    }
-    if let Some(count) = counts.eval_count {
-        process.arg("--eval-count").arg(count.to_string());
-    }
-}
-
-fn render_dataset_synth_progress(progress: &ProgressBar, event: &Value) {
-    let stage = event.get("stage").and_then(Value::as_str).unwrap_or("");
-    let split = event
-        .get("split")
-        .and_then(Value::as_str)
-        .unwrap_or("dataset");
-    match stage {
-        "start" => {
-            let index = event.get("index").and_then(Value::as_u64).unwrap_or(1);
-            let total = event
-                .get("total")
-                .and_then(Value::as_u64)
-                .unwrap_or_else(|| progress.length().unwrap_or(1));
-            let attempt = event.get("attempt").and_then(Value::as_u64).unwrap_or(1);
-            let max_attempts = event
-                .get("max_attempts")
-                .and_then(Value::as_u64)
-                .unwrap_or(1);
-            progress.set_length(total);
-            let attempt_suffix = if max_attempts > 1 {
-                format!(", attempt {attempt}/{max_attempts}")
-            } else {
-                String::new()
-            };
-            progress.set_message(format!(
-                "generating {split} ({index}/{total}{attempt_suffix})"
-            ));
-        }
-        "retry" => {
-            let attempt = event.get("attempt").and_then(Value::as_u64).unwrap_or(1);
-            let max_attempts = event
-                .get("max_attempts")
-                .and_then(Value::as_u64)
-                .unwrap_or(attempt);
-            let reason = event.get("reason").and_then(Value::as_str).unwrap_or("");
-            let suffix = if reason.is_empty() {
-                String::new()
-            } else {
-                format!(": {reason}")
-            };
-            progress.set_message(format!(
-                "retrying {split} ({attempt}/{max_attempts}){suffix}"
-            ));
-        }
-        "written" => {
-            let records = event.get("records").and_then(Value::as_u64).unwrap_or(0);
-            let path = event.get("path").and_then(Value::as_str).unwrap_or("-");
-            progress.inc(1);
-            progress.set_message(format!("wrote {split} {records} record(s) to {path}"));
-        }
-        "manifest" => {
-            let path = event.get("path").and_then(Value::as_str).unwrap_or("-");
-            progress.set_message(format!("wrote manifest {path}"));
-        }
-        _ => {}
-    }
-}
-
 fn absolutize_cli_path(path: &Path) -> Result<PathBuf> {
     if path.is_absolute() {
         return Ok(path.to_path_buf());
     }
 
     Ok(env::current_dir().into_diagnostic()?.join(path))
-}
-
-fn auth_provider_for_dataset(provider: &str) -> Result<(Provider, &'static str)> {
-    match provider {
-        "openai" => Ok((Provider::OpenAI, "openai")),
-        "anthropic" | "claude" => Ok((Provider::Anthropic, "anthropic")),
-        other => Err(miette!("unsupported dataset provider `{other}`")),
-    }
 }
 
 fn render_dataset_provider_auth_preflight(

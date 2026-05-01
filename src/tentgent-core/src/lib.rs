@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod auth;
 pub mod daemon;
 pub mod dataset;
+pub mod dataset_runtime;
 pub mod model;
 pub mod platform;
 pub mod runtime_assets;

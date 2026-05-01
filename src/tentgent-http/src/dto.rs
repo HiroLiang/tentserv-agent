@@ -199,6 +199,145 @@ pub(crate) struct DatasetMutationResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct DatasetValidationResponse {
+    pub(crate) valid: bool,
+    pub(crate) source: DatasetToolSourceItem,
+    pub(crate) target: String,
+    pub(crate) tuning_ready: bool,
+    pub(crate) records: usize,
+    pub(crate) errors_count: usize,
+    pub(crate) splits: Vec<DatasetValidationSplitItem>,
+    pub(crate) warnings: Vec<String>,
+    pub(crate) errors: Vec<DatasetValidationErrorItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetToolSourceItem {
+    pub(crate) kind: &'static str,
+    pub(crate) path: String,
+    pub(crate) dataset_ref: Option<String>,
+    pub(crate) short_ref: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetValidationSplitItem {
+    pub(crate) name: String,
+    pub(crate) path: String,
+    pub(crate) records: usize,
+    pub(crate) errors: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetValidationErrorItem {
+    pub(crate) path: String,
+    pub(crate) line: usize,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetTemplateResponse {
+    pub(crate) template_version: &'static str,
+    pub(crate) task: String,
+    pub(crate) language: String,
+    pub(crate) content: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetExportResponse {
+    pub(crate) dataset: DatasetItem,
+    pub(crate) export: DatasetExportItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetExportItem {
+    pub(crate) output_path: String,
+    pub(crate) managed_source_path: String,
+    pub(crate) file_count: usize,
+    pub(crate) total_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetDiffResponse {
+    pub(crate) left: DatasetDiffSideItem,
+    pub(crate) right: DatasetDiffSideItem,
+    pub(crate) diff: DatasetDiffItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetDiffSideItem {
+    pub(crate) label: String,
+    pub(crate) short_ref: Option<String>,
+    pub(crate) path: Option<String>,
+    pub(crate) tuning_ready: bool,
+    pub(crate) splits: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetDiffItem {
+    pub(crate) summary: DatasetDiffSummaryItem,
+    pub(crate) files: Vec<DatasetDiffFileItem>,
+    pub(crate) file_limit: usize,
+    pub(crate) truncated: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetDiffSummaryItem {
+    pub(crate) added: usize,
+    pub(crate) removed: usize,
+    pub(crate) modified: usize,
+    pub(crate) unchanged: usize,
+    pub(crate) left_total_bytes: u64,
+    pub(crate) right_total_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetDiffFileItem {
+    pub(crate) status: String,
+    pub(crate) relative_path: String,
+    pub(crate) left_size_bytes: Option<u64>,
+    pub(crate) right_size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetSynthPromptResponse {
+    pub(crate) prompt: DatasetSynthPromptItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetSynthPromptItem {
+    pub(crate) content: String,
+    pub(crate) split: String,
+    pub(crate) source_kind: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetSynthResponse {
+    pub(crate) synth: Value,
+    pub(crate) progress_events: Vec<Value>,
+    pub(crate) progress_truncated: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetEvalResponse {
+    #[serde(rename = "eval")]
+    pub(crate) evaluation: Value,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetRuntimeDebugItem {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) output_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) debug_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) prompt_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) provider_output_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) error_path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct RemoveDatasetResponse {
     pub(crate) removed: RemovedDatasetItem,
     pub(crate) dataset: DatasetItem,
@@ -475,6 +614,74 @@ pub(crate) struct CreateServerRequest {
 #[serde(deny_unknown_fields)]
 pub(crate) struct StoreImportRequest {
     pub(crate) path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DatasetValidateRequest {
+    pub(crate) path: Option<String>,
+    pub(crate) dataset_ref: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DatasetTemplateRequestBody {
+    pub(crate) task: Option<String>,
+    pub(crate) language: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DatasetExportRequest {
+    pub(crate) output_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DatasetDiffRequest {
+    pub(crate) right_dataset_ref: Option<String>,
+    pub(crate) right_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DatasetSynthRequest {
+    #[serde(default)]
+    pub(crate) print_prompt: bool,
+    pub(crate) provider: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) output_path: Option<String>,
+    pub(crate) brief: Option<String>,
+    pub(crate) spec_content: Option<String>,
+    pub(crate) spec_path: Option<String>,
+    pub(crate) split: Option<String>,
+    pub(crate) count: Option<u32>,
+    pub(crate) train_count: Option<u32>,
+    pub(crate) valid_count: Option<u32>,
+    pub(crate) test_count: Option<u32>,
+    pub(crate) eval_count: Option<u32>,
+    pub(crate) max_tokens: Option<u32>,
+    pub(crate) temperature: Option<f32>,
+    pub(crate) timeout_seconds: Option<f32>,
+    pub(crate) retries: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DatasetEvalRequest {
+    pub(crate) provider: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) output_path: Option<String>,
+    pub(crate) dataset_ref: Option<String>,
+    pub(crate) input_content: Option<String>,
+    pub(crate) input_format: Option<String>,
+    pub(crate) input_path: Option<String>,
+    pub(crate) split: Option<String>,
+    pub(crate) max_records: Option<u32>,
+    pub(crate) criteria: Option<String>,
+    pub(crate) max_tokens: Option<u32>,
+    pub(crate) temperature: Option<f32>,
+    pub(crate) timeout_seconds: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]

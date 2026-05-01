@@ -90,6 +90,12 @@ POST /v1/adapters/import
 POST /v1/adapters/pull
 POST /v1/adapters/{adapter_ref}/bind
 POST /v1/datasets/import
+POST /v1/datasets/validate
+POST /v1/datasets/template
+POST /v1/datasets/synth
+POST /v1/datasets/eval
+POST /v1/datasets/{dataset_ref}/export
+POST /v1/datasets/{dataset_ref}/diff
 DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
 DELETE /v1/datasets/{dataset_ref}
@@ -466,21 +472,44 @@ Review target:
 - external tools can populate the model, adapter, and dataset stores through the
   daemon
 
-### Slice 14: Dataset Tooling Parity
+### Slice 14.1: Deterministic Dataset Tooling Parity
 
-Status: planned.
+Status: implemented in the active workspace.
 
 Goals:
 
-- expose dataset validate, template, synth, eval, export, and diff workflows
+- expose dataset validate, template, export, and diff workflows
 - preserve existing canonical dataset schema validation behavior
-- make cloud synthesis progress, retry, timeout, and debug output visible over
-  HTTP
+- keep all accepted paths as daemon-host absolute filesystem paths
+- return validation failures as tool results with `valid: false`, not HTTP
+  request failures
+- keep provider-backed synth/eval out of this deterministic slice
 
 Review target:
 
 - dataset authoring and verification can run from local applications without
   CLI-only steps
+
+### Slice 14.2: Cloud Dataset Tooling Parity
+
+Status: implemented in the active workspace.
+
+Goals:
+
+- expose synchronous dataset synth and eval workflows
+- support managed refs, direct content, and daemon-host path inputs where
+  appropriate
+- share provider auth, Python runtime invocation, retry, timeout, and daemon
+  token sanitization through core helpers
+- return capped progress events and debug artifact paths without exposing raw
+  provider output or request content
+- keep jobs, progress streaming, cancellation, auto-import, uploads, and
+  rollback out of this slice
+
+Review target:
+
+- cloud dataset generation and review can be launched from local applications
+  with clear debug artifacts when provider output is invalid
 
 ### Slice 15: Training Plan API
 

@@ -7,6 +7,7 @@ use std::{
 use serde_json::Value;
 use tentgent_core::{
     daemon::{DaemonInspection, DaemonProcessMetadata},
+    dataset::DatasetManager,
     server::{LaunchMode, ServerManager, ServerRunRequest},
 };
 use tokio::{
@@ -473,6 +474,441 @@ async fn dataset_import_works_and_repeats() {
         first_body["dataset"]["dataset_ref"]
     );
     assert_eq!(second_body["mutation"]["deduplicated"], true);
+}
+
+#[tokio::test]
+async fn dataset_validate_path_and_managed_refs_work() {
+    let home = unique_home("dataset-validate");
+    let source = write_dataset_import_source(&home);
+    let state = state_for(home.clone());
+
+    let path_response = route_request(
+        &post(
+            "/v1/datasets/validate",
+            format!(r#"{{"path":"{}"}}"#, path_string(&source)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let path_body: Value = serde_json::from_slice(response_buffer(&path_response)).expect("json");
+    assert_eq!(path_response.status_code, 200);
+    assert_eq!(path_body["valid"], true);
+    assert_eq!(path_body["source"]["kind"], "path");
+    assert_eq!(path_body["target"], "directory");
+    assert_eq!(path_body["records"], 1);
+    assert_eq!(path_body["errors_count"], 0);
+    assert_eq!(path_body["splits"][0]["name"], "train");
+
+    let manager = DatasetManager::new_with_home(Some(&home)).expect("dataset manager");
+    let import = manager.add_path(&source).expect("import dataset");
+    let managed = route_request(
+        &post(
+            "/v1/datasets/validate",
+            format!(r#"{{"dataset_ref":"{}"}}"#, import.metadata.short_ref).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let managed_body: Value = serde_json::from_slice(response_buffer(&managed)).expect("json");
+    assert_eq!(managed.status_code, 200);
+    assert_eq!(managed_body["valid"], true);
+    assert_eq!(managed_body["source"]["kind"], "dataset");
+    assert_eq!(
+        managed_body["source"]["dataset_ref"],
+        import.metadata.dataset_ref
+    );
+    assert_eq!(
+        managed_body["source"]["short_ref"],
+        import.metadata.short_ref
+    );
+}
+
+#[tokio::test]
+async fn dataset_validate_invalid_schema_is_200_but_bad_request_shapes_are_400() {
+    let home = unique_home("dataset-validate-errors");
+    let invalid = write_invalid_dataset_source(&home);
+    let state = state_for(home.clone());
+
+    let invalid_response = route_request(
+        &post(
+            "/v1/datasets/validate",
+            format!(r#"{{"path":"{}"}}"#, path_string(&invalid)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let invalid_body: Value =
+        serde_json::from_slice(response_buffer(&invalid_response)).expect("json");
+    assert_eq!(invalid_response.status_code, 200);
+    assert_eq!(invalid_body["valid"], false);
+    assert_eq!(invalid_body["errors_count"], 1);
+    assert_eq!(invalid_body["errors"][0]["line"], 1);
+
+    for payload in [
+        r#"{}"#.to_string(),
+        format!(
+            r#"{{"path":"{}","dataset_ref":"abc"}}"#,
+            path_string(&invalid)
+        ),
+        r#"{"path":"relative/dataset"}"#.to_string(),
+        r#"{"dataset_ref":"../dataset"}"#.to_string(),
+        r#"{"path":" ","dataset_ref":" "}"#.to_string(),
+        format!(r#"{{"path":"{}","unknown":true}}"#, path_string(&invalid)),
+    ] {
+        let response =
+            route_request(&post("/v1/datasets/validate", payload.as_bytes()), &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+        assert_eq!(response.status_code, 400, "{payload}");
+        assert_eq!(body["error"], "bad_request");
+    }
+
+    let missing_path = route_request(
+        &post(
+            "/v1/datasets/validate",
+            format!(r#"{{"path":"{}"}}"#, path_string(&home.join("missing"))).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let missing_path_body: Value =
+        serde_json::from_slice(response_buffer(&missing_path)).expect("json");
+    assert_eq!(missing_path.status_code, 404);
+    assert_eq!(missing_path_body["error"], "path_not_found");
+
+    write_dataset_fixture(&home, "aaaaaaaaaaaa000000000000");
+    write_dataset_fixture(&home, "aaaaaaaaaaab000000000000");
+    let missing_ref = route_request(
+        &post("/v1/datasets/validate", br#"{"dataset_ref":"missing"}"#),
+        &state,
+    )
+    .await;
+    let missing_ref_body: Value =
+        serde_json::from_slice(response_buffer(&missing_ref)).expect("json");
+    assert_eq!(missing_ref.status_code, 404);
+    assert_eq!(missing_ref_body["error"], "not_found");
+
+    let ambiguous = route_request(
+        &post("/v1/datasets/validate", br#"{"dataset_ref":"aaaa"}"#),
+        &state,
+    )
+    .await;
+    let ambiguous_body: Value = serde_json::from_slice(response_buffer(&ambiguous)).expect("json");
+    assert_eq!(ambiguous.status_code, 409);
+    assert_eq!(ambiguous_body["error"], "ambiguous_ref");
+}
+
+#[tokio::test]
+async fn dataset_template_returns_content_defaults_and_rejects_unknown_fields() {
+    let state = state_for(unique_home("dataset-template"));
+
+    let response = route_request(
+        &post(
+            "/v1/datasets/template",
+            br#"{"task":"support","language":"zh-TW"}"#,
+        ),
+        &state,
+    )
+    .await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["template_version"], "tentgent.dataset.synth.v1");
+    assert_eq!(body["task"], "support");
+    assert_eq!(body["language"], "zh-TW");
+    assert!(body["content"]
+        .as_str()
+        .expect("content")
+        .contains("tentgent.chat.v1"));
+
+    let defaults = route_request(
+        &post("/v1/datasets/template", br#"{"task":" ","language":" "}"#),
+        &state,
+    )
+    .await;
+    let defaults_body: Value = serde_json::from_slice(response_buffer(&defaults)).expect("json");
+    assert_eq!(defaults.status_code, 200);
+    assert_eq!(defaults_body["task"], "chat");
+    assert_eq!(defaults_body["language"], "en");
+
+    let bad = route_request(
+        &post("/v1/datasets/template", br#"{"output_path":"/tmp/x"}"#),
+        &state,
+    )
+    .await;
+    let bad_body: Value = serde_json::from_slice(response_buffer(&bad)).expect("json");
+    assert_eq!(bad.status_code, 400);
+    assert_eq!(bad_body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn dataset_export_writes_files_and_maps_output_errors() {
+    let home = unique_home("dataset-export");
+    let source = write_dataset_import_source(&home);
+    let manager = DatasetManager::new_with_home(Some(&home)).expect("dataset manager");
+    let import = manager.add_path(&source).expect("import dataset");
+    let state = state_for(home.clone());
+
+    let output = home.join("exports/new");
+    let response = route_request(
+        &post(
+            &format!("/v1/datasets/{}/export", import.metadata.short_ref),
+            format!(r#"{{"output_path":"{}"}}"#, path_string(&output)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["dataset"]["dataset_ref"], import.metadata.dataset_ref);
+    assert_eq!(body["export"]["output_path"], path_string(&output));
+    assert_eq!(body["export"]["file_count"], 1);
+    assert!(output.join("train.jsonl").exists());
+
+    let empty = home.join("exports/empty");
+    fs::create_dir_all(&empty).expect("empty export dir");
+    let empty_response = route_request(
+        &post(
+            &format!("/v1/datasets/{}/export", import.metadata.dataset_ref),
+            format!(r#"{{"output_path":"{}"}}"#, path_string(&empty)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    assert_eq!(empty_response.status_code, 200);
+
+    let non_empty = home.join("exports/non-empty");
+    fs::create_dir_all(&non_empty).expect("non-empty dir");
+    fs::write(non_empty.join("existing.txt"), "existing").expect("existing file");
+    let exists = route_request(
+        &post(
+            &format!("/v1/datasets/{}/export", import.metadata.short_ref),
+            format!(r#"{{"output_path":"{}"}}"#, path_string(&non_empty)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let exists_body: Value = serde_json::from_slice(response_buffer(&exists)).expect("json");
+    assert_eq!(exists.status_code, 409);
+    assert_eq!(exists_body["error"], "output_exists");
+
+    let relative = route_request(
+        &post(
+            &format!("/v1/datasets/{}/export", import.metadata.short_ref),
+            br#"{"output_path":"relative/export"}"#,
+        ),
+        &state,
+    )
+    .await;
+    let relative_body: Value = serde_json::from_slice(response_buffer(&relative)).expect("json");
+    assert_eq!(relative.status_code, 400);
+    assert_eq!(relative_body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn dataset_diff_supports_managed_and_path_right_sides_with_file_cap() {
+    let home = unique_home("dataset-diff");
+    let left_source = write_dataset_source_with_extra_files(&home, "left", 0);
+    let right_source = write_dataset_source_with_extra_files(&home, "right", 2);
+    let large_source = write_dataset_source_with_extra_files(&home, "large", 505);
+    let manager = DatasetManager::new_with_home(Some(&home)).expect("dataset manager");
+    let left = manager.add_path(&left_source).expect("left dataset");
+    let right = manager.add_path(&right_source).expect("right dataset");
+    let state = state_for(home.clone());
+
+    let managed = route_request(
+        &post(
+            &format!("/v1/datasets/{}/diff", left.metadata.short_ref),
+            format!(r#"{{"right_dataset_ref":"{}"}}"#, right.metadata.short_ref).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let managed_body: Value = serde_json::from_slice(response_buffer(&managed)).expect("json");
+    assert_eq!(managed.status_code, 200);
+    assert_eq!(managed_body["left"]["short_ref"], left.metadata.short_ref);
+    assert_eq!(managed_body["right"]["short_ref"], right.metadata.short_ref);
+    assert_eq!(managed_body["diff"]["summary"]["added"], 2);
+    assert_eq!(managed_body["diff"]["truncated"], false);
+
+    let path = route_request(
+        &post(
+            &format!("/v1/datasets/{}/diff", left.metadata.short_ref),
+            format!(r#"{{"right_path":"{}"}}"#, path_string(&large_source)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let path_body: Value = serde_json::from_slice(response_buffer(&path)).expect("json");
+    assert_eq!(path.status_code, 200);
+    assert_eq!(path_body["right"]["path"], path_string(&large_source));
+    assert_eq!(path_body["diff"]["file_limit"], 500);
+    assert_eq!(path_body["diff"]["truncated"], true);
+    assert_eq!(
+        path_body["diff"]["files"].as_array().expect("files").len(),
+        500
+    );
+
+    for payload in [
+        r#"{}"#.to_string(),
+        format!(
+            r#"{{"right_dataset_ref":"{}","right_path":"{}"}}"#,
+            right.metadata.short_ref,
+            path_string(&right_source)
+        ),
+        r#"{"right_path":"relative/dataset"}"#.to_string(),
+    ] {
+        let response = route_request(
+            &post(
+                &format!("/v1/datasets/{}/diff", left.metadata.short_ref),
+                payload.as_bytes(),
+            ),
+            &state,
+        )
+        .await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+        assert_eq!(response.status_code, 400, "{payload}");
+        assert_eq!(body["error"], "bad_request");
+    }
+}
+
+#[tokio::test]
+async fn dataset_tool_routes_are_static_and_protected() {
+    let home = unique_home("dataset-tools-static-auth");
+    let state = state_for(home.clone());
+
+    for path in [
+        "/v1/datasets/validate",
+        "/v1/datasets/template",
+        "/v1/datasets/synth",
+        "/v1/datasets/eval",
+        "/v1/datasets/anything/export",
+        "/v1/datasets/anything/diff",
+    ] {
+        let response = route_request(&get(path), &state).await;
+        assert_eq!(response.status_code, 405, "{path}");
+    }
+
+    let token_state = state_with_token(home, "secret");
+    let unauthorized = route_request(
+        &post("/v1/datasets/validate", br#"{"path":"/tmp/nope"}"#),
+        &token_state,
+    )
+    .await;
+    assert_eq!(unauthorized.status_code, 401);
+}
+
+#[tokio::test]
+async fn dataset_synth_route_validates_modes_before_provider_calls() {
+    let home = unique_home("dataset-synth-route-validation");
+    fs::create_dir_all(&home).expect("home");
+    let state = state_for(home.clone());
+    let spec = home.join("spec.md");
+    fs::write(&spec, "Generate records.").expect("spec");
+    let output = home.join("out");
+
+    for payload in [
+        r#"{}"#.to_string(),
+        r#"{"print_prompt":true,"brief":"x","provider":"openai","split":"train","count":1}"#
+            .to_string(),
+        r#"{"brief":"x","spec_content":"y","split":"train","count":1}"#.to_string(),
+        r#"{"provider":"openai","model":"m","output_path":"/tmp/out","brief":"x","split":"train"}"#
+            .to_string(),
+        r#"{"provider":"openai","model":"m","output_path":"/tmp/out","brief":"x","train_count":0,"valid_count":0}"#
+            .to_string(),
+        r#"{"provider":"openai","model":"m","output_path":"/tmp/out","spec_path":"relative.md","split":"train","count":1}"#
+            .to_string(),
+    ] {
+        let response = route_request(&post("/v1/datasets/synth", payload.as_bytes()), &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+        assert_eq!(response.status_code, 400, "{payload}");
+        assert_eq!(body["error"], "bad_request");
+    }
+
+    let unsupported_provider = route_request(
+        &post(
+            "/v1/datasets/synth",
+            format!(
+                r#"{{"provider":"bogus","model":"m","output_path":"{}","spec_path":"{}","split":"train","count":1}}"#,
+                path_string(&output),
+                path_string(&spec)
+            )
+            .as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let unsupported_body: Value =
+        serde_json::from_slice(response_buffer(&unsupported_provider)).expect("json");
+    assert_eq!(unsupported_provider.status_code, 400);
+    assert_eq!(unsupported_body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn dataset_eval_route_validates_sources_content_and_refs() {
+    let home = unique_home("dataset-eval-route-validation");
+    let state = state_for(home.clone());
+    let output = home.join("eval-report");
+
+    for payload in [
+        format!(
+            r#"{{"provider":"openai","model":"m","output_path":"{}"}}"#,
+            path_string(&output)
+        ),
+        format!(
+            r#"{{"provider":"openai","model":"m","output_path":"{}","dataset_ref":"abc","input_content":"x"}}"#,
+            path_string(&output)
+        ),
+        format!(
+            r#"{{"provider":"openai","model":"m","output_path":"{}","input_path":"relative.jsonl"}}"#,
+            path_string(&output)
+        ),
+        format!(
+            r#"{{"provider":"openai","model":"m","output_path":"{}","input_content":"x","input_format":"csv"}}"#,
+            path_string(&output)
+        ),
+        format!(
+            r#"{{"provider":"openai","model":"m","output_path":"{}","input_content":"x","max_records":0}}"#,
+            path_string(&output)
+        ),
+    ] {
+        let response = route_request(&post("/v1/datasets/eval", payload.as_bytes()), &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+        assert_eq!(response.status_code, 400, "{payload}");
+        assert_eq!(body["error"], "bad_request");
+    }
+
+    let missing_ref = route_request(
+        &post(
+            "/v1/datasets/eval",
+            format!(
+                r#"{{"provider":"openai","model":"m","output_path":"{}","dataset_ref":"missing"}}"#,
+                path_string(&output)
+            )
+            .as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let missing_ref_body: Value =
+        serde_json::from_slice(response_buffer(&missing_ref)).expect("json");
+    assert_eq!(missing_ref.status_code, 404);
+    assert_eq!(missing_ref_body["error"], "not_found");
+
+    let unsupported_provider = route_request(
+        &post(
+            "/v1/datasets/eval",
+            format!(
+                r#"{{"provider":"bogus","model":"m","output_path":"{}","input_content":"{{}}\n"}}"#,
+                path_string(&output)
+            )
+            .as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let unsupported_body: Value =
+        serde_json::from_slice(response_buffer(&unsupported_provider)).expect("json");
+    assert_eq!(unsupported_provider.status_code, 400);
+    assert_eq!(unsupported_body["error"], "bad_request");
 }
 
 #[tokio::test]
@@ -1994,6 +2430,32 @@ fn write_dataset_import_source(home: &Path) -> PathBuf {
     )
     .expect("dataset import file");
     source.canonicalize().expect("canonical dataset source")
+}
+
+fn write_invalid_dataset_source(home: &Path) -> PathBuf {
+    let source = home.join("fixtures/invalid-dataset");
+    fs::create_dir_all(&source).expect("invalid dataset dir");
+    fs::write(source.join("train.jsonl"), r#"{"not_messages":true}"#)
+        .expect("invalid dataset file");
+    source.canonicalize().expect("canonical invalid dataset")
+}
+
+fn write_dataset_source_with_extra_files(home: &Path, label: &str, extra_files: usize) -> PathBuf {
+    let source = home.join(format!("fixtures/diff-{label}"));
+    fs::create_dir_all(&source).expect("diff dataset dir");
+    fs::write(
+        source.join("train.jsonl"),
+        r#"{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]}"#,
+    )
+    .expect("diff train file");
+    for index in 0..extra_files {
+        fs::write(
+            source.join(format!("extra-{index:03}.txt")),
+            format!("extra {index}"),
+        )
+        .expect("extra file");
+    }
+    source.canonicalize().expect("canonical diff dataset")
 }
 
 fn write_session_fixture(

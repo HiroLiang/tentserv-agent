@@ -284,6 +284,41 @@ curl -sS http://127.0.0.1:8790/v1/datasets/import \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{"path":"/absolute/path/on/daemon-host/dataset"}'
+curl -sS http://127.0.0.1:8790/v1/datasets/validate \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"path":"/absolute/path/on/daemon-host/dataset"}'
+curl -sS http://127.0.0.1:8790/v1/datasets/template \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"task":"support","language":"zh-TW"}'
+curl -sS http://127.0.0.1:8790/v1/datasets/synth \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"print_prompt":true,"brief":"Generate support examples in Traditional Chinese.","split":"train","count":20}'
+curl -sS http://127.0.0.1:8790/v1/datasets/synth \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"provider":"openai","model":"gpt-4.1-mini","output_path":"/absolute/path/on/daemon-host/generated","brief":"Generate support examples in Traditional Chinese.","split":"train","count":20,"timeout_seconds":300,"retries":1}'
+curl -sS http://127.0.0.1:8790/v1/datasets/eval \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"dataset_ref":"<dataset-ref>","provider":"openai","model":"gpt-4.1-mini","output_path":"/absolute/path/on/daemon-host/eval-report","max_records":20}'
+curl -sS http://127.0.0.1:8790/v1/datasets/<dataset-ref>/export \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"output_path":"/absolute/path/on/daemon-host/work-dir"}'
+curl -sS http://127.0.0.1:8790/v1/datasets/<dataset-ref>/diff \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"right_path":"/absolute/path/on/daemon-host/work-dir"}'
 curl -sS http://127.0.0.1:8790/v1/models/<model-ref> \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS -X DELETE http://127.0.0.1:8790/v1/models/<model-ref> \
@@ -303,6 +338,15 @@ curl -sS -X DELETE http://127.0.0.1:8790/v1/servers/<server-ref> \
 Import paths are read from the daemon host filesystem, must be absolute, and
 may expose local source/store paths in responses. Pull endpoints are synchronous
 MVP calls and may outlive short client timeouts on large downloads.
+Dataset validation failures return HTTP `200` with `valid:false`; HTTP `400`
+is reserved for malformed daemon requests. Dataset template returns the prompt
+body in JSON and does not write a file. Dataset export writes only to a missing
+or empty daemon-host directory. Dataset diff returns at most 500 file entries
+with `truncated:true` when the underlying diff is larger. Dataset synth/eval
+HTTP calls are synchronous provider workflows; use long client timeouts. They
+can accept direct spec or dataset content for tool integrations, but may send
+that selected content to the configured provider. Failed provider runs return
+debug artifact paths, not raw provider output.
 
 Server delete removes a stopped server spec only. Stop a running server before
 deleting it. Model and adapter delete may return `409 in_use` when server specs
