@@ -8,7 +8,7 @@ use crate::{
     app::DaemonHttpState,
     dto::ErrorResponse,
     http::{HttpRequest, HttpResponse},
-    response::{json_response, method_not_allowed, not_found_response},
+    response::{json_response, method_not_allowed, not_found_response, unauthorized_response},
 };
 
 pub(crate) async fn route_request(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
@@ -32,11 +32,24 @@ pub(crate) async fn route_request(request: &HttpRequest, state: &DaemonHttpState
         );
     }
 
+    if requires_daemon_auth(request)
+        && state
+            .security()
+            .authorize_header(request.header("authorization"))
+            .is_err()
+    {
+        return unauthorized_response();
+    }
+
     match request.method.as_str() {
         "GET" => route_get(request, state).await,
         "POST" => route_post(request, state).await,
         _ => method_not_allowed(request),
     }
+}
+
+fn requires_daemon_auth(request: &HttpRequest) -> bool {
+    request.path == "/v1" || request.path.starts_with("/v1/")
 }
 
 async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {

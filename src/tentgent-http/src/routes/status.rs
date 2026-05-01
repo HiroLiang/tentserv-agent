@@ -1,8 +1,8 @@
-use tentgent_core::{daemon::DaemonInspection, VERSION};
+use tentgent_core::VERSION;
 
 use crate::{
     app::DaemonHttpState,
-    dto::{HealthResponse, StatusResponse},
+    dto::{HealthResponse, StatusAuthItem, StatusResponse},
     http::HttpResponse,
     response::json_response,
     routes::store::path_string,
@@ -22,10 +22,11 @@ pub(crate) fn healthz_response() -> HttpResponse {
 }
 
 pub(crate) fn status_response(state: &DaemonHttpState) -> HttpResponse {
-    json_response(200, status_item(state.inspection()))
+    json_response(200, status_item(state))
 }
 
-fn status_item(inspection: &DaemonInspection) -> StatusResponse {
+fn status_item(state: &DaemonHttpState) -> StatusResponse {
+    let inspection = state.inspection();
     let process = inspection.process.as_ref();
     StatusResponse {
         service: SERVICE_NAME,
@@ -34,6 +35,9 @@ fn status_item(inspection: &DaemonInspection) -> StatusResponse {
             "running"
         } else {
             "stopped"
+        },
+        auth: StatusAuthItem {
+            token_enabled: state.security().token_enabled(),
         },
         host: process.map(|process| process.host.clone()),
         port: process.map(|process| process.port),

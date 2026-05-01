@@ -2,7 +2,10 @@ use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, C
 use console::style;
 use miette::IntoDiagnostic;
 use tentgent_core::daemon::{DaemonInspection, DaemonManager, DaemonRunRequest, DaemonStopOutcome};
-use tentgent_http::{DaemonHttpServer, DaemonHttpState};
+use tentgent_http::{
+    security::{check_bind_safety, DaemonSecurityConfig},
+    DaemonHttpServer, DaemonHttpState,
+};
 
 use super::commands::{DaemonCommands, DaemonRunCommand};
 
@@ -32,6 +35,15 @@ async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
             port: command.port,
         })
         .into_diagnostic()?;
+    let security = DaemonSecurityConfig::from_env();
+    let bind_safety = check_bind_safety(
+        &spec.host,
+        security.token_enabled(),
+        command.allow_unsafe_bind,
+    )?;
+    for warning in bind_safety.warnings {
+        println!("{} {}", style("warning").yellow().bold(), warning);
+    }
     let server = DaemonHttpServer::bind(spec.host, spec.port).await?;
     let pid = std::process::id();
     let inspection = manager
@@ -47,7 +59,7 @@ async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
     println!("{} press Ctrl-C to stop.", style("note").yellow().bold());
 
     let serve_result = tokio::select! {
-        result = server.serve(DaemonHttpState::new(inspection)) => Some(result),
+        result = server.serve(DaemonHttpState::with_security(inspection, security)) => Some(result),
         signal = tokio::signal::ctrl_c() => {
             signal.into_diagnostic()?;
             None

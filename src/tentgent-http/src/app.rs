@@ -7,6 +7,7 @@ use tokio::net::{TcpListener, TcpStream};
 use crate::{
     http::{read_request, write_response},
     routes::route_request,
+    security::DaemonSecurityConfig,
 };
 
 #[derive(Debug)]
@@ -61,13 +62,19 @@ impl DaemonHttpServer {
 pub struct DaemonHttpState {
     inspection: DaemonInspection,
     http_client: reqwest::Client,
+    security: DaemonSecurityConfig,
 }
 
 impl DaemonHttpState {
     pub fn new(inspection: DaemonInspection) -> Self {
+        Self::with_security(inspection, DaemonSecurityConfig::disabled())
+    }
+
+    pub fn with_security(inspection: DaemonInspection, security: DaemonSecurityConfig) -> Self {
         Self {
             inspection,
             http_client: reqwest::Client::new(),
+            security,
         }
     }
 
@@ -81,6 +88,10 @@ impl DaemonHttpState {
 
     pub(crate) fn http_client(&self) -> &reqwest::Client {
         &self.http_client
+    }
+
+    pub(crate) fn security(&self) -> &DaemonSecurityConfig {
+        &self.security
     }
 }
 

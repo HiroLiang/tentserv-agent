@@ -8,7 +8,7 @@ pub enum DaemonCommands {
     #[command(
         name = "run",
         about = "Run the local Tentgent daemon process in the foreground.",
-        long_about = "Run the local Tentgent daemon process in the foreground. Slice 1 records daemon process metadata and keeps the process alive for lifecycle checks; HTTP endpoints are added by the following slices.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the future HTTP bind address."
+        long_about = "Run the local Tentgent daemon process in the foreground.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address. Loopback binds can run without auth for development. Non-loopback or wildcard binds require `TENTGENT_DAEMON_TOKEN` unless `--allow-unsafe-bind` is passed."
     )]
     Run(DaemonRunCommand),
     /// Show the current local daemon process state.
@@ -46,4 +46,7 @@ pub struct DaemonRunCommand {
     /// TCP port for the future HTTP listener.
     #[arg(short = 'p', long, value_name = "PORT")]
     pub port: Option<u16>,
+    /// Allow binding to non-loopback or wildcard hosts without a daemon token.
+    #[arg(long)]
+    pub allow_unsafe_bind: bool,
 }

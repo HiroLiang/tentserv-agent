@@ -25,6 +25,7 @@ use crate::{
         },
         store::path_string,
     },
+    security::DaemonSecurityConfig,
 };
 
 #[tokio::test]
@@ -51,6 +52,7 @@ async fn status_returns_daemon_metadata() {
     assert_eq!(body["host"], "127.0.0.1");
     assert_eq!(body["port"], 8790);
     assert_eq!(body["pid"], 1234);
+    assert_eq!(body["auth"]["token_enabled"], false);
 }
 
 #[tokio::test]
@@ -62,6 +64,63 @@ async fn unknown_route_returns_json_error() {
 
     assert_eq!(response.status_code, 404);
     assert_eq!(body["error"], "not_found");
+}
+
+#[tokio::test]
+async fn token_enabled_keeps_healthz_public_but_protects_v1_routes() {
+    let state = state_with_token(unique_home("auth-protected"), "secret");
+
+    let health = route_request(&get("/healthz"), &state).await;
+    assert_eq!(health.status_code, 200);
+
+    for request in [
+        get("/v1/status"),
+        get_with_header("/v1/status", "Authorization", "Basic secret"),
+        get_with_header("/v1/status", "Authorization", "Bearer wrong"),
+    ] {
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+        assert_eq!(response.status_code, 401);
+        assert_eq!(body["error"], "unauthorized");
+        assert_eq!(body["message"], "missing or invalid daemon bearer token");
+        assert_eq!(
+            response_header(&response, "WWW-Authenticate"),
+            Some("Bearer")
+        );
+    }
+
+    let authorized = route_request(
+        &get_with_header("/v1/status", "Authorization", "Bearer secret"),
+        &state,
+    )
+    .await;
+    let authorized_body: Value =
+        serde_json::from_slice(response_buffer(&authorized)).expect("json");
+
+    assert_eq!(authorized.status_code, 200);
+    assert_eq!(authorized_body["auth"]["token_enabled"], true);
+}
+
+#[tokio::test]
+async fn token_enabled_authenticates_unknown_v1_routes_before_404() {
+    let state = state_with_token(unique_home("auth-unknown-route"), "secret");
+
+    let unauthorized = route_request(&get("/v1/not-real"), &state).await;
+    let unauthorized_body: Value =
+        serde_json::from_slice(response_buffer(&unauthorized)).expect("json");
+    assert_eq!(unauthorized.status_code, 401);
+    assert_eq!(unauthorized_body["error"], "unauthorized");
+
+    let authorized = route_request(
+        &get_with_header("/v1/not-real", "Authorization", "Bearer secret"),
+        &state,
+    )
+    .await;
+    let authorized_body: Value =
+        serde_json::from_slice(response_buffer(&authorized)).expect("json");
+    assert_eq!(authorized.status_code, 404);
+    assert_eq!(authorized_body["error"], "not_found");
 }
 
 #[tokio::test]
@@ -848,9 +907,16 @@ fn get(path: &str) -> HttpRequest {
         path,
         query_params,
         version: "HTTP/1.1".to_string(),
+        headers: Vec::new(),
         body: Vec::new(),
         parse_error: None,
     }
+}
+
+fn get_with_header(path: &str, name: &str, value: &str) -> HttpRequest {
+    let mut request = get(path);
+    request.headers.push((name.to_string(), value.to_string()));
+    request
 }
 
 fn post(path: &str, body: &[u8]) -> HttpRequest {
@@ -860,6 +926,7 @@ fn post(path: &str, body: &[u8]) -> HttpRequest {
         path,
         query_params,
         version: "HTTP/1.1".to_string(),
+        headers: Vec::new(),
         body: body.to_vec(),
         parse_error: None,
     }
@@ -887,6 +954,14 @@ fn response_buffer(response: &HttpResponse) -> &[u8] {
         HttpBody::Buffered(body) => body,
         HttpBody::Proxy(_) => panic!("expected buffered response"),
     }
+}
+
+fn response_header<'a>(response: &'a HttpResponse, name: &str) -> Option<&'a str> {
+    response
+        .headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
 }
 
 async fn collect_response_body(response: HttpResponse) -> Vec<u8> {
@@ -1021,6 +1096,13 @@ async fn spawn_mock_chat_server(
 
 fn state_for(home: PathBuf) -> DaemonHttpState {
     DaemonHttpState::new(inspection(home))
+}
+
+fn state_with_token(home: PathBuf, token: &str) -> DaemonHttpState {
+    DaemonHttpState::with_security(
+        inspection(home),
+        DaemonSecurityConfig::from_token_value(Some(token)),
+    )
 }
 
 fn inspection(home: PathBuf) -> DaemonInspection {

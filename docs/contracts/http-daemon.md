@@ -11,7 +11,8 @@ This document defines the first stable HTTP daemon boundary for the Rust
   `POST /v1/chat`, including Server-Sent Events.
 - Expose daemon health, status, read-only store discovery, controlled server
   lifecycle mutations, chat proxying, and log diagnostics.
-- Keep the first daemon unauthenticated only for loopback-local MVP usage.
+- Keep loopback-local daemon development usable without auth, while requiring a
+  token or explicit unsafe flag for non-loopback and wildcard binds.
 
 ## Version Source
 
@@ -49,8 +50,54 @@ Rules:
 - ambiguous store references return a JSON `409`
 - already-running, not-running, and provider-auth lifecycle conflicts return a
   JSON `409`
+- unauthorized daemon requests return a JSON `401` with
+  `WWW-Authenticate: Bearer`
 - manager parse, IO, and unexpected read errors return a JSON `500` without
   secret values
+
+## Local Auth And Bind Safety
+
+`TENTGENT_DAEMON_TOKEN` enables a local bearer-token guard for the daemon. Unset,
+empty, and whitespace-only values disable auth. Non-empty values are trimmed
+before use.
+
+When the token is enabled:
+
+- `GET /healthz` remains public for readiness probes
+- every `/v1/*` route requires `Authorization: Bearer <token>`, including
+  unknown `/v1/*` routes before they return `404`
+- missing, malformed, or wrong tokens return:
+
+```json
+{
+  "error": "unauthorized",
+  "message": "missing or invalid daemon bearer token"
+}
+```
+
+The daemon never writes the token value to runtime state, logs, server specs, or
+status responses. Model-bound server child processes do not inherit
+`TENTGENT_DAEMON_TOKEN`; provider auth environment variables keep their existing
+behavior.
+
+Bind safety is checked before the daemon listens or records process metadata.
+Loopback hosts include parsed loopback IPs and literal `localhost`. Wildcard
+hosts include `0.0.0.0`, `::`, and parsed unspecified IPs. Other IPs and
+unrecognized hostnames are treated as unsafe non-loopback hosts without DNS
+resolution.
+
+```text
+host class             token enabled  allowed
+loopback               no             yes
+loopback               yes            yes
+wildcard/non-loopback  no             no, unless --allow-unsafe-bind
+wildcard/non-loopback  yes            yes, with warning
+```
+
+`--allow-unsafe-bind` is available on both `tentgent daemon run` and the
+low-level `tentgent-http` binary. It is intended only for explicit local-network
+experiments; this MVP is not a public-service security model and does not add
+TLS, CORS, multi-user auth, keychain token storage, or per-endpoint permissions.
 
 ## Health And Status
 
@@ -64,7 +111,28 @@ Rules:
 }
 ```
 
-`GET /v1/status` returns runtime-home and daemon process metadata.
+`GET /v1/status` returns runtime-home, daemon process metadata, and non-secret
+auth state:
+
+```json
+{
+  "service": "tentgent-daemon",
+  "version": "0.1.4",
+  "status": "running",
+  "auth": {
+    "token_enabled": true
+  },
+  "host": "127.0.0.1",
+  "port": 8790,
+  "pid": 1234,
+  "started_at": "2026-05-01T00:00:00Z",
+  "runtime_home": "/path/to/tentgent-home",
+  "runtime_dir": "/path/to/tentgent-home/runtime",
+  "log_dir": "/path/to/tentgent-home/logs",
+  "process_path": "/path/to/tentgent-home/runtime/daemon/process.toml",
+  "pid_path": "/path/to/tentgent-home/runtime/daemon/daemon.pid"
+}
+```
 
 ## Read-Only Store Discovery
 
@@ -508,3 +576,6 @@ The daemon logs one stderr request event per handled request:
 ```text
 peer_addr method path status elapsed_ms
 ```
+
+Request logs must not include bearer token values or authorization header
+contents.

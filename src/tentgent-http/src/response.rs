@@ -181,6 +181,20 @@ pub(crate) fn not_found_response(path: &str) -> HttpResponse {
     )
 }
 
+pub(crate) fn unauthorized_response() -> HttpResponse {
+    let mut response = json_response(
+        401,
+        ErrorResponse {
+            error: "unauthorized",
+            message: "missing or invalid daemon bearer token".to_string(),
+        },
+    );
+    response
+        .headers
+        .push(("WWW-Authenticate".to_string(), "Bearer".to_string()));
+    response
+}
+
 pub(crate) fn json_response(status_code: u16, body: impl Serialize) -> HttpResponse {
     let body = serde_json::to_vec(&body).unwrap_or_else(|_| {
         json!({
@@ -209,6 +223,7 @@ pub(crate) fn raw_response(
         status_code,
         content_type: content_type.into(),
         cache_control,
+        headers: Vec::new(),
         body,
     }
 }

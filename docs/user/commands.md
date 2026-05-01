@@ -159,12 +159,25 @@ Run the local daemon process in the foreground:
 tentgent daemon run --host 127.0.0.1 --port 8790
 ```
 
+Loopback daemon binds can run without auth for local development. To protect
+daemon `/v1/*` routes, set a local bearer token before starting the daemon:
+
+```bash
+export TENTGENT_DAEMON_TOKEN='<local-token>'
+tentgent daemon run --host 127.0.0.1 --port 8790
+```
+
+When the token is enabled, add
+`-H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"` to every daemon `/v1/*`
+request. `GET /healthz` stays public.
+
 Inspect, call, or stop the daemon from another terminal:
 
 ```bash
 tentgent daemon status
 curl -sS http://127.0.0.1:8790/healthz
-curl -sS http://127.0.0.1:8790/v1/status
+curl -sS http://127.0.0.1:8790/v1/status \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS http://127.0.0.1:8790/v1/daemon/logs
 curl -sS 'http://127.0.0.1:8790/v1/daemon/logs/stderr?tail_bytes=4096'
 curl -sS http://127.0.0.1:8790/v1/models
@@ -214,6 +227,8 @@ server and preserves both JSON and streaming Server-Sent Event responses.
 The daemon-only `server_ref` selector belongs on daemon `POST /v1/chat` requests;
 do not send it when calling the model-bound server port directly. Log diagnostics
 endpoints expose fixed daemon/server stdout and stderr paths for local debugging.
+Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the
+explicit `--allow-unsafe-bind` flag.
 
 ## Adapters
 

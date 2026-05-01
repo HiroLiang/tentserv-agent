@@ -15,6 +15,7 @@ pub(crate) struct StatusResponse {
     pub(crate) service: &'static str,
     pub(crate) version: &'static str,
     pub(crate) status: &'static str,
+    pub(crate) auth: StatusAuthItem,
     pub(crate) host: Option<String>,
     pub(crate) port: Option<u16>,
     pub(crate) pid: Option<u32>,
@@ -24,6 +25,11 @@ pub(crate) struct StatusResponse {
     pub(crate) log_dir: String,
     pub(crate) process_path: String,
     pub(crate) pid_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct StatusAuthItem {
+    pub(crate) token_enabled: bool,
 }
 
 #[derive(Debug, Serialize)]

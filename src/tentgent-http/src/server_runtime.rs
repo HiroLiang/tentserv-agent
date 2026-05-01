@@ -13,6 +13,8 @@ use tentgent_core::{
 };
 use tokio::process::Command;
 
+use crate::security::DAEMON_TOKEN_ENV_VAR;
+
 #[derive(Clone)]
 pub struct CloudRuntimeAuth {
     provider: Provider,
@@ -103,6 +105,7 @@ impl ServerRuntimeError {
 struct RuntimeCommandParts {
     args: Vec<String>,
     env: Vec<(String, String)>,
+    env_remove: Vec<String>,
 }
 
 pub async fn resolve_server_runtime_auth(
@@ -220,6 +223,9 @@ fn append_server_runtime_args(
     cloud_auth: Option<&CloudRuntimeAuth>,
 ) -> Result<(), ServerRuntimeError> {
     let parts = server_runtime_command_parts(spec, home_dir, cloud_auth)?;
+    for name in parts.env_remove {
+        process.env_remove(name);
+    }
     for (name, value) in parts.env {
         process.env(name, value);
     }
@@ -247,6 +253,7 @@ fn server_runtime_command_parts(
         home_dir.display().to_string(),
     ];
     let mut env = Vec::new();
+    let env_remove = vec![DAEMON_TOKEN_ENV_VAR.to_string()];
 
     if spec.is_cloud() {
         let provider = spec.provider.ok_or_else(|| ServerError::ProcessControl {
@@ -295,7 +302,11 @@ fn server_runtime_command_parts(
         args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
     }
 
-    Ok(RuntimeCommandParts { args, env })
+    Ok(RuntimeCommandParts {
+        args,
+        env,
+        env_remove,
+    })
 }
 
 fn ensure_local_runtime_launchable(spec: &ServerSpec) -> Result<&str, ServerRuntimeError> {
@@ -448,6 +459,7 @@ mod tests {
             ]
         );
         assert!(parts.env.is_empty());
+        assert_eq!(parts.env_remove, vec![DAEMON_TOKEN_ENV_VAR.to_string()]);
     }
 
     #[test]
@@ -479,6 +491,7 @@ mod tests {
             parts.env,
             vec![("OPENAI_API_KEY".to_string(), "secret".to_string())]
         );
+        assert_eq!(parts.env_remove, vec![DAEMON_TOKEN_ENV_VAR.to_string()]);
         assert!(parts.args.ends_with(&[
             "--provider".to_string(),
             "openai".to_string(),

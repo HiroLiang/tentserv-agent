@@ -46,12 +46,15 @@ pub(crate) async fn read_request(stream: &mut TcpStream) -> miette::Result<HttpR
     };
 
     let mut content_length = 0_usize;
+    let mut request_headers = Vec::new();
     for header in request.lines().skip(1) {
         let Some((name, value)) = header.split_once(':') else {
             continue;
         };
+        let name = name.trim().to_string();
+        let value = value.trim().to_string();
         if name.eq_ignore_ascii_case("content-length") {
-            content_length = match value.trim().parse::<usize>() {
+            content_length = match value.parse::<usize>() {
                 Ok(length) => length,
                 Err(_) => {
                     return Ok(HttpRequest::bad_request(
@@ -60,6 +63,7 @@ pub(crate) async fn read_request(stream: &mut TcpStream) -> miette::Result<HttpR
                 }
             };
         }
+        request_headers.push((name, value));
     }
     if content_length > MAX_BODY_BYTES {
         return Ok(HttpRequest::body_too_large());
@@ -86,6 +90,7 @@ pub(crate) async fn read_request(stream: &mut TcpStream) -> miette::Result<HttpR
         path,
         query_params,
         version: version.to_string(),
+        headers: request_headers,
         body,
         parse_error: None,
     })
@@ -100,20 +105,20 @@ pub(crate) async fn write_response(
         HttpBody::Buffered(body) => Some(body.len()),
         HttpBody::Proxy(_) => None,
     };
-    let header = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\n{}{}Connection: close\r\n\r\n",
-        response.status_code,
-        reason,
-        response.content_type,
-        response
-            .cache_control
-            .as_ref()
-            .map(|value| format!("Cache-Control: {value}\r\n"))
-            .unwrap_or_default(),
-        content_length
-            .map(|length| format!("Content-Length: {length}\r\n"))
-            .unwrap_or_default()
+    let mut header = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\n",
+        response.status_code, reason, response.content_type
     );
+    if let Some(cache_control) = &response.cache_control {
+        header.push_str(&format!("Cache-Control: {cache_control}\r\n"));
+    }
+    for (name, value) in &response.headers {
+        header.push_str(&format!("{name}: {value}\r\n"));
+    }
+    if let Some(content_length) = content_length {
+        header.push_str(&format!("Content-Length: {content_length}\r\n"));
+    }
+    header.push_str("Connection: close\r\n\r\n");
     stream
         .write_all(header.as_bytes())
         .await
@@ -136,6 +141,7 @@ pub(crate) fn reason_phrase(status_code: u16) -> &'static str {
     match status_code {
         200 => "OK",
         400 => "Bad Request",
+        401 => "Unauthorized",
         404 => "Not Found",
         405 => "Method Not Allowed",
         409 => "Conflict",
@@ -174,6 +180,7 @@ pub(crate) struct HttpRequest {
     pub(crate) path: String,
     pub(crate) query_params: Vec<(String, String)>,
     pub(crate) version: String,
+    pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: Vec<u8>,
     pub(crate) parse_error: Option<HttpParseError>,
 }
@@ -208,12 +215,20 @@ impl HttpRequest {
             .map(|(_, value)| value.as_str())
     }
 
+    pub(crate) fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
     fn invalid() -> Self {
         Self {
             method: String::new(),
             path: String::new(),
             query_params: Vec::new(),
             version: String::new(),
+            headers: Vec::new(),
             body: Vec::new(),
             parse_error: Some(HttpParseError {
                 status_code: 400,
@@ -228,6 +243,7 @@ impl HttpRequest {
             path: String::new(),
             query_params: Vec::new(),
             version: String::new(),
+            headers: Vec::new(),
             body: Vec::new(),
             parse_error: Some(HttpParseError {
                 status_code: 400,
@@ -242,6 +258,7 @@ impl HttpRequest {
             path: String::new(),
             query_params: Vec::new(),
             version: String::new(),
+            headers: Vec::new(),
             body: Vec::new(),
             parse_error: Some(HttpParseError {
                 status_code: 413,
@@ -256,6 +273,7 @@ impl HttpRequest {
             path: String::new(),
             query_params: Vec::new(),
             version: String::new(),
+            headers: Vec::new(),
             body: Vec::new(),
             parse_error: Some(HttpParseError {
                 status_code: 413,
@@ -270,6 +288,7 @@ pub(crate) struct HttpResponse {
     pub(crate) status_code: u16,
     pub(crate) content_type: String,
     pub(crate) cache_control: Option<String>,
+    pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: HttpBody,
 }
 

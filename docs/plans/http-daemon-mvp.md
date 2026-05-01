@@ -262,7 +262,54 @@ Review target:
 - external integrations can inspect daemon and server failures without shelling
   out or manually opening runtime log files
 
-### Slice 8: Limited OpenAI-Compatible Chat Route
+### Slice 8: Local Token Guard And Bind Safety
+
+Add a minimal local security layer before encouraging broader daemon
+integration.
+
+Status: implemented in the active workspace.
+
+Goals:
+
+- keep loopback-local unauthenticated behavior available for development
+- add an opt-in local bearer token for all daemon `/v1/*` routes
+- keep `GET /healthz` public for readiness probes
+- require auth before returning `404` for unknown `/v1/*` routes
+- make wildcard and non-loopback binds require a token or an explicit unsafe flag
+- prevent `TENTGENT_DAEMON_TOKEN` from being inherited by model-bound server
+  child processes
+- document curl and daemon lifecycle behavior with the token enabled
+
+Implemented behavior:
+
+- `TENTGENT_DAEMON_TOKEN` is env-only; unset, empty, and whitespace-only values
+  disable auth
+- non-empty token values are trimmed before comparison
+- missing, malformed, and wrong bearer tokens all return the same JSON `401`
+  with `WWW-Authenticate: Bearer`
+- status responses expose only `auth.token_enabled`, never the token value
+- host classification treats parsed loopback IPs and literal `localhost` as
+  loopback, parsed unspecified IPs as wildcard, and all other hosts as unsafe
+  non-loopback without DNS resolution
+- `--allow-unsafe-bind` is available on both `tentgent daemon run` and the
+  low-level `tentgent-http` binary
+
+Bind matrix:
+
+```text
+host class             token enabled  allowed
+loopback               no             yes
+loopback               yes            yes
+wildcard/non-loopback  no             no, unless --allow-unsafe-bind
+wildcard/non-loopback  yes            yes, with warning
+```
+
+Review target:
+
+- users can safely experiment with non-default host binding without accidentally
+  exposing server lifecycle or chat endpoints
+
+### Slice 9: Limited OpenAI-Compatible Chat Route
 
 Add a compatibility route for tools that already know the OpenAI Chat
 Completions wire shape.
@@ -274,34 +321,26 @@ Goals:
 - add a limited `POST /v1/chat/completions` daemon route
 - map OpenAI-style `messages`, `max_tokens`, `temperature`, and `stream` into
   the existing daemon chat proxy path
-- use `model` as an explicit server selector for the MVP, accepting the same
-  full refs or unique prefixes as `server_ref`
+- use `model` as an explicit Tentgent server selector for the MVP, accepting the
+  same full refs or unique prefixes as `server_ref`
+- document that `model` selects a Tentgent server reference in this route, not a
+  provider model name
 - return OpenAI-shaped non-streaming and streaming responses where practical
 - document that this is a compatibility shim, not full OpenAI API compatibility
+
+Non-goals:
+
+- do not support full OpenAI API compatibility
+- do not support model-name based routing yet
+- do not auto-start servers from `/v1/chat/completions`
+- do not persist chat sessions
+- do not encourage non-loopback binding; this route assumes the Slice 8 safety
+  rules are already in place
 
 Review target:
 
 - common local SDK clients can call the daemon without custom Tentgent request
   code for the first chat path
-
-### Slice 9: Local Token Guard And Bind Safety
-
-Add a minimal local security layer before encouraging broader daemon
-integration.
-
-Status: planned.
-
-Goals:
-
-- keep loopback-local unauthenticated behavior available for development
-- add an opt-in local bearer token for mutation and chat endpoints
-- make non-loopback binds require an explicit unsafe flag or token
-- document curl, SDK, and daemon lifecycle behavior with the token enabled
-
-Review target:
-
-- users can safely experiment with non-default host binding without accidentally
-  exposing server lifecycle or chat endpoints
 
 ### Slice 10: Runtime Launcher Package Boundary Cleanup
 
@@ -336,6 +375,7 @@ Goals:
   session-specific schema
 - avoid changing current stateless `/v1/chat` behavior until the session schema
   is stable
+- keep session APIs additive; existing chat endpoints remain stateless
 
 Review target:
 
@@ -345,8 +385,8 @@ Review target:
 ## Open Questions
 
 - Should daemon process management add a local socket after pid metadata is stable?
-- Should Slice 9 store the local token in runtime state, keychain, or an
-  operator-provided environment variable?
+- Should a future auth slice add keychain or runtime-token storage beyond the
+  Slice 8 env-only token?
 - Should Slice 10 move Python server runtime launch helpers into
   `tentgent-core` or a dedicated runtime crate?
 
@@ -354,3 +394,5 @@ Closed decisions:
 
 - The first daemon entry is Rust-owned. It does not wrap the Python model server process.
 - Slice 1 stores process metadata in `runtime/daemon.toml` and a pid in `runtime/tentgent.pid`; socket work remains future scope.
+- Slice 8 uses only `TENTGENT_DAEMON_TOKEN`; token values are not written to
+  runtime state, keychain, logs, server specs, or status responses.

@@ -352,12 +352,25 @@ Run the daemon from the CLI:
 cargo run -- daemon run --host 127.0.0.1 --port 8790
 ```
 
+Loopback daemon binds can run without auth for development. To exercise the
+local bearer-token guard:
+
+```bash
+export TENTGENT_DAEMON_TOKEN='<local-token>'
+cargo run -- daemon run --host 127.0.0.1 --port 8790
+```
+
+When the token is enabled, add
+`-H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"` to every daemon `/v1/*`
+request. `GET /healthz` stays public.
+
 Check, call, or stop it from another terminal:
 
 ```bash
 cargo run -- daemon status
 curl -sS http://127.0.0.1:8790/healthz
-curl -sS http://127.0.0.1:8790/v1/status
+curl -sS http://127.0.0.1:8790/v1/status \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS http://127.0.0.1:8790/v1/daemon/logs
 curl -sS 'http://127.0.0.1:8790/v1/daemon/logs/stderr?tail_bytes=4096'
 curl -sS http://127.0.0.1:8790/v1/models
@@ -406,6 +419,9 @@ The low-level Rust HTTP binary has the same lifecycle metadata behavior:
 cargo run -p tentgent-http --bin tentgent-http -- --host 127.0.0.1 --port 8790
 ```
 
+Both daemon entry points reject wildcard or non-loopback binds without
+`TENTGENT_DAEMON_TOKEN` unless `--allow-unsafe-bind` is passed explicitly.
+
 At this stage the daemon records process metadata and serves `GET /healthz`,
 `GET /v1/status`, and read-only discovery endpoints for models, adapters,
 datasets, server specs, controlled server lifecycle mutations, and
@@ -415,7 +431,7 @@ HTTP reachability before sending chat. Use the daemon and server log diagnostics
 endpoints to inspect fixed stdout/stderr log paths without accepting arbitrary
 filesystem paths.
 Request logs are emitted to stderr with peer, method, path, status, and elapsed
-time fields.
+time fields. Auth failures never log token or header values.
 
 The `tentgent-http` crate is split by responsibility:
 
