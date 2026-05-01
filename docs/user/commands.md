@@ -163,24 +163,52 @@ Inspect, call, or stop the daemon from another terminal:
 
 ```bash
 tentgent daemon status
-curl -s http://127.0.0.1:8790/healthz
-curl -s http://127.0.0.1:8790/v1/status
-curl -s http://127.0.0.1:8790/v1/models
-curl -s http://127.0.0.1:8790/v1/adapters
-curl -s http://127.0.0.1:8790/v1/datasets
-curl -s http://127.0.0.1:8790/v1/servers
-curl -s http://127.0.0.1:8790/v1/servers \
+curl -sS http://127.0.0.1:8790/healthz
+curl -sS http://127.0.0.1:8790/v1/status
+curl -sS http://127.0.0.1:8790/v1/models
+curl -sS http://127.0.0.1:8790/v1/adapters
+curl -sS http://127.0.0.1:8790/v1/datasets
+curl -sS http://127.0.0.1:8790/v1/servers
+curl -sS http://127.0.0.1:8790/v1/servers \
   -X POST \
   -H 'Content-Type: application/json' \
   -d '{"runtime_ref":"openai:gpt-4.1-mini","host":"127.0.0.1","port":8780}'
-curl -s http://127.0.0.1:8790/v1/servers/<server-ref>/start -X POST
-curl -s http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/start \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"wait_ready":true,"timeout_seconds":30}'
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/health
+curl -sS http://127.0.0.1:8790/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "server_ref": "<server-ref>",
+    "messages": [
+      {"role": "user", "content": "Say hello in Traditional Chinese."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.0
+  }'
+curl -sS -N http://127.0.0.1:8790/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "server_ref": "<server-ref>",
+    "messages": [
+      {"role": "user", "content": "Say hello in Traditional Chinese."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "stream": true
+  }'
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
 tentgent daemon stop
 ```
 
 The daemon records process metadata under `TENTGENT_HOME/runtime` and exposes
 Rust HTTP health/status, read-only store discovery, and controlled server
-lifecycle endpoints. Chat proxying is added by a later daemon slice.
+lifecycle endpoints. `POST /v1/chat` proxies to an already-running model-bound
+server and preserves both JSON and streaming Server-Sent Event responses.
+The daemon-only `server_ref` selector belongs on daemon `POST /v1/chat` requests;
+do not send it when calling the model-bound server port directly.
 
 ## Adapters
 

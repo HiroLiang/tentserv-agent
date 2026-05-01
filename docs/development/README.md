@@ -356,18 +356,43 @@ Check, call, or stop it from another terminal:
 
 ```bash
 cargo run -- daemon status
-curl -s http://127.0.0.1:8790/healthz
-curl -s http://127.0.0.1:8790/v1/status
-curl -s http://127.0.0.1:8790/v1/models
-curl -s http://127.0.0.1:8790/v1/adapters
-curl -s http://127.0.0.1:8790/v1/datasets
-curl -s http://127.0.0.1:8790/v1/servers
-curl -s http://127.0.0.1:8790/v1/servers \
+curl -sS http://127.0.0.1:8790/healthz
+curl -sS http://127.0.0.1:8790/v1/status
+curl -sS http://127.0.0.1:8790/v1/models
+curl -sS http://127.0.0.1:8790/v1/adapters
+curl -sS http://127.0.0.1:8790/v1/datasets
+curl -sS http://127.0.0.1:8790/v1/servers
+curl -sS http://127.0.0.1:8790/v1/servers \
   -X POST \
   -H 'Content-Type: application/json' \
   -d '{"runtime_ref":"openai:gpt-4.1-mini","host":"127.0.0.1","port":8780}'
-curl -s http://127.0.0.1:8790/v1/servers/<server-ref>/start -X POST
-curl -s http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/start \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"wait_ready":true,"timeout_seconds":30}'
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/health
+curl -sS http://127.0.0.1:8790/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "server_ref": "<server-ref>",
+    "messages": [
+      {"role": "user", "content": "Say hello in Traditional Chinese."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.0
+  }'
+curl -sS -N http://127.0.0.1:8790/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "server_ref": "<server-ref>",
+    "messages": [
+      {"role": "user", "content": "Say hello in Traditional Chinese."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "stream": true
+  }'
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
 cargo run -- daemon stop
 ```
 
@@ -379,9 +404,26 @@ cargo run -p tentgent-http --bin tentgent-http -- --host 127.0.0.1 --port 8790
 
 At this stage the daemon records process metadata and serves `GET /healthz`,
 `GET /v1/status`, and read-only discovery endpoints for models, adapters,
-datasets, server specs, and controlled server lifecycle mutations.
+datasets, server specs, controlled server lifecycle mutations, and
+`POST /v1/chat` proxying to already-running model-bound servers. Use
+`GET /v1/servers/<server-ref>/health` to distinguish process state from target
+HTTP reachability before sending chat.
 Request logs are emitted to stderr with peer, method, path, status, and elapsed
 time fields.
+
+The `tentgent-http` crate is split by responsibility:
+
+- `src/lib.rs` is the crate root and public export surface.
+- `src/app.rs` owns daemon binding, accept-loop wiring, connection handling,
+  shared state, and request logging.
+- `src/http.rs` owns low-level HTTP parsing and response writing.
+- `src/response.rs` owns JSON, raw proxy, and error response helpers.
+- `src/dto.rs` owns daemon request and response DTOs.
+- `src/routes/` owns endpoint dispatch by capability: `status`, `store`,
+  `lifecycle`, and `chat`.
+- `src/server_runtime.rs` still owns Python model-bound server launch helpers;
+  it remains here for now because the CLI imports it, but moving it into core or
+  a runtime-focused crate is a future package-boundary cleanup.
 
 ## Documentation Rules
 

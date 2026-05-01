@@ -6,7 +6,9 @@ This document defines the first stable HTTP daemon boundary for the Rust
 ## Scope
 
 - Bind locally by default through `127.0.0.1`.
-- Serve JSON responses for every route, including errors.
+- Serve JSON responses for daemon-owned routes and errors.
+- Pass through model-bound server chat response bodies and content types from
+  `POST /v1/chat`, including Server-Sent Events.
 - Expose daemon health, status, read-only store discovery, and controlled server
   lifecycle mutations.
 - Keep the first daemon unauthenticated only for loopback-local MVP usage.
@@ -37,7 +39,10 @@ Error responses use this shape:
 
 Rules:
 
-- every response must use `Content-Type: application/json; charset=utf-8`
+- daemon-owned success and error responses must use
+  `Content-Type: application/json; charset=utf-8`
+- chat proxy responses preserve the selected model-bound server status, body,
+  and content type
 - unknown routes return a JSON `404`
 - unsupported methods return a JSON `405`
 - invalid requests return a JSON `400`
@@ -211,6 +216,31 @@ and returns:
 }
 ```
 
+`GET /v1/servers/{server_ref}/health` checks one stored server spec. Stopped
+servers return `running: false` and `reachable: false` without opening a network
+connection. Running servers probe the target model-bound server's `/healthz`
+endpoint:
+
+```json
+{
+  "server": {
+    "server_ref": "25ee...",
+    "short_ref": "25ee5888595d",
+    "running": true
+  },
+  "running": true,
+  "reachable": true,
+  "target_url": "http://127.0.0.1:8780/healthz",
+  "target_status": 200,
+  "target_health": {
+    "status": "ok",
+    "chat_ready": true
+  },
+  "checked_at": "2026-04-28T00:00:00Z",
+  "error": null
+}
+```
+
 ## Server Lifecycle
 
 Lifecycle endpoints use the same daemon runtime home as the read-only discovery
@@ -263,6 +293,19 @@ background mode. `{server_ref}` accepts a full server ref or unique short prefix
 Cloud server starts validate launch-time provider auth from env/keychain and
 never persist secrets in the server spec or response.
 
+The body is optional. Omit it or send `{}` to preserve the original response
+shape. Send `wait_ready` to ask the daemon to poll the target server's
+`/healthz` after the process starts:
+
+```json
+{
+  "wait_ready": true,
+  "timeout_seconds": 30
+}
+```
+
+`timeout_seconds` defaults to `30` and must be between `1` and `120`.
+
 An abbreviated response is:
 
 ```json
@@ -283,6 +326,30 @@ An abbreviated response is:
 }
 ```
 
+With `wait_ready: true`, the response includes readiness. A readiness timeout
+does not roll back or stop the launched process:
+
+```json
+{
+  "server": {
+    "server_ref": "25ee...",
+    "short_ref": "25ee5888595d",
+    "running": true
+  },
+  "readiness": {
+    "ready": true,
+    "reachable": true,
+    "target_status": 200,
+    "target_health": {
+      "status": "ok",
+      "chat_ready": true
+    },
+    "checked_at": "2026-04-28T00:00:00Z",
+    "error": null
+  }
+}
+```
+
 `POST /v1/servers/{server_ref}/stop` stops one running server process without
 removing its stored spec. The response is:
 
@@ -297,6 +364,62 @@ removing its stored spec. The response is:
   "stopped_pid": 12345
 }
 ```
+
+## Chat Proxy
+
+`POST /v1/chat` proxies a chat request to an already-running model-bound server.
+The request body follows [server-chat.md](./server-chat.md) and adds one optional
+daemon-only selector:
+
+```json
+{
+  "server_ref": "25ee5888595d",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello"
+    }
+  ],
+  "adapter_ref": null,
+  "max_tokens": 128,
+  "temperature": 0.0,
+  "stream": false
+}
+```
+
+Selection rules:
+
+- when `server_ref` is present, it may be a full ref or unique short prefix and
+  must resolve to a running server
+- when `server_ref` is absent, exactly one server must be running
+- the daemon removes `server_ref` before forwarding the request to the selected
+  server's `POST /v1/chat`
+- the daemon does not auto-start stopped servers
+
+Non-streaming responses preserve the selected server status code, response body,
+and `Content-Type`.
+
+Streaming responses preserve Server-Sent Event bytes from the selected server and
+return:
+
+```text
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-cache
+```
+
+Daemon-owned chat selection and proxy errors are JSON:
+
+- invalid JSON or invalid `server_ref` shape returns `400 bad_request`
+- missing explicit `server_ref` returns `404 not_found`
+- ambiguous explicit `server_ref` returns `409 ambiguous_ref`
+- selected stopped server returns `409 server_not_running`
+- no running server returns `409 no_running_server`
+- multiple running servers without `server_ref` returns `409 ambiguous_server`
+- target connection or transport failures return `502 server_proxy_failed`
+  with a hint to inspect `GET /v1/servers/{server_ref}/health`
+
+If the selected server returns its own chat error, the daemon passes through that
+status, body, and content type unchanged.
 
 ## Request Logging
 

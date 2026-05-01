@@ -1781,13 +1781,13 @@ version = "0.1.4"
 dependencies = [
  "clap",
  "miette",
+ "reqwest",
  "serde",
  "serde_json",
  "tentgent-core",
  "thiserror 2.0.18",
+ "time",
  "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

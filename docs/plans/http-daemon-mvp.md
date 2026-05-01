@@ -49,7 +49,7 @@ tentgent-http --host 127.0.0.1 --port 8790 [--home <PATH>]
 
 Start read-only, then add mutations.
 
-First endpoints:
+Implemented endpoints:
 
 ```text
 GET /healthz
@@ -59,18 +59,12 @@ GET /v1/adapters
 GET /v1/datasets
 GET /v1/servers
 GET /v1/servers/{server_ref}
-```
-
-Later endpoints:
-
-```text
+GET /v1/servers/{server_ref}/health
 POST /v1/servers
 POST /v1/servers/{server_ref}/start
 POST /v1/servers/{server_ref}/stop
 POST /v1/chat
 ```
-
-`POST /v1/chat` should either proxy to a selected local or cloud server spec, or return a clear error explaining how to start one.
 
 ## Execution Order
 
@@ -167,21 +161,84 @@ Review target:
 
 Add a daemon-level chat entry.
 
+Status: implemented in the active workspace.
+
 Goals:
 
 - accept the existing `server-chat` request shape
 - require either a server reference or an unambiguous default policy
 - proxy to the model-bound server when possible
-- return clear errors when no server is running or streaming is requested before support exists
+- pass through non-streaming JSON and streaming Server-Sent Events from the
+  selected model-bound server
+- return clear errors when no server is running or server selection is ambiguous
 
 Review target:
 
 - integrations can send chat through one stable daemon URL
 
+### Slice 6: Daemon Readiness And Integration Polish
+
+Clarify server readiness for HTTP integrations.
+
+Status: implemented in the active workspace.
+
+Goals:
+
+- expose `GET /v1/servers/{server_ref}/health`
+- allow `POST /v1/servers/{server_ref}/start` to wait for target `/healthz`
+- keep `/v1/chat` no-auto-start behavior unchanged
+- improve proxy transport failure messages with a health-check hint
+- document the create, start, readiness, chat, and stop flow
+
+Review target:
+
+- external tools can distinguish stored specs, running processes, reachable
+  HTTP targets, and chat-ready servers
+
+### Slice 6.1: Split HTTP Library Modules
+
+Reduce `tentgent-http` review risk by splitting the large library root.
+
+Status: implemented in the active workspace.
+
+Goals:
+
+- keep `lib.rs` as the crate root and public export surface
+- split daemon process wiring, HTTP parsing/writing, DTOs, response helpers,
+  and route handlers into focused modules
+- preserve all Slice 5 and Slice 6 endpoint behavior and response shapes
+- leave `server_runtime.rs` in place for now, even though CLI use of it is a
+  follow-up package-boundary cleanup
+
+Implemented module split:
+
+- `lib.rs` exposes only `server_runtime`, `DaemonHttpServer`, and
+  `DaemonHttpState`
+- `app.rs` owns daemon HTTP binding, accept-loop wiring, connection handling,
+  shared state, and request logging
+- `http.rs` owns the handcrafted HTTP request parser, response writer, and body
+  variants
+- `response.rs` owns JSON, raw proxy, and error response helpers
+- `dto.rs` owns daemon request and response DTOs
+- `routes/status.rs` owns `GET /healthz` and `GET /v1/status`
+- `routes/store.rs` owns read-only store discovery and server DTO mapping
+- `routes/lifecycle.rs` owns server create/start/stop/health and readiness
+  probing
+- `routes/chat.rs` owns daemon chat proxy selection and passthrough
+- `routes/tests.rs` keeps route-level integration-style unit tests outside the
+  production dispatcher
+
+Review target:
+
+- future daemon slices can change one capability area without editing a
+  multi-thousand-line `lib.rs`
+
 ## Open Questions
 
 - Should daemon process management add a local socket after pid metadata is stable?
 - Should daemon auth be absent for loopback-only MVP, or use a local token from runtime state?
+- Should Python server runtime launch helpers move out of `tentgent-http` into
+  core or a dedicated runtime crate?
 
 Closed decisions:
 
