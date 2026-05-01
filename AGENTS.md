@@ -22,11 +22,12 @@ If the current task is about agent workflows, role selection, or role-specific w
 ## Repository Map
 
 - `src/tentgent-core/`
-  Shared Rust core types, runtime-facing contracts, and routing logic.
+  Shared Rust core types, runtime-facing contracts, routing logic, and server
+  runtime launch helpers.
 - `src/tentgent-cli/`
   Rust CLI entry point.
 - `src/tentgent-http/`
-  Rust HTTP entry point.
+  Rust HTTP daemon entry point and route layer.
 - `python/tentgent-daemon/`
   Standalone Python subproject that owns model runtimes, backend selection, and adapter lifecycle.
 - `python/tentgent-daemon/src/tentgent_daemon/`

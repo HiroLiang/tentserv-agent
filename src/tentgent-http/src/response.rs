@@ -1,11 +1,10 @@
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
-use tentgent_core::server::ServerError;
+use tentgent_core::{server::ServerError, server_runtime::ServerRuntimeError};
 
 use crate::{
     dto::ErrorResponse,
     http::{HttpBody, HttpRequest, HttpResponse},
-    server_runtime::ServerRuntimeError,
 };
 
 pub(crate) fn manager_error_response(context: &str, error: impl std::fmt::Display) -> HttpResponse {

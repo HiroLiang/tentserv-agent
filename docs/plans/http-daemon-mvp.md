@@ -214,13 +214,11 @@ Goals:
 - split daemon process wiring, HTTP parsing/writing, DTOs, response helpers,
   and route handlers into focused modules
 - preserve all Slice 5 and Slice 6 endpoint behavior and response shapes
-- leave `server_runtime.rs` in place for now, even though CLI use of it is a
-  follow-up package-boundary cleanup
+- leave runtime launcher package ownership as a follow-up cleanup
 
 Implemented module split:
 
-- `lib.rs` exposes only `server_runtime`, `DaemonHttpServer`, and
-  `DaemonHttpState`
+- `lib.rs` exposes only `DaemonHttpServer` and `DaemonHttpState`
 - `app.rs` owns daemon HTTP binding, accept-loop wiring, connection handling,
   shared state, and request logging
 - `http.rs` owns the handcrafted HTTP request parser, response writer, and body
@@ -232,6 +230,8 @@ Implemented module split:
 - `routes/lifecycle.rs` owns server create/start/stop/health and readiness
   probing
 - `routes/chat.rs` owns daemon chat proxy selection and passthrough
+- `routes/diagnostics.rs` owns daemon and server log metadata/tail endpoints
+- `routes/openai.rs` owns the limited OpenAI-compatible chat-completions wrapper
 - `routes/tests.rs` keeps route-level integration-style unit tests outside the
   production dispatcher
 
@@ -353,15 +353,26 @@ Review target:
 
 Move Python model-bound server launch helpers out of the HTTP crate.
 
-Status: planned.
+Status: implemented in the active workspace.
 
 Goals:
 
 - stop having `tentgent-cli` depend on `tentgent-http::server_runtime`
-- move runtime launch/auth argument construction to `tentgent-core` or a small
-  runtime-focused crate
+- move runtime launch/auth argument construction to `tentgent-core`
 - keep CLI and daemon lifecycle behavior unchanged
 - preserve existing server launch tests while relocating them to the new owner
+
+Implemented boundary:
+
+- `tentgent-core::server_runtime` owns Python model-bound server launch helpers,
+  provider auth preflight, runtime command argument construction, and launcher
+  environment sanitization
+- `tentgent-cli` server commands and `tentgent-http` daemon lifecycle routes use
+  the same core-owned launcher
+- `tentgent-http` no longer exposes a `server_runtime` module; it remains the
+  daemon HTTP entry and maps core launcher errors to daemon JSON responses
+- `tentgent-cli` still depends on `tentgent-http` for `tentgent daemon run`
+  entry types; removing that dependency is separate from this launcher cleanup
 
 Review target:
 
@@ -394,8 +405,6 @@ Review target:
 - Should daemon process management add a local socket after pid metadata is stable?
 - Should a future auth slice add keychain or runtime-token storage beyond the
   Slice 8 env-only token?
-- Should Slice 10 move Python server runtime launch helpers into
-  `tentgent-core` or a dedicated runtime crate?
 
 Closed decisions:
 
@@ -403,3 +412,5 @@ Closed decisions:
 - Slice 1 stores process metadata in `runtime/daemon.toml` and a pid in `runtime/tentgent.pid`; socket work remains future scope.
 - Slice 8 uses only `TENTGENT_DAEMON_TOKEN`; token values are not written to
   runtime state, keychain, logs, server specs, or status responses.
+- Slice 10 moved Python model-bound server launch helpers into `tentgent-core`
+  instead of adding a dedicated runtime crate.

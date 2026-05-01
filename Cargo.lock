@@ -1770,6 +1770,7 @@ dependencies = [
  "sha2",
  "thiserror 2.0.18",
  "time",
+ "tokio",
  "toml",
  "tracing",
  "walkdir",
@@ -1785,7 +1786,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tentgent-core",
- "thiserror 2.0.18",
  "time",
  "tokio",
 ]

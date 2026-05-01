@@ -8,9 +8,10 @@ use tentgent_core::{
         ServerInspection, ServerManager, ServerPrepareOutcome, ServerRunRequest, ServerStopOutcome,
         ServerSummary,
     },
-};
-use tentgent_http::server_runtime::{
-    launch_background_server_runtime, launch_foreground_server_runtime, resolve_server_runtime_auth,
+    server_runtime::{
+        launch_background_server_runtime, launch_foreground_server_runtime,
+        resolve_server_runtime_auth,
+    },
 };
 
 use super::app::Cli;

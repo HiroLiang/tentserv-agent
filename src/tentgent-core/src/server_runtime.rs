@@ -3,7 +3,7 @@ use std::{
     process::Stdio,
 };
 
-use tentgent_core::{
+use crate::{
     auth::{AuthError, AuthManager, KeySource, KeyValidationState, Provider},
     runtime_assets::{PythonRuntime, PythonRuntimeSource, RuntimeAssetError},
     server::{
@@ -13,7 +13,7 @@ use tentgent_core::{
 };
 use tokio::process::Command;
 
-use crate::security::DAEMON_TOKEN_ENV_VAR;
+const DAEMON_TOKEN_ENV_VAR: &str = "TENTGENT_DAEMON_TOKEN";
 
 #[derive(Clone)]
 pub struct CloudRuntimeAuth {
@@ -413,7 +413,7 @@ fn missing_runtime_hint(runtime: &PythonRuntime) -> &'static str {
 mod tests {
     use std::path::PathBuf;
 
-    use tentgent_core::server::{CloudProvider, ServerRuntimeKind};
+    use crate::server::{CloudProvider, ServerRuntimeKind};
 
     use super::*;
 
