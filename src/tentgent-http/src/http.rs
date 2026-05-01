@@ -298,12 +298,18 @@ pub(crate) struct HttpResponse {
     pub(crate) cache_control: Option<String>,
     pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: HttpBody,
+    pub(crate) after_write: Option<HttpAfterWriteAction>,
 }
 
 pub(crate) enum HttpBody {
     Buffered(Vec<u8>),
     Proxy(reqwest::Response),
     Stream(mpsc::Receiver<Vec<u8>>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HttpAfterWriteAction {
+    RequestDaemonShutdown,
 }
 
 impl std::fmt::Debug for HttpBody {

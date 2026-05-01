@@ -61,6 +61,9 @@ Implemented endpoints:
 ```text
 GET /healthz
 GET /v1/status
+GET /v1/auth
+GET /v1/auth/{provider}
+GET /v1/doctor
 GET /v1/models
 GET /v1/models/{model_ref}
 GET /v1/adapters
@@ -96,6 +99,7 @@ POST /v1/datasets/synth
 POST /v1/datasets/eval
 POST /v1/datasets/{dataset_ref}/export
 POST /v1/datasets/{dataset_ref}/diff
+POST /v1/daemon/shutdown
 GET /v1/train/lora/plans
 POST /v1/train/lora/plans/preview
 POST /v1/train/lora/plans
@@ -559,15 +563,17 @@ Review target:
 
 ### Slice 17: Auth, Doctor, And Daemon Control Parity
 
-Status: planned.
+Status: implemented in the active workspace.
 
 Goals:
 
-- expose provider auth status without leaking secrets
-- evaluate whether auth set/remove should remain CLI-only or require stricter
-  daemon controls
-- expose local doctor/status diagnostics
-- add a daemon shutdown endpoint if it can preserve the Slice 8 safety model
+- expose provider auth status without leaking secrets or doing provider network
+  validation
+- keep auth set/remove CLI-only in this slice
+- expose observational doctor diagnostics without fix, install, or write probes
+- add a daemon shutdown endpoint that requires an enabled daemon bearer token
+  even on loopback
+- stop only the daemon process; leave model-bound servers untouched
 
 Review target:
 

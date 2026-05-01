@@ -52,6 +52,34 @@ impl AuthManager {
         })
     }
 
+    pub fn local_key_status(&self, provider: Provider) -> Result<KeyStatus, AuthError> {
+        let env_secret = env::read_provider_env(provider);
+        if env_secret.is_some() {
+            return Ok(KeyStatus {
+                provider,
+                env_present: true,
+                keychain_present: false,
+                effective_source: Some(KeySource::Env),
+                validation: KeyValidationState::NotChecked,
+            });
+        }
+        let keychain_secret = self.keychain.get(provider)?;
+
+        let effective_source = if keychain_secret.is_some() {
+            Some(KeySource::Keychain)
+        } else {
+            None
+        };
+
+        Ok(KeyStatus {
+            provider,
+            env_present: false,
+            keychain_present: keychain_secret.is_some(),
+            effective_source,
+            validation: KeyValidationState::NotChecked,
+        })
+    }
+
     pub async fn validate_secret(&self, provider: Provider, secret: &str) -> KeyValidationState {
         self.validator.validate(provider, secret).await
     }

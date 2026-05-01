@@ -238,6 +238,12 @@ pub async fn preflight_dataset_provider_auth(
             purpose,
             reason,
         }),
+        KeyValidationState::NotChecked => Err(DatasetRuntimeError::ProviderAuthUnknown {
+            provider: provider.display_name().to_string(),
+            key_source: source,
+            purpose,
+            reason: "provider key validation was not checked".to_string(),
+        }),
         KeyValidationState::Missing => Err(provider_auth_missing(provider, purpose)),
     }
 }

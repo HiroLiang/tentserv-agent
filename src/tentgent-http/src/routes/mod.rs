@@ -1,7 +1,10 @@
+pub(crate) mod auth;
 pub(crate) mod chat;
+pub(crate) mod daemon_control;
 pub(crate) mod dataset_cloud;
 pub(crate) mod dataset_tools;
 pub(crate) mod diagnostics;
+pub(crate) mod doctor;
 pub(crate) mod lifecycle;
 pub(crate) mod openai;
 pub(crate) mod session;
@@ -63,6 +66,8 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
     match request.path.as_str() {
         "/healthz" => status::healthz_response(),
         "/v1/status" => status::status_response(state),
+        "/v1/auth" => auth::auth_providers_response(),
+        "/v1/doctor" => doctor::doctor_response(state),
         "/v1/models" => store::list_models_response(state),
         "/v1/adapters" => store::list_adapters_response(state),
         "/v1/datasets" => store::list_datasets_response(state),
@@ -71,6 +76,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         "/v1/train/lora/plans" => train::list_train_plans_response(state),
         "/v1/train/lora/runs" => train::list_train_runs_response(state),
         "/v1/daemon/logs" => diagnostics::daemon_logs_metadata_response(state),
+        "/v1/daemon/shutdown" => method_not_allowed(request),
         "/v1/daemon/logs/stdout" => {
             diagnostics::daemon_log_content_response(state, request, "stdout")
         }
@@ -113,6 +119,11 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
             train::inspect_train_run_response(state, reference)
         }
         path if path.starts_with("/v1/train/lora/runs/") => not_found_response(&request.path),
+        path if auth_provider_path(path).is_some() => {
+            let provider = auth_provider_path(path).expect("checked path");
+            auth::auth_provider_response(provider)
+        }
+        path if path.starts_with("/v1/auth/") => not_found_response(&request.path),
         path if dataset_tool_path(path) => method_not_allowed(request),
         path if store_mutation_path(path) => method_not_allowed(request),
         path if path.starts_with("/v1/sessions/") => {
@@ -156,6 +167,11 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
 
 async fn route_delete(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
     match request.path.as_str() {
+        "/v1/auth" | "/v1/doctor" | "/v1/daemon/shutdown" => method_not_allowed(request),
+        path if path.starts_with("/v1/auth/") => method_not_allowed(request),
+        path if path == "/v1/daemon/logs" || path.starts_with("/v1/daemon/logs/") => {
+            method_not_allowed(request)
+        }
         path if dataset_tool_path(path) => method_not_allowed(request),
         path if store_mutation_path(path) => method_not_allowed(request),
         path if store_ref_path(path, "/v1/models/").is_some() => {
@@ -190,6 +206,11 @@ async fn route_delete(request: &HttpRequest, state: &DaemonHttpState) -> HttpRes
 
 async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
     match request.path.as_str() {
+        "/v1/daemon/shutdown" => daemon_control::shutdown_response(state, request),
+        "/v1/auth" | "/v1/doctor" => method_not_allowed(request),
+        path if path == "/v1/daemon/logs" || path.starts_with("/v1/daemon/logs/") => {
+            method_not_allowed(request)
+        }
         "/v1/chat/completions" => openai::chat_completions_response(state, request).await,
         "/v1/chat" => chat::proxy_chat_response(state, request).await,
         "/v1/servers" => lifecycle::create_server_response(state, request),
@@ -228,6 +249,7 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
         }
         path if path.starts_with("/v1/train/lora/plans") => method_not_allowed(request),
         path if path.starts_with("/v1/train/lora/runs") => method_not_allowed(request),
+        path if path.starts_with("/v1/auth/") => method_not_allowed(request),
         path if path.starts_with("/v1/servers/") => match server_action_path(path) {
             Some((reference, ServerAction::Start)) => {
                 lifecycle::start_server_response(state, reference, request).await
@@ -248,6 +270,15 @@ fn store_ref_path<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
         None
     } else {
         Some(reference)
+    }
+}
+
+fn auth_provider_path(path: &str) -> Option<&str> {
+    let provider = path.strip_prefix("/v1/auth/")?;
+    if provider.is_empty() || provider.contains('/') {
+        None
+    } else {
+        Some(provider)
     }
 }
 

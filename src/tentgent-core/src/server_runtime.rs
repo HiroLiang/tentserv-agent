@@ -358,6 +358,12 @@ async fn preflight_cloud_runtime_auth(
             short_ref: spec.short_ref.clone(),
             reason,
         }),
+        KeyValidationState::NotChecked => Err(ServerRuntimeError::ProviderAuthUnknown {
+            provider: provider.display_name().to_string(),
+            key_source: source,
+            short_ref: spec.short_ref.clone(),
+            reason: "provider key validation was not checked".to_string(),
+        }),
         KeyValidationState::Missing => Err(provider_auth_missing(provider, &spec.short_ref)),
     }
 }

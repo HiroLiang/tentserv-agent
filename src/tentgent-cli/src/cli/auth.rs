@@ -207,6 +207,11 @@ fn render_validation(provider: Provider, validation: &KeyValidationState) {
             style("missing").yellow().bold(),
             provider.display_name()
         ),
+        KeyValidationState::NotChecked => println!(
+            "{} {} key validation was not checked.",
+            style("not checked").yellow().bold(),
+            provider.display_name()
+        ),
     }
 }
 

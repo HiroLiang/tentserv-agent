@@ -339,5 +339,6 @@ pub(crate) fn raw_response(
         cache_control,
         headers: Vec::new(),
         body,
+        after_write: None,
     }
 }

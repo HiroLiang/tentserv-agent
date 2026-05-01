@@ -27,6 +27,19 @@ tentgent auth openai
 tentgent auth openai rm
 ```
 
+The daemon exposes read-only auth status, but provider key set/remove remains
+CLI-only:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/auth \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/auth/openai \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+```
+
+Daemon auth status reports local env/keychain presence only. It does not print
+secrets and does not call provider validation endpoints.
+
 ## Models
 
 Pull models from Hugging Face:
@@ -178,6 +191,8 @@ tentgent daemon status
 curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/doctor \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS http://127.0.0.1:8790/v1/daemon/logs
 curl -sS 'http://127.0.0.1:8790/v1/daemon/logs/stderr?tail_bytes=4096'
 curl -sS http://127.0.0.1:8790/v1/models
@@ -240,6 +255,11 @@ curl -sS -N http://127.0.0.1:8790/v1/chat/completions \
     "stream": true
   }'
 curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
+curl -sS http://127.0.0.1:8790/v1/daemon/shutdown \
+  -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{}'
 tentgent daemon stop
 ```
 
@@ -255,6 +275,8 @@ do not send it when calling the model-bound server port directly. Log diagnostic
 endpoints expose fixed daemon/server stdout and stderr paths for local debugging.
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the
 explicit `--allow-unsafe-bind` flag.
+`POST /v1/daemon/shutdown` requires `TENTGENT_DAEMON_TOKEN` even on loopback
+and stops only the daemon process; it does not stop running model-bound servers.
 
 Inspect and remove managed store entries through the daemon:
 

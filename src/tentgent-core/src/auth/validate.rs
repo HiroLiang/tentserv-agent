@@ -7,6 +7,7 @@ use super::{AuthError, Provider};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeyValidationState {
     Missing,
+    NotChecked,
     Verified,
     Invalid { reason: String },
     Unknown { reason: String },
@@ -16,6 +17,7 @@ impl KeyValidationState {
     pub fn summary(&self) -> &'static str {
         match self {
             Self::Missing => "missing",
+            Self::NotChecked => "not checked",
             Self::Verified => "verified",
             Self::Invalid { .. } => "invalid",
             Self::Unknown { .. } => "unknown",
@@ -25,7 +27,7 @@ impl KeyValidationState {
     pub fn detail(&self) -> Option<&str> {
         match self {
             Self::Invalid { reason } | Self::Unknown { reason } => Some(reason.as_str()),
-            Self::Missing | Self::Verified => None,
+            Self::Missing | Self::NotChecked | Self::Verified => None,
         }
     }
 }

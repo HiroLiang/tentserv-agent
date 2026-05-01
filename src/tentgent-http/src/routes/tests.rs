@@ -19,7 +19,9 @@ use tokio::{
 use super::*;
 use crate::{
     app::DaemonHttpState,
-    http::{find_header_end, reason_phrase, HttpBody, HttpRequest, HttpResponse},
+    http::{
+        find_header_end, reason_phrase, HttpAfterWriteAction, HttpBody, HttpRequest, HttpResponse,
+    },
     routes::{
         lifecycle::{
             start_server_options, wait_for_server_readiness, READINESS_DEFAULT_TIMEOUT_SECONDS,
@@ -54,6 +56,161 @@ async fn status_returns_daemon_metadata() {
     assert_eq!(body["port"], 8790);
     assert_eq!(body["pid"], 1234);
     assert_eq!(body["auth"]["token_enabled"], false);
+}
+
+#[tokio::test]
+async fn auth_routes_return_local_status_without_secret_values() {
+    const SENTINEL: &str = "tentgent-slice17-secret-sentinel";
+    let previous_openai = std::env::var("OPENAI_API_KEY").ok();
+    let previous_hf = std::env::var("HF_TOKEN").ok();
+    let previous_anthropic = std::env::var("ANTHROPIC_API_KEY").ok();
+    std::env::set_var("OPENAI_API_KEY", SENTINEL);
+    std::env::set_var("HF_TOKEN", format!("{SENTINEL}-hf"));
+    std::env::set_var("ANTHROPIC_API_KEY", format!("{SENTINEL}-anthropic"));
+
+    let state = state_for(unique_home("auth-status-local"));
+    let response = route_request(&get("/v1/auth"), &state).await;
+    let body_text = String::from_utf8_lossy(response_buffer(&response)).to_string();
+    let body: Value = serde_json::from_str(&body_text).expect("json");
+
+    assert_eq!(response.status_code, 200);
+    assert!(!body_text.contains(SENTINEL));
+    assert_eq!(body["providers"].as_array().expect("providers").len(), 3);
+    let openai = body["providers"]
+        .as_array()
+        .expect("providers")
+        .iter()
+        .find(|provider| provider["provider"] == "openai")
+        .expect("openai");
+    assert_eq!(openai["env_present"], true);
+    assert_eq!(openai["effective_source"], "env");
+    assert_eq!(openai["validation"]["state"], "not_checked");
+
+    let one = route_request(&get("/v1/auth/openai"), &state).await;
+    let one_body: Value = serde_json::from_slice(response_buffer(&one)).expect("json");
+    assert_eq!(one.status_code, 200);
+    assert_eq!(one_body["provider"]["provider"], "openai");
+    assert_eq!(one_body["provider"]["validation"]["state"], "not_checked");
+
+    let alias = route_request(&get("/v1/auth/huggingface"), &state).await;
+    let alias_body: Value = serde_json::from_slice(response_buffer(&alias)).expect("json");
+    assert_eq!(alias.status_code, 400);
+    assert_eq!(alias_body["error"], "bad_request");
+
+    let case_variant = route_request(&get("/v1/auth/OpenAI"), &state).await;
+    assert_eq!(case_variant.status_code, 400);
+
+    restore_env("OPENAI_API_KEY", previous_openai);
+    restore_env("HF_TOKEN", previous_hf);
+    restore_env("ANTHROPIC_API_KEY", previous_anthropic);
+}
+
+#[tokio::test]
+async fn doctor_route_returns_observational_report() {
+    const SENTINEL: &str = "tentgent-doctor-secret-sentinel";
+    let previous = std::env::var("ANTHROPIC_API_KEY").ok();
+    std::env::set_var("ANTHROPIC_API_KEY", SENTINEL);
+
+    let home = unique_home("doctor-route");
+    let state = state_with_token(home.clone(), "secret");
+    let unauthorized = route_request(&get("/v1/doctor"), &state).await;
+    assert_eq!(unauthorized.status_code, 401);
+
+    let response = route_request(
+        &get_with_header("/v1/doctor", "Authorization", "Bearer secret"),
+        &state,
+    )
+    .await;
+    let body_text = String::from_utf8_lossy(response_buffer(&response)).to_string();
+    let body: Value = serde_json::from_str(&body_text).expect("json");
+
+    assert_eq!(response.status_code, 200);
+    assert!(!body_text.contains(SENTINEL));
+    assert!(matches!(
+        body["status"].as_str().expect("status"),
+        "pass" | "warn" | "fail"
+    ));
+    assert!(body["summary"]["pass"].as_u64().is_some());
+    assert!(body["summary"]["warn"].as_u64().is_some());
+    assert!(body["summary"]["fail"].as_u64().is_some());
+    assert!(body["summary"]["skipped"].as_u64().is_some());
+    assert!(!body["checks"].as_array().expect("checks").is_empty());
+    let runtime_home = body["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|check| check["name"] == "runtime home")
+        .expect("runtime home");
+    assert!(runtime_home["detail"]
+        .as_str()
+        .expect("detail")
+        .contains(&home.display().to_string()));
+
+    restore_env("ANTHROPIC_API_KEY", previous);
+}
+
+#[tokio::test]
+async fn daemon_shutdown_requires_token_and_returns_after_write_action() {
+    let no_token_state = state_for(unique_home("shutdown-no-token"));
+    let no_token = route_request(&post("/v1/daemon/shutdown", b"{}"), &no_token_state).await;
+    let no_token_body: Value = serde_json::from_slice(response_buffer(&no_token)).expect("json");
+    assert_eq!(no_token.status_code, 409);
+    assert_eq!(no_token_body["error"], "daemon_token_required");
+
+    let state = state_with_token(unique_home("shutdown-token"), "secret");
+    let unauthorized = route_request(&post("/v1/daemon/shutdown", b"{}"), &state).await;
+    assert_eq!(unauthorized.status_code, 401);
+
+    for body in [
+        b"null".as_slice(),
+        b"[]".as_slice(),
+        br#"{"reason":"test"}"#.as_slice(),
+    ] {
+        let bad = route_request(
+            &post_with_header(
+                "/v1/daemon/shutdown",
+                body,
+                "Authorization",
+                "Bearer secret",
+            ),
+            &state,
+        )
+        .await;
+        let bad_body: Value = serde_json::from_slice(response_buffer(&bad)).expect("json");
+        assert_eq!(bad.status_code, 400);
+        assert_eq!(bad_body["error"], "bad_request");
+    }
+
+    let accepted = route_request(
+        &post_with_header(
+            "/v1/daemon/shutdown",
+            b"{}",
+            "Authorization",
+            "Bearer secret",
+        ),
+        &state,
+    )
+    .await;
+    let accepted_body: Value = serde_json::from_slice(response_buffer(&accepted)).expect("json");
+    assert_eq!(accepted.status_code, 202);
+    assert_eq!(accepted_body["shutdown"]["accepted"], true);
+    assert_eq!(accepted_body["shutdown"]["pid"], 1234);
+    assert_eq!(
+        accepted.after_write,
+        Some(HttpAfterWriteAction::RequestDaemonShutdown)
+    );
+
+    let empty = route_request(
+        &post_with_header("/v1/daemon/shutdown", b"", "Authorization", "Bearer secret"),
+        &state,
+    )
+    .await;
+    assert_eq!(empty.status_code, 202);
+
+    let logs = route_request(&get("/v1/daemon/logs"), &state_for(unique_home("logs"))).await;
+    assert_eq!(logs.status_code, 200);
+    let logs_post = route_request(&post("/v1/daemon/logs", b""), &no_token_state).await;
+    assert_eq!(logs_post.status_code, 405);
 }
 
 #[tokio::test]
@@ -2491,6 +2648,20 @@ fn post(path: &str, body: &[u8]) -> HttpRequest {
         headers: Vec::new(),
         body: body.to_vec(),
         parse_error: None,
+    }
+}
+
+fn post_with_header(path: &str, body: &[u8], name: &str, value: &str) -> HttpRequest {
+    let mut request = post(path, body);
+    request.headers.push((name.to_string(), value.to_string()));
+    request
+}
+
+fn restore_env(name: &str, value: Option<String>) {
+    if let Some(value) = value {
+        std::env::set_var(name, value);
+    } else {
+        std::env::remove_var(name);
     }
 }
 

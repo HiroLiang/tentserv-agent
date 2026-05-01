@@ -72,3 +72,25 @@ Use these environment variables:
 - Show the effective source after applying resolution order.
 - Show validation as `verified`, `invalid`, `unknown`, or `missing`.
 - Do not print the secret value.
+
+## HTTP Daemon Auth Status
+
+The daemon exposes read-only auth status through:
+
+```text
+GET /v1/auth
+GET /v1/auth/{provider}
+```
+
+This HTTP surface is diagnostic-only:
+
+- It never returns provider secret values.
+- It does not set or remove provider secrets.
+- It does not call provider validation endpoints by default.
+- It reports validation as `not_checked`.
+- Environment-variable credentials bypass Keychain reads.
+- If no env override exists, Keychain presence checks may trigger the platform
+  Keychain prompt.
+
+Provider key mutation remains CLI-only until a stricter HTTP secret mutation
+model is designed.

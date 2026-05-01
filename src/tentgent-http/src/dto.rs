@@ -33,6 +33,67 @@ pub(crate) struct StatusAuthItem {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct AuthProvidersResponse {
+    pub(crate) providers: Vec<AuthProviderItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AuthProviderResponse {
+    pub(crate) provider: AuthProviderItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AuthProviderItem {
+    pub(crate) provider: String,
+    pub(crate) display_name: String,
+    pub(crate) env_present: bool,
+    pub(crate) keychain_present: bool,
+    pub(crate) effective_source: Option<String>,
+    pub(crate) validation: AuthValidationItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AuthValidationItem {
+    pub(crate) state: String,
+    pub(crate) summary: String,
+    pub(crate) detail: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DoctorResponse {
+    pub(crate) status: String,
+    pub(crate) summary: DoctorSummaryItem,
+    pub(crate) checks: Vec<DoctorCheckItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DoctorSummaryItem {
+    pub(crate) pass: usize,
+    pub(crate) warn: usize,
+    pub(crate) fail: usize,
+    pub(crate) skipped: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DoctorCheckItem {
+    pub(crate) name: String,
+    pub(crate) status: String,
+    pub(crate) detail: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DaemonShutdownResponse {
+    pub(crate) shutdown: DaemonShutdownItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DaemonShutdownItem {
+    pub(crate) accepted: bool,
+    pub(crate) pid: Option<u32>,
+    pub(crate) message: &'static str,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct LogsResponse {
     pub(crate) logs: LogPairItem,
 }

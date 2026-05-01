@@ -13,8 +13,9 @@ This document defines the first stable HTTP daemon boundary for the Rust
   `POST /v1/chat/completions`.
 - Expose daemon health, status, read-only store discovery, controlled server
   lifecycle mutations, store import/pull mutations, deterministic dataset
-  tooling, cloud dataset tooling, LoRA train-plan management, chat proxying,
-  log diagnostics, and read-only session discovery.
+  tooling, cloud dataset tooling, LoRA train-plan management, auth status,
+  doctor diagnostics, daemon shutdown control, chat proxying, log diagnostics,
+  and read-only session discovery.
 - Keep loopback-local daemon development usable without auth, while requiring a
   token or explicit unsafe flag for non-loopback and wildcard binds.
 
@@ -137,6 +138,88 @@ auth state:
   "pid_path": "/path/to/tentgent-home/runtime/daemon/daemon.pid"
 }
 ```
+
+## Auth Status, Doctor, And Shutdown
+
+`GET /v1/auth` returns local provider credential status without provider network
+validation and without secret values:
+
+```json
+{
+  "providers": [
+    {
+      "provider": "openai",
+      "display_name": "OpenAI",
+      "env_present": true,
+      "keychain_present": false,
+      "effective_source": "env",
+      "validation": {
+        "state": "not_checked",
+        "summary": "not checked",
+        "detail": null
+      }
+    }
+  ]
+}
+```
+
+`GET /v1/auth/{provider}` accepts only exact lowercase provider ids:
+
+```text
+hf
+openai
+anthropic
+```
+
+Auth status endpoints may reveal whether credentials are configured, but never
+credential values. Environment-variable credentials bypass Keychain reads.
+When no env override is present, checking Keychain presence may trigger the
+platform Keychain prompt.
+
+`GET /v1/doctor` returns observational local diagnostics for the daemon runtime
+home. It may inspect files, commands, Python runtime assets, platform
+capability, and local paths, but it must not create, write, install, download,
+repair, or delete anything:
+
+```json
+{
+  "status": "warn",
+  "summary": {
+    "pass": 12,
+    "warn": 2,
+    "fail": 0,
+    "skipped": 1
+  },
+  "checks": [
+    {
+      "name": "python binary",
+      "status": "pass",
+      "detail": "present: /path/to/python"
+    }
+  ]
+}
+```
+
+Doctor status is `fail` if any check fails, otherwise `warn` if any check
+warns, otherwise `pass`.
+
+`POST /v1/daemon/shutdown` accepts an empty body or `{}` and returns
+`202 Accepted` before stopping the daemon accept loop:
+
+```json
+{
+  "shutdown": {
+    "accepted": true,
+    "pid": 12345,
+    "message": "daemon shutdown requested"
+  }
+}
+```
+
+Shutdown stops only the daemon process. It does not stop running model-bound
+servers. Unlike most loopback-local daemon routes, shutdown requires
+`TENTGENT_DAEMON_TOKEN` to be enabled and a valid bearer token; otherwise it
+returns `409 daemon_token_required` or `401 unauthorized`.
 
 ## Read-Only Store Discovery
 

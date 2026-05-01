@@ -427,6 +427,12 @@ cargo run -- daemon status
 curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/auth \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/auth/openai \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/doctor \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS http://127.0.0.1:8790/v1/daemon/logs
 curl -sS 'http://127.0.0.1:8790/v1/daemon/logs/stderr?tail_bytes=4096'
 curl -sS http://127.0.0.1:8790/v1/models
@@ -509,6 +515,11 @@ curl -sS -N http://127.0.0.1:8790/v1/chat/completions \
     "stream": true
   }'
 curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
+curl -sS http://127.0.0.1:8790/v1/daemon/shutdown \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{}'
 cargo run -- daemon stop
 ```
 
@@ -541,6 +552,10 @@ Import paths are absolute paths on the daemon host. Pull endpoints are
 synchronous MVP calls and do not expose progress or cancellation yet.
 Request logs are emitted to stderr with peer, method, path, status, and elapsed
 time fields. Auth failures never log token or header values.
+Auth status is read-only and reports local env/keychain presence without
+provider network validation. HTTP doctor is observational only and does not run
+`doctor --fix` behavior. Daemon shutdown requires an enabled bearer token even
+on loopback and stops only the daemon process.
 
 The `tentgent-http` crate is split by responsibility:
 
