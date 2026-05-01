@@ -62,8 +62,11 @@ Implemented endpoints:
 GET /healthz
 GET /v1/status
 GET /v1/models
+GET /v1/models/{model_ref}
 GET /v1/adapters
+GET /v1/adapters/{adapter_ref}
 GET /v1/datasets
+GET /v1/datasets/{dataset_ref}
 GET /v1/servers
 GET /v1/servers/{server_ref}
 GET /v1/servers/{server_ref}/health
@@ -81,6 +84,10 @@ POST /v1/servers/{server_ref}/start
 POST /v1/servers/{server_ref}/stop
 POST /v1/chat
 POST /v1/chat/completions
+DELETE /v1/models/{model_ref}
+DELETE /v1/adapters/{adapter_ref}
+DELETE /v1/datasets/{dataset_ref}
+DELETE /v1/servers/{server_ref}
 ```
 
 ## Execution Order
@@ -418,7 +425,7 @@ should prioritize shared core services first, then thin CLI and HTTP wrappers.
 
 ### Slice 12: Store Inspect And Remove Parity
 
-Status: planned.
+Status: implemented in the active workspace.
 
 Goals:
 
@@ -426,6 +433,8 @@ Goals:
 - add safe remove endpoints for models, adapters, datasets, and server specs
 - refuse destructive store changes when dependent records would become invalid
 - keep full-ref and unique-prefix resolution consistent with the CLI
+- return pre-removal metadata on successful `DELETE`
+- reject non-empty `DELETE` request bodies instead of accepting hidden options
 
 Review target:
 

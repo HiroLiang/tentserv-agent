@@ -116,6 +116,7 @@ pub struct AdapterStorePaths {
     pub local_index_dir: PathBuf,
     pub train_run_index_dir: PathBuf,
     pub staging_dir: PathBuf,
+    pub servers_dir: PathBuf,
 }
 
 impl AdapterStorePaths {
@@ -138,6 +139,7 @@ impl AdapterStorePaths {
             local_index_dir: by_source_dir.join("local"),
             train_run_index_dir: by_source_dir.join("train-run"),
             staging_dir: adapters_dir.join("staging"),
+            servers_dir: home_dir.join("servers"),
             adapters_dir,
         })
     }

@@ -148,6 +148,8 @@ specific directory overrides still win when set:
 - `TENTGENT_DATASETS_DIR`
 
 These endpoints do not mutate state, start servers, stop servers, or proxy chat.
+All dynamic refs accept full refs or unique prefixes. Ref path segments are
+managed refs only, never filesystem paths.
 
 `GET /v1/models` returns:
 
@@ -169,6 +171,30 @@ These endpoints do not mutate state, start servers, stop servers, or proxy chat.
       "source_path": null
     }
   ]
+}
+```
+
+`GET /v1/models/{model_ref}` returns one model with the same stable fields plus
+inspect-only paths:
+
+```json
+{
+  "model": {
+    "model_ref": "8fac...",
+    "short_ref": "8fac906c66b9",
+    "store_path": "/path/to/models/store/8fac...",
+    "file_count": 8,
+    "total_bytes": 2488939597,
+    "imported_at": "2026-04-28T00:00:00Z",
+    "format": "mlx",
+    "detected_formats": ["mlx"],
+    "source_kind": "huggingface",
+    "source_repo": "mlx-community/Llama-3.2-1B-Instruct-MLXTuned",
+    "source_revision": "7247...",
+    "source_path": null,
+    "manifest_path": "/path/to/models/store/8fac.../manifest.json",
+    "variant_source_path": "/path/to/models/store/8fac.../variants/mlx/source"
+  }
 }
 ```
 
@@ -203,6 +229,9 @@ These endpoints do not mutate state, start servers, stop servers, or proxy chat.
 }
 ```
 
+`GET /v1/adapters/{adapter_ref}` returns one adapter with the same stable fields
+plus `manifest_path` and `managed_source_path`.
+
 `GET /v1/datasets` returns:
 
 ```json
@@ -233,6 +262,9 @@ These endpoints do not mutate state, start servers, stop servers, or proxy chat.
   ]
 }
 ```
+
+`GET /v1/datasets/{dataset_ref}` returns one dataset with the same stable fields
+plus `manifest_path` and `managed_source_path`.
 
 `GET /v1/sessions` returns local session metadata from
 `<TENTGENT_HOME>/sessions` sorted by `updated_at` descending:
@@ -372,6 +404,62 @@ and returns:
   }
 }
 ```
+
+## Store Inspect And Remove Mutations
+
+The daemon exposes safe remove parity for managed store entries:
+
+```text
+DELETE /v1/models/{model_ref}
+DELETE /v1/adapters/{adapter_ref}
+DELETE /v1/datasets/{dataset_ref}
+DELETE /v1/servers/{server_ref}
+```
+
+`DELETE` requests must have an empty body. Non-empty bodies return JSON `400`
+because this slice has no hidden `force`, dry-run, bulk, or cascade options.
+
+Successful deletes return `200` with pre-removal metadata:
+
+```json
+{
+  "removed": {
+    "kind": "model",
+    "model_ref": "8fac...",
+    "short_ref": "8fac906c66b9",
+    "store_path": "/path/to/models/store/8fac..."
+  },
+  "model": {
+    "...": "same shape as GET /v1/models/{model_ref}"
+  }
+}
+```
+
+Adapters and datasets use typed `adapter_ref` and `dataset_ref` fields in the
+`removed` object. Server spec removal returns:
+
+```json
+{
+  "removed": {
+    "kind": "server",
+    "server_ref": "25ee...",
+    "short_ref": "25ee5888595d",
+    "server_dir": "/path/to/tentgent-home/servers/25ee..."
+  },
+  "server": {
+    "...": "same shape as GET /v1/servers/{server_ref}"
+  }
+}
+```
+
+Model and adapter removal return JSON `409 in_use` when existing server specs
+still reference them. Stop and remove those server specs first. Server removal
+does not stop running processes; running servers return `409 already_running`,
+so callers should use `POST /v1/servers/{server_ref}/stop` before `DELETE`.
+
+Dataset removal only enforces protections currently tracked by core. Future
+train-plan or train-run registries may make dataset deletion return
+`409 in_use` when references are tracked.
 
 `GET /v1/servers/{server_ref}/health` checks one stored server spec. Stopped
 servers return `running: false` and `reachable: false` without opening a network

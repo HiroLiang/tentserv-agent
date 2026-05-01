@@ -79,6 +79,25 @@ pub(crate) struct ModelsResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct ModelResponse {
+    pub(crate) model: ModelItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemoveModelResponse {
+    pub(crate) removed: RemovedModelItem,
+    pub(crate) model: ModelItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemovedModelItem {
+    pub(crate) kind: &'static str,
+    pub(crate) model_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) store_path: String,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct ModelItem {
     pub(crate) model_ref: String,
     pub(crate) short_ref: String,
@@ -92,11 +111,34 @@ pub(crate) struct ModelItem {
     pub(crate) source_repo: Option<String>,
     pub(crate) source_revision: Option<String>,
     pub(crate) source_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) manifest_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) variant_source_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct AdaptersResponse {
     pub(crate) adapters: Vec<AdapterItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AdapterResponse {
+    pub(crate) adapter: AdapterItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemoveAdapterResponse {
+    pub(crate) removed: RemovedAdapterItem,
+    pub(crate) adapter: AdapterItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemovedAdapterItem {
+    pub(crate) kind: &'static str,
+    pub(crate) adapter_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) store_path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -122,11 +164,34 @@ pub(crate) struct AdapterItem {
     pub(crate) training_dataset_ref: Option<String>,
     pub(crate) training_run_ref: Option<String>,
     pub(crate) training_config_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) manifest_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) managed_source_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct DatasetsResponse {
     pub(crate) datasets: Vec<DatasetItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DatasetResponse {
+    pub(crate) dataset: DatasetItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemoveDatasetResponse {
+    pub(crate) removed: RemovedDatasetItem,
+    pub(crate) dataset: DatasetItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemovedDatasetItem {
+    pub(crate) kind: &'static str,
+    pub(crate) dataset_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) store_path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -145,6 +210,10 @@ pub(crate) struct DatasetItem {
     pub(crate) tuning_ready: bool,
     pub(crate) splits: DatasetSplitsItem,
     pub(crate) warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) manifest_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) managed_source_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -164,6 +233,20 @@ pub(crate) struct ServersResponse {
 #[derive(Debug, Serialize)]
 pub(crate) struct ServerResponse {
     pub(crate) server: ServerInspectionItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemoveServerResponse {
+    pub(crate) removed: RemovedServerItem,
+    pub(crate) server: ServerInspectionItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemovedServerItem {
+    pub(crate) kind: &'static str,
+    pub(crate) server_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) server_dir: String,
 }
 
 #[derive(Debug, Serialize)]

@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use tentgent_core::{
-    adapter::{AdapterManager, AdapterSummary},
-    dataset::{DatasetManager, DatasetSummary},
-    model::{ModelManager, ModelSummary},
+    adapter::{AdapterInspection, AdapterManager, AdapterSummary},
+    dataset::{DatasetInspection, DatasetManager, DatasetSummary},
+    model::{ModelInspection, ModelManager, ModelSummary},
     server::{
         ServerInspection, ServerManager, ServerPrepareOutcome, ServerProcessMetadata, ServerSummary,
     },
@@ -12,18 +12,24 @@ use tentgent_core::{
 use crate::{
     app::DaemonHttpState,
     dto::{
-        AdapterItem, AdaptersResponse, DatasetItem, DatasetSplitsItem, DatasetsResponse, ModelItem,
-        ModelsResponse, ServerInspectionItem, ServerProcessItem, ServerResponse, ServerSummaryItem,
+        AdapterItem, AdapterResponse, AdaptersResponse, DatasetItem, DatasetResponse,
+        DatasetSplitsItem, DatasetsResponse, ModelItem, ModelResponse, ModelsResponse,
+        RemoveAdapterResponse, RemoveDatasetResponse, RemoveModelResponse, RemoveServerResponse,
+        RemovedAdapterItem, RemovedDatasetItem, RemovedModelItem, RemovedServerItem,
+        ServerInspectionItem, ServerProcessItem, ServerResponse, ServerSummaryItem,
         ServersResponse,
     },
-    http::HttpResponse,
-    response::{json_response, manager_error_response, server_error_response},
+    http::{HttpRequest, HttpResponse},
+    response::{
+        adapter_error_response, bad_request_response, dataset_error_response, json_response,
+        model_error_response, server_error_response,
+    },
 };
 
 pub(crate) fn list_models_response(state: &DaemonHttpState) -> HttpResponse {
     let manager = match ModelManager::open_readonly_with_home(Some(state.home_dir())) {
         Ok(manager) => manager,
-        Err(error) => return manager_error_response("models", error),
+        Err(error) => return model_error_response(error),
     };
     match manager.list_models() {
         Ok(models) => json_response(
@@ -32,14 +38,63 @@ pub(crate) fn list_models_response(state: &DaemonHttpState) -> HttpResponse {
                 models: models.into_iter().map(model_item).collect(),
             },
         ),
-        Err(error) => manager_error_response("models", error),
+        Err(error) => model_error_response(error),
+    }
+}
+
+pub(crate) fn inspect_model_response(state: &DaemonHttpState, reference: &str) -> HttpResponse {
+    let manager = match ModelManager::open_readonly_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return model_error_response(error),
+    };
+    match manager.inspect(reference) {
+        Ok(model) => json_response(
+            200,
+            ModelResponse {
+                model: model_inspection_item(model),
+            },
+        ),
+        Err(error) => model_error_response(error),
+    }
+}
+
+pub(crate) fn remove_model_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    reference: &str,
+) -> HttpResponse {
+    if let Err(response) = require_empty_body(request) {
+        return response;
+    }
+    let manager = match ModelManager::new_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return model_error_response(error),
+    };
+    let inspection = match manager.inspect(reference) {
+        Ok(inspection) => inspection,
+        Err(error) => return model_error_response(error),
+    };
+    match manager.remove(reference) {
+        Ok(outcome) => json_response(
+            200,
+            RemoveModelResponse {
+                removed: RemovedModelItem {
+                    kind: "model",
+                    model_ref: outcome.metadata.model_ref,
+                    short_ref: outcome.metadata.short_ref,
+                    store_path: path_string(&outcome.store_path),
+                },
+                model: model_inspection_item(inspection),
+            },
+        ),
+        Err(error) => model_error_response(error),
     }
 }
 
 pub(crate) fn list_adapters_response(state: &DaemonHttpState) -> HttpResponse {
     let manager = match AdapterManager::open_readonly_with_home(Some(state.home_dir())) {
         Ok(manager) => manager,
-        Err(error) => return manager_error_response("adapters", error),
+        Err(error) => return adapter_error_response(error),
     };
     match manager.list_adapters() {
         Ok(adapters) => json_response(
@@ -48,14 +103,63 @@ pub(crate) fn list_adapters_response(state: &DaemonHttpState) -> HttpResponse {
                 adapters: adapters.into_iter().map(adapter_item).collect(),
             },
         ),
-        Err(error) => manager_error_response("adapters", error),
+        Err(error) => adapter_error_response(error),
+    }
+}
+
+pub(crate) fn inspect_adapter_response(state: &DaemonHttpState, reference: &str) -> HttpResponse {
+    let manager = match AdapterManager::open_readonly_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return adapter_error_response(error),
+    };
+    match manager.inspect(reference) {
+        Ok(adapter) => json_response(
+            200,
+            AdapterResponse {
+                adapter: adapter_inspection_item(adapter),
+            },
+        ),
+        Err(error) => adapter_error_response(error),
+    }
+}
+
+pub(crate) fn remove_adapter_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    reference: &str,
+) -> HttpResponse {
+    if let Err(response) = require_empty_body(request) {
+        return response;
+    }
+    let manager = match AdapterManager::new_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return adapter_error_response(error),
+    };
+    let inspection = match manager.inspect(reference) {
+        Ok(inspection) => inspection,
+        Err(error) => return adapter_error_response(error),
+    };
+    match manager.remove(reference) {
+        Ok(outcome) => json_response(
+            200,
+            RemoveAdapterResponse {
+                removed: RemovedAdapterItem {
+                    kind: "adapter",
+                    adapter_ref: outcome.metadata.adapter_ref,
+                    short_ref: outcome.metadata.short_ref,
+                    store_path: path_string(&outcome.store_path),
+                },
+                adapter: adapter_inspection_item(inspection),
+            },
+        ),
+        Err(error) => adapter_error_response(error),
     }
 }
 
 pub(crate) fn list_datasets_response(state: &DaemonHttpState) -> HttpResponse {
     let manager = match DatasetManager::open_readonly_with_home(Some(state.home_dir())) {
         Ok(manager) => manager,
-        Err(error) => return manager_error_response("datasets", error),
+        Err(error) => return dataset_error_response(error),
     };
     match manager.list_datasets() {
         Ok(datasets) => json_response(
@@ -64,7 +168,56 @@ pub(crate) fn list_datasets_response(state: &DaemonHttpState) -> HttpResponse {
                 datasets: datasets.into_iter().map(dataset_item).collect(),
             },
         ),
-        Err(error) => manager_error_response("datasets", error),
+        Err(error) => dataset_error_response(error),
+    }
+}
+
+pub(crate) fn inspect_dataset_response(state: &DaemonHttpState, reference: &str) -> HttpResponse {
+    let manager = match DatasetManager::open_readonly_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return dataset_error_response(error),
+    };
+    match manager.inspect(reference) {
+        Ok(dataset) => json_response(
+            200,
+            DatasetResponse {
+                dataset: dataset_inspection_item(dataset),
+            },
+        ),
+        Err(error) => dataset_error_response(error),
+    }
+}
+
+pub(crate) fn remove_dataset_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    reference: &str,
+) -> HttpResponse {
+    if let Err(response) = require_empty_body(request) {
+        return response;
+    }
+    let manager = match DatasetManager::new_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return dataset_error_response(error),
+    };
+    let inspection = match manager.inspect(reference) {
+        Ok(inspection) => inspection,
+        Err(error) => return dataset_error_response(error),
+    };
+    match manager.remove(reference) {
+        Ok(outcome) => json_response(
+            200,
+            RemoveDatasetResponse {
+                removed: RemovedDatasetItem {
+                    kind: "dataset",
+                    dataset_ref: outcome.metadata.dataset_ref,
+                    short_ref: outcome.metadata.short_ref,
+                    store_path: path_string(&outcome.store_path),
+                },
+                dataset: dataset_inspection_item(inspection),
+            },
+        ),
+        Err(error) => dataset_error_response(error),
     }
 }
 
@@ -80,6 +233,40 @@ pub(crate) fn list_servers_response(state: &DaemonHttpState) -> HttpResponse {
                 servers: servers.into_iter().map(server_summary_item).collect(),
             },
         ),
+        Err(error) => server_error_response(error),
+    }
+}
+
+pub(crate) fn remove_server_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    reference: &str,
+) -> HttpResponse {
+    if let Err(response) = require_empty_body(request) {
+        return response;
+    }
+    let manager = match ServerManager::new(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return server_error_response(error),
+    };
+    match manager.remove(reference) {
+        Ok(outcome) => {
+            let server_ref = outcome.inspection.spec.server_ref.clone();
+            let short_ref = outcome.inspection.spec.short_ref.clone();
+            let server_dir = path_string(&outcome.inspection.server_dir);
+            json_response(
+                200,
+                RemoveServerResponse {
+                    removed: RemovedServerItem {
+                        kind: "server",
+                        server_ref,
+                        short_ref,
+                        server_dir,
+                    },
+                    server: server_inspection_item(outcome.inspection),
+                },
+            )
+        }
         Err(error) => server_error_response(error),
     }
 }
@@ -101,11 +288,28 @@ pub(crate) fn inspect_server_response(state: &DaemonHttpState, reference: &str) 
 }
 
 fn model_item(summary: ModelSummary) -> ModelItem {
-    let metadata = summary.metadata;
+    model_item_from_parts(summary.metadata, &summary.store_path, None, None)
+}
+
+fn model_inspection_item(inspection: ModelInspection) -> ModelItem {
+    model_item_from_parts(
+        inspection.metadata,
+        &inspection.store_path,
+        Some(&inspection.manifest_path),
+        Some(&inspection.variant_source_path),
+    )
+}
+
+fn model_item_from_parts(
+    metadata: tentgent_core::model::ModelMetadata,
+    store_path: &Path,
+    manifest_path: Option<&Path>,
+    variant_source_path: Option<&Path>,
+) -> ModelItem {
     ModelItem {
         model_ref: metadata.model_ref,
         short_ref: metadata.short_ref,
-        store_path: path_string(&summary.store_path),
+        store_path: path_string(store_path),
         file_count: metadata.file_count,
         total_bytes: metadata.total_bytes,
         imported_at: metadata.imported_at,
@@ -119,15 +323,34 @@ fn model_item(summary: ModelSummary) -> ModelItem {
         source_repo: metadata.source_repo,
         source_revision: metadata.source_revision,
         source_path: metadata.source_path,
+        manifest_path: manifest_path.map(path_string),
+        variant_source_path: variant_source_path.map(path_string),
     }
 }
 
 fn adapter_item(summary: AdapterSummary) -> AdapterItem {
-    let metadata = summary.metadata;
+    adapter_item_from_parts(summary.metadata, &summary.store_path, None, None)
+}
+
+fn adapter_inspection_item(inspection: AdapterInspection) -> AdapterItem {
+    adapter_item_from_parts(
+        inspection.metadata,
+        &inspection.store_path,
+        Some(&inspection.manifest_path),
+        Some(&inspection.source_path),
+    )
+}
+
+fn adapter_item_from_parts(
+    metadata: tentgent_core::adapter::AdapterMetadata,
+    store_path: &Path,
+    manifest_path: Option<&Path>,
+    managed_source_path: Option<&Path>,
+) -> AdapterItem {
     AdapterItem {
         adapter_ref: metadata.adapter_ref,
         short_ref: metadata.short_ref,
-        store_path: path_string(&summary.store_path),
+        store_path: path_string(store_path),
         file_count: metadata.file_count,
         total_bytes: metadata.total_bytes,
         imported_at: metadata.imported_at,
@@ -145,16 +368,35 @@ fn adapter_item(summary: AdapterSummary) -> AdapterItem {
         training_dataset_ref: metadata.training_dataset_ref,
         training_run_ref: metadata.training_run_ref,
         training_config_ref: metadata.training_config_ref,
+        manifest_path: manifest_path.map(path_string),
+        managed_source_path: managed_source_path.map(path_string),
     }
 }
 
 fn dataset_item(summary: DatasetSummary) -> DatasetItem {
-    let metadata = summary.metadata;
+    dataset_item_from_parts(summary.metadata, &summary.store_path, None, None)
+}
+
+fn dataset_inspection_item(inspection: DatasetInspection) -> DatasetItem {
+    dataset_item_from_parts(
+        inspection.metadata,
+        &inspection.store_path,
+        Some(&inspection.manifest_path),
+        Some(&inspection.source_path),
+    )
+}
+
+fn dataset_item_from_parts(
+    metadata: tentgent_core::dataset::DatasetMetadata,
+    store_path: &Path,
+    manifest_path: Option<&Path>,
+    managed_source_path: Option<&Path>,
+) -> DatasetItem {
     let package = metadata.package;
     DatasetItem {
         dataset_ref: metadata.dataset_ref,
         short_ref: metadata.short_ref,
-        store_path: path_string(&summary.store_path),
+        store_path: path_string(store_path),
         file_count: metadata.file_count,
         total_bytes: metadata.total_bytes,
         imported_at: metadata.imported_at,
@@ -172,6 +414,8 @@ fn dataset_item(summary: DatasetSummary) -> DatasetItem {
             source_manifest: package.splits.source_manifest,
         },
         warnings: package.warnings,
+        manifest_path: manifest_path.map(path_string),
+        managed_source_path: managed_source_path.map(path_string),
     }
 }
 
@@ -243,4 +487,14 @@ fn server_process_item(process: ServerProcessMetadata) -> ServerProcessItem {
 
 pub(crate) fn path_string(path: &Path) -> String {
     path.display().to_string()
+}
+
+fn require_empty_body(request: &HttpRequest) -> Result<(), HttpResponse> {
+    if request.body.is_empty() {
+        Ok(())
+    } else {
+        Err(bad_request_response(
+            "DELETE requests for store entries must not include a body",
+        ))
+    }
 }

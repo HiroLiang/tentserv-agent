@@ -1,5 +1,5 @@
 use std::{
-    env, fs,
+    fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -575,7 +575,7 @@ impl AdapterManager {
     }
 
     fn ensure_not_referenced_by_server(&self, adapter_ref: &str) -> Result<(), AdapterError> {
-        let server_refs = find_server_refs_for_adapter(adapter_ref)?;
+        let server_refs = find_server_refs_for_adapter(&self.paths.servers_dir, adapter_ref)?;
         if server_refs.is_empty() {
             return Ok(());
         }
@@ -876,14 +876,16 @@ fn copy_dir_contents(input_path: &Path, source_root: &Path) -> Result<(), Adapte
     Ok(())
 }
 
-fn find_server_refs_for_adapter(adapter_ref: &str) -> Result<Vec<String>, AdapterError> {
-    let servers_dir = resolve_servers_dir()?;
+fn find_server_refs_for_adapter(
+    servers_dir: &Path,
+    adapter_ref: &str,
+) -> Result<Vec<String>, AdapterError> {
     if !servers_dir.exists() {
         return Ok(Vec::new());
     }
 
     let mut server_refs = Vec::new();
-    for entry in fs::read_dir(&servers_dir)? {
+    for entry in fs::read_dir(servers_dir)? {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
             continue;
@@ -938,25 +940,4 @@ impl StoredServerAdapterRefs {
 
 fn adapter_ref_matches(adapter_ref: &str, reference: &str) -> bool {
     adapter_ref == reference || adapter_ref.starts_with(reference)
-}
-
-fn resolve_servers_dir() -> Result<PathBuf, AdapterError> {
-    let home_dir = read_env_path("TENTGENT_HOME").unwrap_or(default_home_dir()?);
-    Ok(home_dir.join("servers"))
-}
-
-fn read_env_path(name: &str) -> Option<PathBuf> {
-    let value = env::var(name).ok()?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(PathBuf::from(trimmed))
-    }
-}
-
-fn default_home_dir() -> Result<PathBuf, AdapterError> {
-    let project_dirs = directories::ProjectDirs::from("com", "tentserv", "tentgent")
-        .ok_or(AdapterError::ProjectDirsUnavailable)?;
-    Ok(project_dirs.data_local_dir().to_path_buf())
 }

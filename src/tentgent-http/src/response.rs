@@ -1,7 +1,8 @@
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
 use tentgent_core::{
-    server::ServerError, server_runtime::ServerRuntimeError, session::SessionError,
+    adapter::AdapterError, dataset::DatasetError, model::ModelError, server::ServerError,
+    server_runtime::ServerRuntimeError, session::SessionError,
 };
 
 use crate::{
@@ -17,6 +18,90 @@ pub(crate) fn manager_error_response(context: &str, error: impl std::fmt::Displa
             message: format!("failed to read {context}: {error}"),
         },
     )
+}
+
+pub(crate) fn model_error_response(error: ModelError) -> HttpResponse {
+    match error {
+        ModelError::NotFound(reference) => json_response(
+            404,
+            ErrorResponse {
+                error: "not_found",
+                message: format!("model reference `{reference}` was not found"),
+            },
+        ),
+        ModelError::AmbiguousRef(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "ambiguous_ref",
+                message: format!(
+                    "model reference `{reference}` is ambiguous; use a longer prefix"
+                ),
+            },
+        ),
+        ModelError::InUse { server_refs, .. } => json_response(
+            409,
+            ErrorResponse {
+                error: "in_use",
+                message: format!(
+                    "model is still referenced by server spec(s): {server_refs}; remove those stopped server specs before deleting the model"
+                ),
+            },
+        ),
+        other => manager_error_response("models", other),
+    }
+}
+
+pub(crate) fn adapter_error_response(error: AdapterError) -> HttpResponse {
+    match error {
+        AdapterError::NotFound(reference) => json_response(
+            404,
+            ErrorResponse {
+                error: "not_found",
+                message: format!("adapter reference `{reference}` was not found"),
+            },
+        ),
+        AdapterError::AmbiguousRef(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "ambiguous_ref",
+                message: format!(
+                    "adapter reference `{reference}` is ambiguous; use a longer prefix"
+                ),
+            },
+        ),
+        AdapterError::InUse { server_refs, .. } => json_response(
+            409,
+            ErrorResponse {
+                error: "in_use",
+                message: format!(
+                    "adapter is still referenced by server spec(s): {server_refs}; remove those stopped server specs before deleting the adapter"
+                ),
+            },
+        ),
+        other => manager_error_response("adapters", other),
+    }
+}
+
+pub(crate) fn dataset_error_response(error: DatasetError) -> HttpResponse {
+    match error {
+        DatasetError::NotFound(reference) => json_response(
+            404,
+            ErrorResponse {
+                error: "not_found",
+                message: format!("dataset reference `{reference}` was not found"),
+            },
+        ),
+        DatasetError::AmbiguousRef(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "ambiguous_ref",
+                message: format!(
+                    "dataset reference `{reference}` is ambiguous; use a longer prefix"
+                ),
+            },
+        ),
+        other => manager_error_response("datasets", other),
+    }
 }
 
 pub(crate) fn server_error_response(error: ServerError) -> HttpResponse {

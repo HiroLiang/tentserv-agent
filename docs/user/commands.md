@@ -256,6 +256,29 @@ endpoints expose fixed daemon/server stdout and stderr paths for local debugging
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the
 explicit `--allow-unsafe-bind` flag.
 
+Inspect and remove managed store entries through the daemon:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/models/<model-ref> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS -X DELETE http://127.0.0.1:8790/v1/models/<model-ref> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/adapters/<adapter-ref> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS -X DELETE http://127.0.0.1:8790/v1/adapters/<adapter-ref> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/datasets/<dataset-ref> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS -X DELETE http://127.0.0.1:8790/v1/datasets/<dataset-ref> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS -X DELETE http://127.0.0.1:8790/v1/servers/<server-ref> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+```
+
+Server delete removes a stopped server spec only. Stop a running server before
+deleting it. Model and adapter delete may return `409 in_use` when server specs
+still reference them.
+
 Read local session metadata and transcript tails through the daemon:
 
 ```bash

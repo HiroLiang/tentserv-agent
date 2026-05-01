@@ -455,7 +455,9 @@ or unique prefix, not a provider model name. Use
 `GET /v1/servers/<server-ref>/health` to distinguish process state from target
 HTTP reachability before sending chat. Use the daemon and server log diagnostics
 endpoints to inspect fixed stdout/stderr log paths without accepting arbitrary
-filesystem paths.
+filesystem paths. Store inspect and remove parity is available through
+`GET`/`DELETE /v1/models/<ref>`, `/v1/adapters/<ref>`, `/v1/datasets/<ref>`,
+and `DELETE /v1/servers/<ref>`; server delete removes stopped specs only.
 Request logs are emitted to stderr with peer, method, path, status, and elapsed
 time fields. Auth failures never log token or header values.
 

@@ -46,6 +46,7 @@ pub(crate) async fn route_request(request: &HttpRequest, state: &DaemonHttpState
     match request.method.as_str() {
         "GET" => route_get(request, state).await,
         "POST" => route_post(request, state).await,
+        "DELETE" => route_delete(request, state).await,
         _ => method_not_allowed(request),
     }
 }
@@ -87,6 +88,21 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
                 session::inspect_session_response(state, reference)
             }
         }
+        path if store_ref_path(path, "/v1/models/").is_some() => {
+            let reference = store_ref_path(path, "/v1/models/").expect("checked path");
+            store::inspect_model_response(state, reference)
+        }
+        path if path.starts_with("/v1/models/") => not_found_response(&request.path),
+        path if store_ref_path(path, "/v1/adapters/").is_some() => {
+            let reference = store_ref_path(path, "/v1/adapters/").expect("checked path");
+            store::inspect_adapter_response(state, reference)
+        }
+        path if path.starts_with("/v1/adapters/") => not_found_response(&request.path),
+        path if store_ref_path(path, "/v1/datasets/").is_some() => {
+            let reference = store_ref_path(path, "/v1/datasets/").expect("checked path");
+            store::inspect_dataset_response(state, reference)
+        }
+        path if path.starts_with("/v1/datasets/") => not_found_response(&request.path),
         path if server_health_path(path).is_some() => match server_health_path(path) {
             Some(reference) => lifecycle::health_server_response(state, reference).await,
             None => not_found_response(&request.path),
@@ -99,6 +115,33 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
                 store::inspect_server_response(state, reference)
             }
         }
+        _ => not_found_response(&request.path),
+    }
+}
+
+async fn route_delete(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
+    match request.path.as_str() {
+        path if store_ref_path(path, "/v1/models/").is_some() => {
+            let reference = store_ref_path(path, "/v1/models/").expect("checked path");
+            store::remove_model_response(state, request, reference)
+        }
+        path if path.starts_with("/v1/models/") => not_found_response(&request.path),
+        path if store_ref_path(path, "/v1/adapters/").is_some() => {
+            let reference = store_ref_path(path, "/v1/adapters/").expect("checked path");
+            store::remove_adapter_response(state, request, reference)
+        }
+        path if path.starts_with("/v1/adapters/") => not_found_response(&request.path),
+        path if store_ref_path(path, "/v1/datasets/").is_some() => {
+            let reference = store_ref_path(path, "/v1/datasets/").expect("checked path");
+            store::remove_dataset_response(state, request, reference)
+        }
+        path if path.starts_with("/v1/datasets/") => not_found_response(&request.path),
+        path if store_ref_path(path, "/v1/servers/").is_some() => {
+            let reference = store_ref_path(path, "/v1/servers/").expect("checked path");
+            store::remove_server_response(state, request, reference)
+        }
+        path if path.starts_with("/v1/servers/") => not_found_response(&request.path),
+        path if session::is_session_route(path) => method_not_allowed(request),
         _ => not_found_response(&request.path),
     }
 }
@@ -119,6 +162,15 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
         },
         path if session::is_session_route(path) => method_not_allowed(request),
         _ => not_found_response(&request.path),
+    }
+}
+
+fn store_ref_path<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
+    let reference = path.strip_prefix(prefix)?;
+    if reference.is_empty() || reference.contains('/') {
+        None
+    } else {
+        Some(reference)
     }
 }
 

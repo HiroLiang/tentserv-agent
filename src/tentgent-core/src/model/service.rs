@@ -1,12 +1,11 @@
 use std::{
-    env, fs,
+    fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use directories::ProjectDirs;
 use serde::Deserialize;
 use walkdir::WalkDir;
 
@@ -417,13 +416,12 @@ impl ModelManager {
     }
 
     fn find_server_refs_for_model(&self, model_ref: &str) -> Result<Vec<String>, ModelError> {
-        let servers_dir = resolve_servers_dir()?;
-        if !servers_dir.exists() {
+        if !self.paths.servers_dir.exists() {
             return Ok(Vec::new());
         }
 
         let mut server_refs = Vec::new();
-        for entry in fs::read_dir(&servers_dir)? {
+        for entry in fs::read_dir(&self.paths.servers_dir)? {
             let entry = entry?;
             if !entry.file_type()?.is_dir() {
                 continue;
@@ -651,25 +649,4 @@ fn copy_into_source_root(input_path: &Path, source_root: &Path) -> Result<(), Mo
     }
 
     Ok(())
-}
-
-fn resolve_servers_dir() -> Result<PathBuf, ModelError> {
-    let home_dir = read_env_path("TENTGENT_HOME").unwrap_or(default_home_dir()?);
-    Ok(home_dir.join("servers"))
-}
-
-fn read_env_path(name: &str) -> Option<PathBuf> {
-    let value = env::var(name).ok()?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(PathBuf::from(trimmed))
-    }
-}
-
-fn default_home_dir() -> Result<PathBuf, ModelError> {
-    let project_dirs = ProjectDirs::from("com", "tentserv", "tentgent")
-        .ok_or(ModelError::ProjectDirsUnavailable)?;
-    Ok(project_dirs.data_local_dir().to_path_buf())
 }

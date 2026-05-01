@@ -103,6 +103,7 @@ pub struct ModelStorePaths {
     pub hf_index_dir: PathBuf,
     pub local_index_dir: PathBuf,
     pub staging_dir: PathBuf,
+    pub servers_dir: PathBuf,
 }
 
 impl ModelStorePaths {
@@ -123,6 +124,7 @@ impl ModelStorePaths {
             hf_index_dir: by_source_dir.join("hf"),
             local_index_dir: by_source_dir.join("local"),
             staging_dir: models_dir.join("staging"),
+            servers_dir: home_dir.join("servers"),
         })
     }
 

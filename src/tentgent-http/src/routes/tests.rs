@@ -135,6 +135,82 @@ async fn models_returns_empty_array_for_isolated_home() {
 }
 
 #[tokio::test]
+async fn model_inspect_and_delete_work_by_full_ref_and_prefix() {
+    let home = unique_home("model-inspect-delete");
+    let model_ref = "111111111111000000000000";
+    write_model_fixture(&home, model_ref);
+    let state = state_for(home.clone());
+
+    let list = route_request(&get("/v1/models"), &state).await;
+    let list_body: Value = serde_json::from_slice(response_buffer(&list)).expect("json");
+    assert_eq!(list.status_code, 200);
+    assert_eq!(list_body["models"].as_array().expect("models").len(), 1);
+    assert!(list_body["models"][0].get("manifest_path").is_none());
+
+    let inspect = route_request(&get(&format!("/v1/models/{model_ref}")), &state).await;
+    let inspect_body: Value = serde_json::from_slice(response_buffer(&inspect)).expect("json");
+    assert_eq!(inspect.status_code, 200);
+    assert_eq!(inspect_body["model"]["model_ref"], model_ref);
+    assert_eq!(
+        inspect_body["model"]["manifest_path"],
+        path_string(&home.join(format!("models/store/{model_ref}/manifest.json")))
+    );
+    assert_eq!(
+        inspect_body["model"]["variant_source_path"],
+        path_string(&home.join(format!("models/store/{model_ref}/variants/mlx/source")))
+    );
+
+    let remove = route_request(&delete("/v1/models/111111111111", b""), &state).await;
+    let remove_body: Value = serde_json::from_slice(response_buffer(&remove)).expect("json");
+    assert_eq!(remove.status_code, 200);
+    assert_eq!(remove_body["removed"]["kind"], "model");
+    assert_eq!(remove_body["removed"]["model_ref"], model_ref);
+    assert_eq!(remove_body["model"]["model_ref"], model_ref);
+    assert!(!home.join(format!("models/store/{model_ref}")).exists());
+
+    let missing = route_request(&get(&format!("/v1/models/{model_ref}")), &state).await;
+    let missing_body: Value = serde_json::from_slice(response_buffer(&missing)).expect("json");
+    assert_eq!(missing.status_code, 404);
+    assert_eq!(missing_body["error"], "not_found");
+}
+
+#[tokio::test]
+async fn model_delete_rejects_body_auth_ambiguous_path_and_in_use_cases() {
+    let home = unique_home("model-delete-errors");
+    write_model_fixture(&home, "aaaaaaaaaaaa000000000000");
+    write_model_fixture(&home, "aaaaaaaaaaab000000000000");
+    let state = state_for(home.clone());
+
+    let ambiguous = route_request(&delete("/v1/models/aaaa", b""), &state).await;
+    let ambiguous_body: Value = serde_json::from_slice(response_buffer(&ambiguous)).expect("json");
+    assert_eq!(ambiguous.status_code, 409);
+    assert_eq!(ambiguous_body["error"], "ambiguous_ref");
+
+    let body = route_request(&delete("/v1/models/aaaaaaaaaaaa", b"{}"), &state).await;
+    let body_json: Value = serde_json::from_slice(response_buffer(&body)).expect("json");
+    assert_eq!(body.status_code, 400);
+    assert_eq!(body_json["error"], "bad_request");
+
+    let path_like = route_request(&delete("/v1/models/../aaaaaaaaaaaa", b""), &state).await;
+    assert_eq!(path_like.status_code, 404);
+    assert!(home.join("aaaaaaaaaaaa").exists() == false);
+
+    let token_state = state_with_token(home.clone(), "secret");
+    let unauthorized = route_request(&delete("/v1/models/aaaaaaaaaaaa", b""), &token_state).await;
+    assert_eq!(unauthorized.status_code, 401);
+
+    write_local_server_spec_for_model(&home, "model-server-ref", "aaaaaaaaaaaa000000000000");
+    let in_use = route_request(&delete("/v1/models/aaaaaaaaaaaa", b""), &state).await;
+    let in_use_body: Value = serde_json::from_slice(response_buffer(&in_use)).expect("json");
+    assert_eq!(in_use.status_code, 409);
+    assert_eq!(in_use_body["error"], "in_use");
+    assert!(in_use_body["message"]
+        .as_str()
+        .expect("message")
+        .contains("server spec"));
+}
+
+#[tokio::test]
 async fn adapters_returns_empty_array_for_isolated_home() {
     let request = get("/v1/adapters");
     let state = state_for(unique_home("adapters-empty"));
@@ -146,6 +222,38 @@ async fn adapters_returns_empty_array_for_isolated_home() {
 }
 
 #[tokio::test]
+async fn adapter_inspect_and_delete_work_and_in_use_is_protected() {
+    let home = unique_home("adapter-inspect-delete");
+    let adapter_ref = "222222222222000000000000";
+    write_adapter_fixture(&home, adapter_ref);
+    let state = state_for(home.clone());
+
+    let inspect = route_request(&get("/v1/adapters/222222222222"), &state).await;
+    let inspect_body: Value = serde_json::from_slice(response_buffer(&inspect)).expect("json");
+    assert_eq!(inspect.status_code, 200);
+    assert_eq!(inspect_body["adapter"]["adapter_ref"], adapter_ref);
+    assert_eq!(
+        inspect_body["adapter"]["managed_source_path"],
+        path_string(&home.join(format!("adapters/store/{adapter_ref}/source")))
+    );
+
+    write_cloud_server_spec_with_adapter(&home, "adapter-server-ref", adapter_ref);
+    let in_use = route_request(&delete("/v1/adapters/222222222222", b""), &state).await;
+    let in_use_body: Value = serde_json::from_slice(response_buffer(&in_use)).expect("json");
+    assert_eq!(in_use.status_code, 409);
+    assert_eq!(in_use_body["error"], "in_use");
+
+    fs::remove_dir_all(home.join("servers/adapter-server-ref")).expect("remove server");
+    let remove = route_request(&delete("/v1/adapters/222222222222", b""), &state).await;
+    let remove_body: Value = serde_json::from_slice(response_buffer(&remove)).expect("json");
+    assert_eq!(remove.status_code, 200);
+    assert_eq!(remove_body["removed"]["kind"], "adapter");
+    assert_eq!(remove_body["removed"]["adapter_ref"], adapter_ref);
+    assert_eq!(remove_body["adapter"]["adapter_ref"], adapter_ref);
+    assert!(!home.join(format!("adapters/store/{adapter_ref}")).exists());
+}
+
+#[tokio::test]
 async fn datasets_returns_empty_array_for_isolated_home() {
     let request = get("/v1/datasets");
     let state = state_for(unique_home("datasets-empty"));
@@ -154,6 +262,37 @@ async fn datasets_returns_empty_array_for_isolated_home() {
 
     assert_eq!(response.status_code, 200);
     assert_eq!(body["datasets"].as_array().expect("datasets").len(), 0);
+}
+
+#[tokio::test]
+async fn dataset_inspect_and_delete_work() {
+    let home = unique_home("dataset-inspect-delete");
+    let dataset_ref = "333333333333000000000000";
+    write_dataset_fixture(&home, dataset_ref);
+    let state = state_for(home.clone());
+
+    let inspect = route_request(&get("/v1/datasets/333333333333"), &state).await;
+    let inspect_body: Value = serde_json::from_slice(response_buffer(&inspect)).expect("json");
+    assert_eq!(inspect.status_code, 200);
+    assert_eq!(inspect_body["dataset"]["dataset_ref"], dataset_ref);
+    assert_eq!(inspect_body["dataset"]["tuning_ready"], true);
+    assert_eq!(inspect_body["dataset"]["splits"]["train"], "train.jsonl");
+    assert_eq!(
+        inspect_body["dataset"]["managed_source_path"],
+        path_string(&home.join(format!("datasets/store/{dataset_ref}/source")))
+    );
+
+    let remove = route_request(&delete("/v1/datasets/333333333333", b""), &state).await;
+    let remove_body: Value = serde_json::from_slice(response_buffer(&remove)).expect("json");
+    assert_eq!(remove.status_code, 200);
+    assert_eq!(remove_body["removed"]["kind"], "dataset");
+    assert_eq!(remove_body["removed"]["dataset_ref"], dataset_ref);
+    assert_eq!(remove_body["dataset"]["dataset_ref"], dataset_ref);
+
+    let missing = route_request(&delete("/v1/datasets/333333333333", b""), &state).await;
+    let missing_body: Value = serde_json::from_slice(response_buffer(&missing)).expect("json");
+    assert_eq!(missing.status_code, 404);
+    assert_eq!(missing_body["error"], "not_found");
 }
 
 #[tokio::test]
@@ -371,6 +510,60 @@ async fn server_inspect_accepts_short_ref() {
     assert_eq!(body["server"]["home_dir"], path_string(&home));
     assert_eq!(body["server"]["runtime_kind"], "cloud");
     assert_eq!(body["server"]["provider"], "anthropic");
+}
+
+#[tokio::test]
+async fn server_delete_removes_stopped_specs_and_rejects_running_or_body() {
+    let home = unique_home("server-delete");
+    let manager = ServerManager::new(Some(&home)).expect("server manager");
+    let stopped = manager
+        .prepare_run(ServerRunRequest {
+            runtime_ref: "openai:gpt-4.1-mini".to_string(),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(8796),
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect("stopped server");
+    let running_ref = create_running_cloud_server(&home, 8797);
+    let state = state_for(home.clone());
+
+    let body = route_request(
+        &delete(&format!("/v1/servers/{}", stopped.spec.short_ref), b"{}"),
+        &state,
+    )
+    .await;
+    let body_json: Value = serde_json::from_slice(response_buffer(&body)).expect("json");
+    assert_eq!(body.status_code, 400);
+    assert_eq!(body_json["error"], "bad_request");
+
+    let running = route_request(&delete(&format!("/v1/servers/{running_ref}"), b""), &state).await;
+    let running_body: Value = serde_json::from_slice(response_buffer(&running)).expect("json");
+    assert_eq!(running.status_code, 409);
+    assert_eq!(running_body["error"], "already_running");
+
+    let remove = route_request(
+        &delete(&format!("/v1/servers/{}", stopped.spec.short_ref), b""),
+        &state,
+    )
+    .await;
+    let remove_body: Value = serde_json::from_slice(response_buffer(&remove)).expect("json");
+    assert_eq!(remove.status_code, 200);
+    assert_eq!(remove_body["removed"]["kind"], "server");
+    assert_eq!(
+        remove_body["removed"]["server_ref"],
+        stopped.spec.server_ref
+    );
+    assert_eq!(remove_body["server"]["server_ref"], stopped.spec.server_ref);
+
+    let missing = route_request(
+        &get(&format!("/v1/servers/{}", stopped.spec.short_ref)),
+        &state,
+    )
+    .await;
+    let missing_body: Value = serde_json::from_slice(response_buffer(&missing)).expect("json");
+    assert_eq!(missing.status_code, 404);
+    assert_eq!(missing_body["error"], "not_found");
 }
 
 #[tokio::test]
@@ -1339,6 +1532,19 @@ fn post(path: &str, body: &[u8]) -> HttpRequest {
     }
 }
 
+fn delete(path: &str, body: &[u8]) -> HttpRequest {
+    let (path, query_params) = test_split_target(path);
+    HttpRequest {
+        method: "DELETE".to_string(),
+        path,
+        query_params,
+        version: "HTTP/1.1".to_string(),
+        headers: Vec::new(),
+        body: body.to_vec(),
+        parse_error: None,
+    }
+}
+
 fn test_split_target(target: &str) -> (String, Vec<(String, String)>) {
     let Some((path, query)) = target.split_once('?') else {
         return (target.to_string(), Vec::new());
@@ -1442,6 +1648,127 @@ created_at = "2026-05-01T00:00:00Z"
         ),
     )
     .expect("server spec");
+}
+
+fn write_local_server_spec_for_model(home: &Path, server_ref: &str, model_ref: &str) {
+    let server_dir = home.join("servers").join(server_ref);
+    fs::create_dir_all(&server_dir).expect("server dir");
+    fs::write(
+        server_dir.join("server.toml"),
+        format!(
+            r#"server_ref = "{server_ref}"
+short_ref = "{server_ref}"
+runtime_kind = "local"
+model_ref = "{model_ref}"
+host = "127.0.0.1"
+port = 8000
+lazy_load = false
+created_at = "2026-05-01T00:00:00Z"
+"#
+        ),
+    )
+    .expect("server spec");
+}
+
+fn write_cloud_server_spec_with_adapter(home: &Path, server_ref: &str, adapter_ref: &str) {
+    let server_dir = home.join("servers").join(server_ref);
+    fs::create_dir_all(&server_dir).expect("server dir");
+    fs::write(
+        server_dir.join("server.toml"),
+        format!(
+            r#"server_ref = "{server_ref}"
+short_ref = "{server_ref}"
+runtime_kind = "cloud"
+provider = "openai"
+provider_model = "gpt-4.1-mini"
+adapter_ref = "{adapter_ref}"
+host = "127.0.0.1"
+port = 8000
+lazy_load = false
+created_at = "2026-05-01T00:00:00Z"
+"#
+        ),
+    )
+    .expect("server spec");
+}
+
+fn write_model_fixture(home: &Path, model_ref: &str) {
+    let store_dir = home.join("models/store").join(model_ref);
+    fs::create_dir_all(store_dir.join("variants/mlx/source")).expect("model source dir");
+    fs::write(store_dir.join("manifest.json"), "{}").expect("manifest");
+    fs::write(
+        store_dir.join("model.toml"),
+        format!(
+            r#"model_ref = "{model_ref}"
+short_ref = "{}"
+source_kind = "local"
+source_path = "{}"
+primary_format = "mlx"
+detected_formats = ["mlx"]
+file_count = 1
+total_bytes = 10
+imported_at = "2026-05-01T00:00:00Z"
+"#,
+            &model_ref[..12],
+            path_string(&home.join("fixtures/model"))
+        ),
+    )
+    .expect("model metadata");
+}
+
+fn write_adapter_fixture(home: &Path, adapter_ref: &str) {
+    let store_dir = home.join("adapters/store").join(adapter_ref);
+    fs::create_dir_all(store_dir.join("source")).expect("adapter source dir");
+    fs::write(store_dir.join("manifest.json"), "{}").expect("manifest");
+    fs::write(
+        store_dir.join("adapter.toml"),
+        format!(
+            r#"adapter_ref = "{adapter_ref}"
+short_ref = "{}"
+adapter_format = "mlx"
+adapter_type = "lora"
+backend_support = []
+source_kind = "local"
+source_path = "{}"
+file_count = 1
+total_bytes = 10
+imported_at = "2026-05-01T00:00:00Z"
+"#,
+            &adapter_ref[..12],
+            path_string(&home.join("fixtures/adapter"))
+        ),
+    )
+    .expect("adapter metadata");
+}
+
+fn write_dataset_fixture(home: &Path, dataset_ref: &str) {
+    let store_dir = home.join("datasets/store").join(dataset_ref);
+    fs::create_dir_all(store_dir.join("source")).expect("dataset source dir");
+    fs::write(store_dir.join("manifest.json"), "{}").expect("manifest");
+    fs::write(
+        store_dir.join("dataset.toml"),
+        format!(
+            r#"dataset_ref = "{dataset_ref}"
+short_ref = "{}"
+source_kind = "local"
+source_path = "{}"
+dataset_format = "directory"
+file_count = 2
+total_bytes = 20
+imported_at = "2026-05-01T00:00:00Z"
+
+[package]
+tuning_ready = true
+warnings = []
+
+[package.splits]
+train = "train.jsonl"
+"#,
+            &dataset_ref[..12],
+            path_string(&home.join("fixtures/dataset"))
+        ),
+    )
+    .expect("dataset metadata");
 }
 
 fn write_session_fixture(
