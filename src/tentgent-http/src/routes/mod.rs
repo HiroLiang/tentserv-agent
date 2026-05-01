@@ -1,6 +1,7 @@
 pub(crate) mod chat;
 pub(crate) mod diagnostics;
 pub(crate) mod lifecycle;
+pub(crate) mod openai;
 pub(crate) mod status;
 pub(crate) mod store;
 
@@ -90,6 +91,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
 
 async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
     match request.path.as_str() {
+        "/v1/chat/completions" => openai::chat_completions_response(state, request).await,
         "/v1/chat" => chat::proxy_chat_response(state, request).await,
         "/v1/servers" => lifecycle::create_server_response(state, request),
         path if path.starts_with("/v1/servers/") => match server_action_path(path) {

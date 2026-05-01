@@ -409,6 +409,29 @@ curl -sS -N http://127.0.0.1:8790/v1/chat \
     "temperature": 0.0,
     "stream": true
   }'
+curl -sS http://127.0.0.1:8790/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{
+    "model": "<server-ref>",
+    "messages": [
+      {"role": "user", "content": "Say hello in Traditional Chinese."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.0
+  }'
+curl -sS -N http://127.0.0.1:8790/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{
+    "model": "<server-ref>",
+    "messages": [
+      {"role": "user", "content": "Say hello in Traditional Chinese."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "stream": true
+  }'
 curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
 cargo run -- daemon stop
 ```
@@ -425,7 +448,10 @@ Both daemon entry points reject wildcard or non-loopback binds without
 At this stage the daemon records process metadata and serves `GET /healthz`,
 `GET /v1/status`, and read-only discovery endpoints for models, adapters,
 datasets, server specs, controlled server lifecycle mutations, and
-`POST /v1/chat` proxying to already-running model-bound servers. Use
+`POST /v1/chat` proxying to already-running model-bound servers.
+`POST /v1/chat/completions` adds a limited OpenAI-style success wrapper for
+basic chat-completion clients; its `model` field selects a Tentgent server ref
+or unique prefix, not a provider model name. Use
 `GET /v1/servers/<server-ref>/health` to distinguish process state from target
 HTTP reachability before sending chat. Use the daemon and server log diagnostics
 endpoints to inspect fixed stdout/stderr log paths without accepting arbitrary

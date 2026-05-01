@@ -28,15 +28,14 @@ pub(crate) async fn proxy_chat_response(
     };
     body_object.remove("server_ref");
 
-    let manager = match ServerManager::open_readonly(Some(state.home_dir())) {
+    let manager = match chat_server_manager(state) {
         Ok(manager) => manager,
-        Err(error) => return server_error_response(error),
+        Err(response) => return response,
     };
     let server = match select_chat_server(&manager, server_reference.as_deref()) {
         Ok(server) => server,
         Err(response) => return response,
     };
-    let target = format!("http://{}:{}/v1/chat", server.spec.host, server.spec.port);
     let proxied_body = match serde_json::to_vec(&body) {
         Ok(body) => body,
         Err(error) => {
@@ -44,33 +43,51 @@ pub(crate) async fn proxy_chat_response(
         }
     };
 
-    let upstream = match state
+    let upstream = match send_chat_to_server(state, &server, proxied_body).await {
+        Ok(response) => response,
+        Err(response) => return response,
+    };
+
+    proxy_upstream_response(upstream).await
+}
+
+pub(crate) fn chat_server_manager(state: &DaemonHttpState) -> Result<ServerManager, HttpResponse> {
+    ServerManager::open_readonly(Some(state.home_dir())).map_err(server_error_response)
+}
+
+pub(crate) async fn send_chat_to_server(
+    state: &DaemonHttpState,
+    server: &ServerInspection,
+    proxied_body: Vec<u8>,
+) -> Result<reqwest::Response, HttpResponse> {
+    state
         .http_client()
-        .post(target)
+        .post(chat_target_url(server))
         .header(CONTENT_TYPE, "application/json")
         .body(proxied_body)
         .send()
         .await
-    {
-        Ok(response) => response,
-        Err(error) => {
-            return json_response(
-                502,
-                ErrorResponse {
-                    error: "server_proxy_failed",
-                    message: format!(
-                        "failed to proxy chat request to server `{}` at {}:{}: {error}. The server process is recorded as running, but the HTTP target may be unreachable; check `/v1/servers/{}/health`.",
-                        server.spec.short_ref,
-                        server.spec.host,
-                        server.spec.port,
-                        server.spec.short_ref
-                    ),
-                },
-            )
-        }
-    };
+        .map_err(|error| chat_proxy_failure(server, error))
+}
 
-    proxy_upstream_response(upstream).await
+fn chat_proxy_failure(server: &ServerInspection, error: reqwest::Error) -> HttpResponse {
+    json_response(
+        502,
+        ErrorResponse {
+            error: "server_proxy_failed",
+            message: format!(
+                "failed to proxy chat request to server `{}` at {}:{}: {error}. The server process is recorded as running, but the HTTP target may be unreachable; check `/v1/servers/{}/health`.",
+                server.spec.short_ref,
+                server.spec.host,
+                server.spec.port,
+                server.spec.short_ref
+            ),
+        },
+    )
+}
+
+pub(crate) fn chat_target_url(server: &ServerInspection) -> String {
+    format!("http://{}:{}/v1/chat", server.spec.host, server.spec.port)
 }
 
 fn chat_server_reference(value: Option<&Value>) -> Result<Option<String>, HttpResponse> {
@@ -95,7 +112,7 @@ fn chat_server_reference(value: Option<&Value>) -> Result<Option<String>, HttpRe
     Ok(Some(reference.to_string()))
 }
 
-fn select_chat_server(
+pub(crate) fn select_chat_server(
     manager: &ServerManager,
     reference: Option<&str>,
 ) -> Result<ServerInspection, HttpResponse> {
@@ -141,25 +158,12 @@ fn select_chat_server(
     }
 }
 
-async fn proxy_upstream_response(upstream: reqwest::Response) -> HttpResponse {
+pub(crate) async fn proxy_upstream_response(upstream: reqwest::Response) -> HttpResponse {
     let status_code = upstream.status().as_u16();
-    let content_type = upstream
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("application/octet-stream")
-        .to_string();
-    let cache_control = upstream
-        .headers()
-        .get(CACHE_CONTROL)
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_string);
+    let content_type = upstream_content_type(&upstream);
+    let cache_control = upstream_cache_control(&upstream);
 
-    if content_type
-        .split(';')
-        .next()
-        .is_some_and(|value| value.trim().eq_ignore_ascii_case("text/event-stream"))
-    {
+    if upstream_is_event_stream(&upstream) {
         return raw_response(
             status_code,
             content_type,
@@ -183,4 +187,28 @@ async fn proxy_upstream_response(upstream: reqwest::Response) -> HttpResponse {
             },
         ),
     }
+}
+
+pub(crate) fn upstream_is_event_stream(upstream: &reqwest::Response) -> bool {
+    upstream_content_type(upstream)
+        .split(';')
+        .next()
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("text/event-stream"))
+}
+
+pub(crate) fn upstream_content_type(upstream: &reqwest::Response) -> String {
+    upstream
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string()
+}
+
+pub(crate) fn upstream_cache_control(upstream: &reqwest::Response) -> Option<String> {
+    upstream
+        .headers()
+        .get(CACHE_CONTROL)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
 }

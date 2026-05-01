@@ -216,6 +216,29 @@ curl -sS -N http://127.0.0.1:8790/v1/chat \
     "temperature": 0.0,
     "stream": true
   }'
+curl -sS http://127.0.0.1:8790/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{
+    "model": "<server-ref>",
+    "messages": [
+      {"role": "user", "content": "Say hello in Traditional Chinese."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.0
+  }'
+curl -sS -N http://127.0.0.1:8790/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{
+    "model": "<server-ref>",
+    "messages": [
+      {"role": "user", "content": "Say hello in Traditional Chinese."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "stream": true
+  }'
 curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
 tentgent daemon stop
 ```
@@ -224,6 +247,9 @@ The daemon records process metadata under `TENTGENT_HOME/runtime` and exposes
 Rust HTTP health/status, read-only store discovery, and controlled server
 lifecycle endpoints. `POST /v1/chat` proxies to an already-running model-bound
 server and preserves both JSON and streaming Server-Sent Event responses.
+`POST /v1/chat/completions` offers a limited OpenAI-style success response for
+basic chat-completion clients; its `model` field selects a Tentgent server ref
+or unique prefix, not a provider model name.
 The daemon-only `server_ref` selector belongs on daemon `POST /v1/chat` requests;
 do not send it when calling the model-bound server port directly. Log diagnostics
 endpoints expose fixed daemon/server stdout and stderr paths for local debugging.

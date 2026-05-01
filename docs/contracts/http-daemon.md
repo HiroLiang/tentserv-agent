@@ -9,6 +9,8 @@ This document defines the first stable HTTP daemon boundary for the Rust
 - Serve JSON responses for daemon-owned routes and errors.
 - Pass through model-bound server chat response bodies and content types from
   `POST /v1/chat`, including Server-Sent Events.
+- Expose a limited OpenAI-style chat-completions compatibility route at
+  `POST /v1/chat/completions`.
 - Expose daemon health, status, read-only store discovery, controlled server
   lifecycle mutations, chat proxying, and log diagnostics.
 - Keep loopback-local daemon development usable without auth, while requiring a
@@ -488,6 +490,77 @@ Daemon-owned chat selection and proxy errors are JSON:
 
 If the selected server returns its own chat error, the daemon passes through that
 status, body, and content type unchanged.
+
+## OpenAI-Style Chat Completions
+
+`POST /v1/chat/completions` is a limited compatibility route for local clients
+that already send the OpenAI Chat Completions wire shape. Success responses are
+OpenAI-shaped. Daemon-owned errors keep the daemon JSON error shape.
+
+Request body:
+
+```json
+{
+  "model": "25ee5888595d",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello"
+    }
+  ],
+  "max_tokens": 128,
+  "temperature": 0.0,
+  "stream": false,
+  "adapter_ref": "optional-tentgent-adapter-ref"
+}
+```
+
+In this daemon compatibility route, `model` selects a Tentgent server reference
+or unique short prefix. It is not a provider model name. The selected server must
+already be running; the daemon does not auto-start stopped servers.
+
+MVP limits:
+
+- `messages[].content` must be a string
+- supported roles are `system`, `user`, and `assistant`
+- unsupported OpenAI request fields are ignored
+- multimodal content, tools/function calling, model-name routing, session
+  persistence, and OpenAI-compatible error objects are out of scope
+
+Non-streaming success responses map target `{ "text": "..." }` payloads into:
+
+```json
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "created": 1770000000,
+  "model": "25ee-full-server-ref",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}
+```
+
+Streaming success responses transform Tentgent server SSE into OpenAI-style
+chunks and end with `data: [DONE]`:
+
+```text
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-cache
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1770000000,"model":"25ee-full-server-ref","choices":[{"index":0,"delta":{"content":"H"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1770000000,"model":"25ee-full-server-ref","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+```
 
 ## Log Diagnostics
 

@@ -900,6 +900,251 @@ async fn chat_proxy_transport_failure_returns_502() {
         .contains("/health"));
 }
 
+#[tokio::test]
+async fn openai_chat_completions_requires_daemon_auth_when_token_enabled() {
+    let request = post("/v1/chat/completions", b"{}");
+    let state = state_with_token(unique_home("openai-auth"), "secret");
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 401);
+    assert_eq!(body["error"], "unauthorized");
+}
+
+#[tokio::test]
+async fn openai_chat_completions_validates_basic_request_shape() {
+    for body in [
+        br#"{"messages":[{"role":"user","content":"Hello"}]}"#.as_slice(),
+        br#"{"model":"abc","messages":[]}"#.as_slice(),
+        br#"{"model":"abc","messages":"bad"}"#.as_slice(),
+        br#"{"model":"abc","messages":[{"role":"tool","content":"Hello"}]}"#.as_slice(),
+        br#"{"model":"abc","messages":[{"role":"user","content":[{"type":"text","text":"Hello"}]}]}"#.as_slice(),
+        br#"{"model":"abc","messages":[{"role":"user","content":"Hello"}],"stream":"yes"}"#.as_slice(),
+        br#"{"model":"abc","messages":[{"role":"user","content":"Hello"}],"max_tokens":1.5}"#.as_slice(),
+        br#"{"model":"abc","messages":[{"role":"user","content":"Hello"}],"temperature":"cold"}"#.as_slice(),
+    ] {
+        let request = post("/v1/chat/completions", body);
+        let state = state_for(unique_home("openai-invalid-request"));
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+        assert_eq!(response.status_code, 400);
+        assert_eq!(body["error"], "bad_request");
+    }
+}
+
+#[tokio::test]
+async fn openai_chat_completions_model_uses_server_ref_not_provider_model_name() {
+    let request = post(
+        "/v1/chat/completions",
+        br#"{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"Hello"}]}"#,
+    );
+    let state = state_for(unique_home("openai-provider-model-name"));
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 404);
+    assert_eq!(body["error"], "not_found");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("Tentgent server ref"));
+}
+
+#[tokio::test]
+async fn openai_chat_completions_stopped_server_returns_409() {
+    let home = unique_home("openai-stopped-server");
+    let manager = ServerManager::new(Some(&home)).expect("server manager");
+    let outcome = manager
+        .prepare_run(ServerRunRequest {
+            runtime_ref: "openai:gpt-4.1-mini".to_string(),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(8904),
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect("server spec");
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","messages":[{{"role":"user","content":"Hello"}}]}}"#,
+            outcome.spec.short_ref
+        )
+        .as_bytes(),
+    );
+    let state = state_for(home);
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 409);
+    assert_eq!(body["error"], "server_not_running");
+}
+
+#[tokio::test]
+async fn openai_chat_completions_ambiguous_model_prefix_returns_409() {
+    let home = unique_home("openai-ambiguous-model");
+    write_cloud_server_spec(
+        &home,
+        "abcdef1111111111111111111111111111111111111111111111111111111111",
+    );
+    write_cloud_server_spec(
+        &home,
+        "abcdef2222222222222222222222222222222222222222222222222222222222",
+    );
+
+    let request = post(
+        "/v1/chat/completions",
+        br#"{"model":"abcdef","messages":[{"role":"user","content":"Hello"}]}"#,
+    );
+    let state = state_for(home);
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 409);
+    assert_eq!(body["error"], "ambiguous_ref");
+}
+
+#[tokio::test]
+async fn openai_chat_completions_maps_target_text_response() {
+    let (port, received_body) = spawn_mock_chat_server(
+        200,
+        "application/json; charset=utf-8",
+        br#"{"text":"hello","stream":false}"#,
+        true,
+    )
+    .await;
+    let home = unique_home("openai-chat-json");
+    let server_ref = create_running_cloud_server(&home, port);
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","messages":[{{"role":"user","content":"Hello"}}],"stream":false,"max_tokens":16,"temperature":0.1,"unsupported":"ignored"}}"#,
+            server_ref
+        )
+        .as_bytes(),
+    );
+    let state = state_for(home.clone());
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let proxied_body: Value =
+        serde_json::from_slice(&received_body.await.expect("mock received body"))
+            .expect("proxied json");
+
+    assert_eq!(response.status_code, 200);
+    assert!(body["id"].as_str().expect("id").starts_with("chatcmpl-"));
+    assert_eq!(body["object"], "chat.completion");
+    assert_eq!(body["model"], expanded_server_ref(&home, &server_ref));
+    assert_eq!(body["choices"][0]["message"]["role"], "assistant");
+    assert_eq!(body["choices"][0]["message"]["content"], "hello");
+    assert_eq!(body["choices"][0]["finish_reason"], "stop");
+    assert_eq!(proxied_body["messages"][0]["content"], "Hello");
+    assert_eq!(proxied_body["max_tokens"], 16);
+    assert_eq!(proxied_body["temperature"], 0.1);
+    assert!(proxied_body.get("unsupported").is_none());
+}
+
+#[tokio::test]
+async fn openai_chat_completions_preserves_target_error_json() {
+    let (port, _received_body) = spawn_mock_chat_server(
+        501,
+        "application/json; charset=utf-8",
+        br#"{"error":"stream_not_implemented","message":"nope"}"#,
+        true,
+    )
+    .await;
+    let home = unique_home("openai-target-error");
+    let server_ref = create_running_cloud_server(&home, port);
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","messages":[{{"role":"user","content":"Hello"}}],"stream":false}}"#,
+            server_ref
+        )
+        .as_bytes(),
+    );
+    let response = route_request(&request, &state_for(home)).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 501);
+    assert_eq!(body["error"], "stream_not_implemented");
+}
+
+#[tokio::test]
+async fn openai_chat_completions_rejects_unmappable_target_json() {
+    let (port, _received_body) = spawn_mock_chat_server(
+        200,
+        "application/json; charset=utf-8",
+        br#"{"message":{"role":"assistant","content":"hello"}}"#,
+        true,
+    )
+    .await;
+    let home = unique_home("openai-unmappable-json");
+    let server_ref = create_running_cloud_server(&home, port);
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","messages":[{{"role":"user","content":"Hello"}}]}}"#,
+            server_ref
+        )
+        .as_bytes(),
+    );
+    let response = route_request(&request, &state_for(home)).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 502);
+    assert_eq!(body["error"], "server_proxy_failed");
+}
+
+#[tokio::test]
+async fn openai_chat_completions_maps_tentgent_sse_to_openai_chunks() {
+    let sse = b"event: delta\ndata: {\"delta\":\"hi\"}\n\nevent: done\ndata: {\"finish_reason\":\"stop\"}\n\n";
+    let (port, _received_body) =
+        spawn_mock_chat_server(200, "text/event-stream; charset=utf-8", sse, false).await;
+    let home = unique_home("openai-chat-sse");
+    let server_ref = create_running_cloud_server(&home, port);
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","messages":[{{"role":"user","content":"Hello"}}],"stream":true}}"#,
+            server_ref
+        )
+        .as_bytes(),
+    );
+    let response = route_request(&request, &state_for(home)).await;
+    let content_type = response.content_type.clone();
+    let cache_control = response.cache_control.clone();
+    let body = String::from_utf8(collect_response_body(response).await).expect("utf8");
+
+    assert_eq!(content_type, "text/event-stream; charset=utf-8");
+    assert_eq!(cache_control.as_deref(), Some("no-cache"));
+    assert!(body.contains(r#""object":"chat.completion.chunk""#));
+    assert!(body.contains(r#""content":"hi""#));
+    assert!(body.contains(r#""finish_reason":"stop""#));
+    assert!(body.ends_with("data: [DONE]\n\n"));
+}
+
+#[tokio::test]
+async fn openai_chat_completions_transport_failure_returns_502() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("listener");
+    let port = listener.local_addr().expect("local addr").port();
+    drop(listener);
+    let home = unique_home("openai-transport-failure");
+    let server_ref = create_running_cloud_server(&home, port);
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","messages":[{{"role":"user","content":"Hello"}}]}}"#,
+            server_ref
+        )
+        .as_bytes(),
+    );
+    let response = route_request(&request, &state_for(home)).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 502);
+    assert_eq!(body["error"], "server_proxy_failed");
+}
+
 fn get(path: &str) -> HttpRequest {
     let (path, query_params) = test_split_target(path);
     HttpRequest {
@@ -953,6 +1198,7 @@ fn response_buffer(response: &HttpResponse) -> &[u8] {
     match &response.body {
         HttpBody::Buffered(body) => body,
         HttpBody::Proxy(_) => panic!("expected buffered response"),
+        HttpBody::Stream(_) => panic!("expected buffered response"),
     }
 }
 
@@ -970,6 +1216,13 @@ async fn collect_response_body(response: HttpResponse) -> Vec<u8> {
         HttpBody::Proxy(mut upstream) => {
             let mut body = Vec::new();
             while let Some(chunk) = upstream.chunk().await.expect("chunk") {
+                body.extend_from_slice(&chunk);
+            }
+            body
+        }
+        HttpBody::Stream(mut chunks) => {
+            let mut body = Vec::new();
+            while let Some(chunk) = chunks.recv().await {
                 body.extend_from_slice(&chunk);
             }
             body
@@ -996,6 +1249,15 @@ fn create_running_cloud_server(home: &Path, port: u16) -> String {
         )
         .expect("record process");
     outcome.spec.short_ref
+}
+
+fn expanded_server_ref(home: &Path, reference: &str) -> String {
+    ServerManager::open_readonly(Some(home))
+        .expect("server manager")
+        .inspect(reference)
+        .expect("server inspect")
+        .spec
+        .server_ref
 }
 
 fn write_cloud_server_spec(home: &Path, server_ref: &str) {

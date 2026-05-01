@@ -70,6 +70,7 @@ POST /v1/servers
 POST /v1/servers/{server_ref}/start
 POST /v1/servers/{server_ref}/stop
 POST /v1/chat
+POST /v1/chat/completions
 ```
 
 ## Execution Order
@@ -314,7 +315,7 @@ Review target:
 Add a compatibility route for tools that already know the OpenAI Chat
 Completions wire shape.
 
-Status: planned.
+Status: implemented in the active workspace.
 
 Goals:
 
@@ -325,7 +326,9 @@ Goals:
   same full refs or unique prefixes as `server_ref`
 - document that `model` selects a Tentgent server reference in this route, not a
   provider model name
-- return OpenAI-shaped non-streaming and streaming responses where practical
+- return OpenAI-shaped non-streaming and streaming success responses
+- keep daemon-owned errors in the existing `{ "error", "message" }` shape
+- ignore unsupported OpenAI fields in the MVP
 - document that this is a compatibility shim, not full OpenAI API compatibility
 
 Non-goals:
@@ -334,13 +337,17 @@ Non-goals:
 - do not support model-name based routing yet
 - do not auto-start servers from `/v1/chat/completions`
 - do not persist chat sessions
+- do not support multimodal message content
+- do not support OpenAI tools or function calling
+- do not provide full OpenAI-compatible error objects in this slice
 - do not encourage non-loopback binding; this route assumes the Slice 8 safety
   rules are already in place
 
 Review target:
 
-- common local SDK clients can call the daemon without custom Tentgent request
-  code for the first chat path
+- OpenAI-style local clients can send basic chat-completion requests to an
+  already-running Tentgent server through the daemon, while routing, auth, and
+  lifecycle behavior remains daemon-owned
 
 ### Slice 10: Runtime Launcher Package Boundary Cleanup
 

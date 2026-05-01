@@ -2,6 +2,7 @@ use miette::IntoDiagnostic;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
+    sync::mpsc,
 };
 
 const MAX_HEADER_BYTES: usize = 16 * 1024;
@@ -104,6 +105,7 @@ pub(crate) async fn write_response(
     let content_length = match &response.body {
         HttpBody::Buffered(body) => Some(body.len()),
         HttpBody::Proxy(_) => None,
+        HttpBody::Stream(_) => None,
     };
     let mut header = format!(
         "HTTP/1.1 {} {}\r\nContent-Type: {}\r\n",
@@ -129,6 +131,11 @@ pub(crate) async fn write_response(
         }
         HttpBody::Proxy(mut upstream) => {
             while let Some(chunk) = upstream.chunk().await.into_diagnostic()? {
+                stream.write_all(&chunk).await.into_diagnostic()?;
+            }
+        }
+        HttpBody::Stream(mut chunks) => {
+            while let Some(chunk) = chunks.recv().await {
                 stream.write_all(&chunk).await.into_diagnostic()?;
             }
         }
@@ -292,10 +299,23 @@ pub(crate) struct HttpResponse {
     pub(crate) body: HttpBody,
 }
 
-#[derive(Debug)]
 pub(crate) enum HttpBody {
     Buffered(Vec<u8>),
     Proxy(reqwest::Response),
+    Stream(mpsc::Receiver<Vec<u8>>),
+}
+
+impl std::fmt::Debug for HttpBody {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Buffered(body) => formatter
+                .debug_tuple("Buffered")
+                .field(&format_args!("{} bytes", body.len()))
+                .finish(),
+            Self::Proxy(_) => formatter.debug_tuple("Proxy").finish(),
+            Self::Stream(_) => formatter.debug_tuple("Stream").finish(),
+        }
+    }
 }
 
 #[cfg(test)]
