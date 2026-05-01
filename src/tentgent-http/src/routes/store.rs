@@ -291,7 +291,7 @@ fn model_item(summary: ModelSummary) -> ModelItem {
     model_item_from_parts(summary.metadata, &summary.store_path, None, None)
 }
 
-fn model_inspection_item(inspection: ModelInspection) -> ModelItem {
+pub(crate) fn model_inspection_item(inspection: ModelInspection) -> ModelItem {
     model_item_from_parts(
         inspection.metadata,
         &inspection.store_path,
@@ -332,7 +332,7 @@ fn adapter_item(summary: AdapterSummary) -> AdapterItem {
     adapter_item_from_parts(summary.metadata, &summary.store_path, None, None)
 }
 
-fn adapter_inspection_item(inspection: AdapterInspection) -> AdapterItem {
+pub(crate) fn adapter_inspection_item(inspection: AdapterInspection) -> AdapterItem {
     adapter_item_from_parts(
         inspection.metadata,
         &inspection.store_path,
@@ -377,7 +377,7 @@ fn dataset_item(summary: DatasetSummary) -> DatasetItem {
     dataset_item_from_parts(summary.metadata, &summary.store_path, None, None)
 }
 
-fn dataset_inspection_item(inspection: DatasetInspection) -> DatasetItem {
+pub(crate) fn dataset_inspection_item(inspection: DatasetInspection) -> DatasetItem {
     dataset_item_from_parts(
         inspection.metadata,
         &inspection.store_path,

@@ -211,6 +211,109 @@ async fn model_delete_rejects_body_auth_ambiguous_path_and_in_use_cases() {
 }
 
 #[tokio::test]
+async fn model_import_works_repeats_and_validates_inputs() {
+    let home = unique_home("model-import");
+    let source = write_model_import_source(&home);
+    let state = state_for(home.clone());
+
+    let response = route_request(
+        &post(
+            "/v1/models/import",
+            format!(r#"{{"path":"{}"}}"#, path_string(&source)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let model_ref = body["model"]["model_ref"].as_str().expect("model_ref");
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["mutation"]["kind"], "import");
+    assert_eq!(body["mutation"]["deduplicated"], false);
+    assert_eq!(body["model"]["source_path"], path_string(&source));
+
+    let repeated = route_request(
+        &post(
+            "/v1/models/import",
+            format!(r#"{{"path":"{}"}}"#, path_string(&source)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let repeated_body: Value = serde_json::from_slice(response_buffer(&repeated)).expect("json");
+    assert_eq!(repeated.status_code, 200);
+    assert_eq!(repeated_body["model"]["model_ref"], model_ref);
+    assert_eq!(repeated_body["mutation"]["deduplicated"], true);
+
+    for (payload, expected_status, expected_error) in [
+        (
+            r#"{"path":"relative/model"}"#.to_string(),
+            400,
+            "bad_request",
+        ),
+        (r#"{"path":" "}"#.to_string(), 400, "bad_request"),
+        (
+            format!(r#"{{"path":"{}"}}"#, path_string(&home.join("missing"))),
+            404,
+            "path_not_found",
+        ),
+        (
+            format!(r#"{{"path":"{}","force":true}}"#, path_string(&source)),
+            400,
+            "bad_request",
+        ),
+    ] {
+        let response = route_request(&post("/v1/models/import", payload.as_bytes()), &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+        assert_eq!(response.status_code, expected_status);
+        assert_eq!(body["error"], expected_error);
+    }
+
+    let unsupported = home.join("fixtures/unsupported-model");
+    fs::create_dir_all(&unsupported).expect("unsupported dir");
+    fs::write(unsupported.join("README.md"), "no model").expect("unsupported file");
+    let response = route_request(
+        &post(
+            "/v1/models/import",
+            format!(r#"{{"path":"{}"}}"#, path_string(&unsupported)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    assert_eq!(response.status_code, 400);
+    assert_eq!(body["error"], "unsupported_layout");
+}
+
+#[tokio::test]
+async fn pull_routes_validate_repo_id_and_revision_without_network() {
+    let state = state_for(unique_home("pull-validation"));
+    for (path, payload) in [
+        ("/v1/models/pull", br#"{"repo_id":""}"#.as_slice()),
+        (
+            "/v1/models/pull",
+            br#"{"repo_id":"https://huggingface.co/owner/name"}"#.as_slice(),
+        ),
+        (
+            "/v1/models/pull",
+            br#"{"repo_id":"owner/name/tree/main"}"#.as_slice(),
+        ),
+        (
+            "/v1/adapters/pull",
+            br#"{"repo_id":"owner/name","revision":" "}"#.as_slice(),
+        ),
+        (
+            "/v1/adapters/pull",
+            br#"{"repo_id":"owner/name","unknown":true}"#.as_slice(),
+        ),
+    ] {
+        let response = route_request(&post(path, payload), &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+        assert_eq!(response.status_code, 400);
+        assert_eq!(body["error"], "bad_request");
+    }
+}
+
+#[tokio::test]
 async fn adapters_returns_empty_array_for_isolated_home() {
     let request = get("/v1/adapters");
     let state = state_for(unique_home("adapters-empty"));
@@ -254,6 +357,46 @@ async fn adapter_inspect_and_delete_work_and_in_use_is_protected() {
 }
 
 #[tokio::test]
+async fn adapter_import_and_bind_work_with_daemon_home_model_lookup() {
+    let home = unique_home("adapter-import-bind");
+    let model_ref = "999999999999000000000000";
+    write_model_fixture(&home, model_ref);
+    let source = write_adapter_import_source(&home);
+    let state = state_for(home.clone());
+
+    let import = route_request(
+        &post(
+            "/v1/adapters/import",
+            format!(r#"{{"path":"{}"}}"#, path_string(&source)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let import_body: Value = serde_json::from_slice(response_buffer(&import)).expect("json");
+    let adapter_ref = import_body["adapter"]["adapter_ref"]
+        .as_str()
+        .expect("adapter_ref")
+        .to_string();
+    assert_eq!(import.status_code, 200);
+    assert_eq!(import_body["mutation"]["kind"], "import");
+    assert_eq!(import_body["adapter"]["base_model_ref"], Value::Null);
+
+    let bind = route_request(
+        &post(
+            &format!("/v1/adapters/{}/bind", &adapter_ref[..12]),
+            format!(r#"{{"base_model_ref":"{}"}}"#, &model_ref[..12]).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let bind_body: Value = serde_json::from_slice(response_buffer(&bind)).expect("json");
+    assert_eq!(bind.status_code, 200);
+    assert_eq!(bind_body["mutation"]["kind"], "bind");
+    assert_eq!(bind_body["mutation"]["base_model_ref"], model_ref);
+    assert_eq!(bind_body["adapter"]["base_model_ref"], model_ref);
+}
+
+#[tokio::test]
 async fn datasets_returns_empty_array_for_isolated_home() {
     let request = get("/v1/datasets");
     let state = state_for(unique_home("datasets-empty"));
@@ -293,6 +436,63 @@ async fn dataset_inspect_and_delete_work() {
     let missing_body: Value = serde_json::from_slice(response_buffer(&missing)).expect("json");
     assert_eq!(missing.status_code, 404);
     assert_eq!(missing_body["error"], "not_found");
+}
+
+#[tokio::test]
+async fn dataset_import_works_and_repeats() {
+    let home = unique_home("dataset-import");
+    let source = write_dataset_import_source(&home);
+    let state = state_for(home.clone());
+
+    let first = route_request(
+        &post(
+            "/v1/datasets/import",
+            format!(r#"{{"path":"{}"}}"#, path_string(&source)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let first_body: Value = serde_json::from_slice(response_buffer(&first)).expect("json");
+    assert_eq!(first.status_code, 200);
+    assert_eq!(first_body["mutation"]["kind"], "import");
+    assert_eq!(first_body["mutation"]["deduplicated"], false);
+    assert_eq!(first_body["dataset"]["tuning_ready"], true);
+
+    let second = route_request(
+        &post(
+            "/v1/datasets/import",
+            format!(r#"{{"path":"{}"}}"#, path_string(&source)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let second_body: Value = serde_json::from_slice(response_buffer(&second)).expect("json");
+    assert_eq!(second.status_code, 200);
+    assert_eq!(
+        second_body["dataset"]["dataset_ref"],
+        first_body["dataset"]["dataset_ref"]
+    );
+    assert_eq!(second_body["mutation"]["deduplicated"], true);
+}
+
+#[tokio::test]
+async fn store_mutation_routes_are_static_and_protected() {
+    let home = unique_home("store-mutation-static-auth");
+    let state = state_for(home.clone());
+
+    let get_import = route_request(&get("/v1/models/import"), &state).await;
+    assert_eq!(get_import.status_code, 405);
+
+    let delete_pull = route_request(&delete("/v1/models/pull", b""), &state).await;
+    assert_eq!(delete_pull.status_code, 405);
+
+    let token_state = state_with_token(home, "secret");
+    let unauthorized = route_request(
+        &post("/v1/datasets/import", br#"{"path":"/tmp/nope"}"#),
+        &token_state,
+    )
+    .await;
+    assert_eq!(unauthorized.status_code, 401);
 }
 
 #[tokio::test]
@@ -1716,6 +1916,13 @@ imported_at = "2026-05-01T00:00:00Z"
     .expect("model metadata");
 }
 
+fn write_model_import_source(home: &Path) -> PathBuf {
+    let source = home.join("fixtures/import-model");
+    fs::create_dir_all(&source).expect("model import source dir");
+    fs::write(source.join("model.safetensors"), b"model").expect("model import file");
+    source.canonicalize().expect("canonical model source")
+}
+
 fn write_adapter_fixture(home: &Path, adapter_ref: &str) {
     let store_dir = home.join("adapters/store").join(adapter_ref);
     fs::create_dir_all(store_dir.join("source")).expect("adapter source dir");
@@ -1739,6 +1946,13 @@ imported_at = "2026-05-01T00:00:00Z"
         ),
     )
     .expect("adapter metadata");
+}
+
+fn write_adapter_import_source(home: &Path) -> PathBuf {
+    let source = home.join("fixtures/import-adapter");
+    fs::create_dir_all(&source).expect("adapter import source dir");
+    fs::write(source.join("adapter_model.safetensors"), b"adapter").expect("adapter import file");
+    source.canonicalize().expect("canonical adapter source")
 }
 
 fn write_dataset_fixture(home: &Path, dataset_ref: &str) {
@@ -1769,6 +1983,17 @@ train = "train.jsonl"
         ),
     )
     .expect("dataset metadata");
+}
+
+fn write_dataset_import_source(home: &Path) -> PathBuf {
+    let source = home.join("fixtures/import-dataset");
+    fs::create_dir_all(&source).expect("dataset import source dir");
+    fs::write(
+        source.join("train.jsonl"),
+        r#"{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]}"#,
+    )
+    .expect("dataset import file");
+    source.canonicalize().expect("canonical dataset source")
 }
 
 fn write_session_fixture(

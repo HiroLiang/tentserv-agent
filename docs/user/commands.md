@@ -259,6 +259,31 @@ explicit `--allow-unsafe-bind` flag.
 Inspect and remove managed store entries through the daemon:
 
 ```bash
+curl -sS http://127.0.0.1:8790/v1/models/import \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"path":"/absolute/path/on/daemon-host/model"}'
+curl -sS http://127.0.0.1:8790/v1/models/pull \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"repo_id":"owner/name","revision":null}'
+curl -sS http://127.0.0.1:8790/v1/adapters/import \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"path":"/absolute/path/on/daemon-host/adapter","base_model_ref":"<model-ref>"}'
+curl -sS http://127.0.0.1:8790/v1/adapters/<adapter-ref>/bind \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"base_model_ref":"<model-ref>"}'
+curl -sS http://127.0.0.1:8790/v1/datasets/import \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"path":"/absolute/path/on/daemon-host/dataset"}'
 curl -sS http://127.0.0.1:8790/v1/models/<model-ref> \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS -X DELETE http://127.0.0.1:8790/v1/models/<model-ref> \
@@ -274,6 +299,10 @@ curl -sS -X DELETE http://127.0.0.1:8790/v1/datasets/<dataset-ref> \
 curl -sS -X DELETE http://127.0.0.1:8790/v1/servers/<server-ref> \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 ```
+
+Import paths are read from the daemon host filesystem, must be absolute, and
+may expose local source/store paths in responses. Pull endpoints are synchronous
+MVP calls and may outlive short client timeouts on large downloads.
 
 Server delete removes a stopped server spec only. Stop a running server before
 deleting it. Model and adapter delete may return `409 in_use` when server specs

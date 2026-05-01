@@ -388,6 +388,26 @@ curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/start \
 curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/health
 curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/logs
 curl -sS 'http://127.0.0.1:8790/v1/servers/<server-ref>/logs/stderr?tail_bytes=4096'
+curl -sS http://127.0.0.1:8790/v1/models/import \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"path":"/absolute/path/on/daemon-host/model"}'
+curl -sS http://127.0.0.1:8790/v1/adapters/import \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"path":"/absolute/path/on/daemon-host/adapter","base_model_ref":"<model-ref>"}'
+curl -sS http://127.0.0.1:8790/v1/adapters/<adapter-ref>/bind \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"base_model_ref":"<model-ref>"}'
+curl -sS http://127.0.0.1:8790/v1/datasets/import \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"path":"/absolute/path/on/daemon-host/dataset"}'
 curl -sS http://127.0.0.1:8790/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{
@@ -455,9 +475,14 @@ or unique prefix, not a provider model name. Use
 `GET /v1/servers/<server-ref>/health` to distinguish process state from target
 HTTP reachability before sending chat. Use the daemon and server log diagnostics
 endpoints to inspect fixed stdout/stderr log paths without accepting arbitrary
-filesystem paths. Store inspect and remove parity is available through
+filesystem paths. Store import, pull, inspect, and remove parity is available through
+`POST /v1/models/import`, `POST /v1/models/pull`,
+`POST /v1/adapters/import`, `POST /v1/adapters/pull`,
+`POST /v1/adapters/<ref>/bind`, `POST /v1/datasets/import`,
 `GET`/`DELETE /v1/models/<ref>`, `/v1/adapters/<ref>`, `/v1/datasets/<ref>`,
 and `DELETE /v1/servers/<ref>`; server delete removes stopped specs only.
+Import paths are absolute paths on the daemon host. Pull endpoints are
+synchronous MVP calls and do not expose progress or cancellation yet.
 Request logs are emitted to stderr with peer, method, path, status, and elapsed
 time fields. Auth failures never log token or header values.
 

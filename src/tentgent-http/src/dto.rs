@@ -84,6 +84,12 @@ pub(crate) struct ModelResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct ModelMutationResponse {
+    pub(crate) model: ModelItem,
+    pub(crate) mutation: StoreMutationItem,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct RemoveModelResponse {
     pub(crate) removed: RemovedModelItem,
     pub(crate) model: ModelItem,
@@ -125,6 +131,12 @@ pub(crate) struct AdaptersResponse {
 #[derive(Debug, Serialize)]
 pub(crate) struct AdapterResponse {
     pub(crate) adapter: AdapterItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AdapterMutationResponse {
+    pub(crate) adapter: AdapterItem,
+    pub(crate) mutation: StoreMutationItem,
 }
 
 #[derive(Debug, Serialize)]
@@ -181,6 +193,12 @@ pub(crate) struct DatasetResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct DatasetMutationResponse {
+    pub(crate) dataset: DatasetItem,
+    pub(crate) mutation: StoreMutationItem,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct RemoveDatasetResponse {
     pub(crate) removed: RemovedDatasetItem,
     pub(crate) dataset: DatasetItem,
@@ -223,6 +241,21 @@ pub(crate) struct DatasetSplitsItem {
     pub(crate) test: Option<String>,
     pub(crate) eval_cases: Option<String>,
     pub(crate) source_manifest: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct StoreMutationItem {
+    pub(crate) kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) deduplicated: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) store_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) source_index_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) base_index_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) base_model_ref: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -436,4 +469,38 @@ pub(crate) struct CreateServerRequest {
     #[serde(default)]
     pub(crate) lazy_load: bool,
     pub(crate) idle_seconds: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StoreImportRequest {
+    pub(crate) path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AdapterImportRequest {
+    pub(crate) path: String,
+    pub(crate) base_model_ref: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StorePullRequest {
+    pub(crate) repo_id: String,
+    pub(crate) revision: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AdapterPullRequest {
+    pub(crate) repo_id: String,
+    pub(crate) revision: Option<String>,
+    pub(crate) base_model_ref: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AdapterBindRequest {
+    pub(crate) base_model_ref: String,
 }

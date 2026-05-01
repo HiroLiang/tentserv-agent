@@ -84,6 +84,12 @@ POST /v1/servers/{server_ref}/start
 POST /v1/servers/{server_ref}/stop
 POST /v1/chat
 POST /v1/chat/completions
+POST /v1/models/import
+POST /v1/models/pull
+POST /v1/adapters/import
+POST /v1/adapters/pull
+POST /v1/adapters/{adapter_ref}/bind
+POST /v1/datasets/import
 DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
 DELETE /v1/datasets/{dataset_ref}
@@ -443,15 +449,17 @@ Review target:
 
 ### Slice 13: Store Import And Pull Mutations
 
-Status: planned.
+Status: implemented in the active workspace.
 
 Goals:
 
 - add model import and Hugging Face pull endpoints
 - add adapter import, pull, and bind endpoints
 - add dataset import endpoints
-- keep long-running local file and network operations explicit in the response
-  contract
+- require strict JSON bodies, daemon-host absolute import paths, and static
+  route matching before dynamic refs
+- run synchronous filesystem and pull mutations without blocking the async
+  accept loop
 
 Review target:
 
@@ -552,3 +560,5 @@ Closed decisions:
   instead of adding a dedicated runtime crate.
 - Slice 11 keeps sessions read-only and separate from `tentgent.chat.v1`;
   training/eval export remains future work.
+- Slice 13 keeps store import/pull synchronous and leaves progress, cancellation,
+  and job APIs to later dataset/training slices.

@@ -5,6 +5,7 @@ pub(crate) mod openai;
 pub(crate) mod session;
 pub(crate) mod status;
 pub(crate) mod store;
+pub(crate) mod store_mutation;
 
 use crate::{
     app::DaemonHttpState,
@@ -80,6 +81,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
             let reference = session::session_messages_path(path).expect("checked path");
             session::session_messages_response(state, request, reference)
         }
+        path if store_mutation_path(path) => method_not_allowed(request),
         path if path.starts_with("/v1/sessions/") => {
             let reference = path.trim_start_matches("/v1/sessions/");
             if reference.is_empty() || reference.contains('/') {
@@ -121,6 +123,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
 
 async fn route_delete(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
     match request.path.as_str() {
+        path if store_mutation_path(path) => method_not_allowed(request),
         path if store_ref_path(path, "/v1/models/").is_some() => {
             let reference = store_ref_path(path, "/v1/models/").expect("checked path");
             store::remove_model_response(state, request, reference)
@@ -151,6 +154,21 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
         "/v1/chat/completions" => openai::chat_completions_response(state, request).await,
         "/v1/chat" => chat::proxy_chat_response(state, request).await,
         "/v1/servers" => lifecycle::create_server_response(state, request),
+        "/v1/models/import" => store_mutation::import_model_response(state, request).await,
+        "/v1/models/pull" => store_mutation::pull_model_response(state, request).await,
+        "/v1/adapters/import" => store_mutation::import_adapter_response(state, request).await,
+        "/v1/adapters/pull" => store_mutation::pull_adapter_response(state, request).await,
+        "/v1/datasets/import" => store_mutation::import_dataset_response(state, request).await,
+        path if adapter_bind_path(path).is_some() => {
+            let reference = adapter_bind_path(path).expect("checked path");
+            store_mutation::bind_adapter_response(state, request, reference).await
+        }
+        path if path.starts_with("/v1/models/")
+            || path.starts_with("/v1/adapters/")
+            || path.starts_with("/v1/datasets/") =>
+        {
+            method_not_allowed(request)
+        }
         path if path.starts_with("/v1/servers/") => match server_action_path(path) {
             Some((reference, ServerAction::Start)) => {
                 lifecycle::start_server_response(state, reference, request).await
@@ -201,6 +219,26 @@ fn server_health_path(path: &str) -> Option<&str> {
         return None;
     }
     Some(reference)
+}
+
+fn adapter_bind_path(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/v1/adapters/")?;
+    let reference = rest.strip_suffix("/bind")?;
+    if reference.is_empty() || reference.contains('/') {
+        return None;
+    }
+    Some(reference)
+}
+
+fn store_mutation_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/v1/models/import"
+            | "/v1/models/pull"
+            | "/v1/adapters/import"
+            | "/v1/adapters/pull"
+            | "/v1/datasets/import"
+    ) || adapter_bind_path(path).is_some()
 }
 
 #[cfg(test)]

@@ -311,7 +311,8 @@ impl AdapterManager {
         let store_path = self.paths.adapter_dir(&metadata.adapter_ref);
         let previous_base_model_ref = metadata.base_model_ref.clone();
         let config = read_adapter_config(&self.paths.source_dir(&metadata.adapter_ref))?;
-        let base_model = resolve_base_model(Some(base_model_reference))?
+        let base_model = self
+            .resolve_base_model(Some(base_model_reference))?
             .expect("base model reference is always provided");
 
         validate_base_compatibility(config.as_ref(), Some(&base_model))?;
@@ -369,7 +370,7 @@ impl AdapterManager {
         let manifest = build_manifest(&staged_source_dir)?;
         let adapter_format = detect_adapter_format(&manifest)?;
         let config = read_adapter_config(&staged_source_dir)?;
-        let base_model = resolve_base_model(base_model_ref)?;
+        let base_model = self.resolve_base_model(base_model_ref)?;
         validate_base_compatibility(config.as_ref(), base_model.as_ref())?;
         let canonical_manifest = manifest.canonical_json_bytes()?;
         let adapter_ref = hash::sha256_bytes(&canonical_manifest);
@@ -452,6 +453,18 @@ impl AdapterManager {
             .join(format!("{prefix}-{millis}-{}", std::process::id()));
         fs::create_dir_all(&stage_root)?;
         Ok(stage_root)
+    }
+
+    fn resolve_base_model(
+        &self,
+        reference: Option<&str>,
+    ) -> Result<Option<ModelMetadata>, AdapterError> {
+        let Some(reference) = reference else {
+            return Ok(None);
+        };
+
+        let manager = ModelManager::open_readonly_with_home(Some(&self.paths.home_dir))?;
+        Ok(Some(manager.inspect(reference)?.metadata))
     }
 
     fn write_source_index(
@@ -714,15 +727,6 @@ fn read_adapter_config(source_dir: &Path) -> Result<Option<AdapterConfig>, Adapt
 
     let body = fs::read_to_string(path)?;
     Ok(Some(serde_json::from_str(&body)?))
-}
-
-fn resolve_base_model(reference: Option<&str>) -> Result<Option<ModelMetadata>, AdapterError> {
-    let Some(reference) = reference else {
-        return Ok(None);
-    };
-
-    let manager = ModelManager::new()?;
-    Ok(Some(manager.inspect(reference)?.metadata))
 }
 
 fn validate_base_compatibility(

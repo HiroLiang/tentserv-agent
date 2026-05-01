@@ -109,6 +109,7 @@ pub struct AdapterMetadata {
 
 #[derive(Debug, Clone)]
 pub struct AdapterStorePaths {
+    pub home_dir: PathBuf,
     pub adapters_dir: PathBuf,
     pub store_dir: PathBuf,
     pub by_base_dir: PathBuf,
@@ -133,6 +134,7 @@ impl AdapterStorePaths {
         let by_source_dir = adapters_dir.join("by-source");
 
         Ok(Self {
+            home_dir: home_dir.clone(),
             store_dir: adapters_dir.join("store"),
             by_base_dir: adapters_dir.join("by-base"),
             hf_index_dir: by_source_dir.join("hf"),

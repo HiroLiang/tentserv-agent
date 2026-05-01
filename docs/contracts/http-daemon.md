@@ -12,8 +12,8 @@ This document defines the first stable HTTP daemon boundary for the Rust
 - Expose a limited OpenAI-style chat-completions compatibility route at
   `POST /v1/chat/completions`.
 - Expose daemon health, status, read-only store discovery, controlled server
-  lifecycle mutations, chat proxying, log diagnostics, and read-only session
-  discovery.
+  lifecycle mutations, store import/pull mutations, chat proxying, log
+  diagnostics, and read-only session discovery.
 - Keep loopback-local daemon development usable without auth, while requiring a
   token or explicit unsafe flag for non-loopback and wildcard binds.
 
@@ -404,6 +404,70 @@ and returns:
   }
 }
 ```
+
+## Store Import And Pull Mutations
+
+The daemon can populate managed stores with strict, synchronous JSON mutation
+endpoints:
+
+```text
+POST /v1/models/import
+POST /v1/models/pull
+POST /v1/adapters/import
+POST /v1/adapters/pull
+POST /v1/adapters/{adapter_ref}/bind
+POST /v1/datasets/import
+```
+
+Import paths are absolute paths on the daemon host filesystem, not the HTTP
+client machine. They are canonicalized before core import. These endpoints may
+return local source and store paths; this is intended for loopback-local daemon
+usage.
+
+```json
+{ "path": "/absolute/path/on/daemon-host" }
+{ "path": "/absolute/path/on/daemon-host", "base_model_ref": "optional" }
+{ "repo_id": "owner/name", "revision": null }
+{ "repo_id": "owner/name", "revision": "main", "base_model_ref": "optional" }
+{ "base_model_ref": "model-ref-or-prefix" }
+```
+
+Request bodies reject unknown fields. `repo_id` must be a Hugging Face repo id
+such as `owner/name`, not a URL or `/tree/...` path. Omitted or `null`
+`revision` uses the core default; blank `revision` returns JSON `400`.
+Omitted, `null`, or blank `base_model_ref` means no base binding for adapter
+import or pull.
+
+Successful responses return the stable inspect shape plus a mutation summary:
+
+```json
+{
+  "model": {
+    "...": "same shape as GET /v1/models/{model_ref}"
+  },
+  "mutation": {
+    "kind": "import",
+    "deduplicated": false,
+    "store_path": "/path/to/models/store/8fac...",
+    "source_index_path": "/path/to/models/by-source/local/..."
+  }
+}
+```
+
+`mutation.kind` is `import`, `pull`, or `bind`. Adapter import and pull include
+`base_index_path` only when core writes one. Adapter bind returns the updated
+adapter inspect shape and `mutation.base_model_ref` with the resolved full model
+ref.
+
+Local missing paths return `404 path_not_found`; unsupported local layouts
+return `400 unsupported_layout`; ambiguous refs return `409 ambiguous_ref`;
+adapter base mismatches return `409 base_model_mismatch`; provider auth failures
+return `409 provider_auth_failed`; Hugging Face helper invocation/output
+failures return `502 pull_failed`; unexpected store mutation failures return
+`500 store_mutation_failed`.
+
+These endpoints are synchronous MVP calls. Large local imports or Hugging Face
+pulls may exceed client timeouts until future job/progress APIs exist.
 
 ## Store Inspect And Remove Mutations
 
