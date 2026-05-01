@@ -247,6 +247,25 @@ Inspect stored plans:
 ./target/debug/tentgent train lora plan rm <plan-ref>
 ```
 
+Daemon train-plan parity:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/train/lora/plans/preview \
+  -H 'Content-Type: application/json' \
+  -d '{"model_ref":"<model-ref>","dataset_ref":"<dataset-ref>","backend":"auto","overrides":{"rank":8,"max_steps":100}}'
+
+curl -sS http://127.0.0.1:8790/v1/train/lora/plans \
+  -H 'Content-Type: application/json' \
+  -d '{"model_ref":"<model-ref>","dataset_ref":"<dataset-ref>","backend":"auto"}'
+
+curl -sS http://127.0.0.1:8790/v1/train/lora/plans
+curl -sS http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>
+curl -sS -X DELETE http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>
+```
+
+HTTP plan deletion refuses plans with run records. Use the CLI for actual
+training runs until the daemon run API is implemented.
+
 Run the current orchestration scaffold:
 
 ```bash

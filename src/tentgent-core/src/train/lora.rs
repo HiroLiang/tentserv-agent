@@ -1,4 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::{dataset::DatasetManager, model::ModelManager};
 
@@ -24,11 +27,41 @@ pub struct LoraTrainPlanManager {
 impl LoraTrainPlanManager {
     pub fn new() -> Result<Self, TrainError> {
         let paths = LoraTrainStorePaths::resolve()?;
-        paths.ensure_layout()?;
+        Self::from_paths(paths, None, true)
+    }
+
+    pub fn new_with_home(home_override: Option<&Path>) -> Result<Self, TrainError> {
+        let paths = LoraTrainStorePaths::resolve_with_home(home_override)?;
+        Self::from_paths(paths, home_override, true)
+    }
+
+    pub fn open_readonly_with_home(home_override: Option<&Path>) -> Result<Self, TrainError> {
+        let paths = LoraTrainStorePaths::resolve_with_home(home_override)?;
+        Self::from_paths(paths, home_override, false)
+    }
+
+    fn from_paths(
+        paths: LoraTrainStorePaths,
+        home_override: Option<&Path>,
+        ensure_layout: bool,
+    ) -> Result<Self, TrainError> {
+        if ensure_layout {
+            paths.ensure_layout()?;
+        }
+        let model_manager = if ensure_layout {
+            ModelManager::new_with_home(home_override)?
+        } else {
+            ModelManager::open_readonly_with_home(home_override)?
+        };
+        let dataset_manager = if ensure_layout {
+            DatasetManager::new_with_home(home_override)?
+        } else {
+            DatasetManager::open_readonly_with_home(home_override)?
+        };
         Ok(Self {
+            model_manager,
+            dataset_manager,
             paths,
-            model_manager: ModelManager::new()?,
-            dataset_manager: DatasetManager::new()?,
         })
     }
 
@@ -218,6 +251,9 @@ impl LoraTrainPlanManager {
         }
 
         let mut matches = Vec::new();
+        if !self.paths.plans_dir.exists() {
+            return Err(TrainError::PlanNotFound(reference.to_string()));
+        }
         for entry in fs::read_dir(&self.paths.plans_dir)? {
             let entry = entry?;
             if !entry.file_type()?.is_dir() {

@@ -13,7 +13,8 @@ This document defines the first stable HTTP daemon boundary for the Rust
   `POST /v1/chat/completions`.
 - Expose daemon health, status, read-only store discovery, controlled server
   lifecycle mutations, store import/pull mutations, deterministic dataset
-  tooling, chat proxying, log diagnostics, and read-only session discovery.
+  tooling, cloud dataset tooling, LoRA train-plan management, chat proxying,
+  log diagnostics, and read-only session discovery.
 - Keep loopback-local daemon development usable without auth, while requiring a
   token or explicit unsafe flag for non-loopback and wildcard binds.
 
@@ -721,6 +722,85 @@ provider auth failures return `409 provider_auth_failed`. Provider/runtime
 failures return `502 dataset_synth_failed` or `502 dataset_eval_failed` with
 debug artifact paths when available, but never raw provider output or raw
 request content.
+
+## LoRA Train Plans
+
+The daemon exposes LoRA train-plan management without starting training runs:
+
+```text
+GET /v1/train/lora/plans
+POST /v1/train/lora/plans/preview
+POST /v1/train/lora/plans
+GET /v1/train/lora/plans/{plan_ref}
+DELETE /v1/train/lora/plans/{plan_ref}
+```
+
+`POST /v1/train/lora/plans/preview` validates and renders a plan but does not
+write `plan.toml`. `POST /v1/train/lora/plans` writes or reuses the normalized
+recipe. Requests are strict JSON:
+
+```json
+{
+  "model_ref": "model-ref-or-prefix",
+  "dataset_ref": "dataset-ref-or-prefix",
+  "name": "optional display name",
+  "backend": "auto",
+  "overrides": {
+    "max_seq_length": 1024,
+    "mask_prompt": true,
+    "rank": 8,
+    "learning_rate": 0.0001,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 4,
+    "max_steps": 100,
+    "seed": 42,
+    "mlx_num_layers": 8,
+    "mlx_grad_checkpoint": true,
+    "peft_load_in_4bit": false,
+    "peft_load_in_8bit": false
+  }
+}
+```
+
+`backend` defaults to `auto`. Numeric override values must be positive, and
+`peft_load_in_4bit` cannot be combined with `peft_load_in_8bit`. `name` is
+display metadata and does not participate in plan identity; repeated creates of
+the same recipe return the existing plan and do not rename it.
+
+Preview responses include `persisted:false`, `would_plan_dir`, and
+`would_plan_path`. Create responses include `created`, `deduplicated`,
+`run_count`, `plan_dir`, and `plan_path`. Blocked recipes return `200` with
+`plan.status: "blocked"` and `blockers`; malformed requests return
+`400 bad_request`.
+
+`GET /v1/train/lora/plans` returns summaries sorted by `created_at` descending
+and then `plan_ref` ascending:
+
+```json
+{
+  "plans": [
+    {
+      "plan_ref": "plan-ref",
+      "short_ref": "plan-short",
+      "name": null,
+      "status": "ready",
+      "requested_backend": "auto",
+      "backend": "mlx",
+      "model_ref": "model-ref",
+      "dataset_ref": "dataset-ref",
+      "created_at": "2026-05-01T00:00:00Z",
+      "run_count": 0,
+      "plan_dir": "/path/to/train/lora/plans/plan-ref",
+      "plan_path": "/path/to/train/lora/plans/plan-ref/plan.toml"
+    }
+  ]
+}
+```
+
+`GET /v1/train/lora/plans/{plan_ref}` returns the full plan, run count, plan
+path, and runs path. `DELETE` succeeds only for plans with zero runs and returns
+pre-removal metadata. Plans with run records return `409 in_use`; callers should
+use future run cleanup APIs before deleting those plans.
 
 ## Store Inspect And Remove Mutations
 

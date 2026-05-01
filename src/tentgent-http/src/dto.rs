@@ -583,6 +583,104 @@ pub(crate) struct SessionWarningItem {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct TrainPlansResponse {
+    pub(crate) plans: Vec<TrainPlanSummaryItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainPlanPreviewResponse {
+    pub(crate) plan: TrainPlanItem,
+    pub(crate) preview: TrainPlanPreviewItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainPlanCreateResponse {
+    pub(crate) plan: TrainPlanItem,
+    pub(crate) created: bool,
+    pub(crate) deduplicated: bool,
+    pub(crate) run_count: usize,
+    pub(crate) plan_dir: String,
+    pub(crate) plan_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainPlanResponse {
+    pub(crate) plan: TrainPlanItem,
+    pub(crate) run_count: usize,
+    pub(crate) plan_dir: String,
+    pub(crate) plan_path: String,
+    pub(crate) runs_dir: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemoveTrainPlanResponse {
+    pub(crate) removed: RemovedTrainPlanItem,
+    pub(crate) plan: TrainPlanItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemovedTrainPlanItem {
+    pub(crate) kind: &'static str,
+    pub(crate) plan_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) plan_dir: String,
+    pub(crate) run_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainPlanPreviewItem {
+    pub(crate) would_reuse: bool,
+    pub(crate) persisted: bool,
+    pub(crate) run_count: usize,
+    pub(crate) would_plan_dir: String,
+    pub(crate) would_plan_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainPlanSummaryItem {
+    pub(crate) plan_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) name: Option<String>,
+    pub(crate) status: String,
+    pub(crate) requested_backend: String,
+    pub(crate) backend: Option<String>,
+    pub(crate) model_ref: String,
+    pub(crate) dataset_ref: String,
+    pub(crate) created_at: String,
+    pub(crate) run_count: usize,
+    pub(crate) plan_dir: String,
+    pub(crate) plan_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TrainPlanItem {
+    pub(crate) schema_version: u32,
+    pub(crate) plan_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) name: Option<String>,
+    pub(crate) status: String,
+    pub(crate) created_at: String,
+    pub(crate) model_ref: String,
+    pub(crate) model_short_ref: String,
+    pub(crate) dataset_ref: String,
+    pub(crate) dataset_short_ref: String,
+    pub(crate) requested_backend: String,
+    pub(crate) backend: Option<String>,
+    pub(crate) profile: String,
+    pub(crate) selection_reason: String,
+    pub(crate) blockers: Vec<String>,
+    pub(crate) warnings: Vec<String>,
+    pub(crate) model: Value,
+    pub(crate) dataset: Value,
+    pub(crate) lora: Value,
+    pub(crate) optimization: Value,
+    pub(crate) checkpoint: Value,
+    pub(crate) output: Value,
+    pub(crate) backend_config: Value,
+    pub(crate) command_hint: String,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct ErrorResponse<'a> {
     pub(crate) error: &'a str,
     pub(crate) message: String,
@@ -710,4 +808,39 @@ pub(crate) struct AdapterPullRequest {
 #[serde(deny_unknown_fields)]
 pub(crate) struct AdapterBindRequest {
     pub(crate) base_model_ref: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TrainPlanRequest {
+    pub(crate) model_ref: String,
+    pub(crate) dataset_ref: String,
+    pub(crate) name: Option<String>,
+    pub(crate) backend: Option<TrainPlanBackendRequest>,
+    pub(crate) overrides: Option<TrainPlanOverridesRequest>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum TrainPlanBackendRequest {
+    Auto,
+    Mlx,
+    Peft,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TrainPlanOverridesRequest {
+    pub(crate) max_seq_length: Option<u32>,
+    pub(crate) mask_prompt: Option<bool>,
+    pub(crate) rank: Option<u32>,
+    pub(crate) learning_rate: Option<f64>,
+    pub(crate) batch_size: Option<u32>,
+    pub(crate) gradient_accumulation_steps: Option<u32>,
+    pub(crate) max_steps: Option<u32>,
+    pub(crate) seed: Option<u64>,
+    pub(crate) mlx_num_layers: Option<u32>,
+    pub(crate) mlx_grad_checkpoint: Option<bool>,
+    pub(crate) peft_load_in_4bit: Option<bool>,
+    pub(crate) peft_load_in_8bit: Option<bool>,
 }

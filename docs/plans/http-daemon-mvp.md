@@ -96,6 +96,11 @@ POST /v1/datasets/synth
 POST /v1/datasets/eval
 POST /v1/datasets/{dataset_ref}/export
 POST /v1/datasets/{dataset_ref}/diff
+GET /v1/train/lora/plans
+POST /v1/train/lora/plans/preview
+POST /v1/train/lora/plans
+GET /v1/train/lora/plans/{plan_ref}
+DELETE /v1/train/lora/plans/{plan_ref}
 DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
 DELETE /v1/datasets/{dataset_ref}
@@ -513,13 +518,15 @@ Review target:
 
 ### Slice 15: Training Plan API
 
-Status: planned.
+Status: implemented in the active workspace.
 
 Goals:
 
 - expose LoRA train-plan create, list, inspect, and remove endpoints
 - keep training configuration identity and validation in `tentgent-core`
 - avoid starting training runs in the plan-management slice
+- add preview-only planning that never writes `plan.toml`
+- reject destructive plan removal when run records already exist
 
 Review target:
 

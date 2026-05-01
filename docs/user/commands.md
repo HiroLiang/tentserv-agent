@@ -447,3 +447,24 @@ Tentgent auto-selects the backend from the model format: `mlx` models use MLX, `
 Common plan overrides: `--rank`, `--learning-rate`, `--batch-size`, `--grad-accum`, `--max-steps`, `--seed`, and `--max-seq-length`.
 
 New LoRA plans mask prompt/context by default: the model still sees system, user, and tool context, but train loss only applies to the final assistant output. Use `--no-mask-prompt` only for plain continuation experiments where role labels and prompt framing should also be trained.
+
+The daemon exposes the same plan-management step without starting training:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/train/lora/plans/preview \
+  -H 'Content-Type: application/json' \
+  -d '{"model_ref":"<model-ref>","dataset_ref":"<dataset-ref>","backend":"auto","overrides":{"rank":8,"max_steps":100}}'
+
+curl -sS http://127.0.0.1:8790/v1/train/lora/plans \
+  -H 'Content-Type: application/json' \
+  -d '{"model_ref":"<model-ref>","dataset_ref":"<dataset-ref>","backend":"auto"}'
+
+curl -sS http://127.0.0.1:8790/v1/train/lora/plans
+curl -sS http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>
+curl -sS -X DELETE http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>
+```
+
+If `TENTGENT_DAEMON_TOKEN` is enabled, add
+`-H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"`. HTTP deletion only removes
+plans with zero run records; training execution remains a CLI command until the
+daemon run API lands.

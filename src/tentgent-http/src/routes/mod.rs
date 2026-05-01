@@ -8,6 +8,7 @@ pub(crate) mod session;
 pub(crate) mod status;
 pub(crate) mod store;
 pub(crate) mod store_mutation;
+pub(crate) mod train;
 
 use crate::{
     app::DaemonHttpState,
@@ -67,6 +68,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         "/v1/datasets" => store::list_datasets_response(state),
         "/v1/servers" => store::list_servers_response(state),
         "/v1/sessions" => session::list_sessions_response(state),
+        "/v1/train/lora/plans" => train::list_train_plans_response(state),
         "/v1/daemon/logs" => diagnostics::daemon_logs_metadata_response(state),
         "/v1/daemon/logs/stdout" => {
             diagnostics::daemon_log_content_response(state, request, "stdout")
@@ -83,6 +85,12 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
             let reference = session::session_messages_path(path).expect("checked path");
             session::session_messages_response(state, request, reference)
         }
+        path if train_plan_static_path(path) => method_not_allowed(request),
+        path if train_plan_ref_path(path).is_some() => {
+            let reference = train_plan_ref_path(path).expect("checked path");
+            train::inspect_train_plan_response(state, reference)
+        }
+        path if path.starts_with("/v1/train/lora/plans/") => not_found_response(&request.path),
         path if dataset_tool_path(path) => method_not_allowed(request),
         path if store_mutation_path(path) => method_not_allowed(request),
         path if path.starts_with("/v1/sessions/") => {
@@ -149,6 +157,11 @@ async fn route_delete(request: &HttpRequest, state: &DaemonHttpState) -> HttpRes
         }
         path if path.starts_with("/v1/servers/") => not_found_response(&request.path),
         path if session::is_session_route(path) => method_not_allowed(request),
+        path if train_plan_ref_path(path).is_some() => {
+            let reference = train_plan_ref_path(path).expect("checked path");
+            train::remove_train_plan_response(state, request, reference)
+        }
+        path if path.starts_with("/v1/train/lora/plans") => method_not_allowed(request),
         _ => not_found_response(&request.path),
     }
 }
@@ -158,6 +171,8 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
         "/v1/chat/completions" => openai::chat_completions_response(state, request).await,
         "/v1/chat" => chat::proxy_chat_response(state, request).await,
         "/v1/servers" => lifecycle::create_server_response(state, request),
+        "/v1/train/lora/plans/preview" => train::preview_train_plan_response(state, request),
+        "/v1/train/lora/plans" => train::create_train_plan_response(state, request),
         "/v1/models/import" => store_mutation::import_model_response(state, request).await,
         "/v1/models/pull" => store_mutation::pull_model_response(state, request).await,
         "/v1/adapters/import" => store_mutation::import_adapter_response(state, request).await,
@@ -185,6 +200,7 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
         {
             method_not_allowed(request)
         }
+        path if path.starts_with("/v1/train/lora/plans") => method_not_allowed(request),
         path if path.starts_with("/v1/servers/") => match server_action_path(path) {
             Some((reference, ServerAction::Start)) => {
                 lifecycle::start_server_response(state, reference, request).await
@@ -262,6 +278,19 @@ fn dataset_diff_path(path: &str) -> Option<&str> {
         return None;
     }
     Some(reference)
+}
+
+fn train_plan_ref_path(path: &str) -> Option<&str> {
+    let reference = path.strip_prefix("/v1/train/lora/plans/")?;
+    if reference.is_empty() || reference == "preview" || reference.contains('/') {
+        None
+    } else {
+        Some(reference)
+    }
+}
+
+fn train_plan_static_path(path: &str) -> bool {
+    matches!(path, "/v1/train/lora/plans/preview")
 }
 
 fn dataset_tool_path(path: &str) -> bool {

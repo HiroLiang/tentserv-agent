@@ -4,7 +4,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use tentgent_core::{
     daemon::{DaemonInspection, DaemonProcessMetadata},
     dataset::DatasetManager,
@@ -794,6 +794,236 @@ async fn dataset_tool_routes_are_static_and_protected() {
     )
     .await;
     assert_eq!(unauthorized.status_code, 401);
+}
+
+#[tokio::test]
+async fn train_plan_preview_create_inspect_list_and_delete_work() {
+    let home = unique_home("train-plan-happy");
+    let model_ref = "151515151515000000000000";
+    let dataset_ref = "252525252525000000000000";
+    write_model_fixture(&home, model_ref);
+    write_dataset_fixture(&home, dataset_ref);
+    let state = state_for(home.clone());
+
+    let preview_payload = json!({
+        "model_ref": &model_ref[..12],
+        "dataset_ref": &dataset_ref[..12],
+        "name": "first plan",
+        "backend": "auto",
+        "overrides": {
+            "rank": 4,
+            "learning_rate": 0.0002,
+            "batch_size": 1,
+            "gradient_accumulation_steps": 2,
+            "max_steps": 3
+        }
+    });
+    let preview = route_request(
+        &post(
+            "/v1/train/lora/plans/preview",
+            &serde_json::to_vec(&preview_payload).expect("payload"),
+        ),
+        &state,
+    )
+    .await;
+    let preview_body: Value = serde_json::from_slice(response_buffer(&preview)).expect("json");
+    assert_eq!(preview.status_code, 200);
+    assert_eq!(preview_body["preview"]["persisted"], false);
+    assert_eq!(preview_body["plan"]["model_ref"], model_ref);
+    assert_eq!(preview_body["plan"]["dataset_ref"], dataset_ref);
+    assert_eq!(preview_body["plan"]["name"], "first plan");
+    assert_eq!(preview_body["plan"]["lora"]["rank"], 4);
+    let would_plan_path = preview_body["preview"]["would_plan_path"]
+        .as_str()
+        .expect("would plan path");
+    assert!(!PathBuf::from(would_plan_path).exists());
+
+    let create = route_request(
+        &post(
+            "/v1/train/lora/plans",
+            &serde_json::to_vec(&preview_payload).expect("payload"),
+        ),
+        &state,
+    )
+    .await;
+    let create_body: Value = serde_json::from_slice(response_buffer(&create)).expect("json");
+    assert_eq!(create.status_code, 200);
+    assert_eq!(create_body["created"], true);
+    assert_eq!(create_body["deduplicated"], false);
+    let plan_ref = create_body["plan"]["plan_ref"].as_str().expect("plan ref");
+    let short_ref = create_body["plan"]["short_ref"]
+        .as_str()
+        .expect("short ref");
+    assert!(PathBuf::from(create_body["plan_path"].as_str().expect("plan path")).exists());
+
+    let renamed_payload = json!({
+        "model_ref": model_ref,
+        "dataset_ref": dataset_ref,
+        "name": "second name",
+        "backend": "auto",
+        "overrides": {
+            "rank": 4,
+            "learning_rate": 0.0002,
+            "batch_size": 1,
+            "gradient_accumulation_steps": 2,
+            "max_steps": 3
+        }
+    });
+    let repeated = route_request(
+        &post(
+            "/v1/train/lora/plans",
+            &serde_json::to_vec(&renamed_payload).expect("payload"),
+        ),
+        &state,
+    )
+    .await;
+    let repeated_body: Value = serde_json::from_slice(response_buffer(&repeated)).expect("json");
+    assert_eq!(repeated.status_code, 200);
+    assert_eq!(repeated_body["created"], false);
+    assert_eq!(repeated_body["deduplicated"], true);
+    assert_eq!(repeated_body["plan"]["plan_ref"], plan_ref);
+    assert_eq!(repeated_body["plan"]["name"], "first plan");
+
+    let list = route_request(&get("/v1/train/lora/plans"), &state).await;
+    let list_body: Value = serde_json::from_slice(response_buffer(&list)).expect("json");
+    assert_eq!(list.status_code, 200);
+    assert_eq!(list_body["plans"].as_array().expect("plans").len(), 1);
+    assert_eq!(list_body["plans"][0]["plan_ref"], plan_ref);
+    assert_eq!(list_body["plans"][0]["run_count"], 0);
+
+    let inspect = route_request(&get(&format!("/v1/train/lora/plans/{short_ref}")), &state).await;
+    let inspect_body: Value = serde_json::from_slice(response_buffer(&inspect)).expect("json");
+    assert_eq!(inspect.status_code, 200);
+    assert_eq!(inspect_body["plan"]["plan_ref"], plan_ref);
+    assert_eq!(inspect_body["run_count"], 0);
+
+    let remove = route_request(
+        &delete(&format!("/v1/train/lora/plans/{short_ref}"), b""),
+        &state,
+    )
+    .await;
+    let remove_body: Value = serde_json::from_slice(response_buffer(&remove)).expect("json");
+    assert_eq!(remove.status_code, 200);
+    assert_eq!(remove_body["removed"]["kind"], "lora_train_plan");
+    assert_eq!(remove_body["removed"]["plan_ref"], plan_ref);
+    assert_eq!(remove_body["plan"]["plan_ref"], plan_ref);
+
+    let missing = route_request(&get(&format!("/v1/train/lora/plans/{plan_ref}")), &state).await;
+    let missing_body: Value = serde_json::from_slice(response_buffer(&missing)).expect("json");
+    assert_eq!(missing.status_code, 404);
+    assert_eq!(missing_body["error"], "not_found");
+}
+
+#[tokio::test]
+async fn train_plan_errors_auth_blocked_and_in_use_are_mapped() {
+    let home = unique_home("train-plan-errors");
+    let model_ref = "353535353535000000000000";
+    let dataset_ref = "454545454545000000000000";
+    write_model_fixture(&home, model_ref);
+    write_model_fixture(&home, "353535353536000000000000");
+    write_dataset_fixture(&home, dataset_ref);
+    let state = state_for(home.clone());
+
+    let missing = route_request(
+        &post(
+            "/v1/train/lora/plans/preview",
+            br#"{"model_ref":"missing","dataset_ref":"454545454545"}"#,
+        ),
+        &state,
+    )
+    .await;
+    let missing_body: Value = serde_json::from_slice(response_buffer(&missing)).expect("json");
+    assert_eq!(missing.status_code, 404);
+    assert_eq!(missing_body["error"], "not_found");
+
+    let ambiguous = route_request(
+        &post(
+            "/v1/train/lora/plans/preview",
+            br#"{"model_ref":"35353535353","dataset_ref":"454545454545"}"#,
+        ),
+        &state,
+    )
+    .await;
+    let ambiguous_body: Value = serde_json::from_slice(response_buffer(&ambiguous)).expect("json");
+    assert_eq!(ambiguous.status_code, 409);
+    assert_eq!(ambiguous_body["error"], "ambiguous_ref");
+
+    for payload in [
+        br#"{"model_ref":"353535353535","dataset_ref":"454545454545","backend":"bad"}"#.as_slice(),
+        br#"{"model_ref":"353535353535","dataset_ref":"454545454545","extra":true}"#,
+        br#"{"model_ref":"353535353535","dataset_ref":"454545454545","overrides":{"rank":0}}"#,
+        br#"{"model_ref":"353535353535","dataset_ref":"454545454545","overrides":{"peft_load_in_4bit":true,"peft_load_in_8bit":true}}"#,
+        br#"{"model_ref":"../353535353535","dataset_ref":"454545454545"}"#,
+    ] {
+        let response = route_request(&post("/v1/train/lora/plans/preview", payload), &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+        assert_eq!(response.status_code, 400);
+        assert_eq!(body["error"], "bad_request");
+    }
+
+    let blocked = route_request(
+        &post(
+            "/v1/train/lora/plans/preview",
+            br#"{"model_ref":"353535353535","dataset_ref":"454545454545","backend":"peft"}"#,
+        ),
+        &state,
+    )
+    .await;
+    let blocked_body: Value = serde_json::from_slice(response_buffer(&blocked)).expect("json");
+    assert_eq!(blocked.status_code, 200);
+    assert_eq!(blocked_body["plan"]["status"], "blocked");
+    assert!(blocked_body["plan"]["blockers"]
+        .as_array()
+        .expect("blockers")
+        .iter()
+        .any(|value| value
+            .as_str()
+            .expect("blocker")
+            .contains("requires model primary_format safetensors")));
+
+    let token_state = state_with_token(unique_home("train-plan-token"), "secret");
+    let unauthorized = route_request(&get("/v1/train/lora/plans"), &token_state).await;
+    assert_eq!(unauthorized.status_code, 401);
+    let authorized = route_request(
+        &get_with_header("/v1/train/lora/plans", "Authorization", "Bearer secret"),
+        &token_state,
+    )
+    .await;
+    assert_eq!(authorized.status_code, 200);
+
+    let static_route = route_request(&get("/v1/train/lora/plans/preview"), &state).await;
+    assert_eq!(static_route.status_code, 405);
+
+    let create = route_request(
+        &post(
+            "/v1/train/lora/plans",
+            br#"{"model_ref":"353535353535","dataset_ref":"454545454545"}"#,
+        ),
+        &state,
+    )
+    .await;
+    let create_body: Value = serde_json::from_slice(response_buffer(&create)).expect("json");
+    let plan_ref = create_body["plan"]["plan_ref"].as_str().expect("plan ref");
+    write_train_run_fixture(&home, plan_ref, "run-1");
+
+    let delete_body = route_request(
+        &delete(&format!("/v1/train/lora/plans/{plan_ref}"), b"{}"),
+        &state,
+    )
+    .await;
+    let delete_body_json: Value =
+        serde_json::from_slice(response_buffer(&delete_body)).expect("json");
+    assert_eq!(delete_body.status_code, 400);
+    assert_eq!(delete_body_json["error"], "bad_request");
+
+    let in_use = route_request(
+        &delete(&format!("/v1/train/lora/plans/{plan_ref}"), b""),
+        &state,
+    )
+    .await;
+    let in_use_body: Value = serde_json::from_slice(response_buffer(&in_use)).expect("json");
+    assert_eq!(in_use.status_code, 409);
+    assert_eq!(in_use_body["error"], "in_use");
 }
 
 #[tokio::test]
@@ -2456,6 +2686,16 @@ fn write_dataset_source_with_extra_files(home: &Path, label: &str, extra_files: 
         .expect("extra file");
     }
     source.canonicalize().expect("canonical diff dataset")
+}
+
+fn write_train_run_fixture(home: &Path, plan_ref: &str, run_ref: &str) {
+    let run_dir = home
+        .join("train/lora/plans")
+        .join(plan_ref)
+        .join("runs")
+        .join(run_ref);
+    fs::create_dir_all(&run_dir).expect("run dir");
+    fs::write(run_dir.join("run.toml"), "status = \"running\"\n").expect("run metadata");
 }
 
 fn write_session_fixture(
