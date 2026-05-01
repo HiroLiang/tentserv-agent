@@ -20,6 +20,11 @@ Run this after the cloud provider server and first cloud dataset slices unless a
 - Keep local-first defaults: bind to `127.0.0.1` unless explicitly changed.
 - Reuse `tentgent-core` managers for models, adapters, datasets, train plans, and servers.
 - Coordinate existing model-bound servers instead of replacing them in the first pass.
+- Treat the daemon HTTP API as the long-term programmatic peer of the CLI:
+  durable local workflows should move through shared core services and be
+  reachable from both CLI and HTTP unless there is a documented reason not to.
+- Close CLI parity incrementally through reviewable slices instead of leaving
+  the daemon as a partial chat-only facade.
 
 ## Non-Goals
 
@@ -28,6 +33,8 @@ Run this after the cloud provider server and first cloud dataset slices unless a
 - Do not define provider-specific cloud chat behavior in this track; consume server specs created by the cloud provider server track.
 - Do not make the daemon a scheduler for multiple loaded models yet.
 - Do not promise full OpenAI API compatibility.
+- Do not claim full CLI parity until the planned store, dataset, training,
+  auth/diagnostics, and session mutation slices are implemented.
 
 ## Command Surface
 
@@ -66,6 +73,9 @@ GET /v1/daemon/logs/stderr
 GET /v1/servers/{server_ref}/logs
 GET /v1/servers/{server_ref}/logs/stdout
 GET /v1/servers/{server_ref}/logs/stderr
+GET /v1/sessions
+GET /v1/sessions/{session_ref}
+GET /v1/sessions/{session_ref}/messages
 POST /v1/servers
 POST /v1/servers/{server_ref}/start
 POST /v1/servers/{server_ref}/stop
@@ -383,22 +393,139 @@ Review target:
 
 Prepare the daemon to support TUI and external chat session workflows.
 
-Status: planned.
+Status: implemented in the active workspace.
 
 Goals:
 
 - define a small session store under the Tentgent runtime home
-- expose read-only session list/inspect endpoints first
-- decide whether stored transcripts use `tentgent.chat.v1` records or a thinner
-  session-specific schema
+- expose read-only session list, inspect, and message-tail endpoints
+- use `tentgent.session.v1` metadata and `tentgent.session.message.v1`
+  transcript records instead of `tentgent.chat.v1` training records
 - avoid changing current stateless `/v1/chat` behavior until the session schema
   is stable
 - keep session APIs additive; existing chat endpoints remain stateless
+- defer session creation, append, repair, export, search, and TUI UI
 
 Review target:
 
 - the future TUI can reuse daemon-backed session state instead of duplicating
   chat/session storage
+
+## CLI Parity Roadmap
+
+The daemon is not yet a complete CLI replacement. The remaining HTTP work
+should prioritize shared core services first, then thin CLI and HTTP wrappers.
+
+### Slice 12: Store Inspect And Remove Parity
+
+Status: planned.
+
+Goals:
+
+- add inspect endpoints for models, adapters, and datasets
+- add safe remove endpoints for models, adapters, datasets, and server specs
+- refuse destructive store changes when dependent records would become invalid
+- keep full-ref and unique-prefix resolution consistent with the CLI
+
+Review target:
+
+- external tools can inspect and clean managed store entries without shelling
+  out
+
+### Slice 13: Store Import And Pull Mutations
+
+Status: planned.
+
+Goals:
+
+- add model import and Hugging Face pull endpoints
+- add adapter import, pull, and bind endpoints
+- add dataset import endpoints
+- keep long-running local file and network operations explicit in the response
+  contract
+
+Review target:
+
+- external tools can populate the model, adapter, and dataset stores through the
+  daemon
+
+### Slice 14: Dataset Tooling Parity
+
+Status: planned.
+
+Goals:
+
+- expose dataset validate, template, synth, eval, export, and diff workflows
+- preserve existing canonical dataset schema validation behavior
+- make cloud synthesis progress, retry, timeout, and debug output visible over
+  HTTP
+
+Review target:
+
+- dataset authoring and verification can run from local applications without
+  CLI-only steps
+
+### Slice 15: Training Plan API
+
+Status: planned.
+
+Goals:
+
+- expose LoRA train-plan create, list, inspect, and remove endpoints
+- keep training configuration identity and validation in `tentgent-core`
+- avoid starting training runs in the plan-management slice
+
+Review target:
+
+- external tools can prepare reviewable training plans before launching work
+
+### Slice 16: Training Run API
+
+Status: planned.
+
+Goals:
+
+- expose LoRA run start, list, inspect, logs, and metrics endpoints
+- keep run state and adapter registration consistent with CLI behavior
+- make long-running training status observable without tailing files manually
+
+Review target:
+
+- training can be launched and monitored through the daemon with the same store
+  side effects as the CLI
+
+### Slice 17: Auth, Doctor, And Daemon Control Parity
+
+Status: planned.
+
+Goals:
+
+- expose provider auth status without leaking secrets
+- evaluate whether auth set/remove should remain CLI-only or require stricter
+  daemon controls
+- expose local doctor/status diagnostics
+- add a daemon shutdown endpoint if it can preserve the Slice 8 safety model
+
+Review target:
+
+- local applications can diagnose Tentgent setup through HTTP while secret
+  mutation remains intentionally constrained
+
+### Slice 18: Session Mutation And Session-Aware Chat
+
+Status: planned.
+
+Goals:
+
+- add session create, update, message append, and remove endpoints
+- add optional `session_ref` recording for native and OpenAI-compatible chat
+- keep stateless chat behavior available
+- defer dataset export from sessions until transcript semantics settle
+
+Review target:
+
+- TUI and external agents can share durable chat context through the daemon
+  without forcing every chat request to be stateful
 
 ## Open Questions
 
@@ -414,3 +541,5 @@ Closed decisions:
   runtime state, keychain, logs, server specs, or status responses.
 - Slice 10 moved Python model-bound server launch helpers into `tentgent-core`
   instead of adding a dedicated runtime crate.
+- Slice 11 keeps sessions read-only and separate from `tentgent.chat.v1`;
+  training/eval export remains future work.

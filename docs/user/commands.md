@@ -256,6 +256,20 @@ endpoints expose fixed daemon/server stdout and stderr paths for local debugging
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the
 explicit `--allow-unsafe-bind` flag.
 
+Read local session metadata and transcript tails through the daemon:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/sessions \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS "http://127.0.0.1:8790/v1/sessions/<session-ref>/messages?tail=100" \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+```
+
+Session APIs are read-only in this release path. They do not create sessions,
+append chat messages, or change `/v1/chat` behavior yet.
+
 ## Adapters
 
 Import or pull adapters:

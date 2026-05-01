@@ -59,6 +59,8 @@ Key current documents:
   Dataset-store identity, layout, local import, and deduplication boundary for training data.
 - `docs/contracts/dataset-schema.md`
   Canonical chat, tool-call, and cloud-generated dataset record schema.
+- `docs/contracts/session-store.md`
+  Local session metadata and transcript message store boundary.
 - `docs/contracts/server-chat.md`
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - `docs/contracts/http-daemon.md`

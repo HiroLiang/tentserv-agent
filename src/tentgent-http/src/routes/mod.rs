@@ -2,6 +2,7 @@ pub(crate) mod chat;
 pub(crate) mod diagnostics;
 pub(crate) mod lifecycle;
 pub(crate) mod openai;
+pub(crate) mod session;
 pub(crate) mod status;
 pub(crate) mod store;
 
@@ -61,6 +62,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         "/v1/adapters" => store::list_adapters_response(state),
         "/v1/datasets" => store::list_datasets_response(state),
         "/v1/servers" => store::list_servers_response(state),
+        "/v1/sessions" => session::list_sessions_response(state),
         "/v1/daemon/logs" => diagnostics::daemon_logs_metadata_response(state),
         "/v1/daemon/logs/stdout" => {
             diagnostics::daemon_log_content_response(state, request, "stdout")
@@ -72,6 +74,18 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         path if server_action_path(path).is_some() => method_not_allowed(request),
         path if diagnostics::is_server_logs_path(path) => {
             diagnostics::server_logs_response(state, request)
+        }
+        path if session::session_messages_path(path).is_some() => {
+            let reference = session::session_messages_path(path).expect("checked path");
+            session::session_messages_response(state, request, reference)
+        }
+        path if path.starts_with("/v1/sessions/") => {
+            let reference = path.trim_start_matches("/v1/sessions/");
+            if reference.is_empty() || reference.contains('/') {
+                not_found_response(&request.path)
+            } else {
+                session::inspect_session_response(state, reference)
+            }
         }
         path if server_health_path(path).is_some() => match server_health_path(path) {
             Some(reference) => lifecycle::health_server_response(state, reference).await,
@@ -103,6 +117,7 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
             }
             None => not_found_response(&request.path),
         },
+        path if session::is_session_route(path) => method_not_allowed(request),
         _ => not_found_response(&request.path),
     }
 }

@@ -1,6 +1,8 @@
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
-use tentgent_core::{server::ServerError, server_runtime::ServerRuntimeError};
+use tentgent_core::{
+    server::ServerError, server_runtime::ServerRuntimeError, session::SessionError,
+};
 
 use crate::{
     dto::ErrorResponse,
@@ -63,6 +65,34 @@ pub(crate) fn server_error_response(error: ServerError) -> HttpResponse {
             ErrorResponse {
                 error: "server_read_failed",
                 message: format!("failed to read servers: {other}"),
+            },
+        ),
+    }
+}
+
+pub(crate) fn session_error_response(error: SessionError) -> HttpResponse {
+    match error {
+        SessionError::NotFound(reference) => json_response(
+            404,
+            ErrorResponse {
+                error: "not_found",
+                message: format!("session reference `{reference}` was not found"),
+            },
+        ),
+        SessionError::AmbiguousRef(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "ambiguous_ref",
+                message: format!(
+                    "session reference `{reference}` is ambiguous; use a longer prefix"
+                ),
+            },
+        ),
+        other => json_response(
+            500,
+            ErrorResponse {
+                error: "session_read_failed",
+                message: format!("failed to read sessions: {other}"),
             },
         ),
     }

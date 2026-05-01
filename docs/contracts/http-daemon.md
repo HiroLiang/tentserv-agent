@@ -12,7 +12,8 @@ This document defines the first stable HTTP daemon boundary for the Rust
 - Expose a limited OpenAI-style chat-completions compatibility route at
   `POST /v1/chat/completions`.
 - Expose daemon health, status, read-only store discovery, controlled server
-  lifecycle mutations, chat proxying, and log diagnostics.
+  lifecycle mutations, chat proxying, log diagnostics, and read-only session
+  discovery.
 - Keep loopback-local daemon development usable without auth, while requiring a
   token or explicit unsafe flag for non-loopback and wildcard binds.
 
@@ -232,6 +233,92 @@ These endpoints do not mutate state, start servers, stop servers, or proxy chat.
   ]
 }
 ```
+
+`GET /v1/sessions` returns local session metadata from
+`<TENTGENT_HOME>/sessions` sorted by `updated_at` descending:
+
+```json
+{
+  "sessions": [
+    {
+      "session_ref": "abcdefabcdef000000000000",
+      "short_ref": "abcdefabcdef",
+      "title": "Planning session",
+      "created_at": "2026-05-01T00:00:00Z",
+      "updated_at": "2026-05-01T00:10:00Z",
+      "message_count": 2,
+      "default_server_ref": null,
+      "adapter_ref": null,
+      "tags": [],
+      "store_path": "/path/to/tentgent-home/sessions/abcdefabcdef000000000000"
+    }
+  ]
+}
+```
+
+`GET /v1/sessions/{session_ref}` accepts a full session ref or unique prefix and
+returns:
+
+```json
+{
+  "session": {
+    "session_ref": "abcdefabcdef000000000000",
+    "short_ref": "abcdefabcdef",
+    "title": "Planning session",
+    "created_at": "2026-05-01T00:00:00Z",
+    "updated_at": "2026-05-01T00:10:00Z",
+    "message_count": 2,
+    "default_server_ref": null,
+    "adapter_ref": null,
+    "tags": [],
+    "store_path": "/path/to/tentgent-home/sessions/abcdefabcdef000000000000",
+    "messages_path": "/path/to/tentgent-home/sessions/abcdefabcdef000000000000/messages.jsonl",
+    "warnings": []
+  }
+}
+```
+
+`GET /v1/sessions/{session_ref}/messages?tail=100` returns the last N transcript
+messages in chronological order:
+
+```json
+{
+  "session": {
+    "session_ref": "abcdefabcdef000000000000",
+    "short_ref": "abcdefabcdef"
+  },
+  "messages": [
+    {
+      "index": 0,
+      "role": "user",
+      "content": "Hello",
+      "created_at": "2026-05-01T00:00:00Z",
+      "server_ref": null,
+      "adapter_ref": null,
+      "metadata": {}
+    }
+  ],
+  "tail": 100,
+  "total_messages": 1,
+  "truncated": false,
+  "warnings": []
+}
+```
+
+`tail` defaults to `200`, minimum `1`, and maximum `1000`. Repeated,
+non-integer, zero, negative, or above-max values return JSON `400`. Unknown
+query parameters are ignored.
+
+Missing session refs return JSON `404`, ambiguous prefixes return JSON `409`,
+and malformed session metadata or messages return JSON `500` with
+`session_read_failed`. Message parse errors include the line number but do not
+echo transcript content. Missing `messages.jsonl` returns `200` with an empty
+message list and a structured `messages_missing` warning.
+
+Session path fields are local diagnostics and may expose filesystem layout.
+They are intended for loopback-local daemon usage. Session APIs are read-only in
+this slice; they do not create sessions, append messages, export training data,
+or change `/v1/chat` behavior.
 
 `GET /v1/servers` returns stored server specs and their current process state:
 

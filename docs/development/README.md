@@ -468,7 +468,7 @@ The `tentgent-http` crate is split by responsibility:
 - `src/response.rs` owns JSON, raw proxy, and error response helpers.
 - `src/dto.rs` owns daemon request and response DTOs.
 - `src/routes/` owns endpoint dispatch by capability: `status`, `store`,
-  `lifecycle`, `chat`, `diagnostics`, and `openai`.
+  `lifecycle`, `chat`, `diagnostics`, `openai`, and `session`.
 
 Python model-bound server launch helpers are core-owned in
 `src/tentgent-core/src/server_runtime.rs`. The CLI server commands and daemon

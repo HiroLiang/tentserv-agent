@@ -255,6 +255,79 @@ pub(crate) struct ServerProcessItem {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct SessionsResponse {
+    pub(crate) sessions: Vec<SessionSummaryItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionResponse {
+    pub(crate) session: SessionInspectionItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionMessagesResponse {
+    pub(crate) session: SessionRefItem,
+    pub(crate) messages: Vec<SessionMessageItem>,
+    pub(crate) tail: usize,
+    pub(crate) total_messages: usize,
+    pub(crate) truncated: bool,
+    pub(crate) warnings: Vec<SessionWarningItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionSummaryItem {
+    pub(crate) session_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) title: Option<String>,
+    pub(crate) created_at: String,
+    pub(crate) updated_at: String,
+    pub(crate) message_count: usize,
+    pub(crate) default_server_ref: Option<String>,
+    pub(crate) adapter_ref: Option<String>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) store_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionInspectionItem {
+    pub(crate) session_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) title: Option<String>,
+    pub(crate) created_at: String,
+    pub(crate) updated_at: String,
+    pub(crate) message_count: usize,
+    pub(crate) default_server_ref: Option<String>,
+    pub(crate) adapter_ref: Option<String>,
+    pub(crate) tags: Vec<String>,
+    pub(crate) store_path: String,
+    pub(crate) messages_path: String,
+    pub(crate) warnings: Vec<SessionWarningItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionRefItem {
+    pub(crate) session_ref: String,
+    pub(crate) short_ref: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionMessageItem {
+    pub(crate) index: usize,
+    pub(crate) role: String,
+    pub(crate) content: String,
+    pub(crate) created_at: String,
+    pub(crate) server_ref: Option<String>,
+    pub(crate) adapter_ref: Option<String>,
+    pub(crate) metadata: Value,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionWarningItem {
+    pub(crate) code: String,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct ErrorResponse<'a> {
     pub(crate) error: &'a str,
     pub(crate) message: String,

@@ -157,6 +157,168 @@ async fn datasets_returns_empty_array_for_isolated_home() {
 }
 
 #[tokio::test]
+async fn sessions_returns_empty_array_for_isolated_home() {
+    let request = get("/v1/sessions");
+    let state = state_for(unique_home("sessions-empty"));
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["sessions"].as_array().expect("sessions").len(), 0);
+}
+
+#[tokio::test]
+async fn session_list_inspect_and_messages_tail_work() {
+    let home = unique_home("sessions-fixture");
+    write_session_fixture(
+        &home,
+        "111111111111000000000000",
+        "Older",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        0,
+        None,
+    );
+    write_session_fixture(
+        &home,
+        "222222222222000000000000",
+        "Newer",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:20:00Z",
+        3,
+        Some(&[
+            session_message("user", "one"),
+            session_message("assistant", "two"),
+            session_message("user", "three"),
+        ]),
+    );
+    let state = state_for(home.clone());
+
+    let list = route_request(&get("/v1/sessions"), &state).await;
+    let list_body: Value = serde_json::from_slice(response_buffer(&list)).expect("json");
+    let sessions = list_body["sessions"].as_array().expect("sessions");
+    assert_eq!(list.status_code, 200);
+    assert_eq!(sessions[0]["short_ref"], "222222222222");
+    assert_eq!(sessions[0]["title"], "Newer");
+    assert_eq!(
+        sessions[0]["store_path"],
+        path_string(&home.join("sessions/222222222222000000000000"))
+    );
+
+    let inspect = route_request(&get("/v1/sessions/222222"), &state).await;
+    let inspect_body: Value = serde_json::from_slice(response_buffer(&inspect)).expect("json");
+    assert_eq!(inspect.status_code, 200);
+    assert_eq!(
+        inspect_body["session"]["session_ref"],
+        "222222222222000000000000"
+    );
+    assert_eq!(
+        inspect_body["session"]["messages_path"],
+        path_string(&home.join("sessions/222222222222000000000000/messages.jsonl"))
+    );
+    assert!(inspect_body["session"]["warnings"]
+        .as_array()
+        .expect("warnings")
+        .is_empty());
+
+    let messages = route_request(
+        &get("/v1/sessions/222222/messages?tail=2&ignored=true"),
+        &state,
+    )
+    .await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    let messages_array = messages_body["messages"].as_array().expect("messages");
+    assert_eq!(messages.status_code, 200);
+    assert_eq!(messages_body["tail"], 2);
+    assert_eq!(messages_body["total_messages"], 3);
+    assert_eq!(messages_body["truncated"], true);
+    assert_eq!(messages_array.len(), 2);
+    assert_eq!(messages_array[0]["index"], 1);
+    assert_eq!(messages_array[0]["role"], "assistant");
+    assert_eq!(messages_array[0]["metadata"], serde_json::json!({}));
+}
+
+#[tokio::test]
+async fn session_missing_messages_returns_warning() {
+    let home = unique_home("sessions-missing-messages");
+    write_session_fixture(
+        &home,
+        "333333333333000000000000",
+        "Missing messages",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        2,
+        None,
+    );
+    let state = state_for(home);
+
+    let response = route_request(&get("/v1/sessions/333333/messages"), &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["total_messages"], 0);
+    assert_eq!(body["truncated"], false);
+    assert_eq!(body["warnings"][0]["code"], "messages_missing");
+}
+
+#[tokio::test]
+async fn session_refs_tail_auth_and_methods_map_errors() {
+    let home = unique_home("sessions-errors");
+    write_session_fixture(
+        &home,
+        "aaaaaaaaaaaa000000000000",
+        "One",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        0,
+        None,
+    );
+    write_session_fixture(
+        &home,
+        "aaaaaaaaaaab000000000000",
+        "Two",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:20:00Z",
+        0,
+        None,
+    );
+    let state = state_for(home);
+
+    let missing = route_request(&get("/v1/sessions/missing"), &state).await;
+    let missing_body: Value = serde_json::from_slice(response_buffer(&missing)).expect("json");
+    assert_eq!(missing.status_code, 404);
+    assert_eq!(missing_body["error"], "not_found");
+
+    let ambiguous = route_request(&get("/v1/sessions/aaaa"), &state).await;
+    let ambiguous_body: Value = serde_json::from_slice(response_buffer(&ambiguous)).expect("json");
+    assert_eq!(ambiguous.status_code, 409);
+    assert_eq!(ambiguous_body["error"], "ambiguous_ref");
+
+    for path in [
+        "/v1/sessions/aaaaaaaaaaaa/messages?tail=0",
+        "/v1/sessions/aaaaaaaaaaaa/messages?tail=-1",
+        "/v1/sessions/aaaaaaaaaaaa/messages?tail=1001",
+        "/v1/sessions/aaaaaaaaaaaa/messages?tail=abc",
+        "/v1/sessions/aaaaaaaaaaaa/messages?tail=1&tail=2",
+    ] {
+        let response = route_request(&get(path), &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+        assert_eq!(response.status_code, 400, "{path}");
+        assert_eq!(body["error"], "bad_request");
+    }
+
+    let unknown = route_request(&get("/v1/sessions/aaaaaaaaaaaa/unknown"), &state).await;
+    assert_eq!(unknown.status_code, 404);
+
+    let method = route_request(&post("/v1/sessions", b"{}"), &state).await;
+    assert_eq!(method.status_code, 405);
+
+    let token_state = state_with_token(unique_home("sessions-token"), "secret");
+    let unauthorized = route_request(&get("/v1/sessions"), &token_state).await;
+    assert_eq!(unauthorized.status_code, 401);
+}
+
+#[tokio::test]
 async fn servers_returns_stored_server_summaries() {
     let home = unique_home("servers-list");
     let manager = ServerManager::new(Some(&home)).expect("server manager");
@@ -1280,6 +1442,48 @@ created_at = "2026-05-01T00:00:00Z"
         ),
     )
     .expect("server spec");
+}
+
+fn write_session_fixture(
+    home: &Path,
+    session_ref: &str,
+    title: &str,
+    created_at: &str,
+    updated_at: &str,
+    message_count: usize,
+    messages: Option<&[String]>,
+) {
+    let session_dir = home.join("sessions").join(session_ref);
+    fs::create_dir_all(&session_dir).expect("session dir");
+    fs::write(
+        session_dir.join("session.toml"),
+        format!(
+            r#"schema = "tentgent.session.v1"
+session_ref = "{session_ref}"
+short_ref = "{}"
+title = "{title}"
+created_at = "{created_at}"
+updated_at = "{updated_at}"
+message_count = {message_count}
+tags = []
+"#,
+            &session_ref[..12]
+        ),
+    )
+    .expect("session metadata");
+    if let Some(messages) = messages {
+        fs::write(
+            session_dir.join("messages.jsonl"),
+            messages.join("\n") + "\n",
+        )
+        .expect("session messages");
+    }
+}
+
+fn session_message(role: &str, content: &str) -> String {
+    format!(
+        r#"{{"schema":"tentgent.session.message.v1","role":"{role}","content":"{content}","created_at":"2026-05-01T00:00:00Z"}}"#
+    )
 }
 
 async fn spawn_mock_chat_server(

@@ -26,6 +26,8 @@ Use this directory for concise interface documents that define stable boundaries
   Dataset identity, managed layout, local import, and deduplication boundary.
 - [dataset-schema.md](./dataset-schema.md)
   Canonical chat, tool-call, and cloud-generated dataset record schema.
+- [session-store.md](./session-store.md)
+  Local session metadata and transcript message store boundary.
 - [server-chat.md](./server-chat.md)
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - [http-daemon.md](./http-daemon.md)

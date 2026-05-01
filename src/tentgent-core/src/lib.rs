@@ -7,6 +7,7 @@ pub mod platform;
 pub mod runtime_assets;
 pub mod server;
 pub mod server_runtime;
+pub mod session;
 pub mod train;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
