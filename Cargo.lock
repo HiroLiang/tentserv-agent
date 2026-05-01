@@ -1749,6 +1749,7 @@ dependencies = [
  "rpassword",
  "serde_json",
  "tentgent-core",
+ "tentgent-http",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1778,6 +1779,7 @@ dependencies = [
 name = "tentgent-http"
 version = "0.1.4"
 dependencies = [
+ "clap",
  "miette",
  "serde",
  "serde_json",

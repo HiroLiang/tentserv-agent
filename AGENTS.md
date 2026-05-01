@@ -60,6 +60,8 @@ Key current documents:
   Canonical chat, tool-call, and cloud-generated dataset record schema.
 - `docs/contracts/server-chat.md`
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
+- `docs/contracts/http-daemon.md`
+  Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
 - `docs/contracts/training-lora.md`
   Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
 - `docs/user/README.md`

@@ -120,7 +120,14 @@ pub struct AdapterStorePaths {
 
 impl AdapterStorePaths {
     pub fn resolve() -> Result<Self, AdapterError> {
-        let home_dir = read_env_path(HOME_ENV).unwrap_or(default_home_dir()?);
+        Self::resolve_with_home(None)
+    }
+
+    pub fn resolve_with_home(home_override: Option<&Path>) -> Result<Self, AdapterError> {
+        let home_dir = home_override
+            .map(Path::to_path_buf)
+            .or_else(|| read_env_path(HOME_ENV))
+            .unwrap_or(default_home_dir()?);
         let adapters_dir = read_env_path(ADAPTERS_ENV).unwrap_or_else(|| home_dir.join("adapters"));
         let by_source_dir = adapters_dir.join("by-source");
 
@@ -195,4 +202,61 @@ fn default_home_dir() -> Result<PathBuf, AdapterError> {
     let project_dirs = ProjectDirs::from("com", "tentserv", "tentgent")
         .ok_or(AdapterError::ProjectDirsUnavailable)?;
     Ok(project_dirs.data_local_dir().to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        env,
+        sync::Mutex,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::*;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn explicit_home_override_sets_adapters_root() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let previous = env::var(ADAPTERS_ENV).ok();
+        env::remove_var(ADAPTERS_ENV);
+        let home = unique_path("adapter-home");
+        let paths = AdapterStorePaths::resolve_with_home(Some(&home)).expect("paths");
+
+        restore_env(ADAPTERS_ENV, previous);
+        assert_eq!(paths.adapters_dir, home.join("adapters"));
+        assert_eq!(paths.store_dir, home.join("adapters/store"));
+    }
+
+    #[test]
+    fn specific_adapters_dir_env_overrides_explicit_home() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let home = unique_path("adapter-home-env");
+        let adapters = unique_path("adapter-env-root");
+        let previous = env::var(ADAPTERS_ENV).ok();
+        env::set_var(ADAPTERS_ENV, &adapters);
+
+        let paths = AdapterStorePaths::resolve_with_home(Some(&home)).expect("paths");
+
+        restore_env(ADAPTERS_ENV, previous);
+        assert_eq!(paths.adapters_dir, adapters);
+        assert_eq!(paths.store_dir, adapters.join("store"));
+    }
+
+    fn unique_path(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        env::temp_dir().join(format!("tentgent-{label}-{nanos}"))
+    }
+
+    fn restore_env(name: &str, previous: Option<String>) {
+        if let Some(value) = previous {
+            env::set_var(name, value);
+        } else {
+            env::remove_var(name);
+        }
+    }
 }

@@ -151,6 +151,31 @@ curl -N http://127.0.0.1:8780/v1/chat \
   }'
 ```
 
+## Daemon
+
+Run the local daemon process in the foreground:
+
+```bash
+tentgent daemon run --host 127.0.0.1 --port 8790
+```
+
+Inspect, call, or stop the daemon from another terminal:
+
+```bash
+tentgent daemon status
+curl -s http://127.0.0.1:8790/healthz
+curl -s http://127.0.0.1:8790/v1/status
+curl -s http://127.0.0.1:8790/v1/models
+curl -s http://127.0.0.1:8790/v1/adapters
+curl -s http://127.0.0.1:8790/v1/datasets
+curl -s http://127.0.0.1:8790/v1/servers
+tentgent daemon stop
+```
+
+The daemon records process metadata under `TENTGENT_HOME/runtime` and exposes
+Rust HTTP health/status plus read-only store discovery endpoints. Server
+lifecycle APIs are added by later daemon slices.
+
 ## Adapters
 
 Import or pull adapters:

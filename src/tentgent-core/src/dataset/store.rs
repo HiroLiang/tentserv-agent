@@ -121,7 +121,14 @@ pub struct DatasetStorePaths {
 
 impl DatasetStorePaths {
     pub fn resolve() -> Result<Self, DatasetError> {
-        let home_dir = read_env_path(HOME_ENV).unwrap_or(default_home_dir()?);
+        Self::resolve_with_home(None)
+    }
+
+    pub fn resolve_with_home(home_override: Option<&Path>) -> Result<Self, DatasetError> {
+        let home_dir = home_override
+            .map(Path::to_path_buf)
+            .or_else(|| read_env_path(HOME_ENV))
+            .unwrap_or(default_home_dir()?);
         let datasets_dir = read_env_path(DATASETS_ENV).unwrap_or_else(|| home_dir.join("datasets"));
         let by_source_dir = datasets_dir.join("by-source");
 
@@ -190,4 +197,61 @@ fn default_home_dir() -> Result<PathBuf, DatasetError> {
     let project_dirs = ProjectDirs::from("com", "tentserv", "tentgent")
         .ok_or(DatasetError::ProjectDirsUnavailable)?;
     Ok(project_dirs.data_local_dir().to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        env,
+        sync::Mutex,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::*;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn explicit_home_override_sets_datasets_root() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let previous = env::var(DATASETS_ENV).ok();
+        env::remove_var(DATASETS_ENV);
+        let home = unique_path("dataset-home");
+        let paths = DatasetStorePaths::resolve_with_home(Some(&home)).expect("paths");
+
+        restore_env(DATASETS_ENV, previous);
+        assert_eq!(paths.datasets_dir, home.join("datasets"));
+        assert_eq!(paths.store_dir, home.join("datasets/store"));
+    }
+
+    #[test]
+    fn specific_datasets_dir_env_overrides_explicit_home() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let home = unique_path("dataset-home-env");
+        let datasets = unique_path("dataset-env-root");
+        let previous = env::var(DATASETS_ENV).ok();
+        env::set_var(DATASETS_ENV, &datasets);
+
+        let paths = DatasetStorePaths::resolve_with_home(Some(&home)).expect("paths");
+
+        restore_env(DATASETS_ENV, previous);
+        assert_eq!(paths.datasets_dir, datasets);
+        assert_eq!(paths.store_dir, datasets.join("store"));
+    }
+
+    fn unique_path(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        env::temp_dir().join(format!("tentgent-{label}-{nanos}"))
+    }
+
+    fn restore_env(name: &str, previous: Option<String>) {
+        if let Some(value) = previous {
+            env::set_var(name, value);
+        } else {
+            env::remove_var(name);
+        }
+    }
 }

@@ -13,6 +13,7 @@ use tentgent_core::{
     runtime_assets::{
         resolve_bootstrap_cache_dir, resolve_runtime_home, PythonRuntime, PythonRuntimeSource,
     },
+    VERSION,
 };
 
 use super::commands::DoctorCommand;
@@ -72,7 +73,7 @@ pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
 
     let mut checks = Vec::new();
 
-    checks.push(DoctorCheck::pass("cli version", env!("CARGO_PKG_VERSION")));
+    checks.push(DoctorCheck::pass("cli version", VERSION));
 
     let platform = PlatformInfo::current();
     checks.push(DoctorCheck::pass("platform", platform.label()));

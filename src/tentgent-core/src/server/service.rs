@@ -129,6 +129,11 @@ impl ServerManager {
         Ok(Self { paths })
     }
 
+    pub fn open_readonly(home_override: Option<&Path>) -> Result<Self, ServerError> {
+        let paths = ServerStorePaths::resolve(home_override)?;
+        Ok(Self { paths })
+    }
+
     pub fn prepare_run(
         &self,
         request: ServerRunRequest,

@@ -54,6 +54,7 @@ Reserved runtime files:
 
 - `runtime/tentgent.sock`
 - `runtime/tentgent.pid`
+- `runtime/daemon.toml`
 - `runtime/bootstrap/`
 - `config.toml`
 

@@ -6,6 +6,7 @@ mod app;
 mod auth;
 mod chat;
 mod commands;
+mod daemon;
 mod dataset;
 mod doctor;
 mod model;
@@ -38,9 +39,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
         Commands::Status => status::handle_status_command()?,
         Commands::Train { action } => train::handle_train_command(action)?,
-        Commands::Daemon => {
-            println!("Command scaffold is present. Use --help to inspect available groups.");
-        }
+        Commands::Daemon { action } => daemon::handle_daemon_command(action).await?,
     }
 
     Ok(())

@@ -140,6 +140,23 @@ impl AdapterManager {
         })
     }
 
+    pub fn new_with_home(home_override: Option<&Path>) -> Result<Self, AdapterError> {
+        let paths = AdapterStorePaths::resolve_with_home(home_override)?;
+        paths.ensure_layout()?;
+        Ok(Self {
+            auth: AuthManager::new()?,
+            paths,
+        })
+    }
+
+    pub fn open_readonly_with_home(home_override: Option<&Path>) -> Result<Self, AdapterError> {
+        let paths = AdapterStorePaths::resolve_with_home(home_override)?;
+        Ok(Self {
+            auth: AuthManager::new()?,
+            paths,
+        })
+    }
+
     pub fn add_path(
         &self,
         input_path: impl AsRef<Path>,

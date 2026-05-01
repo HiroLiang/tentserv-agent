@@ -344,6 +344,39 @@ curl -N http://127.0.0.1:8000/v1/chat \
   -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":32,"stream":true}'
 ```
 
+## Rust HTTP Daemon Entry
+
+Run the daemon from the CLI:
+
+```bash
+cargo run -- daemon run --host 127.0.0.1 --port 8790
+```
+
+Check, call, or stop it from another terminal:
+
+```bash
+cargo run -- daemon status
+curl -s http://127.0.0.1:8790/healthz
+curl -s http://127.0.0.1:8790/v1/status
+curl -s http://127.0.0.1:8790/v1/models
+curl -s http://127.0.0.1:8790/v1/adapters
+curl -s http://127.0.0.1:8790/v1/datasets
+curl -s http://127.0.0.1:8790/v1/servers
+cargo run -- daemon stop
+```
+
+The low-level Rust HTTP binary has the same lifecycle metadata behavior:
+
+```bash
+cargo run -p tentgent-http --bin tentgent-http -- --host 127.0.0.1 --port 8790
+```
+
+At this stage the daemon records process metadata and serves `GET /healthz`,
+`GET /v1/status`, and read-only discovery endpoints for models, adapters,
+datasets, and server specs.
+Request logs are emitted to stderr with peer, method, path, status, and elapsed
+time fields.
+
 ## Documentation Rules
 
 - Keep the root README user-facing.

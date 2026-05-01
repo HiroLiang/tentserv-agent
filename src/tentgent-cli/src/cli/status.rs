@@ -4,6 +4,7 @@ use miette::{miette, Result};
 use tentgent_core::{
     platform::{current_backend_capabilities, PlatformInfo},
     runtime_assets::{resolve_runtime_home, PythonRuntime},
+    VERSION,
 };
 
 pub fn handle_status_command() -> Result<()> {
@@ -24,10 +25,7 @@ pub fn handle_status_command() -> Result<()> {
         .apply_modifier(UTF8_ROUND_CORNERS)
         .set_header(vec!["Field", "Value"]);
 
-    table.add_row(vec![
-        Cell::new("version"),
-        Cell::new(env!("CARGO_PKG_VERSION")),
-    ]);
+    table.add_row(vec![Cell::new("version"), Cell::new(VERSION)]);
     let platform = PlatformInfo::current();
     table.add_row(vec![Cell::new("platform"), Cell::new(platform.label())]);
     table.add_row(vec![

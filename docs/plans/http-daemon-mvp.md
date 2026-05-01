@@ -10,8 +10,8 @@ Run this after the cloud provider server and first cloud dataset slices unless a
 
 - `tentgent server` already launches a model-bound local HTTP chat server.
 - `POST /v1/chat` is defined in [../contracts/server-chat.md](../contracts/server-chat.md).
-- `src/tentgent-http/` exists as a Rust scaffold only.
-- `tentgent daemon` exists as a CLI scaffold only.
+- `src/tentgent-http/` has a low-level daemon lifecycle entry point with `GET /healthz` and `GET /v1/status`.
+- `tentgent daemon` has `run`, `status`, and `stop` lifecycle commands and starts the Rust HTTP daemon in foreground mode.
 
 ## Scope
 
@@ -78,6 +78,8 @@ POST /v1/chat
 
 Replace the CLI scaffold with a real command shape.
 
+Status: implemented in the active workspace.
+
 Goals:
 
 - add `daemon run`, `daemon status`, and `daemon stop`
@@ -93,6 +95,8 @@ Review target:
 
 Make `tentgent-http` serve basic local HTTP.
 
+Status: implemented in the active workspace.
+
 Goals:
 
 - implement `GET /healthz`
@@ -104,9 +108,29 @@ Review target:
 
 - `tentgent-http` can be packaged and smoke-tested without model files
 
+### Slice 2.1: HTTP Skeleton Polish
+
+Tighten the first HTTP contract before adding store APIs.
+
+Status: implemented in the active workspace.
+
+Goals:
+
+- use a shared Tentgent version source in daemon HTTP responses
+- keep every HTTP response JSON, including 404, 405, and request errors
+- document the initial HTTP daemon response and error contract
+- add minimal request logging with method, path, status, peer, and elapsed time
+- defer a `{ data, error }` success wrapper until the read-only store API shape settles
+
+Review target:
+
+- the first HTTP surface has enough observability and response consistency for Slice 3
+
 ### Slice 3: Read-Only Store API
 
 Expose current managed state.
+
+Status: implemented in the active workspace.
 
 Goals:
 
@@ -114,6 +138,8 @@ Goals:
 - inspect one server
 - avoid mutations while the API shape settles
 - return stable JSON objects that are independent of terminal table formatting
+- use the daemon runtime home for store discovery while preserving store
+  specific env override precedence
 
 Review target:
 
@@ -151,6 +177,10 @@ Review target:
 
 ## Open Questions
 
-- Should the first daemon be Rust-only, or should it wrap the Python server process?
-- Should daemon process management use pid files only, or a local socket as well?
+- Should daemon process management add a local socket after pid metadata is stable?
 - Should daemon auth be absent for loopback-only MVP, or use a local token from runtime state?
+
+Closed decisions:
+
+- The first daemon entry is Rust-owned. It does not wrap the Python model server process.
+- Slice 1 stores process metadata in `runtime/daemon.toml` and a pid in `runtime/tentgent.pid`; socket work remains future scope.

@@ -1,6 +1,7 @@
 mod adapter;
 mod auth;
 mod chat;
+mod daemon;
 mod dataset;
 mod model;
 mod server;
@@ -9,6 +10,7 @@ mod train;
 pub use adapter::AdapterCommands;
 pub use auth::{AuthCommands, AuthProviderAction};
 pub use chat::ChatCommand;
+pub use daemon::{DaemonCommands, DaemonRunCommand};
 pub use dataset::DatasetCommands;
 pub use model::ModelCommands;
 pub use server::{ServerCommands, ServerRunCommand};
@@ -87,7 +89,15 @@ pub enum Commands {
         action: TrainCommands,
     },
     /// Inspect and manage the persistent local daemon process.
-    Daemon,
+    #[command(
+        name = "daemon",
+        about = "Inspect and manage the persistent local daemon process.",
+        long_about = "Inspect and manage the persistent local daemon process. The daemon is the future local HTTP subsystem entry point for integrations that should not shell out to individual CLI commands."
+    )]
+    Daemon {
+        #[command(subcommand)]
+        action: DaemonCommands,
+    },
     /// Define and launch long-lived local model servers.
     #[command(
         name = "server",

@@ -88,6 +88,17 @@ impl DatasetManager {
         Ok(Self { paths })
     }
 
+    pub fn new_with_home(home_override: Option<&Path>) -> Result<Self, DatasetError> {
+        let paths = DatasetStorePaths::resolve_with_home(home_override)?;
+        paths.ensure_layout()?;
+        Ok(Self { paths })
+    }
+
+    pub fn open_readonly_with_home(home_override: Option<&Path>) -> Result<Self, DatasetError> {
+        let paths = DatasetStorePaths::resolve_with_home(home_override)?;
+        Ok(Self { paths })
+    }
+
     pub fn add_path(
         &self,
         input_path: impl AsRef<Path>,

@@ -120,6 +120,25 @@ impl ModelManager {
         })
     }
 
+    pub fn new_with_home(home_override: Option<&Path>) -> Result<Self, ModelError> {
+        let paths = ModelStorePaths::resolve_with_home(home_override)?;
+        paths.ensure_layout()?;
+
+        Ok(Self {
+            auth: AuthManager::new()?,
+            paths,
+        })
+    }
+
+    pub fn open_readonly_with_home(home_override: Option<&Path>) -> Result<Self, ModelError> {
+        let paths = ModelStorePaths::resolve_with_home(home_override)?;
+
+        Ok(Self {
+            auth: AuthManager::new()?,
+            paths,
+        })
+    }
+
     pub fn add_path(&self, input_path: impl AsRef<Path>) -> Result<ImportOutcome, ModelError> {
         let input_path = input_path.as_ref();
         if !input_path.exists() {

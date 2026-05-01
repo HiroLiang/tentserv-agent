@@ -107,7 +107,14 @@ pub struct ModelStorePaths {
 
 impl ModelStorePaths {
     pub fn resolve() -> Result<Self, ModelError> {
-        let home_dir = read_env_path(HOME_ENV).unwrap_or(default_home_dir()?);
+        Self::resolve_with_home(None)
+    }
+
+    pub fn resolve_with_home(home_override: Option<&Path>) -> Result<Self, ModelError> {
+        let home_dir = home_override
+            .map(Path::to_path_buf)
+            .or_else(|| read_env_path(HOME_ENV))
+            .unwrap_or(default_home_dir()?);
         let models_dir = read_env_path(MODELS_ENV).unwrap_or_else(|| home_dir.join("models"));
         let by_source_dir = models_dir.join("by-source");
 
@@ -193,4 +200,61 @@ fn default_home_dir() -> Result<PathBuf, ModelError> {
     let project_dirs = ProjectDirs::from("com", "tentserv", "tentgent")
         .ok_or(ModelError::ProjectDirsUnavailable)?;
     Ok(project_dirs.data_local_dir().to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        env,
+        sync::Mutex,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::*;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn explicit_home_override_sets_models_root() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let previous = env::var(MODELS_ENV).ok();
+        env::remove_var(MODELS_ENV);
+        let home = unique_path("model-home");
+        let paths = ModelStorePaths::resolve_with_home(Some(&home)).expect("paths");
+
+        restore_env(MODELS_ENV, previous);
+        assert_eq!(paths.store_dir, home.join("models/store"));
+        assert_eq!(paths.staging_dir, home.join("models/staging"));
+    }
+
+    #[test]
+    fn specific_models_dir_env_overrides_explicit_home() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let home = unique_path("model-home-env");
+        let models = unique_path("model-env-root");
+        let previous = env::var(MODELS_ENV).ok();
+        env::set_var(MODELS_ENV, &models);
+
+        let paths = ModelStorePaths::resolve_with_home(Some(&home)).expect("paths");
+
+        restore_env(MODELS_ENV, previous);
+        assert_eq!(paths.store_dir, models.join("store"));
+        assert_eq!(paths.staging_dir, models.join("staging"));
+    }
+
+    fn unique_path(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        env::temp_dir().join(format!("tentgent-{label}-{nanos}"))
+    }
+
+    fn restore_env(name: &str, previous: Option<String>) {
+        if let Some(value) = previous {
+            env::set_var(name, value);
+        } else {
+            env::remove_var(name);
+        }
+    }
 }
