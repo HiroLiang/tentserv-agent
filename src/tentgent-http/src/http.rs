@@ -79,9 +79,12 @@ pub(crate) async fn read_request(stream: &mut TcpStream) -> miette::Result<HttpR
     }
     body.truncate(content_length);
 
+    let (path, query_params) = split_target(target);
+
     Ok(HttpRequest {
         method: method.to_string(),
-        path: target.split('?').next().unwrap_or(target).to_string(),
+        path,
+        query_params,
         version: version.to_string(),
         body,
         parse_error: None,
@@ -148,10 +151,28 @@ pub(crate) fn find_header_end(buffer: &[u8]) -> Option<usize> {
     buffer.windows(4).position(|window| window == b"\r\n\r\n")
 }
 
+fn split_target(target: &str) -> (String, Vec<(String, String)>) {
+    let Some((path, query)) = target.split_once('?') else {
+        return (target.to_string(), Vec::new());
+    };
+
+    let query_params = query
+        .split('&')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let (name, value) = part.split_once('=').unwrap_or((part, ""));
+            (name.to_string(), value.to_string())
+        })
+        .collect();
+
+    (path.to_string(), query_params)
+}
+
 #[derive(Debug)]
 pub(crate) struct HttpRequest {
     pub(crate) method: String,
     pub(crate) path: String,
+    pub(crate) query_params: Vec<(String, String)>,
     pub(crate) version: String,
     pub(crate) body: Vec<u8>,
     pub(crate) parse_error: Option<HttpParseError>,
@@ -180,10 +201,18 @@ impl HttpRequest {
         }
     }
 
+    pub(crate) fn query_values<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+        self.query_params
+            .iter()
+            .filter(move |(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
+    }
+
     fn invalid() -> Self {
         Self {
             method: String::new(),
             path: String::new(),
+            query_params: Vec::new(),
             version: String::new(),
             body: Vec::new(),
             parse_error: Some(HttpParseError {
@@ -197,6 +226,7 @@ impl HttpRequest {
         Self {
             method: String::new(),
             path: String::new(),
+            query_params: Vec::new(),
             version: String::new(),
             body: Vec::new(),
             parse_error: Some(HttpParseError {
@@ -210,6 +240,7 @@ impl HttpRequest {
         Self {
             method: String::new(),
             path: String::new(),
+            query_params: Vec::new(),
             version: String::new(),
             body: Vec::new(),
             parse_error: Some(HttpParseError {
@@ -223,6 +254,7 @@ impl HttpRequest {
         Self {
             method: String::new(),
             path: String::new(),
+            query_params: Vec::new(),
             version: String::new(),
             body: Vec::new(),
             parse_error: Some(HttpParseError {
@@ -245,4 +277,25 @@ pub(crate) struct HttpResponse {
 pub(crate) enum HttpBody {
     Buffered(Vec<u8>),
     Proxy(reqwest::Response),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_target_keeps_route_path_and_query_params() {
+        let (path, query_params) =
+            split_target("/v1/daemon/logs/stderr?tail_bytes=10&unused=value&flag");
+
+        assert_eq!(path, "/v1/daemon/logs/stderr");
+        assert_eq!(
+            query_params,
+            vec![
+                ("tail_bytes".to_string(), "10".to_string()),
+                ("unused".to_string(), "value".to_string()),
+                ("flag".to_string(), String::new()),
+            ]
+        );
+    }
 }

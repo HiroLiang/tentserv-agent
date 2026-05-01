@@ -1,5 +1,5 @@
-
 use std::{
+    fs,
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -225,6 +225,214 @@ async fn server_health_missing_ref_returns_404() {
 
     assert_eq!(response.status_code, 404);
     assert_eq!(body["error"], "not_found");
+}
+
+#[tokio::test]
+async fn daemon_log_metadata_ignores_query_params() {
+    let home = unique_home("daemon-log-metadata");
+    fs::create_dir_all(home.join("logs")).expect("logs dir");
+    fs::write(home.join("logs/daemon.stdout.log"), b"daemon stdout").expect("stdout log");
+
+    let request = get("/v1/daemon/logs?tail_bytes=0");
+    let state = state_for(home.clone());
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["logs"]["stdout"]["kind"], "stdout");
+    assert_eq!(body["logs"]["stdout"]["exists"], true);
+    assert_eq!(body["logs"]["stdout"]["total_bytes"], 13);
+    assert!(body["logs"]["stdout"]["modified_at"].is_string());
+    assert_eq!(
+        body["logs"]["stdout"]["path"],
+        path_string(&home.join("logs/daemon.stdout.log"))
+    );
+    assert_eq!(body["logs"]["stderr"]["kind"], "stderr");
+    assert_eq!(body["logs"]["stderr"]["exists"], false);
+    assert_eq!(body["logs"]["stderr"]["total_bytes"], 0);
+    assert_eq!(body["logs"]["stderr"]["modified_at"], Value::Null);
+}
+
+#[tokio::test]
+async fn daemon_log_content_tails_bytes_with_shared_shape() {
+    let home = unique_home("daemon-log-content");
+    fs::create_dir_all(home.join("logs")).expect("logs dir");
+    fs::write(home.join("logs/daemon.stdout.log"), b"line1\nline2\n").expect("stdout log");
+
+    let request = get("/v1/daemon/logs/stdout?tail_bytes=5");
+    let state = state_for(home.clone());
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["log"]["owner"], "daemon");
+    assert_eq!(body["log"]["server_ref"], Value::Null);
+    assert_eq!(body["log"]["short_ref"], Value::Null);
+    assert_eq!(body["log"]["kind"], "stdout");
+    assert_eq!(
+        body["log"]["path"],
+        path_string(&home.join("logs/daemon.stdout.log"))
+    );
+    assert_eq!(body["log"]["exists"], true);
+    assert_eq!(body["log"]["total_bytes"], 12);
+    assert_eq!(body["log"]["tail_bytes"], 5);
+    assert_eq!(body["log"]["truncated"], true);
+    assert_eq!(body["log"]["encoding"], "utf-8-lossy");
+    assert_eq!(body["log"]["content"], "ine2\n");
+}
+
+#[tokio::test]
+async fn daemon_missing_log_content_returns_empty_200() {
+    let request = get("/v1/daemon/logs/stderr");
+    let state = state_for(unique_home("daemon-log-missing"));
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["log"]["owner"], "daemon");
+    assert_eq!(body["log"]["kind"], "stderr");
+    assert_eq!(body["log"]["exists"], false);
+    assert_eq!(body["log"]["total_bytes"], 0);
+    assert_eq!(body["log"]["modified_at"], Value::Null);
+    assert_eq!(body["log"]["tail_bytes"], 65536);
+    assert_eq!(body["log"]["truncated"], false);
+    assert_eq!(body["log"]["content"], "");
+}
+
+#[tokio::test]
+async fn log_content_rejects_invalid_tail_bytes() {
+    for query in [
+        "tail_bytes=0",
+        "tail_bytes=-1",
+        "tail_bytes=abc",
+        "tail_bytes=262145",
+        "tail_bytes=1&tail_bytes=2",
+    ] {
+        let request = get(&format!("/v1/daemon/logs/stdout?{query}"));
+        let state = state_for(unique_home("daemon-log-invalid-tail"));
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+        assert_eq!(response.status_code, 400, "query: {query}");
+        assert_eq!(body["error"], "bad_request");
+        assert!(body["message"]
+            .as_str()
+            .expect("message")
+            .contains("tail_bytes"));
+    }
+}
+
+#[tokio::test]
+async fn server_log_metadata_and_content_accept_full_ref_and_short_ref() {
+    let home = unique_home("server-log-content");
+    let manager = ServerManager::new(Some(&home)).expect("server manager");
+    let outcome = manager
+        .prepare_run(ServerRunRequest {
+            runtime_ref: "openai:gpt-4.1-mini".to_string(),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(8911),
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect("server spec");
+    fs::write(&outcome.stdout_log_path, b"abcdef").expect("stdout log");
+
+    let state = state_for(home.clone());
+    let metadata = route_request(
+        &get(&format!("/v1/servers/{}/logs", outcome.spec.server_ref)),
+        &state,
+    )
+    .await;
+    let metadata_body: Value =
+        serde_json::from_slice(response_buffer(&metadata)).expect("metadata json");
+
+    assert_eq!(metadata.status_code, 200);
+    assert_eq!(metadata_body["logs"]["stdout"]["exists"], true);
+    assert_eq!(metadata_body["logs"]["stdout"]["total_bytes"], 6);
+    assert_eq!(metadata_body["logs"]["stderr"]["exists"], false);
+
+    let content = route_request(
+        &get(&format!(
+            "/v1/servers/{}/logs/stdout?tail_bytes=2",
+            outcome.spec.short_ref
+        )),
+        &state,
+    )
+    .await;
+    let content_body: Value =
+        serde_json::from_slice(response_buffer(&content)).expect("content json");
+
+    assert_eq!(content.status_code, 200);
+    assert_eq!(content_body["log"]["owner"], "server");
+    assert_eq!(content_body["log"]["server_ref"], outcome.spec.server_ref);
+    assert_eq!(content_body["log"]["short_ref"], outcome.spec.short_ref);
+    assert_eq!(content_body["log"]["kind"], "stdout");
+    assert_eq!(content_body["log"]["tail_bytes"], 2);
+    assert_eq!(content_body["log"]["truncated"], true);
+    assert_eq!(content_body["log"]["content"], "ef");
+}
+
+#[tokio::test]
+async fn server_log_missing_and_ambiguous_refs_keep_server_error_mapping() {
+    let missing = route_request(
+        &get("/v1/servers/missing/logs/stderr"),
+        &state_for(unique_home("server-log-missing-ref")),
+    )
+    .await;
+    let missing_body: Value = serde_json::from_slice(response_buffer(&missing)).expect("json");
+    assert_eq!(missing.status_code, 404);
+    assert_eq!(missing_body["error"], "not_found");
+
+    let home = unique_home("server-log-ambiguous-ref");
+    write_cloud_server_spec(
+        &home,
+        "abcdef1111111111111111111111111111111111111111111111111111111111",
+    );
+    write_cloud_server_spec(
+        &home,
+        "abcdef2222222222222222222222222222222222222222222222222222222222",
+    );
+
+    let ambiguous = route_request(&get("/v1/servers/abcdef/logs"), &state_for(home)).await;
+    let ambiguous_body: Value = serde_json::from_slice(response_buffer(&ambiguous)).expect("json");
+    assert_eq!(ambiguous.status_code, 409);
+    assert_eq!(ambiguous_body["error"], "ambiguous_ref");
+}
+
+#[tokio::test]
+async fn unknown_log_kinds_return_json_404() {
+    let daemon = route_request(
+        &get("/v1/daemon/logs/combined"),
+        &state_for(unique_home("daemon-log-unknown-kind")),
+    )
+    .await;
+    let daemon_body: Value = serde_json::from_slice(response_buffer(&daemon)).expect("json");
+    assert_eq!(daemon.status_code, 404);
+    assert_eq!(daemon_body["error"], "not_found");
+
+    let home = unique_home("server-log-unknown-kind");
+    let manager = ServerManager::new(Some(&home)).expect("server manager");
+    let outcome = manager
+        .prepare_run(ServerRunRequest {
+            runtime_ref: "openai:gpt-4.1-mini".to_string(),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(8912),
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect("server spec");
+
+    let server = route_request(
+        &get(&format!(
+            "/v1/servers/{}/logs/combined",
+            outcome.spec.short_ref
+        )),
+        &state_for(home),
+    )
+    .await;
+    let server_body: Value = serde_json::from_slice(response_buffer(&server)).expect("json");
+    assert_eq!(server.status_code, 404);
+    assert_eq!(server_body["error"], "not_found");
 }
 
 #[tokio::test]
@@ -634,9 +842,11 @@ async fn chat_proxy_transport_failure_returns_502() {
 }
 
 fn get(path: &str) -> HttpRequest {
+    let (path, query_params) = test_split_target(path);
     HttpRequest {
         method: "GET".to_string(),
-        path: path.to_string(),
+        path,
+        query_params,
         version: "HTTP/1.1".to_string(),
         body: Vec::new(),
         parse_error: None,
@@ -644,13 +854,32 @@ fn get(path: &str) -> HttpRequest {
 }
 
 fn post(path: &str, body: &[u8]) -> HttpRequest {
+    let (path, query_params) = test_split_target(path);
     HttpRequest {
         method: "POST".to_string(),
-        path: path.to_string(),
+        path,
+        query_params,
         version: "HTTP/1.1".to_string(),
         body: body.to_vec(),
         parse_error: None,
     }
+}
+
+fn test_split_target(target: &str) -> (String, Vec<(String, String)>) {
+    let Some((path, query)) = target.split_once('?') else {
+        return (target.to_string(), Vec::new());
+    };
+
+    let query_params = query
+        .split('&')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let (name, value) = part.split_once('=').unwrap_or((part, ""));
+            (name.to_string(), value.to_string())
+        })
+        .collect();
+
+    (path.to_string(), query_params)
 }
 
 fn response_buffer(response: &HttpResponse) -> &[u8] {
@@ -692,6 +921,28 @@ fn create_running_cloud_server(home: &Path, port: u16) -> String {
         )
         .expect("record process");
     outcome.spec.short_ref
+}
+
+fn write_cloud_server_spec(home: &Path, server_ref: &str) {
+    let server_dir = home.join("servers").join(server_ref);
+    fs::create_dir_all(&server_dir).expect("server dir");
+    fs::write(
+        server_dir.join("server.toml"),
+        format!(
+            r#"server_ref = "{server_ref}"
+short_ref = "{}"
+runtime_kind = "cloud"
+provider = "openai"
+provider_model = "gpt-4.1-mini"
+host = "127.0.0.1"
+port = 8000
+lazy_load = false
+created_at = "2026-05-01T00:00:00Z"
+"#,
+            &server_ref[..12]
+        ),
+    )
+    .expect("server spec");
 }
 
 async fn spawn_mock_chat_server(

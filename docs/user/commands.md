@@ -165,6 +165,8 @@ Inspect, call, or stop the daemon from another terminal:
 tentgent daemon status
 curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
+curl -sS http://127.0.0.1:8790/v1/daemon/logs
+curl -sS 'http://127.0.0.1:8790/v1/daemon/logs/stderr?tail_bytes=4096'
 curl -sS http://127.0.0.1:8790/v1/models
 curl -sS http://127.0.0.1:8790/v1/adapters
 curl -sS http://127.0.0.1:8790/v1/datasets
@@ -178,6 +180,8 @@ curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/start \
   -H 'Content-Type: application/json' \
   -d '{"wait_ready":true,"timeout_seconds":30}'
 curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/health
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/logs
+curl -sS 'http://127.0.0.1:8790/v1/servers/<server-ref>/logs/stderr?tail_bytes=4096'
 curl -sS http://127.0.0.1:8790/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{
@@ -208,7 +212,8 @@ Rust HTTP health/status, read-only store discovery, and controlled server
 lifecycle endpoints. `POST /v1/chat` proxies to an already-running model-bound
 server and preserves both JSON and streaming Server-Sent Event responses.
 The daemon-only `server_ref` selector belongs on daemon `POST /v1/chat` requests;
-do not send it when calling the model-bound server port directly.
+do not send it when calling the model-bound server port directly. Log diagnostics
+endpoints expose fixed daemon/server stdout and stderr paths for local debugging.
 
 ## Adapters
 

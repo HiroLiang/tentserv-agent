@@ -60,6 +60,12 @@ GET /v1/datasets
 GET /v1/servers
 GET /v1/servers/{server_ref}
 GET /v1/servers/{server_ref}/health
+GET /v1/daemon/logs
+GET /v1/daemon/logs/stdout
+GET /v1/daemon/logs/stderr
+GET /v1/servers/{server_ref}/logs
+GET /v1/servers/{server_ref}/logs/stdout
+GET /v1/servers/{server_ref}/logs/stderr
 POST /v1/servers
 POST /v1/servers/{server_ref}/start
 POST /v1/servers/{server_ref}/stop
@@ -233,12 +239,116 @@ Review target:
 - future daemon slices can change one capability area without editing a
   multi-thousand-line `lib.rs`
 
+### Slice 7: Daemon Log Diagnostics API
+
+Expose daemon and model-bound server logs through fixed, read-only diagnostics
+endpoints.
+
+Status: implemented in the active workspace.
+
+Goals:
+
+- expose daemon stdout/stderr metadata and tail content
+- expose server stdout/stderr metadata and tail content by full ref or existing
+  unique prefix resolution
+- serve only fixed known log paths from Tentgent state, never arbitrary
+  filesystem paths
+- keep log content tailing byte-based with explicit `tail_bytes` validation
+- document that local path fields may expose filesystem layout under the
+  loopback-local MVP
+
+Review target:
+
+- external integrations can inspect daemon and server failures without shelling
+  out or manually opening runtime log files
+
+### Slice 8: Limited OpenAI-Compatible Chat Route
+
+Add a compatibility route for tools that already know the OpenAI Chat
+Completions wire shape.
+
+Status: planned.
+
+Goals:
+
+- add a limited `POST /v1/chat/completions` daemon route
+- map OpenAI-style `messages`, `max_tokens`, `temperature`, and `stream` into
+  the existing daemon chat proxy path
+- use `model` as an explicit server selector for the MVP, accepting the same
+  full refs or unique prefixes as `server_ref`
+- return OpenAI-shaped non-streaming and streaming responses where practical
+- document that this is a compatibility shim, not full OpenAI API compatibility
+
+Review target:
+
+- common local SDK clients can call the daemon without custom Tentgent request
+  code for the first chat path
+
+### Slice 9: Local Token Guard And Bind Safety
+
+Add a minimal local security layer before encouraging broader daemon
+integration.
+
+Status: planned.
+
+Goals:
+
+- keep loopback-local unauthenticated behavior available for development
+- add an opt-in local bearer token for mutation and chat endpoints
+- make non-loopback binds require an explicit unsafe flag or token
+- document curl, SDK, and daemon lifecycle behavior with the token enabled
+
+Review target:
+
+- users can safely experiment with non-default host binding without accidentally
+  exposing server lifecycle or chat endpoints
+
+### Slice 10: Runtime Launcher Package Boundary Cleanup
+
+Move Python model-bound server launch helpers out of the HTTP crate.
+
+Status: planned.
+
+Goals:
+
+- stop having `tentgent-cli` depend on `tentgent-http::server_runtime`
+- move runtime launch/auth argument construction to `tentgent-core` or a small
+  runtime-focused crate
+- keep CLI and daemon lifecycle behavior unchanged
+- preserve existing server launch tests while relocating them to the new owner
+
+Review target:
+
+- package ownership matches capability ownership before the daemon grows more
+  routes
+
+### Slice 11: Daemon Session API Foundation
+
+Prepare the daemon to support TUI and external chat session workflows.
+
+Status: planned.
+
+Goals:
+
+- define a small session store under the Tentgent runtime home
+- expose read-only session list/inspect endpoints first
+- decide whether stored transcripts use `tentgent.chat.v1` records or a thinner
+  session-specific schema
+- avoid changing current stateless `/v1/chat` behavior until the session schema
+  is stable
+
+Review target:
+
+- the future TUI can reuse daemon-backed session state instead of duplicating
+  chat/session storage
+
 ## Open Questions
 
 - Should daemon process management add a local socket after pid metadata is stable?
-- Should daemon auth be absent for loopback-only MVP, or use a local token from runtime state?
-- Should Python server runtime launch helpers move out of `tentgent-http` into
-  core or a dedicated runtime crate?
+- Should Slice 9 store the local token in runtime state, keychain, or an
+  operator-provided environment variable?
+- Should Slice 10 move Python server runtime launch helpers into
+  `tentgent-core` or a dedicated runtime crate?
 
 Closed decisions:
 

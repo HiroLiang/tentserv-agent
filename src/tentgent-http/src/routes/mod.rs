@@ -1,4 +1,5 @@
 pub(crate) mod chat;
+pub(crate) mod diagnostics;
 pub(crate) mod lifecycle;
 pub(crate) mod status;
 pub(crate) mod store;
@@ -46,7 +47,18 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         "/v1/adapters" => store::list_adapters_response(state),
         "/v1/datasets" => store::list_datasets_response(state),
         "/v1/servers" => store::list_servers_response(state),
+        "/v1/daemon/logs" => diagnostics::daemon_logs_metadata_response(state),
+        "/v1/daemon/logs/stdout" => {
+            diagnostics::daemon_log_content_response(state, request, "stdout")
+        }
+        "/v1/daemon/logs/stderr" => {
+            diagnostics::daemon_log_content_response(state, request, "stderr")
+        }
+        path if path.starts_with("/v1/daemon/logs/") => not_found_response(&request.path),
         path if server_action_path(path).is_some() => method_not_allowed(request),
+        path if diagnostics::is_server_logs_path(path) => {
+            diagnostics::server_logs_response(state, request)
+        }
         path if server_health_path(path).is_some() => match server_health_path(path) {
             Some(reference) => lifecycle::health_server_response(state, reference).await,
             None => not_found_response(&request.path),

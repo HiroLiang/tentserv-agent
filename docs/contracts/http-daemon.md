@@ -9,8 +9,8 @@ This document defines the first stable HTTP daemon boundary for the Rust
 - Serve JSON responses for daemon-owned routes and errors.
 - Pass through model-bound server chat response bodies and content types from
   `POST /v1/chat`, including Server-Sent Events.
-- Expose daemon health, status, read-only store discovery, and controlled server
-  lifecycle mutations.
+- Expose daemon health, status, read-only store discovery, controlled server
+  lifecycle mutations, chat proxying, and log diagnostics.
 - Keep the first daemon unauthenticated only for loopback-local MVP usage.
 
 ## Version Source
@@ -420,6 +420,86 @@ Daemon-owned chat selection and proxy errors are JSON:
 
 If the selected server returns its own chat error, the daemon passes through that
 status, body, and content type unchanged.
+
+## Log Diagnostics
+
+Log diagnostics endpoints expose fixed daemon and model-bound server log paths
+from Tentgent-managed state. They never accept arbitrary filesystem paths.
+
+Metadata endpoints return stdout/stderr metadata and ignore query parameters:
+
+```text
+GET /v1/daemon/logs
+GET /v1/servers/{server_ref}/logs
+```
+
+```json
+{
+  "logs": {
+    "stdout": {
+      "kind": "stdout",
+      "path": "/path/to/stdout.log",
+      "exists": true,
+      "total_bytes": 1234,
+      "modified_at": "2026-05-01T00:00:00Z"
+    },
+    "stderr": {
+      "kind": "stderr",
+      "path": "/path/to/stderr.log",
+      "exists": false,
+      "total_bytes": 0,
+      "modified_at": null
+    }
+  }
+}
+```
+
+Content endpoints return one shared shape for daemon and server logs:
+
+```text
+GET /v1/daemon/logs/stdout
+GET /v1/daemon/logs/stderr
+GET /v1/servers/{server_ref}/logs/stdout
+GET /v1/servers/{server_ref}/logs/stderr
+```
+
+```json
+{
+  "log": {
+    "owner": "daemon",
+    "server_ref": null,
+    "short_ref": null,
+    "kind": "stdout",
+    "path": "/path/to/stdout.log",
+    "exists": true,
+    "total_bytes": 4096,
+    "modified_at": "2026-05-01T00:00:00Z",
+    "tail_bytes": 65536,
+    "truncated": false,
+    "encoding": "utf-8-lossy",
+    "content": "..."
+  }
+}
+```
+
+`tail_bytes` applies only to content endpoints. It defaults to `65536`, must be
+between `1` and `262144`, and is rejected with `400 bad_request` when it is
+zero, negative, non-integer, repeated, or above the maximum.
+
+Log content is tailed by bytes, not lines. `truncated` is true when the log
+exists and `total_bytes > tail_bytes`. Content is decoded as UTF-8 lossy so a
+byte tail that cuts through a character can still be returned safely.
+
+Missing log files return `200` with `exists: false`, `total_bytes: 0`,
+`modified_at: null`, and empty content. Log metadata or read failures other
+than missing files return `500 log_read_failed`.
+
+`server_ref` accepts the same full refs and unique prefixes as other server
+endpoints. Missing refs return `404 not_found`; ambiguous refs return
+`409 ambiguous_ref`.
+
+Log path fields are local diagnostics and may expose local filesystem layout.
+They are only served by the loopback-local daemon MVP.
 
 ## Request Logging
 

@@ -358,6 +358,8 @@ Check, call, or stop it from another terminal:
 cargo run -- daemon status
 curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
+curl -sS http://127.0.0.1:8790/v1/daemon/logs
+curl -sS 'http://127.0.0.1:8790/v1/daemon/logs/stderr?tail_bytes=4096'
 curl -sS http://127.0.0.1:8790/v1/models
 curl -sS http://127.0.0.1:8790/v1/adapters
 curl -sS http://127.0.0.1:8790/v1/datasets
@@ -371,6 +373,8 @@ curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/start \
   -H 'Content-Type: application/json' \
   -d '{"wait_ready":true,"timeout_seconds":30}'
 curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/health
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/logs
+curl -sS 'http://127.0.0.1:8790/v1/servers/<server-ref>/logs/stderr?tail_bytes=4096'
 curl -sS http://127.0.0.1:8790/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{
@@ -407,7 +411,9 @@ At this stage the daemon records process metadata and serves `GET /healthz`,
 datasets, server specs, controlled server lifecycle mutations, and
 `POST /v1/chat` proxying to already-running model-bound servers. Use
 `GET /v1/servers/<server-ref>/health` to distinguish process state from target
-HTTP reachability before sending chat.
+HTTP reachability before sending chat. Use the daemon and server log diagnostics
+endpoints to inspect fixed stdout/stderr log paths without accepting arbitrary
+filesystem paths.
 Request logs are emitted to stderr with peer, method, path, status, and elapsed
 time fields.
 
@@ -420,7 +426,7 @@ The `tentgent-http` crate is split by responsibility:
 - `src/response.rs` owns JSON, raw proxy, and error response helpers.
 - `src/dto.rs` owns daemon request and response DTOs.
 - `src/routes/` owns endpoint dispatch by capability: `status`, `store`,
-  `lifecycle`, and `chat`.
+  `lifecycle`, `chat`, and `diagnostics`.
 - `src/server_runtime.rs` still owns Python model-bound server launch helpers;
   it remains here for now because the CLI imports it, but moving it into core or
   a runtime-focused crate is a future package-boundary cleanup.

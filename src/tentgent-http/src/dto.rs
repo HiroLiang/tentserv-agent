@@ -27,6 +27,47 @@ pub(crate) struct StatusResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct LogsResponse {
+    pub(crate) logs: LogPairItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct LogPairItem {
+    pub(crate) stdout: LogMetadataItem,
+    pub(crate) stderr: LogMetadataItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct LogMetadataItem {
+    pub(crate) kind: String,
+    pub(crate) path: String,
+    pub(crate) exists: bool,
+    pub(crate) total_bytes: u64,
+    pub(crate) modified_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct LogResponse {
+    pub(crate) log: LogContentItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct LogContentItem {
+    pub(crate) owner: String,
+    pub(crate) server_ref: Option<String>,
+    pub(crate) short_ref: Option<String>,
+    pub(crate) kind: String,
+    pub(crate) path: String,
+    pub(crate) exists: bool,
+    pub(crate) total_bytes: u64,
+    pub(crate) modified_at: Option<String>,
+    pub(crate) tail_bytes: u64,
+    pub(crate) truncated: bool,
+    pub(crate) encoding: String,
+    pub(crate) content: String,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct ModelsResponse {
     pub(crate) models: Vec<ModelItem>,
 }
