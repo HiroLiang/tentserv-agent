@@ -2,7 +2,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use reqwest::StatusCode;
 use serde_json::{json, Map, Value};
-use tentgent_core::server::{ServerError, ServerInspection};
+use tentgent_core::{
+    adapter::{AdapterError, AdapterManager},
+    server::{ServerError, ServerInspection},
+    session::{SessionChatTurn, SessionManager, SessionMessageInput, MAX_MESSAGE_CONTENT_BYTES},
+};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -13,7 +17,9 @@ use crate::{
         bad_request_response, json_response, parse_json_body, raw_response, server_error_response,
     },
     routes::chat::{
-        chat_server_manager, proxy_upstream_response, send_chat_to_server, upstream_is_event_stream,
+        assistant_metadata, chat_context_message_value, chat_server_manager, max_session_messages,
+        optional_trimmed_string, proxy_upstream_response, required_message_string,
+        send_chat_to_server, session_invalid_response, upstream_is_event_stream,
     },
 };
 
@@ -24,6 +30,10 @@ struct OpenAiChatRequest {
     model: String,
     proxy_body: Value,
     stream: bool,
+    session_ref: Option<String>,
+    max_session_messages: usize,
+    request_messages: Vec<SessionMessageInput>,
+    request_adapter_ref: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,8 +75,58 @@ pub(crate) async fn chat_completions_response(
         Ok(server) => server,
         Err(response) => return response,
     };
+    let mut proxy_body = chat_request.proxy_body;
 
-    let proxied_body = match serde_json::to_vec(&chat_request.proxy_body) {
+    let turn = if let Some(session_ref) = &chat_request.session_ref {
+        let session_manager = match SessionManager::new_with_home(Some(state.home_dir())) {
+            Ok(manager) => manager,
+            Err(error) => return crate::response::session_write_error_response(error),
+        };
+        let turn = match session_manager.begin_chat_turn(
+            session_ref,
+            chat_request.max_session_messages,
+            chat_request.request_messages,
+        ) {
+            Ok(turn) => turn,
+            Err(error) => return crate::response::session_write_error_response(error),
+        };
+        if let Some(object) = proxy_body.as_object_mut() {
+            object.insert(
+                "messages".to_string(),
+                Value::Array(
+                    turn.context_messages
+                        .iter()
+                        .map(chat_context_message_value)
+                        .collect(),
+                ),
+            );
+        }
+        Some(turn)
+    } else {
+        None
+    };
+
+    let adapter_ref = match effective_openai_adapter_ref(
+        state,
+        chat_request.request_adapter_ref.as_deref(),
+        turn.as_ref()
+            .and_then(|turn| turn.metadata.adapter_ref.as_deref()),
+    ) {
+        Ok(adapter_ref) => adapter_ref,
+        Err(response) => return response,
+    };
+    if let Some(object) = proxy_body.as_object_mut() {
+        if let Some(adapter_ref) = &adapter_ref {
+            object.insert(
+                "adapter_ref".to_string(),
+                Value::String(adapter_ref.clone()),
+            );
+        } else {
+            object.remove("adapter_ref");
+        }
+    }
+
+    let proxied_body = match serde_json::to_vec(&proxy_body) {
         Ok(body) => body,
         Err(error) => {
             return bad_request_response(format!("failed to encode proxy request body: {error}"))
@@ -78,7 +138,13 @@ pub(crate) async fn chat_completions_response(
     };
 
     if chat_request.stream {
-        openai_stream_response(upstream, &server).await
+        if let Some(turn) = turn {
+            openai_stream_session_response(upstream, &server, turn, adapter_ref).await
+        } else {
+            openai_stream_response(upstream, &server).await
+        }
+    } else if let Some(turn) = turn {
+        openai_non_stream_session_response(upstream, &server, turn, adapter_ref).await
     } else {
         openai_non_stream_response(upstream, &server).await
     }
@@ -95,9 +161,12 @@ fn parse_openai_chat_request(body: Value) -> Result<OpenAiChatRequest, HttpRespo
     )?;
     let messages = parse_messages(object.get("messages"))?;
     let stream = parse_optional_bool(object.get("stream"), "stream")?.unwrap_or(false);
+    let session_ref = optional_trimmed_string(object.get("session_ref"), "session_ref")?;
+    let max_session_messages =
+        max_session_messages(object.get("max_session_messages"), session_ref.is_some())?;
 
     let mut proxy_body = Map::new();
-    proxy_body.insert("messages".to_string(), Value::Array(messages));
+    proxy_body.insert("messages".to_string(), Value::Array(messages.clone()));
     proxy_body.insert("stream".to_string(), Value::Bool(stream));
 
     if let Some(max_tokens) = object.get("max_tokens") {
@@ -108,10 +177,12 @@ fn parse_openai_chat_request(body: Value) -> Result<OpenAiChatRequest, HttpRespo
         ensure_number(temperature, "temperature")?;
         proxy_body.insert("temperature".to_string(), temperature.clone());
     }
+    let mut request_adapter_ref = None;
     if let Some(adapter_ref) = object.get("adapter_ref") {
         if !adapter_ref.is_null() {
             let adapter_ref =
                 required_trimmed_string(Some(adapter_ref), "`adapter_ref` must be a string")?;
+            request_adapter_ref = Some(adapter_ref.clone());
             proxy_body.insert("adapter_ref".to_string(), Value::String(adapter_ref));
         }
     }
@@ -120,6 +191,13 @@ fn parse_openai_chat_request(body: Value) -> Result<OpenAiChatRequest, HttpRespo
         model,
         proxy_body: Value::Object(proxy_body),
         stream,
+        session_ref,
+        max_session_messages,
+        request_messages: messages
+            .iter()
+            .map(openai_message_to_session_input)
+            .collect::<Result<Vec<_>, _>>()?,
+        request_adapter_ref,
     })
 }
 
@@ -165,12 +243,31 @@ fn parse_message(value: &Value) -> Result<Value, HttpResponse> {
         ));
     }
     let content =
-        required_trimmed_string(object.get("content"), "message content must be a string")?;
+        required_message_string(object.get("content"), "message content must be a string")?;
 
     Ok(json!({
         "role": role,
         "content": content,
     }))
+}
+
+fn openai_message_to_session_input(value: &Value) -> Result<SessionMessageInput, HttpResponse> {
+    let Some(object) = value.as_object() else {
+        return Err(bad_request_response("each message must be an object"));
+    };
+    let role = required_message_string(
+        object.get("role"),
+        "message role must be one of: system, user, assistant",
+    )?;
+    let content =
+        required_message_string(object.get("content"), "message content must be a string")?;
+    Ok(SessionMessageInput {
+        role,
+        content,
+        server_ref: None,
+        adapter_ref: None,
+        metadata: json!({}),
+    })
 }
 
 fn parse_optional_bool(value: Option<&Value>, field: &str) -> Result<Option<bool>, HttpResponse> {
@@ -275,6 +372,76 @@ async fn openai_non_stream_response(
     )
 }
 
+async fn openai_non_stream_session_response(
+    upstream: reqwest::Response,
+    server: &ServerInspection,
+    turn: SessionChatTurn,
+    adapter_ref: Option<String>,
+) -> HttpResponse {
+    if !upstream.status().is_success() {
+        return proxy_upstream_response(upstream).await;
+    }
+    if upstream_is_event_stream(&upstream) {
+        return upstream_mapping_failed("target chat response was SSE but `stream` was false");
+    }
+
+    let payload = match upstream.bytes().await {
+        Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
+            Ok(payload) => payload,
+            Err(error) => {
+                return upstream_mapping_failed(format!(
+                    "target chat response was not valid JSON: {error}"
+                ))
+            }
+        },
+        Err(error) => {
+            return json_response(
+                502,
+                ErrorResponse {
+                    error: "server_proxy_failed",
+                    message: format!("failed to read proxied chat response: {error}"),
+                },
+            )
+        }
+    };
+    let Some(text) = payload.get("text").and_then(Value::as_str) else {
+        return upstream_mapping_failed(
+            "target chat response could not be mapped to OpenAI-compatible response",
+        );
+    };
+    if text.is_empty() {
+        return upstream_mapping_failed(
+            "target chat response could not be recorded in the session",
+        );
+    }
+
+    let metadata = assistant_metadata(
+        "openai_compat",
+        Some(server),
+        adapter_ref.as_deref(),
+        "stop",
+    );
+    if let Err(error) = turn.append_assistant(
+        text.to_string(),
+        Some(server.spec.server_ref.clone()),
+        adapter_ref,
+        metadata,
+    ) {
+        return json_response(
+            500,
+            ErrorResponse {
+                error: "session_write_failed",
+                message: format!("failed to append session transcript: {error}"),
+            },
+        );
+    }
+
+    json_response(
+        StatusCode::OK.as_u16(),
+        openai_completion_payload(openai_metadata(server), text),
+    )
+}
+
 async fn openai_stream_response(
     upstream: reqwest::Response,
     server: &ServerInspection,
@@ -300,6 +467,62 @@ async fn openai_stream_response(
         Some("no-cache".to_string()),
         HttpBody::Stream(receiver),
     )
+}
+
+async fn openai_stream_session_response(
+    upstream: reqwest::Response,
+    server: &ServerInspection,
+    turn: SessionChatTurn,
+    adapter_ref: Option<String>,
+) -> HttpResponse {
+    if !upstream.status().is_success() {
+        return proxy_upstream_response(upstream).await;
+    }
+    if !upstream_is_event_stream(&upstream) {
+        return upstream_mapping_failed(
+            "target chat response was not Server-Sent Events for `stream: true`",
+        );
+    }
+
+    let metadata = openai_metadata(server);
+    let server = server.clone();
+    let (sender, receiver) = mpsc::channel(16);
+    tokio::spawn(async move {
+        transform_tentgent_sse_session(upstream, sender, metadata, server, turn, adapter_ref).await;
+    });
+
+    raw_response(
+        200,
+        OPENAI_SSE_CONTENT_TYPE,
+        Some("no-cache".to_string()),
+        HttpBody::Stream(receiver),
+    )
+}
+
+fn effective_openai_adapter_ref(
+    state: &DaemonHttpState,
+    request_adapter_ref: Option<&str>,
+    session_adapter_ref: Option<&str>,
+) -> Result<Option<String>, HttpResponse> {
+    if let Some(adapter_ref) = request_adapter_ref {
+        return Ok(Some(adapter_ref.to_string()));
+    }
+    let Some(adapter_ref) = session_adapter_ref else {
+        return Ok(None);
+    };
+    let manager =
+        AdapterManager::open_readonly_with_home(Some(state.home_dir())).map_err(|error| {
+            session_invalid_response(format!("failed to resolve session adapter_ref: {error}"))
+        })?;
+    match manager.inspect(adapter_ref) {
+        Ok(inspection) => Ok(Some(inspection.metadata.adapter_ref)),
+        Err(AdapterError::NotFound(_)) | Err(AdapterError::AmbiguousRef(_)) => Err(
+            session_invalid_response("session adapter_ref no longer resolves to a unique adapter"),
+        ),
+        Err(error) => Err(session_invalid_response(format!(
+            "failed to resolve session adapter_ref: {error}"
+        ))),
+    }
 }
 
 fn openai_completion_payload(metadata: OpenAiResponseMetadata, text: &str) -> Value {
@@ -388,6 +611,190 @@ async fn transform_tentgent_sse(
             return;
         }
         let _ = send_openai_done(&sender, &metadata, "stop").await;
+    }
+}
+
+async fn transform_tentgent_sse_session(
+    mut upstream: reqwest::Response,
+    sender: mpsc::Sender<Vec<u8>>,
+    metadata: OpenAiResponseMetadata,
+    server: ServerInspection,
+    turn: SessionChatTurn,
+    adapter_ref: Option<String>,
+) {
+    let mut buffer = Vec::new();
+    let mut assistant = String::new();
+    let mut turn = Some(turn);
+
+    loop {
+        match upstream.chunk().await {
+            Ok(Some(chunk)) => {
+                buffer.extend_from_slice(&chunk);
+                while let Some(event_bytes) = next_sse_event(&mut buffer) {
+                    let event = match parse_sse_event(&event_bytes) {
+                        Ok(event) => event,
+                        Err(message) => {
+                            let _ =
+                                send_openai_error(&sender, "server_proxy_failed", &message).await;
+                            return;
+                        }
+                    };
+                    match event.event.as_str() {
+                        "delta" => {
+                            let payload = match serde_json::from_str::<Value>(&event.data) {
+                                Ok(payload) => payload,
+                                Err(error) => {
+                                    let _ = send_openai_error(
+                                        &sender,
+                                        "server_proxy_failed",
+                                        &format!("malformed upstream delta event: {error}"),
+                                    )
+                                    .await;
+                                    return;
+                                }
+                            };
+                            let Some(delta) = payload.get("delta").and_then(Value::as_str) else {
+                                let _ = send_openai_error(
+                                    &sender,
+                                    "server_proxy_failed",
+                                    "upstream delta event did not include a string `delta`",
+                                )
+                                .await;
+                                return;
+                            };
+                            assistant.push_str(delta);
+                            if assistant.len() > MAX_MESSAGE_CONTENT_BYTES {
+                                let _ = send_openai_error_without_done(
+                                    &sender,
+                                    "session_write_failed",
+                                    "failed to append session transcript",
+                                )
+                                .await;
+                                return;
+                            }
+                            let _ = send_openai_delta(&sender, &metadata, delta).await;
+                        }
+                        "done" => {
+                            let finish_reason = serde_json::from_str::<Value>(&event.data)
+                                .ok()
+                                .and_then(|payload| {
+                                    payload
+                                        .get("finish_reason")
+                                        .and_then(Value::as_str)
+                                        .map(str::to_string)
+                                })
+                                .unwrap_or_else(|| "stop".to_string());
+                            let Some(turn) = turn.take() else {
+                                return;
+                            };
+                            if append_openai_stream_turn(
+                                &sender,
+                                turn,
+                                &server,
+                                adapter_ref.as_deref(),
+                                &assistant,
+                                &finish_reason,
+                            )
+                            .await
+                            .is_ok()
+                            {
+                                let _ = send_openai_done(&sender, &metadata, &finish_reason).await;
+                            }
+                            return;
+                        }
+                        "error" => {
+                            let message = serde_json::from_str::<Value>(&event.data)
+                                .ok()
+                                .and_then(|payload| {
+                                    payload
+                                        .get("message")
+                                        .and_then(Value::as_str)
+                                        .map(str::to_string)
+                                })
+                                .unwrap_or_else(|| {
+                                    "upstream streaming chat response returned an error".to_string()
+                                });
+                            let _ = send_openai_error(&sender, "runtime_error", &message).await;
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Ok(None) => break,
+            Err(error) => {
+                let _ = send_openai_error(
+                    &sender,
+                    "server_proxy_failed",
+                    &format!("failed to read proxied streaming chat response: {error}"),
+                )
+                .await;
+                return;
+            }
+        }
+    }
+
+    if buffer.iter().any(|byte| !byte.is_ascii_whitespace()) {
+        let _ = send_openai_error(
+            &sender,
+            "server_proxy_failed",
+            "malformed upstream SSE event",
+        )
+        .await;
+        return;
+    }
+    let Some(turn) = turn.take() else {
+        return;
+    };
+    if append_openai_stream_turn(
+        &sender,
+        turn,
+        &server,
+        adapter_ref.as_deref(),
+        &assistant,
+        "stop",
+    )
+    .await
+    .is_ok()
+    {
+        let _ = send_openai_done(&sender, &metadata, "stop").await;
+    }
+}
+
+async fn append_openai_stream_turn(
+    sender: &mpsc::Sender<Vec<u8>>,
+    turn: SessionChatTurn,
+    server: &ServerInspection,
+    adapter_ref: Option<&str>,
+    assistant: &str,
+    finish_reason: &str,
+) -> Result<(), ()> {
+    if assistant.is_empty() {
+        let _ = send_openai_error_without_done(
+            sender,
+            "session_write_failed",
+            "failed to append session transcript",
+        )
+        .await;
+        return Err(());
+    }
+    let metadata = assistant_metadata("openai_compat", Some(server), adapter_ref, finish_reason);
+    match turn.append_assistant(
+        assistant.to_string(),
+        Some(server.spec.server_ref.clone()),
+        adapter_ref.map(str::to_string),
+        metadata,
+    ) {
+        Ok(_) => Ok(()),
+        Err(_) => {
+            let _ = send_openai_error_without_done(
+                sender,
+                "session_write_failed",
+                "failed to append session transcript",
+            )
+            .await;
+            Err(())
+        }
     }
 }
 
@@ -576,6 +983,25 @@ async fn send_openai_error(
         .send(b"data: [DONE]\n\n".to_vec())
         .await
         .map_err(|_| ())
+}
+
+async fn send_openai_error_without_done(
+    sender: &mpsc::Sender<Vec<u8>>,
+    code: &str,
+    message: &str,
+) -> Result<(), ()> {
+    send_sse_data(
+        sender,
+        json!({
+            "error": {
+                "message": message,
+                "type": code,
+                "param": null,
+                "code": code
+            }
+        }),
+    )
+    .await
 }
 
 async fn send_sse_data(sender: &mpsc::Sender<Vec<u8>>, value: Value) -> Result<(), ()> {

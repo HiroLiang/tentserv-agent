@@ -20,6 +20,12 @@ pub struct ChatCommand {
     /// Optional compatible adapter reference for PEFT-backed LoRA chat.
     #[arg(short = 'a', long = "adapter-ref", value_name = "REF")]
     pub adapter_ref: Option<String>,
+    /// Optional local session ref to use for context and transcript recording.
+    #[arg(long = "session", value_name = "SESSION_REF")]
+    pub session_ref: Option<String>,
+    /// Maximum number of prior session messages to prepend when --session is used.
+    #[arg(long = "max-session-messages", value_name = "N")]
+    pub max_session_messages: Option<usize>,
     /// Stream generated text to stdout when the selected backend supports streaming.
     #[arg(short = 's', long)]
     pub stream: bool,

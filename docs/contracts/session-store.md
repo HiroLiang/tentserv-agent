@@ -9,8 +9,9 @@ CLI, and external chat transcript discovery and mutation.
 - Keep sessions separate from `tentgent.chat.v1` training and evaluation records.
 - Expose discovery and explicit session mutations through CLI and Rust daemon
   APIs.
-- Defer repair, search, export, message edit/delete, attachments, and
-  session-aware chat to later slices.
+- Support optional session-aware chat context and transcript recording.
+- Defer repair, search, export, message edit/delete, attachments, and context
+  summarization to later slices.
 
 ## Layout
 
@@ -98,6 +99,32 @@ not multi-file crash atomic. If a process crashes between appending
 
 Session removal permanently deletes the session directory. There is no trash or
 recycle bin.
+
+## Session-Aware Chat
+
+Chat remains stateless unless the caller provides a session ref. Session-aware
+chat treats request messages as a new turn, prepends recent transcript messages
+as context, and appends the new request messages plus assistant reply only after
+a successful assistant response.
+
+Context selection is bounded:
+
+- default `max_session_messages` is 50
+- hard maximum is 1000
+- `max_session_messages = 0` sends no prior transcript context but still records
+  the successful turn
+- selected historical content is capped at 1 MiB
+- selected `tool` messages are not supported by chat in this slice
+
+Session-aware chat holds the per-session lock while reading context, waiting for
+the model response, and appending the final turn. This serializes chat turns and
+explicit session writes for the same session. Long-running streamed responses can
+therefore make concurrent writers return `session_busy` after the standard lock
+timeout.
+
+Failed target calls, transport failures, malformed upstream responses,
+interrupted streams, and append failures are not partially recorded. Streaming
+append failures are reported inside the already-open SSE stream.
 
 ## Read Semantics
 

@@ -214,6 +214,8 @@ curl -sS http://127.0.0.1:8790/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{
     "server_ref": "<server-ref>",
+    "session_ref": "<session-ref>",
+    "max_session_messages": 50,
     "messages": [
       {"role": "user", "content": "Say hello in Traditional Chinese."}
     ],
@@ -236,6 +238,7 @@ curl -sS http://127.0.0.1:8790/v1/chat/completions \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{
     "model": "<server-ref>",
+    "session_ref": "<session-ref>",
     "messages": [
       {"role": "user", "content": "Say hello in Traditional Chinese."}
     ],
@@ -270,6 +273,9 @@ server and preserves both JSON and streaming Server-Sent Event responses.
 `POST /v1/chat/completions` offers a limited OpenAI-style success response for
 basic chat-completion clients; its `model` field selects a Tentgent server ref
 or unique prefix, not a provider model name.
+Both daemon chat endpoints can optionally take `session_ref`; request messages
+are treated as the new turn, recent session messages are prepended as context,
+and successful assistant replies are appended to the transcript.
 The daemon-only `server_ref` selector belongs on daemon `POST /v1/chat` requests;
 do not send it when calling the model-bound server port directly. Log diagnostics
 endpoints expose fixed daemon/server stdout and stderr paths for local debugging.
@@ -383,6 +389,7 @@ tentgent session inspect <session-ref>
 tentgent session append <session-ref> --role user --content "Hello"
 tentgent session messages <session-ref> --tail 100
 tentgent session update <session-ref> --title "Planning v2"
+tentgent chat <model-ref> --session <session-ref> --message "user:Continue."
 tentgent session rm <session-ref>
 ```
 
@@ -407,8 +414,9 @@ curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref>/messages \
   -d '{"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-Session deletion is permanent. Session APIs do not change `/v1/chat` behavior
-yet; chat remains stateless until the session-aware chat slice.
+Session deletion is permanent. Chat remains stateless unless `--session` or
+`session_ref` is provided. Session-aware chat serializes turns for a session
+while the model response is running so transcript order stays stable.
 
 ## Adapters
 

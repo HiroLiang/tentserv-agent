@@ -31,8 +31,11 @@ const MESSAGE_COUNT_MISMATCH_WARNING: &str = "message_count_mismatch";
 const DEFAULT_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_STALE_LOCK_AFTER: Duration = Duration::from_secs(120);
 const MAX_MESSAGES_PER_APPEND: usize = 100;
-const MAX_MESSAGE_CONTENT_BYTES: usize = 1024 * 1024;
+pub const MAX_MESSAGE_CONTENT_BYTES: usize = 1024 * 1024;
 const MAX_MESSAGE_METADATA_BYTES: usize = 64 * 1024;
+pub const DEFAULT_SESSION_CONTEXT_MESSAGES: usize = 50;
+pub const MAX_SESSION_CONTEXT_MESSAGES: usize = 1000;
+pub const MAX_SESSION_CONTEXT_BYTES: usize = 1024 * 1024;
 const MAX_TAGS: usize = 32;
 const MAX_TAG_CHARS: usize = 64;
 
@@ -157,6 +160,27 @@ pub struct SessionRemovalOutcome {
 }
 
 #[derive(Debug, Clone)]
+pub struct SessionChatContextMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug)]
+pub struct SessionChatTurn {
+    pub metadata: SessionMetadata,
+    pub context_messages: Vec<SessionChatContextMessage>,
+    pub max_session_messages: usize,
+    pub historical_messages: usize,
+    pub truncated: bool,
+    store_path: PathBuf,
+    metadata_path: PathBuf,
+    messages_path: PathBuf,
+    current_count: usize,
+    request_messages: Vec<SessionMessageInput>,
+    _lock: SessionLock,
+}
+
+#[derive(Debug, Clone)]
 struct ResolvedSession {
     metadata: SessionMetadata,
     store_path: PathBuf,
@@ -190,6 +214,7 @@ struct StoredSessionMessage {
     metadata: Value,
 }
 
+#[derive(Debug)]
 struct SessionLock {
     path: PathBuf,
 }
@@ -430,6 +455,75 @@ impl SessionManager {
         Ok(SessionRemovalOutcome { inspection })
     }
 
+    pub fn begin_chat_turn(
+        &self,
+        reference: &str,
+        max_session_messages: usize,
+        request_messages: Vec<SessionMessageInput>,
+    ) -> Result<SessionChatTurn, SessionError> {
+        if max_session_messages > MAX_SESSION_CONTEXT_MESSAGES {
+            return Err(SessionError::InvalidRequest(format!(
+                "`max_session_messages` must be at most {MAX_SESSION_CONTEXT_MESSAGES}"
+            )));
+        }
+        let request_messages = validate_chat_message_inputs(request_messages)?;
+        let resolved = self.resolve_reference(reference)?;
+        let lock = acquire_lock(
+            &self.paths.session_lock_path(&resolved.metadata.session_ref),
+            &resolved.metadata.short_ref,
+            self.lock_timeout,
+            self.stale_lock_after,
+        )?;
+        let resolved = self.load_session_dir(&resolved.store_path)?;
+        let (history, current_count) = if resolved.messages_path.exists() {
+            read_tail_messages(&resolved.messages_path, max_session_messages)?
+        } else {
+            (Vec::new(), 0)
+        };
+        let truncated = current_count > max_session_messages;
+        let historical_messages = history.len();
+        let mut context_messages = Vec::with_capacity(history.len() + request_messages.len());
+        let mut history_bytes = 0_usize;
+
+        for message in history {
+            if message.role == "tool" {
+                return Err(SessionError::UnsupportedContext(
+                    "selected session context contains a `tool` message".to_string(),
+                ));
+            }
+            history_bytes += message.content.len();
+            if history_bytes > MAX_SESSION_CONTEXT_BYTES {
+                return Err(SessionError::ContextTooLarge {
+                    max_bytes: MAX_SESSION_CONTEXT_BYTES,
+                });
+            }
+            context_messages.push(SessionChatContextMessage {
+                role: message.role,
+                content: message.content,
+            });
+        }
+        for message in &request_messages {
+            context_messages.push(SessionChatContextMessage {
+                role: message.role.clone(),
+                content: message.content.clone(),
+            });
+        }
+
+        Ok(SessionChatTurn {
+            metadata: resolved.metadata,
+            context_messages,
+            max_session_messages,
+            historical_messages,
+            truncated,
+            store_path: resolved.store_path,
+            metadata_path: resolved.metadata_path,
+            messages_path: resolved.messages_path,
+            current_count,
+            request_messages,
+            _lock: lock,
+        })
+    }
+
     fn resolve_reference(&self, reference: &str) -> Result<ResolvedSession, SessionError> {
         if reference.is_empty() {
             return Err(SessionError::NotFound(reference.to_string()));
@@ -556,6 +650,49 @@ impl SessionManager {
     }
 }
 
+impl SessionChatTurn {
+    pub fn append_assistant(
+        mut self,
+        assistant_content: String,
+        assistant_server_ref: Option<String>,
+        assistant_adapter_ref: Option<String>,
+        assistant_metadata: Value,
+    ) -> Result<SessionAppendOutcome, SessionError> {
+        let assistant = SessionMessageInput {
+            role: "assistant".to_string(),
+            content: assistant_content,
+            server_ref: assistant_server_ref,
+            adapter_ref: assistant_adapter_ref,
+            metadata: assistant_metadata,
+        };
+        let mut messages = self.request_messages;
+        messages.push(assistant);
+        let messages = validate_message_inputs(messages, false)?;
+        let now = now_rfc3339()?;
+        let stored_messages = build_stored_messages(messages, &now)?;
+        let appended = stored_messages
+            .iter()
+            .enumerate()
+            .map(|(offset, message)| SessionAppendedMessage {
+                index: self.current_count + offset,
+                role: message.role.clone(),
+                created_at: message.created_at.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        append_stored_messages(&self.messages_path, &stored_messages)?;
+        self.metadata.message_count = self.current_count + stored_messages.len();
+        self.metadata.updated_at = now;
+        write_session_metadata_atomic(&self.metadata_path, &self.metadata)?;
+
+        Ok(SessionAppendOutcome {
+            metadata: self.metadata,
+            store_path: self.store_path,
+            appended,
+        })
+    }
+}
+
 fn read_tail_messages(
     path: &Path,
     tail: usize,
@@ -644,6 +781,20 @@ fn validate_message_inputs(
         }
     }
 
+    Ok(messages)
+}
+
+fn validate_chat_message_inputs(
+    messages: Vec<SessionMessageInput>,
+) -> Result<Vec<SessionMessageInput>, SessionError> {
+    let messages = validate_message_inputs(messages, false)?;
+    for message in &messages {
+        if message.role == "tool" {
+            return Err(SessionError::InvalidRequest(
+                "`tool` messages are not supported by session-aware chat".to_string(),
+            ));
+        }
+    }
     Ok(messages)
 }
 
@@ -1454,6 +1605,119 @@ tags = []
                 }]
             ),
             Err(SessionError::Busy(_))
+        ));
+    }
+
+    #[test]
+    fn chat_turn_uses_bounded_context_and_appends_successful_turn() {
+        let home = unique_home("chat-turn");
+        write_session(
+            &home,
+            "cdcdcdcdcdcd000000000000",
+            "Chat",
+            "2026-05-01T00:00:00Z",
+            "2026-05-01T00:10:00Z",
+            3,
+            Some(&[
+                message("tool", "old tool output"),
+                message("user", "recent question"),
+                message("assistant", "recent answer"),
+            ]),
+        );
+        let manager = SessionManager::new_with_home(Some(&home)).expect("manager");
+
+        let turn = manager
+            .begin_chat_turn(
+                "cdcdcdcdcdcd",
+                2,
+                vec![SessionMessageInput {
+                    role: "user".to_string(),
+                    content: "new question".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: json!({}),
+                }],
+            )
+            .expect("turn");
+
+        assert!(turn.truncated);
+        assert_eq!(turn.historical_messages, 2);
+        assert_eq!(turn.context_messages.len(), 3);
+        assert_eq!(turn.context_messages[0].content, "recent question");
+        assert_eq!(turn.context_messages[2].content, "new question");
+
+        let append = turn
+            .append_assistant(
+                "new answer".to_string(),
+                Some("server-ref".to_string()),
+                None,
+                json!({"route":"native","finish_reason":"stop"}),
+            )
+            .expect("append");
+
+        assert_eq!(append.metadata.message_count, 5);
+        assert_eq!(append.appended[0].index, 3);
+        assert_eq!(append.appended[1].index, 4);
+        let messages = manager.messages("cdcdcdcdcdcd", 10).expect("messages");
+        assert_eq!(messages.messages[4].content, "new answer");
+        assert_eq!(
+            messages.messages[4].metadata["route"],
+            Value::String("native".to_string())
+        );
+    }
+
+    #[test]
+    fn chat_turn_rejects_selected_tool_messages_and_large_context() {
+        let home = unique_home("chat-turn-invalid");
+        write_session(
+            &home,
+            "edededededed000000000000",
+            "Chat",
+            "2026-05-01T00:00:00Z",
+            "2026-05-01T00:10:00Z",
+            1,
+            Some(&[message("tool", "selected tool output")]),
+        );
+        let manager = SessionManager::new_with_home(Some(&home)).expect("manager");
+        assert!(matches!(
+            manager.begin_chat_turn(
+                "edededededed",
+                1,
+                vec![SessionMessageInput {
+                    role: "user".to_string(),
+                    content: "hello".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: json!({}),
+                }],
+            ),
+            Err(SessionError::UnsupportedContext(_))
+        ));
+
+        let home = unique_home("chat-turn-large");
+        write_session(
+            &home,
+            "efefefefefef000000000000",
+            "Large",
+            "2026-05-01T00:00:00Z",
+            "2026-05-01T00:10:00Z",
+            1,
+            Some(&[message("user", &"x".repeat(MAX_SESSION_CONTEXT_BYTES + 1))]),
+        );
+        let manager = SessionManager::new_with_home(Some(&home)).expect("manager");
+        assert!(matches!(
+            manager.begin_chat_turn(
+                "efefefefefef",
+                1,
+                vec![SessionMessageInput {
+                    role: "user".to_string(),
+                    content: "hello".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: json!({}),
+                }],
+            ),
+            Err(SessionError::ContextTooLarge { .. })
         ));
     }
 

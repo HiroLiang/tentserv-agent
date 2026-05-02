@@ -2508,6 +2508,117 @@ async fn chat_proxy_transport_failure_returns_502() {
 }
 
 #[tokio::test]
+async fn native_chat_session_uses_context_default_server_and_appends() {
+    let (port, received_body) = spawn_mock_chat_server(
+        200,
+        "application/json; charset=utf-8",
+        br#"{"text":"session hello","stream":false}"#,
+        true,
+    )
+    .await;
+    let home = unique_home("native-chat-session");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture_with_refs(
+        &home,
+        "919191919191000000000000",
+        "Chat",
+        Some(&server_ref),
+        None,
+        1,
+        Some(&[session_message("user", "historical")]),
+    );
+    let request = post(
+        "/v1/chat",
+        br#"{"session_ref":"919191919191","messages":[{"role":"user","content":"new"}],"stream":false}"#,
+    );
+    let state = state_for(home.clone());
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let proxied_body: Value =
+        serde_json::from_slice(&received_body.await.expect("mock body")).expect("proxied json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["text"], "session hello");
+    assert_eq!(
+        proxied_body["messages"].as_array().expect("messages").len(),
+        2
+    );
+    assert_eq!(proxied_body["messages"][0]["content"], "historical");
+    assert_eq!(proxied_body["messages"][1]["content"], "new");
+    assert!(proxied_body.get("session_ref").is_none());
+    assert!(proxied_body.get("server_ref").is_none());
+
+    let messages = route_request(&get("/v1/sessions/919191919191/messages?tail=10"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 3);
+    assert_eq!(messages_body["messages"][2]["role"], "assistant");
+    assert_eq!(messages_body["messages"][2]["content"], "session hello");
+    assert_eq!(messages_body["messages"][2]["metadata"]["route"], "native");
+    assert_eq!(
+        messages_body["messages"][2]["metadata"]["server_ref"],
+        expanded_server_ref(&home, &server_ref)
+    );
+}
+
+#[tokio::test]
+async fn native_chat_session_stream_appends_before_done() {
+    let sse = b"event: delta\ndata: {\"delta\":\"hi\"}\n\nevent: done\ndata: {\"finish_reason\":\"stop\"}\n\n";
+    let (port, _received_body) =
+        spawn_mock_chat_server(200, "text/event-stream; charset=utf-8", sse, false).await;
+    let home = unique_home("native-chat-session-stream");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture_with_refs(
+        &home,
+        "929292929292000000000000",
+        "Chat",
+        Some(&server_ref),
+        None,
+        0,
+        None,
+    );
+    let request = post(
+        "/v1/chat",
+        br#"{"session_ref":"929292929292","messages":[{"role":"user","content":"new"}],"stream":true}"#,
+    );
+    let state = state_for(home);
+    let response = route_request(&request, &state).await;
+    let body = String::from_utf8(collect_response_body(response).await).expect("utf8");
+
+    assert!(body.contains(r#"event: delta"#));
+    assert!(body.contains(r#"event: done"#));
+    let messages = route_request(&get("/v1/sessions/929292929292/messages"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 2);
+    assert_eq!(messages_body["messages"][1]["content"], "hi");
+}
+
+#[tokio::test]
+async fn session_chat_rejects_invalid_context_options_and_tool_messages() {
+    let state = state_for(unique_home("session-chat-invalid"));
+    let bad_max = route_request(
+        &post(
+            "/v1/chat",
+            br#"{"messages":[{"role":"user","content":"Hello"}],"max_session_messages":1}"#,
+        ),
+        &state,
+    )
+    .await;
+    let bad_max_body: Value = serde_json::from_slice(response_buffer(&bad_max)).expect("json");
+    assert_eq!(bad_max.status_code, 400);
+    assert_eq!(bad_max_body["error"], "bad_request");
+
+    let tool_request = route_request(
+        &post(
+            "/v1/chat",
+            br#"{"session_ref":"abc","messages":[{"role":"tool","content":"nope"}]}"#,
+        ),
+        &state,
+    )
+    .await;
+    assert_eq!(tool_request.status_code, 400);
+}
+
+#[tokio::test]
 async fn openai_chat_completions_requires_daemon_auth_when_token_enabled() {
     let request = post("/v1/chat/completions", b"{}");
     let state = state_with_token(unique_home("openai-auth"), "secret");
@@ -2648,6 +2759,73 @@ async fn openai_chat_completions_maps_target_text_response() {
     assert_eq!(proxied_body["max_tokens"], 16);
     assert_eq!(proxied_body["temperature"], 0.1);
     assert!(proxied_body.get("unsupported").is_none());
+}
+
+#[tokio::test]
+async fn openai_chat_completions_session_appends_and_keeps_model_required() {
+    let (port, received_body) = spawn_mock_chat_server(
+        200,
+        "application/json; charset=utf-8",
+        br#"{"text":"openai session hello","stream":false}"#,
+        true,
+    )
+    .await;
+    let home = unique_home("openai-chat-session");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture(
+        &home,
+        "939393939393000000000000",
+        "Chat",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        1,
+        Some(&[session_message("user", "historical")]),
+    );
+    let state = state_for(home.clone());
+
+    let missing_model = route_request(
+        &post(
+            "/v1/chat/completions",
+            br#"{"session_ref":"939393939393","messages":[{"role":"user","content":"new"}]}"#,
+        ),
+        &state,
+    )
+    .await;
+    assert_eq!(missing_model.status_code, 400);
+
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","session_ref":"939393939393","messages":[{{"role":"user","content":"new"}}],"stream":false}}"#,
+            server_ref
+        )
+        .as_bytes(),
+    );
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let proxied_body: Value =
+        serde_json::from_slice(&received_body.await.expect("mock body")).expect("proxied json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["model"], expanded_server_ref(&home, &server_ref));
+    assert_eq!(
+        body["choices"][0]["message"]["content"],
+        "openai session hello"
+    );
+    assert_eq!(
+        proxied_body["messages"].as_array().expect("messages").len(),
+        2
+    );
+    assert_eq!(proxied_body["messages"][0]["content"], "historical");
+    assert!(proxied_body.get("session_ref").is_none());
+
+    let messages = route_request(&get("/v1/sessions/939393939393/messages"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 3);
+    assert_eq!(
+        messages_body["messages"][2]["metadata"]["route"],
+        "openai_compat"
+    );
 }
 
 #[tokio::test]
@@ -3189,6 +3367,48 @@ created_at = "{created_at}"
 updated_at = "{updated_at}"
 message_count = {message_count}
 tags = []
+"#,
+            &session_ref[..12]
+        ),
+    )
+    .expect("session metadata");
+    if let Some(messages) = messages {
+        fs::write(
+            session_dir.join("messages.jsonl"),
+            messages.join("\n") + "\n",
+        )
+        .expect("session messages");
+    }
+}
+
+fn write_session_fixture_with_refs(
+    home: &Path,
+    session_ref: &str,
+    title: &str,
+    default_server_ref: Option<&str>,
+    adapter_ref: Option<&str>,
+    message_count: usize,
+    messages: Option<&[String]>,
+) {
+    let session_dir = home.join("sessions").join(session_ref);
+    fs::create_dir_all(&session_dir).expect("session dir");
+    let default_server_ref = default_server_ref
+        .map(|value| format!("default_server_ref = \"{value}\"\n"))
+        .unwrap_or_default();
+    let adapter_ref = adapter_ref
+        .map(|value| format!("adapter_ref = \"{value}\"\n"))
+        .unwrap_or_default();
+    fs::write(
+        session_dir.join("session.toml"),
+        format!(
+            r#"schema = "tentgent.session.v1"
+session_ref = "{session_ref}"
+short_ref = "{}"
+title = "{title}"
+created_at = "2026-05-01T00:00:00Z"
+updated_at = "2026-05-01T00:10:00Z"
+message_count = {message_count}
+{default_server_ref}{adapter_ref}tags = []
 "#,
             &session_ref[..12]
         ),

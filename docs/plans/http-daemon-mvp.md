@@ -624,7 +624,7 @@ Review target:
 
 ### Slice 18.2: Session-Aware Chat
 
-Status: planned.
+Status: implemented in current workspace.
 
 Goals:
 
@@ -660,6 +660,17 @@ Goals:
 - document that OpenAI-compatible `session_ref` is a Tentgent extension field
   that SDK users may need to pass through an extra-body mechanism
 - defer session dataset export until transcript semantics settle
+
+Implemented decisions:
+
+- `max_session_messages` defaults to `50`, accepts `0..=1000`, and requires
+  `session_ref`
+- selected historical context is capped at 1 MiB
+- accumulated assistant content is capped at the session message 1 MiB limit
+- request `tool` messages are rejected; selected historical `tool` messages
+  return `session_context_unsupported`
+- same-session turns are serialized by the per-session lock until the assistant
+  reply is recorded
 
 ## Open Questions
 

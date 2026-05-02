@@ -217,6 +217,7 @@ Create and mutate local chat transcript sessions:
 ./target/debug/tentgent session append <session-ref> --role user --content "Hello"
 ./target/debug/tentgent session messages <session-ref> --tail 100
 ./target/debug/tentgent session update <session-ref> --title "Planning v2"
+./target/debug/tentgent chat <model-ref> --session <session-ref> --message "user:Continue."
 ./target/debug/tentgent session rm <session-ref>
 ```
 
@@ -236,8 +237,9 @@ curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> \
 curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> -X DELETE
 ```
 
-Session deletion is permanent. Session-aware chat remains planned separately;
-these commands do not change `tentgent chat` or daemon chat proxy behavior.
+Session deletion is permanent. Chat remains stateless unless `--session` or
+`session_ref` is provided. Session-aware chat holds the session lock until the
+assistant reply is recorded, so same-session turns are serialized.
 
 ## Train Commands
 
@@ -506,6 +508,8 @@ curl -sS http://127.0.0.1:8790/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{
     "server_ref": "<server-ref>",
+    "session_ref": "<session-ref>",
+    "max_session_messages": 50,
     "messages": [
       {"role": "user", "content": "Say hello in Traditional Chinese."}
     ],
@@ -528,6 +532,7 @@ curl -sS http://127.0.0.1:8790/v1/chat/completions \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{
     "model": "<server-ref>",
+    "session_ref": "<session-ref>",
     "messages": [
       {"role": "user", "content": "Say hello in Traditional Chinese."}
     ],
@@ -570,7 +575,8 @@ datasets, server specs, controlled server lifecycle mutations, and
 `POST /v1/chat` proxying to already-running model-bound servers.
 `POST /v1/chat/completions` adds a limited OpenAI-style success wrapper for
 basic chat-completion clients; its `model` field selects a Tentgent server ref
-or unique prefix, not a provider model name. Use
+or unique prefix, not a provider model name. Both chat routes can optionally use
+`session_ref` for bounded context and transcript recording. Use
 `GET /v1/servers/<server-ref>/health` to distinguish process state from target
 HTTP reachability before sending chat. Use the daemon and server log diagnostics
 endpoints to inspect fixed stdout/stderr log paths without accepting arbitrary

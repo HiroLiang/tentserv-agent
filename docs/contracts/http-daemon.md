@@ -1214,11 +1214,13 @@ removing its stored spec. The response is:
 
 `POST /v1/chat` proxies a chat request to an already-running model-bound server.
 The request body follows [server-chat.md](./server-chat.md) and adds one optional
-daemon-only selector:
+daemon-only selector plus optional session context fields:
 
 ```json
 {
   "server_ref": "25ee5888595d",
+  "session_ref": "abcdefabcdef",
+  "max_session_messages": 50,
   "messages": [
     {
       "role": "user",
@@ -1236,16 +1238,25 @@ Selection rules:
 
 - when `server_ref` is present, it may be a full ref or unique short prefix and
   must resolve to a running server
+- when `session_ref` is present and `server_ref` is absent, the session
+  `default_server_ref` is tried before the existing single-running-server policy
 - when `server_ref` is absent, exactly one server must be running
 - the daemon removes `server_ref` before forwarding the request to the selected
   server's `POST /v1/chat`
 - the daemon does not auto-start stopped servers
+- session `adapter_ref` is used only when request `adapter_ref` is absent or
+  null
 
-Non-streaming responses preserve the selected server status code, response body,
-and `Content-Type`.
+When `session_ref` is absent, non-streaming responses preserve the selected
+server status code, response body, and `Content-Type`. When `session_ref` is
+present, successful non-streaming target responses must include string field
+`text`; the daemon appends the request messages and assistant text to the
+session before returning the original target response body.
 
-Streaming responses preserve Server-Sent Event bytes from the selected server and
-return:
+When `session_ref` is absent, streaming responses preserve Server-Sent Event
+bytes from the selected server. When `session_ref` is present, the daemon
+transforms the SSE stream, accumulates assistant deltas, appends the transcript,
+then emits the final `done` event.
 
 ```text
 Content-Type: text/event-stream; charset=utf-8
@@ -1262,9 +1273,25 @@ Daemon-owned chat selection and proxy errors are JSON:
 - multiple running servers without `server_ref` returns `409 ambiguous_server`
 - target connection or transport failures return `502 server_proxy_failed`
   with a hint to inspect `GET /v1/servers/{server_ref}/health`
+- invalid session refs return `404 not_found` or `409 ambiguous_ref`
+- selected session history with `tool` messages returns
+  `409 session_context_unsupported`
+- oversized selected session history returns `409 session_context_too_large`
+- session lock timeout returns `409 session_busy`
+- stale session metadata refs return `409 session_invalid`
 
 If the selected server returns its own chat error, the daemon passes through that
 status, body, and content type unchanged.
+
+Session-aware chat treats request `messages` as the new turn, not as a full
+transcript replay. It prepends the last `max_session_messages` historical
+messages, default `50`, min `0`, max `1000`, and caps selected history at 1 MiB.
+The session lock is held while context is read, the model-bound request runs,
+and the final successful turn is appended. Failed target calls, target errors,
+transport failures, malformed upstream responses, interrupted streams, and
+append failures are not partially recorded. If append fails after streaming
+headers were sent, the daemon emits a terminal SSE error instead of a successful
+final marker.
 
 ## OpenAI-Style Chat Completions
 
@@ -1277,6 +1304,8 @@ Request body:
 ```json
 {
   "model": "25ee5888595d",
+  "session_ref": "abcdefabcdef",
+  "max_session_messages": 50,
   "messages": [
     {
       "role": "user",
@@ -1299,8 +1328,10 @@ MVP limits:
 - `messages[].content` must be a string
 - supported roles are `system`, `user`, and `assistant`
 - unsupported OpenAI request fields are ignored
+- `session_ref`, `max_session_messages`, and `adapter_ref` are Tentgent
+  extension fields; SDK users may need an extra-body mechanism to pass them
 - multimodal content, tools/function calling, model-name routing, session
-  persistence, and OpenAI-compatible error objects are out of scope
+  auto-creation, and OpenAI-compatible error objects are out of scope
 
 Non-streaming success responses map target `{ "text": "..." }` payloads into:
 
@@ -1336,6 +1367,11 @@ data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1770000000
 
 data: [DONE]
 ```
+
+With `session_ref`, the OpenAI-compatible route uses the same session context and
+append semantics as native chat. `model` remains required and still selects the
+Tentgent server; session `default_server_ref` does not replace it. The final
+stop chunk and `[DONE]` are emitted only after session append succeeds.
 
 ## Log Diagnostics
 

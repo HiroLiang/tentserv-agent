@@ -14,6 +14,10 @@ pub enum SessionError {
     AmbiguousRef(String),
     #[error("session `{0}` is busy; another writer holds its lock")]
     Busy(String),
+    #[error("session context is not supported for chat: {0}")]
+    UnsupportedContext(String),
+    #[error("session context is too large; selected history must be at most {max_bytes} bytes")]
+    ContextTooLarge { max_bytes: usize },
     #[error("server reference `{0}` was not found")]
     ServerNotFound(String),
     #[error("server reference `{0}` is ambiguous; use a longer prefix")]

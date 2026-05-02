@@ -189,6 +189,20 @@ pub(crate) fn session_error_response(error: SessionError) -> HttpResponse {
                 message: format!("session `{reference}` is busy; try again shortly"),
             },
         ),
+        SessionError::UnsupportedContext(message) => json_response(
+            409,
+            ErrorResponse {
+                error: "session_context_unsupported",
+                message,
+            },
+        ),
+        SessionError::ContextTooLarge { max_bytes } => json_response(
+            409,
+            ErrorResponse {
+                error: "session_context_too_large",
+                message: format!("selected session context must be at most {max_bytes} bytes"),
+            },
+        ),
         other => json_response(
             500,
             ErrorResponse {
@@ -263,6 +277,20 @@ pub(crate) fn session_write_error_response(error: SessionError) -> HttpResponse 
             ErrorResponse {
                 error: "session_busy",
                 message: format!("session `{reference}` is busy; try again shortly"),
+            },
+        ),
+        SessionError::UnsupportedContext(message) => json_response(
+            409,
+            ErrorResponse {
+                error: "session_context_unsupported",
+                message,
+            },
+        ),
+        SessionError::ContextTooLarge { max_bytes } => json_response(
+            409,
+            ErrorResponse {
+                error: "session_context_too_large",
+                message: format!("selected session context must be at most {max_bytes} bytes"),
             },
         ),
         other => json_response(
