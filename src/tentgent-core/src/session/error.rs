@@ -14,6 +14,17 @@ pub enum SessionError {
     AmbiguousRef(String),
     #[error("session `{0}` is busy; another writer holds its lock")]
     Busy(String),
+    #[error("session current turn contains {protected_count} protected message(s), exceeding the bounded session cap of {max_messages}")]
+    TurnTooLarge {
+        protected_count: usize,
+        max_messages: usize,
+    },
+    #[error("session compaction requires a chat-capable compaction server")]
+    CompactionRequired,
+    #[error("session compaction context is too large; selected source must be at most {max_bytes} bytes")]
+    CompactionContextTooLarge { max_bytes: usize },
+    #[error("session compaction failed: {0}")]
+    CompactionFailed(String),
     #[error("session context is not supported for chat: {0}")]
     UnsupportedContext(String),
     #[error("session context is too large; selected history must be at most {max_bytes} bytes")]

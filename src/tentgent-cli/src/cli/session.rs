@@ -2,15 +2,19 @@ use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, C
 use console::style;
 use miette::{miette, IntoDiagnostic};
 use serde_json::Value;
-use tentgent_core::session::{
-    SessionAppendOutcome, SessionCreateRequest, SessionInspection, SessionManager,
-    SessionMessageInput, SessionMessages, SessionOptionalStringPatch, SessionRemovalOutcome,
-    SessionSummary, SessionUpdateRequest,
+use tentgent_core::{
+    server::{ServerInspection, ServerManager},
+    session::{
+        SessionAppendOutcome, SessionCompactionInput, SessionCompactionOutcome,
+        SessionCompactionSummary, SessionCreateRequest, SessionInspection, SessionManager,
+        SessionMessageInput, SessionMessages, SessionOptionalStringPatch, SessionRemovalOutcome,
+        SessionSummary, SessionUpdateRequest,
+    },
 };
 
 use super::commands::SessionCommands;
 
-pub fn handle_session_command(action: SessionCommands) -> miette::Result<()> {
+pub async fn handle_session_command(action: SessionCommands) -> miette::Result<()> {
     match action {
         SessionCommands::Ls { home } => {
             let manager = SessionManager::open_readonly(home.as_deref()).into_diagnostic()?;
@@ -86,12 +90,13 @@ pub fn handle_session_command(action: SessionCommands) -> miette::Result<()> {
             role,
             content,
             metadata_json,
+            compaction_server,
             home,
         } => {
             let metadata = parse_metadata_json(&metadata_json)?;
             let manager = SessionManager::new_with_home(home.as_deref()).into_diagnostic()?;
-            let outcome = manager
-                .append_messages(
+            let mut turn = manager
+                .begin_append_messages(
                     &reference,
                     vec![SessionMessageInput {
                         role,
@@ -102,7 +107,47 @@ pub fn handle_session_command(action: SessionCommands) -> miette::Result<()> {
                     }],
                 )
                 .into_diagnostic()?;
+            if let Some(input) = turn.compaction_input().into_diagnostic()? {
+                let server_ref = compaction_server
+                    .as_deref()
+                    .or_else(|| turn.default_server_ref())
+                    .ok_or_else(|| {
+                        miette!(
+                            "session append requires --compaction-server or a session default server"
+                        )
+                    })?;
+                let server = resolve_running_server(home.as_deref(), server_ref)?;
+                let summary = summarize_with_server(&server, &input).await?;
+                turn.apply_compaction_summary(summary).into_diagnostic()?;
+            }
+            let outcome = turn.append_after_compaction().into_diagnostic()?;
             render_append_outcome(&outcome);
+        }
+        SessionCommands::Compact {
+            reference,
+            server,
+            keep_recent,
+            instructions,
+            home,
+        } => {
+            let manager = SessionManager::new_with_home(home.as_deref()).into_diagnostic()?;
+            let turn = manager
+                .begin_compaction(&reference, keep_recent, instructions.clone())
+                .into_diagnostic()?;
+            let Some(input) = turn.compaction_input(instructions).into_diagnostic()? else {
+                render_compaction_outcome(&turn.no_op_outcome());
+                return Ok(());
+            };
+            let server_ref = server
+                .as_deref()
+                .or_else(|| turn.default_server_ref())
+                .ok_or_else(|| {
+                    miette!("session compact requires --server or a session default server")
+                })?;
+            let server = resolve_running_server(home.as_deref(), server_ref)?;
+            let summary = summarize_with_server(&server, &input).await?;
+            let outcome = turn.apply_summary(summary).into_diagnostic()?;
+            render_compaction_outcome(&outcome);
         }
         SessionCommands::Rm { reference, home } => {
             let manager = SessionManager::new_with_home(home.as_deref()).into_diagnostic()?;
@@ -131,6 +176,66 @@ fn parse_metadata_json(input: &str) -> miette::Result<Value> {
         return Err(miette!("--metadata-json must be a JSON object"));
     }
     Ok(value)
+}
+
+fn resolve_running_server(
+    home: Option<&std::path::Path>,
+    reference: &str,
+) -> miette::Result<ServerInspection> {
+    let manager = ServerManager::open_readonly(home).into_diagnostic()?;
+    let inspection = manager.inspect(reference).into_diagnostic()?;
+    if !inspection.running {
+        return Err(miette!(
+            "server `{}` is not running",
+            inspection.spec.short_ref
+        ));
+    }
+    Ok(inspection)
+}
+
+async fn summarize_with_server(
+    server: &ServerInspection,
+    input: &SessionCompactionInput,
+) -> miette::Result<SessionCompactionSummary> {
+    let url = format!("http://{}:{}/v1/chat", server.spec.host, server.spec.port);
+    let body = serde_json::json!({
+        "messages": input
+            .prompt_messages
+            .iter()
+            .map(|message| serde_json::json!({
+                "role": message.role,
+                "content": message.content,
+            }))
+            .collect::<Vec<_>>(),
+        "stream": false,
+    });
+    let response = reqwest::Client::new()
+        .post(url)
+        .json(&body)
+        .send()
+        .await
+        .into_diagnostic()?;
+    if !response.status().is_success() {
+        return Err(miette!(
+            "compaction server returned HTTP status {}",
+            response.status()
+        ));
+    }
+    let payload = response.json::<Value>().await.into_diagnostic()?;
+    let text = payload
+        .get("text")
+        .and_then(Value::as_str)
+        .ok_or_else(|| miette!("compaction server response did not contain string `text`"))?;
+    if text.trim().is_empty() {
+        return Err(miette!("compaction server returned an empty summary"));
+    }
+    Ok(SessionCompactionSummary {
+        content: text.to_string(),
+        server_ref: Some(server.spec.server_ref.clone()),
+        model_ref: server.spec.model_ref.clone(),
+        provider_model: server.spec.provider_model.clone(),
+        adapter_ref: None,
+    })
 }
 
 fn render_session_list(sessions: &[SessionSummary]) {
@@ -293,6 +398,45 @@ fn render_append_outcome(outcome: &SessionAppendOutcome) {
     }
     println!("{table}");
     println!("message_count: {}", outcome.metadata.message_count);
+    println!();
+}
+
+fn render_compaction_outcome(outcome: &SessionCompactionOutcome) {
+    println!(
+        "{} {} {}",
+        style("==>").cyan().bold(),
+        style("Session compacted").bold(),
+        style(&outcome.metadata.short_ref).bold()
+    );
+
+    let mut table = base_table();
+    table.add_row(vec![Cell::new("compacted"), Cell::new(outcome.compacted)]);
+    table.add_row(vec![
+        Cell::new("message_count"),
+        Cell::new(outcome.metadata.message_count),
+    ]);
+    table.add_row(vec![
+        Cell::new("source_message_count"),
+        Cell::new(outcome.source_message_count),
+    ]);
+    table.add_row(vec![
+        Cell::new("replaced_message_count"),
+        Cell::new(outcome.replaced_message_count),
+    ]);
+    table.add_row(vec![
+        Cell::new("kept_recent_messages"),
+        Cell::new(outcome.kept_recent_messages),
+    ]);
+    table.add_row(vec![
+        Cell::new("summary_index"),
+        Cell::new(
+            outcome
+                .summary_index
+                .map(|index| index.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+        ),
+    ]);
+    println!("{table}");
     println!();
 }
 

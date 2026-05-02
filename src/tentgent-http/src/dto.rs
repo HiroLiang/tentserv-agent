@@ -684,6 +684,21 @@ pub(crate) struct SessionWarningItem {
     pub(crate) message: String,
 }
 
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionCompactResponse {
+    pub(crate) session: SessionAppendSessionItem,
+    pub(crate) compaction: SessionCompactionItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionCompactionItem {
+    pub(crate) compacted: bool,
+    pub(crate) source_message_count: usize,
+    pub(crate) replaced_message_count: usize,
+    pub(crate) kept_recent_messages: usize,
+    pub(crate) summary_index: Option<usize>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SessionCreateRequest {
@@ -712,6 +727,15 @@ pub(crate) struct SessionPatchRequest {
 #[serde(deny_unknown_fields)]
 pub(crate) struct SessionAppendRequest {
     pub(crate) messages: Vec<SessionMessageRequest>,
+    pub(crate) compaction_server_ref: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionCompactRequest {
+    pub(crate) server_ref: Option<String>,
+    pub(crate) keep_recent_messages: Option<usize>,
+    pub(crate) instructions: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

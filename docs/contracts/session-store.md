@@ -10,8 +10,10 @@ CLI, and external chat transcript discovery and mutation.
 - Expose discovery and explicit session mutations through CLI and Rust daemon
   APIs.
 - Support optional session-aware chat context and transcript recording.
-- Defer repair, search, export, message edit/delete, attachments, and context
-  summarization to later slices.
+- Keep persisted transcripts as bounded working context through destructive
+  compaction.
+- Defer repair, search, export, message edit/delete, attachments, long-term
+  memory, and semantic retrieval to later slices.
 
 ## Layout
 
@@ -86,7 +88,7 @@ Writers validate:
 - roles: `system`, `user`, `assistant`, `tool`
 - non-empty string content up to 1 MiB
 - metadata object up to 64 KiB after JSON serialization
-- append batch size from 1 to 100 messages
+- append batch size from 1 to 50 messages under bounded compaction rules
 - tags: trimmed, case-sensitive, order-preserving, max 32 tags, max 64
   characters each, no duplicates after trimming
 
@@ -99,6 +101,39 @@ not multi-file crash atomic. If a process crashes between appending
 
 Session removal permanently deletes the session directory. There is no trash or
 recycle bin.
+
+## Bounded Compaction
+
+Tentgent sessions are short-term working memory, not complete chat history or
+audit logs. Persisted transcripts are capped at 50 messages. When a mutation or
+session-aware chat turn would exceed that cap, Tentgent may rewrite
+`messages.jsonl` so older pre-existing messages are replaced by one generated
+`system` summary message plus as many recent pre-existing messages as fit.
+
+The current operation is protected. For chat, the protected current turn is the
+request messages plus one assistant reply. For explicit append, the protected
+messages are the messages supplied by the caller. Protected messages are never
+summarized by the same operation, but they count toward the final 50-message
+cap.
+
+Dynamic compaction uses:
+
+```text
+summary + recent pre-existing messages + protected current messages <= 50
+```
+
+If the protected current messages alone exceed 50, the request fails with
+`session_turn_too_large`. If they equal 50, the replacement transcript is exactly
+the protected messages and old context, including any existing summary, is
+discarded. Repeated compaction includes an existing summary in the next summary
+input and still leaves at most one summary message.
+
+Manual compaction is available through CLI and HTTP. It has no protected current
+turn and defaults to `1 summary + 49 recent messages`. Summary generation calls
+the selected chat-capable model/server through a low-level non-session chat path;
+the compaction prompt and response are not recorded as ordinary session turns.
+If summary generation or atomic rewrite fails, the original transcript should be
+preserved whenever possible.
 
 ## Session-Aware Chat
 
@@ -126,10 +161,15 @@ Failed target calls, transport failures, malformed upstream responses,
 interrupted streams, and append failures are not partially recorded. Streaming
 append failures are reported inside the already-open SSE stream.
 
+Before a session-aware chat target request starts, Tentgent compacts older
+persisted messages when needed to reserve enough space for the protected current
+turn. This happens before the first SSE chunk for streaming chat. If compaction
+fails, the chat request fails before contacting the target model-bound server.
+
 ## Read Semantics
 
 Reads are best-effort local file reads. This slice does not define shared read
-locks, partial-write tolerance, compaction, repair, import, or export.
+locks, partial-write tolerance, repair, import, or export.
 
 Missing `messages.jsonl` is not fatal. Readers return an empty message list with
 a structured `messages_missing` warning.

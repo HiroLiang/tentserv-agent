@@ -1655,6 +1655,80 @@ async fn session_mutation_routes_create_update_append_and_delete() {
 }
 
 #[tokio::test]
+async fn session_compact_route_rewrites_to_summary_plus_recent() {
+    let (port, received_body) = spawn_mock_chat_server(
+        200,
+        "application/json; charset=utf-8",
+        br#"{"text":"summary of older messages","stream":false}"#,
+        true,
+    )
+    .await;
+    let home = unique_home("session-compact");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture_with_refs(
+        &home,
+        "515151515151000000000000",
+        "Compact",
+        Some(&server_ref),
+        None,
+        60,
+        Some(&session_messages_n(60)),
+    );
+    let state = state_for(home.clone());
+    let response =
+        route_request(&post("/v1/sessions/515151515151/compact", br#"{}"#), &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let proxied_body: Value =
+        serde_json::from_slice(&received_body.await.expect("mock body")).expect("proxied json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["session"]["message_count"], 50);
+    assert_eq!(body["compaction"]["compacted"], true);
+    assert_eq!(body["compaction"]["replaced_message_count"], 11);
+    assert!(proxied_body["messages"][0]["content"]
+        .as_str()
+        .expect("prompt")
+        .contains("Summarize the session transcript"));
+
+    let messages = route_request(&get("/v1/sessions/515151515151/messages?tail=60"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 50);
+    assert_eq!(messages_body["messages"][0]["role"], "system");
+    assert_eq!(
+        messages_body["messages"][0]["metadata"]["kind"],
+        "session_summary"
+    );
+    assert_eq!(messages_body["messages"][1]["content"], "message 11");
+}
+
+#[tokio::test]
+async fn session_append_over_cap_requires_compaction_server() {
+    let home = unique_home("session-append-over-cap");
+    write_session_fixture(
+        &home,
+        "525252525252000000000000",
+        "Append",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        50,
+        Some(&session_messages_n(50)),
+    );
+    let state = state_for(home);
+    let response = route_request(
+        &post(
+            "/v1/sessions/525252525252/messages",
+            br#"{"messages":[{"role":"user","content":"new"}]}"#,
+        ),
+        &state,
+    )
+    .await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 409);
+    assert_eq!(body["error"], "session_compaction_required");
+}
+
+#[tokio::test]
 async fn session_mutation_validation_auth_and_methods_map_errors() {
     let home = unique_home("sessions-mutate-errors");
     let state = state_for(home.clone());
@@ -3427,6 +3501,12 @@ fn session_message(role: &str, content: &str) -> String {
     format!(
         r#"{{"schema":"tentgent.session.message.v1","role":"{role}","content":"{content}","created_at":"2026-05-01T00:00:00Z"}}"#
     )
+}
+
+fn session_messages_n(count: usize) -> Vec<String> {
+    (0..count)
+        .map(|index| session_message("user", &format!("message {index}")))
+        .collect()
 }
 
 async fn spawn_mock_chat_server(

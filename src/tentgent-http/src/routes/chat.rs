@@ -108,7 +108,7 @@ async fn proxy_session_chat_response(
         Ok(manager) => manager,
         Err(error) => return session_write_error_response(error),
     };
-    let turn = match session_manager.begin_chat_turn(
+    let mut turn = match session_manager.begin_chat_turn(
         &session_reference,
         max_session_messages,
         request_messages,
@@ -132,6 +132,21 @@ async fn proxy_session_chat_response(
         Ok(server) => server,
         Err(response) => return response,
     };
+    if let Err(error) = turn.apply_clear_compaction_if_needed() {
+        return session_write_error_response(error);
+    }
+    if let Some(input) = match turn.compaction_input() {
+        Ok(input) => input,
+        Err(error) => return session_write_error_response(error),
+    } {
+        let summary = match super::session::summarize_with_server(state, &server, &input).await {
+            Ok(summary) => summary,
+            Err(response) => return response,
+        };
+        if let Err(error) = turn.apply_compaction_summary(summary) {
+            return session_write_error_response(error);
+        }
+    }
 
     let adapter_ref = match effective_adapter_ref(
         state,

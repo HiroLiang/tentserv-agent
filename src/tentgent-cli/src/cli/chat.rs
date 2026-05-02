@@ -11,8 +11,9 @@ use tentgent_core::{
     model::ModelManager,
     runtime_assets::resolve_runtime_home,
     session::{
-        SessionChatContextMessage, SessionManager, SessionMessageInput,
-        DEFAULT_SESSION_CONTEXT_MESSAGES, MAX_SESSION_CONTEXT_MESSAGES,
+        SessionChatContextMessage, SessionCompactionInput, SessionCompactionSummary,
+        SessionManager, SessionMessageInput, DEFAULT_SESSION_CONTEXT_MESSAGES,
+        MAX_SESSION_CONTEXT_MESSAGES,
     },
 };
 use tokio::io::AsyncReadExt;
@@ -134,7 +135,7 @@ async fn handle_session_chat_command(command: ChatCommand) -> miette::Result<()>
     let request_messages = resolve_message_inputs(&command)?;
     let session_manager = SessionManager::new_with_home(Some(Path::new(&runtime_home)))
         .map_err(|err| miette!("failed to open session store: {err}"))?;
-    let turn = session_manager
+    let mut turn = session_manager
         .begin_chat_turn(session_ref, max_session_messages, request_messages)
         .map_err(|err| miette!("failed to prepare session chat turn: {err}"))?;
     let resolved_model_ref = ModelManager::open_readonly_with_home(Some(Path::new(&runtime_home)))
@@ -153,6 +154,24 @@ async fn handle_session_chat_command(command: ChatCommand) -> miette::Result<()>
             None => None,
         },
     };
+    turn.apply_clear_compaction_if_needed()
+        .map_err(|err| miette!("failed to compact session transcript: {err}"))?;
+    if let Some(input) = turn
+        .compaction_input()
+        .map_err(|err| miette!("failed to prepare session compaction: {err}"))?
+    {
+        let summary = summarize_with_cli_model(
+            &python_entrypoint,
+            python_runtime.project_dir(),
+            &runtime_home,
+            &command.model_ref,
+            effective_adapter_ref.as_deref(),
+            &input,
+        )
+        .await?;
+        turn.apply_compaction_summary(summary)
+            .map_err(|err| miette!("failed to compact session transcript: {err}"))?;
+    }
 
     let mut process = Command::new(&python_entrypoint);
     process
@@ -318,6 +337,83 @@ fn parse_cli_message(raw: &str) -> miette::Result<ParsedCliMessage> {
 
 fn format_cli_message(message: &SessionChatContextMessage) -> String {
     format!("{}:{}", message.role, message.content)
+}
+
+async fn summarize_with_cli_model(
+    python_entrypoint: &Path,
+    python_project_dir: &Path,
+    runtime_home: &str,
+    model_ref: &str,
+    adapter_ref: Option<&str>,
+    input: &SessionCompactionInput,
+) -> miette::Result<SessionCompactionSummary> {
+    let mut process = Command::new(python_entrypoint);
+    process
+        .current_dir(python_project_dir)
+        .arg("--model-ref")
+        .arg(model_ref)
+        .arg("--home")
+        .arg(runtime_home)
+        .env("TENTGENT_HOME", runtime_home)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+
+    if let Some(adapter_ref) = adapter_ref {
+        process.arg("--adapter-ref").arg(adapter_ref);
+    }
+    for message in &input.prompt_messages {
+        process.arg("--message").arg(format_cli_message(message));
+    }
+
+    let mut child = process.spawn().into_diagnostic()?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| miette!("failed to capture compaction runtime stdout"))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| miette!("failed to capture compaction runtime stderr"))?;
+
+    let stdout_task = tokio::spawn(async move {
+        let mut buffer = Vec::new();
+        stdout.read_to_end(&mut buffer).await?;
+        Ok::<Vec<u8>, std::io::Error>(buffer)
+    });
+    let stderr_task = tokio::spawn(async move {
+        let mut buffer = Vec::new();
+        stderr.read_to_end(&mut buffer).await?;
+        Ok::<Vec<u8>, std::io::Error>(buffer)
+    });
+
+    let status = child.wait().await.into_diagnostic()?;
+    let stdout_bytes = stdout_task.await.into_diagnostic()?.into_diagnostic()?;
+    let stderr_bytes = stderr_task.await.into_diagnostic()?.into_diagnostic()?;
+    if !status.success() {
+        let stderr_text = String::from_utf8_lossy(&stderr_bytes).trim().to_string();
+        if stderr_text.is_empty() {
+            return Err(miette!("compaction runtime exited with status {status}"));
+        }
+        return Err(miette!(
+            "compaction runtime exited with status {status}\n\n{}",
+            stderr_text
+        ));
+    }
+    let summary = String::from_utf8_lossy(&stdout_bytes)
+        .trim_end_matches(['\r', '\n'])
+        .to_string();
+    if summary.trim().is_empty() {
+        return Err(miette!("compaction runtime returned an empty summary"));
+    }
+
+    Ok(SessionCompactionSummary {
+        content: summary,
+        server_ref: None,
+        model_ref: Some(model_ref.to_string()),
+        provider_model: None,
+        adapter_ref: adapter_ref.map(str::to_string),
+    })
 }
 
 fn prompt_for_message() -> miette::Result<String> {

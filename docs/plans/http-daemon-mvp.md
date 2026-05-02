@@ -672,6 +672,35 @@ Implemented decisions:
 - same-session turns are serialized by the per-session lock until the assistant
   reply is recorded
 
+### Slice 18.3: Dynamic Bounded Session Compaction
+
+Status: implemented in current workspace.
+
+Goals:
+
+- keep persisted session transcripts bounded to 50 messages
+- add manual compaction through `POST /v1/sessions/{session_ref}/compact`
+  and `tentgent session compact`
+- compact older pre-existing messages into one generated `system` summary
+  message while preserving the current operation's protected messages
+- dynamically compact before session-aware native/OpenAI/CLI chat contacts the
+  target model when a successful turn would exceed the cap
+- allow explicit append to use `compaction_server_ref` or
+  `--compaction-server` when appending would exceed the cap
+- treat sessions as destructive bounded working context, not durable audit logs
+  or long-term memory stores
+
+Implemented decisions:
+
+- protected messages are never summarized by the same operation but count toward
+  the final 50-message cap
+- `protected_count > 50` returns `session_turn_too_large`
+- `protected_count == 50` replaces the transcript with protected messages only
+- repeated compaction includes any existing summary in the next summary input
+  and leaves at most one summary message
+- compaction calls use a low-level non-session chat path and are not recorded as
+  normal session turns
+
 ## Open Questions
 
 - Should daemon process management add a local socket after pid metadata is stable?

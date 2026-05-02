@@ -189,6 +189,40 @@ pub(crate) fn session_error_response(error: SessionError) -> HttpResponse {
                 message: format!("session `{reference}` is busy; try again shortly"),
             },
         ),
+        SessionError::TurnTooLarge {
+            protected_count,
+            max_messages,
+        } => json_response(
+            400,
+            ErrorResponse {
+                error: "session_turn_too_large",
+                message: format!(
+                    "current session turn has {protected_count} protected message(s), but bounded sessions can store at most {max_messages}"
+                ),
+            },
+        ),
+        SessionError::CompactionRequired => json_response(
+            409,
+            ErrorResponse {
+                error: "session_compaction_required",
+                message: "session compaction requires a chat-capable compaction server"
+                    .to_string(),
+            },
+        ),
+        SessionError::CompactionContextTooLarge { max_bytes } => json_response(
+            409,
+            ErrorResponse {
+                error: "session_compaction_too_large",
+                message: format!("session compaction source must be at most {max_bytes} bytes"),
+            },
+        ),
+        SessionError::CompactionFailed(message) => json_response(
+            502,
+            ErrorResponse {
+                error: "session_compaction_failed",
+                message,
+            },
+        ),
         SessionError::UnsupportedContext(message) => json_response(
             409,
             ErrorResponse {
@@ -277,6 +311,40 @@ pub(crate) fn session_write_error_response(error: SessionError) -> HttpResponse 
             ErrorResponse {
                 error: "session_busy",
                 message: format!("session `{reference}` is busy; try again shortly"),
+            },
+        ),
+        SessionError::TurnTooLarge {
+            protected_count,
+            max_messages,
+        } => json_response(
+            400,
+            ErrorResponse {
+                error: "session_turn_too_large",
+                message: format!(
+                    "current session turn has {protected_count} protected message(s), but bounded sessions can store at most {max_messages}"
+                ),
+            },
+        ),
+        SessionError::CompactionRequired => json_response(
+            409,
+            ErrorResponse {
+                error: "session_compaction_required",
+                message: "session compaction requires a chat-capable compaction server"
+                    .to_string(),
+            },
+        ),
+        SessionError::CompactionContextTooLarge { max_bytes } => json_response(
+            409,
+            ErrorResponse {
+                error: "session_compaction_too_large",
+                message: format!("session compaction source must be at most {max_bytes} bytes"),
+            },
+        ),
+        SessionError::CompactionFailed(message) => json_response(
+            502,
+            ErrorResponse {
+                error: "session_compaction_failed",
+                message,
             },
         ),
         SessionError::UnsupportedContext(message) => json_response(

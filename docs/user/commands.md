@@ -275,7 +275,9 @@ basic chat-completion clients; its `model` field selects a Tentgent server ref
 or unique prefix, not a provider model name.
 Both daemon chat endpoints can optionally take `session_ref`; request messages
 are treated as the new turn, recent session messages are prepended as context,
-and successful assistant replies are appended to the transcript.
+and successful assistant replies are appended to the transcript. Session
+transcripts are bounded to 50 persisted messages; older messages may be
+destructively summarized before chat continues.
 The daemon-only `server_ref` selector belongs on daemon `POST /v1/chat` requests;
 do not send it when calling the model-bound server port directly. Log diagnostics
 endpoints expose fixed daemon/server stdout and stderr paths for local debugging.
@@ -387,6 +389,8 @@ tentgent session create --title "Planning" --tag draft
 tentgent session ls
 tentgent session inspect <session-ref>
 tentgent session append <session-ref> --role user --content "Hello"
+tentgent session append <session-ref> --role user --content "Hello" --compaction-server <server-ref>
+tentgent session compact <session-ref> --server <server-ref>
 tentgent session messages <session-ref> --tail 100
 tentgent session update <session-ref> --title "Planning v2"
 tentgent chat <model-ref> --session <session-ref> --message "user:Continue."
@@ -412,11 +416,18 @@ curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref>/messages \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{"messages":[{"role":"user","content":"Hello"}]}'
+curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref>/compact \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"server_ref":"<server-ref>","keep_recent_messages":49}'
 ```
 
 Session deletion is permanent. Chat remains stateless unless `--session` or
 `session_ref` is provided. Session-aware chat serializes turns for a session
-while the model response is running so transcript order stays stable.
+while the model response is running so transcript order stays stable. Sessions
+are bounded working context: when they would exceed 50 messages, older messages
+may be destructively summarized into one `system` summary message.
 
 ## Adapters
 

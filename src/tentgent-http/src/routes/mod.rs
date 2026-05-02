@@ -89,6 +89,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         path if diagnostics::is_server_logs_path(path) => {
             diagnostics::server_logs_response(state, request)
         }
+        path if session::session_compact_path(path).is_some() => method_not_allowed(request),
         path if session::session_messages_path(path).is_some() => {
             let reference = session::session_messages_path(path).expect("checked path");
             session::session_messages_response(state, request, reference)
@@ -127,6 +128,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         path if path.starts_with("/v1/auth/") => not_found_response(&request.path),
         path if dataset_tool_path(path) => method_not_allowed(request),
         path if store_mutation_path(path) => method_not_allowed(request),
+        path if session::session_compact_path(path).is_some() => method_not_allowed(request),
         path if session::session_ref_path(path).is_some() => {
             let reference = session::session_ref_path(path).expect("checked path");
             session::inspect_session_response(state, reference)
@@ -262,9 +264,13 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
             }
             None => not_found_response(&request.path),
         },
+        path if session::session_compact_path(path).is_some() => {
+            let reference = session::session_compact_path(path).expect("checked path");
+            session::compact_session_response(state, request, reference).await
+        }
         path if session::session_messages_path(path).is_some() => {
             let reference = session::session_messages_path(path).expect("checked path");
-            session::append_session_messages_response(state, request, reference)
+            session::append_session_messages_response(state, request, reference).await
         }
         path if session::is_session_route(path) => method_not_allowed(request),
         _ => not_found_response(&request.path),

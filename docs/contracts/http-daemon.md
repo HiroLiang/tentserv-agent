@@ -461,8 +461,12 @@ The create body may include `title`, `default_server_ref`, `adapter_ref`,
 metadata; `null` clears optional string fields, blank strings are invalid, and
 `tags` replaces the full tag list. Empty patch objects return `400`.
 
-`POST /v1/sessions/{session_ref}/messages` appends one to 100 messages.
-Tentgent assigns `created_at` and returns appended indexes:
+`POST /v1/sessions/{session_ref}/messages` appends one or more messages.
+Messages are bounded by the session's 50-message working-context cap. If append
+would exceed the cap, the body may include `compaction_server_ref` to compact
+older messages first; otherwise the daemon returns `409
+session_compaction_required`. Tentgent assigns `created_at` and returns appended
+indexes:
 
 ```json
 {
@@ -481,14 +485,32 @@ Tentgent assigns `created_at` and returns appended indexes:
 Message content must be non-empty and no larger than 1 MiB. `metadata` is
 optional, defaults to `{}`, and must be a JSON object when present.
 
+`POST /v1/sessions/{session_ref}/compact` destructively compacts older
+transcript messages into one generated summary message:
+
+```json
+{
+  "server_ref": "optional-running-server-ref",
+  "keep_recent_messages": 49,
+  "instructions": null
+}
+```
+
+Manual compact keeps `1 summary + keep_recent_messages`, defaults to 49 recent
+messages, and returns `compacted:false` when there are not enough messages to
+compact. The selected server is request `server_ref`, then the session
+`default_server_ref`. Summary calls do not use `session_ref` and are not recorded
+as transcript turns.
+
 `DELETE /v1/sessions/{session_ref}` permanently removes the session directory.
 There is no trash or recycle bin. DELETE bodies must be empty. All session
 mutation endpoints follow daemon auth rules.
 
 Session writes use lock files to coordinate CLI and HTTP writers. `409
 session_busy` means another writer held the lock for the acquisition timeout.
-Session-aware chat remains out of scope in this slice; `/v1/chat` and
-`/v1/chat/completions` stay stateless.
+Session deletion is permanent. Session compaction is also destructive: older raw
+messages may be replaced by a generated summary because sessions are bounded
+working context, not audit logs.
 
 `GET /v1/servers` returns stored server specs and their current process state:
 
@@ -1292,6 +1314,20 @@ transport failures, malformed upstream responses, interrupted streams, and
 append failures are not partially recorded. If append fails after streaming
 headers were sent, the daemon emits a terminal SSE error instead of a successful
 final marker.
+
+Persisted session transcripts are capped at 50 messages. Before session-aware
+chat contacts the target server, the daemon dynamically compacts older persisted
+messages when the successful current turn would exceed the cap:
+
+```text
+summary + recent pre-existing messages + current request messages + assistant <= 50
+```
+
+Current request messages and the assistant reply are protected and are never
+summarized by the same operation, but they count toward the cap. If the protected
+turn alone exceeds the cap, the daemon returns `400 session_turn_too_large`. If
+compaction fails, chat fails before target contact; for streaming, this is before
+the first SSE chunk is emitted.
 
 ## OpenAI-Style Chat Completions
 

@@ -37,7 +37,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Dataset { action } => dataset::handle_dataset_command(action).await?,
         Commands::Model { action } => model::handle_model_command(action)?,
         Commands::Server { action } => server::handle_server_command(action).await?,
-        Commands::Session { action } => session::handle_session_command(action)?,
+        Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
         Commands::Status => status::handle_status_command()?,
         Commands::Train { action } => train::handle_train_command(action)?,

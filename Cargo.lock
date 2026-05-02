@@ -1746,6 +1746,7 @@ dependencies = [
  "console",
  "indicatif",
  "miette",
+ "reqwest",
  "rpassword",
  "serde_json",
  "tentgent-core",

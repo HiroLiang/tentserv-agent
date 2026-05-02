@@ -215,6 +215,8 @@ Create and mutate local chat transcript sessions:
 ./target/debug/tentgent session create --title "Planning" --tag draft
 ./target/debug/tentgent session ls
 ./target/debug/tentgent session append <session-ref> --role user --content "Hello"
+./target/debug/tentgent session append <session-ref> --role user --content "Hello" --compaction-server <server-ref>
+./target/debug/tentgent session compact <session-ref> --server <server-ref>
 ./target/debug/tentgent session messages <session-ref> --tail 100
 ./target/debug/tentgent session update <session-ref> --title "Planning v2"
 ./target/debug/tentgent chat <model-ref> --session <session-ref> --message "user:Continue."
@@ -230,6 +232,9 @@ curl -sS http://127.0.0.1:8790/v1/sessions \
 curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref>/messages \
   -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"Hello"}]}'
+curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref>/compact \
+  -H 'Content-Type: application/json' \
+  -d '{"server_ref":"<server-ref>","keep_recent_messages":49}'
 curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> \
   -X PATCH \
   -H 'Content-Type: application/json' \
@@ -239,7 +244,9 @@ curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> -X DELETE
 
 Session deletion is permanent. Chat remains stateless unless `--session` or
 `session_ref` is provided. Session-aware chat holds the session lock until the
-assistant reply is recorded, so same-session turns are serialized.
+assistant reply is recorded, so same-session turns are serialized. Sessions are
+bounded to 50 persisted messages; compaction may rewrite older transcript
+messages into a generated summary message.
 
 ## Train Commands
 
@@ -576,7 +583,9 @@ datasets, server specs, controlled server lifecycle mutations, and
 `POST /v1/chat/completions` adds a limited OpenAI-style success wrapper for
 basic chat-completion clients; its `model` field selects a Tentgent server ref
 or unique prefix, not a provider model name. Both chat routes can optionally use
-`session_ref` for bounded context and transcript recording. Use
+`session_ref` for bounded context and transcript recording. Persisted session
+transcripts are capped at 50 messages and may compact older messages into one
+summary message. Use
 `GET /v1/servers/<server-ref>/health` to distinguish process state from target
 HTTP reachability before sending chat. Use the daemon and server log diagnostics
 endpoints to inspect fixed stdout/stderr log paths without accepting arbitrary

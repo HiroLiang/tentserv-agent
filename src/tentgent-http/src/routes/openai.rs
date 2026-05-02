@@ -82,7 +82,7 @@ pub(crate) async fn chat_completions_response(
             Ok(manager) => manager,
             Err(error) => return crate::response::session_write_error_response(error),
         };
-        let turn = match session_manager.begin_chat_turn(
+        let mut turn = match session_manager.begin_chat_turn(
             session_ref,
             chat_request.max_session_messages,
             chat_request.request_messages,
@@ -90,6 +90,22 @@ pub(crate) async fn chat_completions_response(
             Ok(turn) => turn,
             Err(error) => return crate::response::session_write_error_response(error),
         };
+        if let Err(error) = turn.apply_clear_compaction_if_needed() {
+            return crate::response::session_write_error_response(error);
+        }
+        if let Some(input) = match turn.compaction_input() {
+            Ok(input) => input,
+            Err(error) => return crate::response::session_write_error_response(error),
+        } {
+            let summary = match super::session::summarize_with_server(state, &server, &input).await
+            {
+                Ok(summary) => summary,
+                Err(response) => return response,
+            };
+            if let Err(error) = turn.apply_compaction_summary(summary) {
+                return crate::response::session_write_error_response(error);
+            }
+        }
         if let Some(object) = proxy_body.as_object_mut() {
             object.insert(
                 "messages".to_string(),
