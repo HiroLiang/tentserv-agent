@@ -19,15 +19,12 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Active Plan Index
 
-- [http-daemon-mvp.md](./http-daemon-mvp.md)
-  Future service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
 - [tui-session-mvp.md](./tui-session-mvp.md)
   Future terminal UI plan for selectable workflows and coarse chat session context management.
 
 ## Recommended Order
 
-1. Build the HTTP daemon entry after the chat protocol is stable.
-2. Build TUI session management after daemon/server behavior settles.
+1. Build TUI session management after daemon/server behavior settles.
 
 ## Deferred Plans
 

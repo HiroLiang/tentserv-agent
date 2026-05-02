@@ -142,7 +142,7 @@ brew tap tentserv/tap
 brew install tentgent
 ```
 
-Use a private tap first, not `homebrew/core`, because Tentgent is currently proprietary and may ship binary artifacts.
+Use a project-owned tap first, not `homebrew/core`, because Tentgent may ship binary artifacts and should prove packaging stability before a public tap submission.
 
 The formula should:
 

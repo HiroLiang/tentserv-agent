@@ -112,7 +112,7 @@ TLS, CORS, multi-user auth, keychain token storage, or per-endpoint permissions.
 {
   "status": "ok",
   "service": "tentgent-daemon",
-  "version": "0.1.4"
+  "version": "0.2.0"
 }
 ```
 
@@ -122,7 +122,7 @@ auth state:
 ```json
 {
   "service": "tentgent-daemon",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "status": "running",
   "auth": {
     "token_enabled": true

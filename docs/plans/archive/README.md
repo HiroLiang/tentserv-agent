@@ -18,6 +18,9 @@ Use this directory for completed plans that are no longer the active execution t
 
 ## Archived Plans
 
+- [http-daemon-mvp.md](./http-daemon-mvp.md)
+  Completed service-entry track for making the local HTTP daemon a
+  programmatic peer of the main CLI workflows.
 - [runtime-chat-mvp.md](./runtime-chat-mvp.md)
   Completed foundation for one-shot chat and backend routing.
 - [server-runtime-mvp.md](./server-runtime-mvp.md)

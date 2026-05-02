@@ -2,6 +2,33 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.2.0
+
+`v0.2.0` expands the local HTTP daemon from a chat surface into a programmatic
+peer for the main CLI workflows.
+
+Added:
+
+- HTTP store parity for model, adapter, dataset, and stopped server inspect,
+  import/pull, bind, and remove workflows.
+- HTTP dataset tooling for validation, templates, provider-backed synthesis,
+  provider-backed evaluation, export, and diff.
+- HTTP LoRA plan and run APIs, including durable run records, metrics, and raw
+  log inspection.
+- HTTP auth status, observational doctor diagnostics, daemon logs, server logs,
+  and token-gated daemon shutdown.
+- HTTP and CLI session mutation, session-aware chat, OpenAI-compatible
+  `session_ref` extensions, and destructive bounded session compaction.
+
+Known limits:
+
+- Provider key set/remove remains CLI-only.
+- `doctor --fix` remains CLI-only; HTTP doctor is observational.
+- `daemon run` remains the bootstrap entry point for the HTTP daemon itself.
+- Cloud provider servers do not support request-time local adapters.
+- Generated dataset splits are not deduplicated against each other yet.
+- macOS signing and notarization are deferred to a later slice.
+
 ## v0.1.4
 
 `v0.1.4` adds HTTP chat streaming through Server-Sent Events.

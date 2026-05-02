@@ -79,12 +79,12 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
-- `docs/plans/http-daemon-mvp.md`
-  Future service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
 - `docs/plans/tui-session-mvp.md`
   Future terminal UI plan for selectable workflows and coarse chat session context management.
 - `docs/plans/archive/README.md`
   Router for completed plans that should be consulted only when historical implementation context is needed.
+- `docs/plans/archive/http-daemon-mvp.md`
+  Completed service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
 - `docs/plans/archive/cloud-provider-server-mvp.md`
   Completed OpenAI and Claude cloud provider server routing plan.
 - `docs/plans/archive/http-chat-streaming-mvp.md`

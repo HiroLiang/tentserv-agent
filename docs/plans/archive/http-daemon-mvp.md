@@ -1,5 +1,10 @@
 # HTTP Daemon MVP
 
+Archive note: completed through Slice 18.3 and archived after the daemon
+became the programmatic peer for the main CLI workflows. Keep this document for
+slice history and rationale; use [../../contracts/http-daemon.md](../../contracts/http-daemon.md)
+for the current HTTP contract.
+
 This plan defines the service-entry track: make Tentgent usable as a local HTTP subsystem that other projects can integrate without shelling out to every CLI command.
 
 ## Priority
@@ -9,7 +14,7 @@ Run this after the cloud provider server and first cloud dataset slices unless a
 ## Current State
 
 - `tentgent server` already launches a model-bound local HTTP chat server.
-- `POST /v1/chat` is defined in [../contracts/server-chat.md](../contracts/server-chat.md).
+- `POST /v1/chat` is defined in [../../contracts/server-chat.md](../../contracts/server-chat.md).
 - `src/tentgent-http/` has a low-level daemon lifecycle entry point with `GET /healthz` and `GET /v1/status`.
 - `tentgent daemon` has `run`, `status`, and `stop` lifecycle commands and starts the Rust HTTP daemon in foreground mode.
 
