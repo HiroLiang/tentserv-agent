@@ -20,11 +20,15 @@ Use this directory for active or still-open implementation plans that are too la
 ## Active Plan Index
 
 - [tui-session-mvp.md](./tui-session-mvp.md)
-  Future terminal UI plan for selectable workflows and coarse chat session context management.
+  Future daemon-first terminal UI plan for local status, store, server,
+  session, dataset, and training workflows. Visual draft:
+  [tui/design/README.md](./tui/design/README.md).
 
 ## Recommended Order
 
-1. Build TUI session management after daemon/server behavior settles.
+1. Add daemon detach/start UX so the TUI does not require a second foreground
+   terminal.
+2. Build the daemon-first TUI skeleton and read-only navigator.
 
 ## Deferred Plans
 
