@@ -4,10 +4,24 @@ use std::path::PathBuf;
 pub enum SessionError {
     #[error("failed to resolve the Tentgent runtime-home from platform directories")]
     ProjectDirsUnavailable,
+    #[error("invalid session request: {0}")]
+    InvalidRequest(String),
+    #[error("invalid session reference `{0}`")]
+    InvalidReference(String),
     #[error("session reference `{0}` was not found")]
     NotFound(String),
     #[error("session reference `{0}` is ambiguous; multiple stored sessions share that prefix")]
     AmbiguousRef(String),
+    #[error("session `{0}` is busy; another writer holds its lock")]
+    Busy(String),
+    #[error("server reference `{0}` was not found")]
+    ServerNotFound(String),
+    #[error("server reference `{0}` is ambiguous; use a longer prefix")]
+    ServerAmbiguousRef(String),
+    #[error("adapter reference `{0}` was not found")]
+    AdapterNotFound(String),
+    #[error("adapter reference `{0}` is ambiguous; use a longer prefix")]
+    AdapterAmbiguousRef(String),
     #[error("failed to parse session metadata `{path}`: {message}")]
     MetadataParse { path: PathBuf, message: String },
     #[error("failed to parse session messages `{path}` at line {line}: {message}")]
@@ -20,4 +34,10 @@ pub enum SessionError {
     InvalidMetadata { path: PathBuf, message: String },
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    TomlSerialize(#[from] toml::ser::Error),
+    #[error(transparent)]
+    TimeFormat(#[from] time::error::Format),
 }

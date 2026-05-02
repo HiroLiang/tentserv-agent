@@ -1568,12 +1568,145 @@ async fn session_refs_tail_auth_and_methods_map_errors() {
     let unknown = route_request(&get("/v1/sessions/aaaaaaaaaaaa/unknown"), &state).await;
     assert_eq!(unknown.status_code, 404);
 
-    let method = route_request(&post("/v1/sessions", b"{}"), &state).await;
+    let method = route_request(&post("/v1/sessions/aaaaaaaaaaaa", b"{}"), &state).await;
     assert_eq!(method.status_code, 405);
 
     let token_state = state_with_token(unique_home("sessions-token"), "secret");
     let unauthorized = route_request(&get("/v1/sessions"), &token_state).await;
     assert_eq!(unauthorized.status_code, 401);
+}
+
+#[tokio::test]
+async fn session_mutation_routes_create_update_append_and_delete() {
+    let home = unique_home("sessions-mutate-http");
+    let state = state_for(home.clone());
+
+    let create = route_request(
+        &post(
+            "/v1/sessions",
+            br#"{"title":" Plan ","tags":[" alpha ","Beta"],"messages":[{"role":"system","content":"Be useful."}]}"#,
+        ),
+        &state,
+    )
+    .await;
+    let create_body: Value = serde_json::from_slice(response_buffer(&create)).expect("json");
+    assert_eq!(create.status_code, 201);
+    assert_eq!(create_body["created"], true);
+    assert_eq!(create_body["session"]["title"], "Plan");
+    assert_eq!(create_body["session"]["message_count"], 1);
+    assert_eq!(create_body["session"]["tags"], json!(["alpha", "Beta"]));
+    let short_ref = create_body["session"]["short_ref"]
+        .as_str()
+        .expect("short_ref")
+        .to_string();
+
+    let patch_response = route_request(
+        &patch(
+            &format!("/v1/sessions/{short_ref}"),
+            br#"{"title":"Updated","tags":[]}"#,
+        ),
+        &state,
+    )
+    .await;
+    let patch_body: Value = serde_json::from_slice(response_buffer(&patch_response)).expect("json");
+    assert_eq!(patch_response.status_code, 200);
+    assert_eq!(patch_body["session"]["title"], "Updated");
+    assert_eq!(patch_body["session"]["tags"], json!([]));
+
+    let append = route_request(
+        &post(
+            &format!("/v1/sessions/{short_ref}/messages"),
+            br#"{"messages":[{"role":"user","content":"Hello","metadata":{"via":"http"}},{"role":"assistant","content":"Hi"}]}"#,
+        ),
+        &state,
+    )
+    .await;
+    let append_body: Value = serde_json::from_slice(response_buffer(&append)).expect("json");
+    assert_eq!(append.status_code, 200);
+    assert_eq!(append_body["session"]["message_count"], 3);
+    assert_eq!(append_body["appended"][0]["index"], 1);
+    assert_eq!(append_body["appended"][1]["index"], 2);
+
+    let messages = route_request(
+        &get(&format!("/v1/sessions/{short_ref}/messages?tail=10")),
+        &state,
+    )
+    .await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 3);
+    assert_eq!(
+        messages_body["messages"][1]["metadata"],
+        json!({"via":"http"})
+    );
+    assert_eq!(messages_body["messages"][2]["metadata"], json!({}));
+
+    let remove = route_request(&delete(&format!("/v1/sessions/{short_ref}"), b""), &state).await;
+    let remove_body: Value = serde_json::from_slice(response_buffer(&remove)).expect("json");
+    assert_eq!(remove.status_code, 200);
+    assert_eq!(remove_body["removed"]["kind"], "session");
+    assert_eq!(remove_body["session"]["short_ref"], short_ref);
+
+    let missing = route_request(&get(&format!("/v1/sessions/{short_ref}")), &state).await;
+    assert_eq!(missing.status_code, 404);
+    assert!(!home
+        .join("sessions")
+        .join(remove_body["removed"]["session_ref"].as_str().unwrap())
+        .exists());
+}
+
+#[tokio::test]
+async fn session_mutation_validation_auth_and_methods_map_errors() {
+    let home = unique_home("sessions-mutate-errors");
+    let state = state_for(home.clone());
+    let create = route_request(&post("/v1/sessions", br#"{"title":"Base"}"#), &state).await;
+    let create_body: Value = serde_json::from_slice(response_buffer(&create)).expect("json");
+    let short_ref = create_body["session"]["short_ref"]
+        .as_str()
+        .expect("short_ref")
+        .to_string();
+
+    for request in [
+        patch(&format!("/v1/sessions/{short_ref}"), br#"{}"#),
+        patch(&format!("/v1/sessions/{short_ref}"), br#"{"title":"   "}"#),
+        patch(
+            &format!("/v1/sessions/{short_ref}"),
+            br#"{"tags":["x"," x "]}"#,
+        ),
+        post(
+            &format!("/v1/sessions/{short_ref}/messages"),
+            br#"{"messages":[{"role":"alien","content":"Hello"}]}"#,
+        ),
+        post(
+            &format!("/v1/sessions/{short_ref}/messages"),
+            br#"{"messages":[{"role":"user","content":"Hello","metadata":null}]}"#,
+        ),
+        delete(&format!("/v1/sessions/{short_ref}"), br#"{}"#),
+    ] {
+        let response = route_request(&request, &state).await;
+        let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+        assert_eq!(response.status_code, 400);
+        assert_eq!(body["error"], "bad_request");
+    }
+
+    let path_like = route_request(&get("/v1/sessions/../bad"), &state).await;
+    assert_eq!(path_like.status_code, 404);
+
+    let token_state = state_with_token(unique_home("sessions-mutate-token"), "secret");
+    let unauthorized =
+        route_request(&post("/v1/sessions", br#"{"title":"Nope"}"#), &token_state).await;
+    assert_eq!(unauthorized.status_code, 401);
+
+    let authorized = route_request(
+        &post_with_header(
+            "/v1/sessions",
+            br#"{"title":"Ok"}"#,
+            "Authorization",
+            "Bearer secret",
+        ),
+        &token_state,
+    )
+    .await;
+    assert_eq!(authorized.status_code, 201);
 }
 
 #[tokio::test]
@@ -2655,6 +2788,19 @@ fn post_with_header(path: &str, body: &[u8], name: &str, value: &str) -> HttpReq
     let mut request = post(path, body);
     request.headers.push((name.to_string(), value.to_string()));
     request
+}
+
+fn patch(path: &str, body: &[u8]) -> HttpRequest {
+    let (path, query_params) = test_split_target(path);
+    HttpRequest {
+        method: "PATCH".to_string(),
+        path,
+        query_params,
+        version: "HTTP/1.1".to_string(),
+        headers: Vec::new(),
+        body: body.to_vec(),
+        parse_error: None,
+    }
 }
 
 fn restore_env(name: &str, value: Option<String>) {

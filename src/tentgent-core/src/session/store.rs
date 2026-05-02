@@ -63,6 +63,14 @@ impl SessionStorePaths {
     pub fn messages_path(&self, session_ref: &str) -> PathBuf {
         self.session_dir(session_ref).join("messages.jsonl")
     }
+
+    pub fn create_lock_path(&self) -> PathBuf {
+        self.sessions_dir.join(".sessions.lock")
+    }
+
+    pub fn session_lock_path(&self, session_ref: &str) -> PathBuf {
+        self.session_dir(session_ref).join("session.lock")
+    }
 }
 
 pub fn read_session_metadata(path: &Path) -> Result<SessionMetadata, SessionError> {

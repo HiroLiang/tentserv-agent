@@ -207,6 +207,38 @@ Export a managed dataset to a working copy:
 
 Edit the working copy, then import it again with `dataset add` to create a new dataset reference.
 
+## Session Commands
+
+Create and mutate local chat transcript sessions:
+
+```bash
+./target/debug/tentgent session create --title "Planning" --tag draft
+./target/debug/tentgent session ls
+./target/debug/tentgent session append <session-ref> --role user --content "Hello"
+./target/debug/tentgent session messages <session-ref> --tail 100
+./target/debug/tentgent session update <session-ref> --title "Planning v2"
+./target/debug/tentgent session rm <session-ref>
+```
+
+The HTTP daemon exposes the same session store mutations:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Planning","tags":["draft"]}'
+curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref>/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Hello"}]}'
+curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> \
+  -X PATCH \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Planning v2"}'
+curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> -X DELETE
+```
+
+Session deletion is permanent. Session-aware chat remains planned separately;
+these commands do not change `tentgent chat` or daemon chat proxy behavior.
+
 ## Train Commands
 
 Create a managed LoRA training plan without executing it:

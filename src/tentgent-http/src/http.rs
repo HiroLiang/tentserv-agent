@@ -147,6 +147,7 @@ pub(crate) async fn write_response(
 pub(crate) fn reason_phrase(status_code: u16) -> &'static str {
     match status_code {
         200 => "OK",
+        201 => "Created",
         202 => "Accepted",
         400 => "Bad Request",
         401 => "Unauthorized",

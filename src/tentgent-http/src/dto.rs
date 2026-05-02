@@ -576,7 +576,25 @@ pub(crate) struct SessionsResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct SessionCreateResponse {
+    pub(crate) session: SessionInspectionItem,
+    pub(crate) created: bool,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct SessionResponse {
+    pub(crate) session: SessionInspectionItem,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionAppendResponse {
+    pub(crate) session: SessionAppendSessionItem,
+    pub(crate) appended: Vec<SessionAppendedItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemoveSessionResponse {
+    pub(crate) removed: RemovedSessionItem,
     pub(crate) session: SessionInspectionItem,
 }
 
@@ -627,6 +645,29 @@ pub(crate) struct SessionRefItem {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct SessionAppendSessionItem {
+    pub(crate) session_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) message_count: usize,
+    pub(crate) updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SessionAppendedItem {
+    pub(crate) index: usize,
+    pub(crate) role: String,
+    pub(crate) created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RemovedSessionItem {
+    pub(crate) kind: &'static str,
+    pub(crate) session_ref: String,
+    pub(crate) short_ref: String,
+    pub(crate) store_path: String,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct SessionMessageItem {
     pub(crate) index: usize,
     pub(crate) role: String,
@@ -641,6 +682,49 @@ pub(crate) struct SessionMessageItem {
 pub(crate) struct SessionWarningItem {
     pub(crate) code: String,
     pub(crate) message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionCreateRequest {
+    pub(crate) title: Option<String>,
+    pub(crate) default_server_ref: Option<String>,
+    pub(crate) adapter_ref: Option<String>,
+    #[serde(default)]
+    pub(crate) tags: Vec<String>,
+    #[serde(default)]
+    pub(crate) messages: Vec<SessionMessageRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionPatchRequest {
+    #[serde(default)]
+    pub(crate) title: Option<Option<String>>,
+    #[serde(default)]
+    pub(crate) default_server_ref: Option<Option<String>>,
+    #[serde(default)]
+    pub(crate) adapter_ref: Option<Option<String>>,
+    pub(crate) tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionAppendRequest {
+    pub(crate) messages: Vec<SessionMessageRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionMessageRequest {
+    pub(crate) role: String,
+    pub(crate) content: String,
+    #[serde(default = "empty_json_object")]
+    pub(crate) metadata: Value,
+}
+
+fn empty_json_object() -> Value {
+    Value::Object(Default::default())
 }
 
 #[derive(Debug, Serialize)]

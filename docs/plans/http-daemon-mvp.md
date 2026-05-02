@@ -82,11 +82,14 @@ GET /v1/servers/{server_ref}/logs/stderr
 GET /v1/sessions
 GET /v1/sessions/{session_ref}
 GET /v1/sessions/{session_ref}/messages
+PATCH /v1/sessions/{session_ref}
 POST /v1/servers
 POST /v1/servers/{server_ref}/start
 POST /v1/servers/{server_ref}/stop
 POST /v1/chat
 POST /v1/chat/completions
+POST /v1/sessions
+POST /v1/sessions/{session_ref}/messages
 POST /v1/models/import
 POST /v1/models/pull
 POST /v1/adapters/import
@@ -116,6 +119,7 @@ DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
 DELETE /v1/datasets/{dataset_ref}
 DELETE /v1/servers/{server_ref}
+DELETE /v1/sessions/{session_ref}
 ```
 
 ## Execution Order
@@ -580,21 +584,82 @@ Review target:
 - local applications can diagnose Tentgent setup through HTTP while secret
   mutation remains intentionally constrained
 
-### Slice 18: Session Mutation And Session-Aware Chat
+### Slice 18.1: Session Mutation API And CLI Peer
+
+Status: implemented in the active workspace.
+
+Goals:
+
+- make the session store writable through shared `tentgent-core` services
+- add HTTP endpoints:
+  - `POST /v1/sessions`
+  - `PATCH /v1/sessions/{session_ref}`
+  - `POST /v1/sessions/{session_ref}/messages`
+  - `DELETE /v1/sessions/{session_ref}`
+- add a minimal CLI peer:
+  - `tentgent session create`
+  - `tentgent session append`
+  - `tentgent session rm`
+  - keep existing list, inspect, and message-tail discovery available through
+    the same core manager
+- generate session refs as content-independent lowercase hexadecimal refs
+- assign message `created_at` values on append; callers cannot provide
+  timestamps in this slice
+- return appended message indexes from append responses so UIs can update
+  transcript state without rereading the full file
+- use per-session write locking across CLI and HTTP writers
+- write `session.toml` with temp-file-and-rename semantics
+- append `messages.jsonl` and update `message_count` / `updated_at` within the
+  same locked mutation
+- validate roles, content size, metadata shape, tag count, tag length, and
+  duplicate tags before writing
+- reject path-like session refs and never treat refs as filesystem paths
+- keep session export, message edit/delete, search, pagination, attachments,
+  and chat recording out of this slice
+
+Review target:
+
+- CLI, TUI, and external tools can create and mutate durable chat transcripts
+  through one core-owned store without introducing chat behavior changes yet.
+
+### Slice 18.2: Session-Aware Chat
 
 Status: planned.
 
 Goals:
 
-- add session create, update, message append, and remove endpoints
-- add optional `session_ref` recording for native and OpenAI-compatible chat
-- keep stateless chat behavior available
-- defer dataset export from sessions until transcript semantics settle
-
-Review target:
-
-- TUI and external agents can share durable chat context through the daemon
-  without forcing every chat request to be stateful
+- add optional `session_ref` to native `POST /v1/chat`
+- add optional Tentgent extension `session_ref` to `POST /v1/chat/completions`
+- add `tentgent chat --session <session_ref>`
+- keep existing stateless chat behavior unchanged when `session_ref` is absent
+- treat request `messages` in session-aware mode as the new turn, not as a full
+  transcript replay
+- build target context from recent session messages plus request messages
+- add an explicit context bound, such as `max_session_messages`, with a safe
+  default and hard maximum so large sessions do not create unbounded requests
+- use server selection precedence for native chat:
+  1. request `server_ref`
+  2. session `default_server_ref`
+  3. the existing single-running-server default policy
+- use adapter selection precedence:
+  1. request `adapter_ref`
+  2. session `adapter_ref`
+  3. no adapter
+- keep OpenAI-compatible `model` required as the server selector; session
+  `default_server_ref` does not replace it in the compatibility route
+- append request messages and assistant replies atomically only after a
+  successful assistant response
+- do not record failed chat attempts in this slice
+- record assistant provenance metadata such as route, resolved server ref,
+  adapter ref, and finish reason
+- for non-streaming chat, session append failure may return
+  `500 session_write_failed`
+- for streaming chat, HTTP status is already committed; terminal session append
+  failure must be reported as an SSE error event and the stream must close
+  without a successful final done marker
+- document that OpenAI-compatible `session_ref` is a Tentgent extension field
+  that SDK users may need to pass through an extra-body mechanism
+- defer session dataset export until transcript semantics settle
 
 ## Open Questions
 
@@ -614,3 +679,6 @@ Closed decisions:
   training/eval export remains future work.
 - Slice 13 keeps store import/pull synchronous and leaves progress, cancellation,
   and job APIs to later dataset/training slices.
+- Slice 18 is split into a session mutation slice and a session-aware chat slice
+  because streaming chat recording, context selection, and durable write locking
+  have different review risks.

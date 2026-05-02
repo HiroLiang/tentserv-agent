@@ -1,13 +1,22 @@
 use std::{
-    collections::VecDeque,
-    fs::{self, File},
-    io::{BufRead, BufReader},
+    collections::{HashSet, VecDeque},
+    fs::{self, File, OpenOptions},
+    io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
+    process::{Command, Stdio},
+    thread,
+    time::{Duration, Instant},
 };
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+
+use crate::{
+    adapter::{AdapterError, AdapterManager},
+    server::{ServerError, ServerManager},
+};
 
 use super::{
     error::SessionError,
@@ -19,10 +28,19 @@ use super::{
 
 const MESSAGES_MISSING_WARNING: &str = "messages_missing";
 const MESSAGE_COUNT_MISMATCH_WARNING: &str = "message_count_mismatch";
+const DEFAULT_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_STALE_LOCK_AFTER: Duration = Duration::from_secs(120);
+const MAX_MESSAGES_PER_APPEND: usize = 100;
+const MAX_MESSAGE_CONTENT_BYTES: usize = 1024 * 1024;
+const MAX_MESSAGE_METADATA_BYTES: usize = 64 * 1024;
+const MAX_TAGS: usize = 32;
+const MAX_TAG_CHARS: usize = 64;
 
 #[derive(Debug, Clone)]
 pub struct SessionManager {
     paths: SessionStorePaths,
+    lock_timeout: Duration,
+    stale_lock_after: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +82,81 @@ pub struct SessionMessages {
 }
 
 #[derive(Debug, Clone)]
+pub struct SessionCreateRequest {
+    pub title: Option<String>,
+    pub default_server_ref: Option<String>,
+    pub adapter_ref: Option<String>,
+    pub tags: Vec<String>,
+    pub messages: Vec<SessionMessageInput>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionUpdateRequest {
+    pub title: SessionOptionalStringPatch,
+    pub default_server_ref: SessionOptionalStringPatch,
+    pub adapter_ref: SessionOptionalStringPatch,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum SessionOptionalStringPatch {
+    Unchanged,
+    Clear,
+    Set(String),
+}
+
+impl Default for SessionUpdateRequest {
+    fn default() -> Self {
+        Self {
+            title: SessionOptionalStringPatch::Unchanged,
+            default_server_ref: SessionOptionalStringPatch::Unchanged,
+            adapter_ref: SessionOptionalStringPatch::Unchanged,
+            tags: None,
+        }
+    }
+}
+
+impl SessionUpdateRequest {
+    pub fn is_empty(&self) -> bool {
+        matches!(self.title, SessionOptionalStringPatch::Unchanged)
+            && matches!(
+                self.default_server_ref,
+                SessionOptionalStringPatch::Unchanged
+            )
+            && matches!(self.adapter_ref, SessionOptionalStringPatch::Unchanged)
+            && self.tags.is_none()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionMessageInput {
+    pub role: String,
+    pub content: String,
+    pub server_ref: Option<String>,
+    pub adapter_ref: Option<String>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionAppendOutcome {
+    pub metadata: SessionMetadata,
+    pub store_path: PathBuf,
+    pub appended: Vec<SessionAppendedMessage>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionAppendedMessage {
+    pub index: usize,
+    pub role: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionRemovalOutcome {
+    pub inspection: SessionInspection,
+}
+
+#[derive(Debug, Clone)]
 struct ResolvedSession {
     metadata: SessionMetadata,
     store_path: PathBuf,
@@ -84,11 +177,47 @@ struct RawSessionMessage {
     metadata: Option<Value>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct StoredSessionMessage {
+    schema: &'static str,
+    role: String,
+    content: String,
+    created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    adapter_ref: Option<String>,
+    metadata: Value,
+}
+
+struct SessionLock {
+    path: PathBuf,
+}
+
 impl SessionManager {
     pub fn open_readonly(home_override: Option<&Path>) -> Result<Self, SessionError> {
         Ok(Self {
             paths: SessionStorePaths::resolve(home_override)?,
+            lock_timeout: DEFAULT_LOCK_TIMEOUT,
+            stale_lock_after: DEFAULT_STALE_LOCK_AFTER,
         })
+    }
+
+    pub fn new_with_home(home_override: Option<&Path>) -> Result<Self, SessionError> {
+        let paths = SessionStorePaths::resolve(home_override)?;
+        fs::create_dir_all(&paths.sessions_dir)?;
+        Ok(Self {
+            paths,
+            lock_timeout: DEFAULT_LOCK_TIMEOUT,
+            stale_lock_after: DEFAULT_STALE_LOCK_AFTER,
+        })
+    }
+
+    #[cfg(test)]
+    fn with_lock_timing(mut self, lock_timeout: Duration, stale_lock_after: Duration) -> Self {
+        self.lock_timeout = lock_timeout;
+        self.stale_lock_after = stale_lock_after;
+        self
     }
 
     pub fn list(&self) -> Result<Vec<SessionSummary>, SessionError> {
@@ -162,9 +291,151 @@ impl SessionManager {
         })
     }
 
+    pub fn create(&self, request: SessionCreateRequest) -> Result<SessionInspection, SessionError> {
+        fs::create_dir_all(&self.paths.sessions_dir)?;
+        let title = normalize_optional_string(request.title, "title")?;
+        let tags = normalize_tags(request.tags)?;
+        let default_server_ref = self.resolve_optional_server_ref(request.default_server_ref)?;
+        let adapter_ref = self.resolve_optional_adapter_ref(request.adapter_ref)?;
+        let messages = validate_message_inputs(request.messages, true)?;
+
+        let _lock = acquire_lock(
+            &self.paths.create_lock_path(),
+            "sessions",
+            self.lock_timeout,
+            self.stale_lock_after,
+        )?;
+        let session_ref = self.generate_session_ref()?;
+        let short_ref = session_ref.chars().take(12).collect::<String>();
+        let session_dir = self.paths.session_dir(&session_ref);
+        fs::create_dir(&session_dir)?;
+
+        let now = now_rfc3339()?;
+        let stored_messages = build_stored_messages(messages, &now)?;
+        let metadata = SessionMetadata {
+            schema: SESSION_SCHEMA.to_string(),
+            session_ref: session_ref.clone(),
+            short_ref,
+            title,
+            created_at: now.clone(),
+            updated_at: now,
+            message_count: stored_messages.len(),
+            default_server_ref,
+            adapter_ref,
+            tags,
+        };
+
+        write_session_metadata_atomic(&self.paths.metadata_path(&session_ref), &metadata)?;
+        if !stored_messages.is_empty() {
+            append_stored_messages(&self.paths.messages_path(&session_ref), &stored_messages)?;
+        }
+
+        self.inspect(&session_ref)
+    }
+
+    pub fn update(
+        &self,
+        reference: &str,
+        request: SessionUpdateRequest,
+    ) -> Result<SessionInspection, SessionError> {
+        if request.is_empty() {
+            return Err(SessionError::InvalidRequest(
+                "session update must include at least one field".to_string(),
+            ));
+        }
+        let resolved = self.resolve_reference(reference)?;
+        let _lock = acquire_lock(
+            &self.paths.session_lock_path(&resolved.metadata.session_ref),
+            &resolved.metadata.short_ref,
+            self.lock_timeout,
+            self.stale_lock_after,
+        )?;
+        let resolved = self.load_session_dir(&resolved.store_path)?;
+        let mut metadata = resolved.metadata;
+
+        metadata.title = apply_optional_string_patch(metadata.title, request.title, "title")?;
+        metadata.default_server_ref = match request.default_server_ref {
+            SessionOptionalStringPatch::Unchanged => metadata.default_server_ref,
+            SessionOptionalStringPatch::Clear => None,
+            SessionOptionalStringPatch::Set(value) => Some(self.resolve_server_ref(value)?),
+        };
+        metadata.adapter_ref = match request.adapter_ref {
+            SessionOptionalStringPatch::Unchanged => metadata.adapter_ref,
+            SessionOptionalStringPatch::Clear => None,
+            SessionOptionalStringPatch::Set(value) => Some(self.resolve_adapter_ref(value)?),
+        };
+        if let Some(tags) = request.tags {
+            metadata.tags = normalize_tags(tags)?;
+        }
+        metadata.updated_at = now_rfc3339()?;
+        write_session_metadata_atomic(&resolved.metadata_path, &metadata)?;
+
+        self.inspect(&metadata.session_ref)
+    }
+
+    pub fn append_messages(
+        &self,
+        reference: &str,
+        messages: Vec<SessionMessageInput>,
+    ) -> Result<SessionAppendOutcome, SessionError> {
+        let messages = validate_message_inputs(messages, false)?;
+        let resolved = self.resolve_reference(reference)?;
+        let _lock = acquire_lock(
+            &self.paths.session_lock_path(&resolved.metadata.session_ref),
+            &resolved.metadata.short_ref,
+            self.lock_timeout,
+            self.stale_lock_after,
+        )?;
+        let resolved = self.load_session_dir(&resolved.store_path)?;
+        let mut metadata = resolved.metadata;
+        let current_count = if resolved.messages_path.exists() {
+            count_messages(&resolved.messages_path)?
+        } else {
+            0
+        };
+        let now = now_rfc3339()?;
+        let stored_messages = build_stored_messages(messages, &now)?;
+        let appended = stored_messages
+            .iter()
+            .enumerate()
+            .map(|(offset, message)| SessionAppendedMessage {
+                index: current_count + offset,
+                role: message.role.clone(),
+                created_at: message.created_at.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        append_stored_messages(&resolved.messages_path, &stored_messages)?;
+        metadata.message_count = current_count + stored_messages.len();
+        metadata.updated_at = now;
+        write_session_metadata_atomic(&resolved.metadata_path, &metadata)?;
+
+        Ok(SessionAppendOutcome {
+            metadata,
+            store_path: resolved.store_path,
+            appended,
+        })
+    }
+
+    pub fn remove(&self, reference: &str) -> Result<SessionRemovalOutcome, SessionError> {
+        let resolved = self.resolve_reference(reference)?;
+        let _lock = acquire_lock(
+            &self.paths.session_lock_path(&resolved.metadata.session_ref),
+            &resolved.metadata.short_ref,
+            self.lock_timeout,
+            self.stale_lock_after,
+        )?;
+        let inspection = self.inspect(&resolved.metadata.session_ref)?;
+        fs::remove_dir_all(&resolved.store_path)?;
+        Ok(SessionRemovalOutcome { inspection })
+    }
+
     fn resolve_reference(&self, reference: &str) -> Result<ResolvedSession, SessionError> {
         if reference.is_empty() {
             return Err(SessionError::NotFound(reference.to_string()));
+        }
+        if path_like_reference(reference) {
+            return Err(SessionError::InvalidReference(reference.to_string()));
         }
 
         let mut matches = Vec::new();
@@ -223,6 +494,66 @@ impl SessionManager {
             updated_at,
         })
     }
+
+    fn resolve_optional_server_ref(
+        &self,
+        reference: Option<String>,
+    ) -> Result<Option<String>, SessionError> {
+        reference
+            .map(|reference| self.resolve_server_ref(reference))
+            .transpose()
+    }
+
+    fn resolve_optional_adapter_ref(
+        &self,
+        reference: Option<String>,
+    ) -> Result<Option<String>, SessionError> {
+        reference
+            .map(|reference| self.resolve_adapter_ref(reference))
+            .transpose()
+    }
+
+    fn resolve_server_ref(&self, reference: String) -> Result<String, SessionError> {
+        let reference = normalize_required_string(reference, "default_server_ref")?;
+        let manager =
+            ServerManager::open_readonly(Some(&self.paths.home_dir)).map_err(map_server_error)?;
+        manager
+            .inspect(&reference)
+            .map(|inspection| inspection.spec.server_ref)
+            .map_err(map_server_error)
+    }
+
+    fn resolve_adapter_ref(&self, reference: String) -> Result<String, SessionError> {
+        let reference = normalize_required_string(reference, "adapter_ref")?;
+        let manager = AdapterManager::open_readonly_with_home(Some(&self.paths.home_dir))
+            .map_err(map_adapter_error)?;
+        manager
+            .inspect(&reference)
+            .map(|inspection| inspection.metadata.adapter_ref)
+            .map_err(map_adapter_error)
+    }
+
+    fn generate_session_ref(&self) -> Result<String, SessionError> {
+        for attempt in 0..128_u32 {
+            let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+            let mut hasher = Sha256::new();
+            hasher.update(self.paths.home_dir.to_string_lossy().as_bytes());
+            hasher.update(b"\0");
+            hasher.update(now.to_string().as_bytes());
+            hasher.update(b"\0");
+            hasher.update(std::process::id().to_string().as_bytes());
+            hasher.update(b"\0");
+            hasher.update(attempt.to_string().as_bytes());
+            let session_ref = hex::encode(hasher.finalize());
+            if !self.paths.session_dir(&session_ref).exists() {
+                return Ok(session_ref);
+            }
+        }
+
+        Err(SessionError::InvalidRequest(
+            "failed to generate a unique session ref after 128 attempts".to_string(),
+        ))
+    }
 }
 
 fn read_tail_messages(
@@ -252,6 +583,301 @@ fn read_tail_messages(
     }
 
     Ok((tail_messages.into_iter().collect(), total_messages))
+}
+
+fn count_messages(path: &Path) -> Result<usize, SessionError> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut total_messages = 0_usize;
+    for (line_index, line) in reader.lines().enumerate() {
+        let line_number = line_index + 1;
+        let line = line?;
+        let raw: RawSessionMessage =
+            serde_json::from_str(&line).map_err(|error| SessionError::MessageParse {
+                path: path.to_path_buf(),
+                line: line_number,
+                message: error.to_string(),
+            })?;
+        parse_message(path, line_number, line_index, raw)?;
+        total_messages += 1;
+    }
+    Ok(total_messages)
+}
+
+fn validate_message_inputs(
+    messages: Vec<SessionMessageInput>,
+    allow_empty: bool,
+) -> Result<Vec<SessionMessageInput>, SessionError> {
+    if messages.is_empty() && !allow_empty {
+        return Err(SessionError::InvalidRequest(
+            "`messages` must contain at least one message".to_string(),
+        ));
+    }
+    if messages.len() > MAX_MESSAGES_PER_APPEND {
+        return Err(SessionError::InvalidRequest(format!(
+            "`messages` must contain at most {MAX_MESSAGES_PER_APPEND} messages"
+        )));
+    }
+
+    for message in &messages {
+        validate_role(&message.role)?;
+        if message.content.is_empty() {
+            return Err(SessionError::InvalidRequest(
+                "message content must not be empty".to_string(),
+            ));
+        }
+        if message.content.len() > MAX_MESSAGE_CONTENT_BYTES {
+            return Err(SessionError::InvalidRequest(format!(
+                "message content must be at most {MAX_MESSAGE_CONTENT_BYTES} bytes"
+            )));
+        }
+        if !message.metadata.is_object() {
+            return Err(SessionError::InvalidRequest(
+                "message metadata must be an object".to_string(),
+            ));
+        }
+        let metadata_bytes = serde_json::to_vec(&message.metadata)?;
+        if metadata_bytes.len() > MAX_MESSAGE_METADATA_BYTES {
+            return Err(SessionError::InvalidRequest(format!(
+                "message metadata must serialize to at most {MAX_MESSAGE_METADATA_BYTES} bytes"
+            )));
+        }
+    }
+
+    Ok(messages)
+}
+
+fn build_stored_messages(
+    messages: Vec<SessionMessageInput>,
+    created_at: &str,
+) -> Result<Vec<StoredSessionMessage>, SessionError> {
+    messages
+        .into_iter()
+        .map(|message| {
+            validate_role(&message.role)?;
+            Ok(StoredSessionMessage {
+                schema: SESSION_MESSAGE_SCHEMA,
+                role: message.role,
+                content: message.content,
+                created_at: created_at.to_string(),
+                server_ref: message.server_ref,
+                adapter_ref: message.adapter_ref,
+                metadata: message.metadata,
+            })
+        })
+        .collect()
+}
+
+fn append_stored_messages(
+    path: &Path,
+    messages: &[StoredSessionMessage],
+) -> Result<(), SessionError> {
+    if messages.is_empty() {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    for message in messages {
+        let line = serde_json::to_string(message)?;
+        file.write_all(line.as_bytes())?;
+        file.write_all(b"\n")?;
+    }
+    file.flush()?;
+    Ok(())
+}
+
+fn write_session_metadata_atomic(
+    path: &Path,
+    metadata: &SessionMetadata,
+) -> Result<(), SessionError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp_path = path.with_file_name("session.toml.tmp");
+    let body = toml::to_string_pretty(metadata)?;
+    fs::write(&tmp_path, body)?;
+    fs::rename(&tmp_path, path)?;
+    Ok(())
+}
+
+fn normalize_optional_string(
+    value: Option<String>,
+    field: &str,
+) -> Result<Option<String>, SessionError> {
+    value
+        .map(|value| normalize_required_string(value, field))
+        .transpose()
+}
+
+fn normalize_required_string(value: String, field: &str) -> Result<String, SessionError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(SessionError::InvalidRequest(format!(
+            "`{field}` must not be blank"
+        )));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn apply_optional_string_patch(
+    current: Option<String>,
+    patch: SessionOptionalStringPatch,
+    field: &str,
+) -> Result<Option<String>, SessionError> {
+    match patch {
+        SessionOptionalStringPatch::Unchanged => Ok(current),
+        SessionOptionalStringPatch::Clear => Ok(None),
+        SessionOptionalStringPatch::Set(value) => normalize_optional_string(Some(value), field),
+    }
+}
+
+fn normalize_tags(tags: Vec<String>) -> Result<Vec<String>, SessionError> {
+    if tags.len() > MAX_TAGS {
+        return Err(SessionError::InvalidRequest(format!(
+            "`tags` must contain at most {MAX_TAGS} tags"
+        )));
+    }
+    let mut normalized = Vec::with_capacity(tags.len());
+    let mut seen = HashSet::new();
+    for tag in tags {
+        let trimmed = tag.trim();
+        if trimmed.is_empty() {
+            return Err(SessionError::InvalidRequest(
+                "tags must not be blank".to_string(),
+            ));
+        }
+        if trimmed.chars().count() > MAX_TAG_CHARS {
+            return Err(SessionError::InvalidRequest(format!(
+                "tags must be at most {MAX_TAG_CHARS} characters"
+            )));
+        }
+        if !seen.insert(trimmed.to_string()) {
+            return Err(SessionError::InvalidRequest(format!(
+                "duplicate tag `{trimmed}`"
+            )));
+        }
+        normalized.push(trimmed.to_string());
+    }
+    Ok(normalized)
+}
+
+fn validate_role(role: &str) -> Result<(), SessionError> {
+    if matches!(role, "system" | "user" | "assistant" | "tool") {
+        Ok(())
+    } else {
+        Err(SessionError::InvalidRequest(format!(
+            "unknown message role `{role}`"
+        )))
+    }
+}
+
+fn now_rfc3339() -> Result<String, SessionError> {
+    Ok(OffsetDateTime::now_utc().format(&Rfc3339)?)
+}
+
+fn path_like_reference(reference: &str) -> bool {
+    reference.contains('/') || reference.contains('\\') || reference.contains("..")
+}
+
+fn map_server_error(error: ServerError) -> SessionError {
+    match error {
+        ServerError::NotFound(reference) => SessionError::ServerNotFound(reference),
+        ServerError::AmbiguousRef(reference) => SessionError::ServerAmbiguousRef(reference),
+        other => SessionError::InvalidRequest(format!("failed to resolve server ref: {other}")),
+    }
+}
+
+fn map_adapter_error(error: AdapterError) -> SessionError {
+    match error {
+        AdapterError::NotFound(reference) => SessionError::AdapterNotFound(reference),
+        AdapterError::AmbiguousRef(reference) => SessionError::AdapterAmbiguousRef(reference),
+        other => SessionError::InvalidRequest(format!("failed to resolve adapter ref: {other}")),
+    }
+}
+
+fn acquire_lock(
+    path: &Path,
+    owner: &str,
+    timeout: Duration,
+    stale_after: Duration,
+) -> Result<SessionLock, SessionError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let started = Instant::now();
+    loop {
+        match OpenOptions::new().write(true).create_new(true).open(path) {
+            Ok(mut file) => {
+                let created_at_unix = OffsetDateTime::now_utc().unix_timestamp();
+                writeln!(file, "pid={}", std::process::id())?;
+                writeln!(file, "created_at_unix={created_at_unix}")?;
+                file.flush()?;
+                return Ok(SessionLock {
+                    path: path.to_path_buf(),
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if lock_is_stale(path, stale_after)? {
+                    let _ = fs::remove_file(path);
+                    continue;
+                }
+                if started.elapsed() >= timeout {
+                    return Err(SessionError::Busy(owner.to_string()));
+                }
+                thread::sleep(Duration::from_millis(25));
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
+fn lock_is_stale(path: &Path, stale_after: Duration) -> Result<bool, SessionError> {
+    let metadata = fs::metadata(path)?;
+    let Ok(modified) = metadata.modified() else {
+        return Ok(false);
+    };
+    let Ok(age) = modified.elapsed() else {
+        return Ok(false);
+    };
+    if age < stale_after {
+        return Ok(false);
+    }
+
+    let body = fs::read_to_string(path).unwrap_or_default();
+    let pid = body.lines().find_map(|line| {
+        line.strip_prefix("pid=")
+            .and_then(|value| value.trim().parse::<u32>().ok())
+    });
+    match pid {
+        Some(pid) => Ok(!is_process_running(pid)?),
+        None => Ok(false),
+    }
+}
+
+fn is_process_running(pid: u32) -> Result<bool, SessionError> {
+    let output = Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()?;
+    if output.status.success() {
+        return Ok(true);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("Operation not permitted") || stderr.contains("operation not permitted") {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+impl Drop for SessionLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
 }
 
 fn parse_message(
@@ -385,6 +1011,8 @@ mod tests {
         fs,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    use serde_json::json;
 
     use super::*;
 
@@ -594,6 +1222,238 @@ tags = []
         assert!(matches!(
             manager.messages("999999999999", 10).expect_err("bad role"),
             SessionError::MessageParse { line: 1, .. }
+        ));
+    }
+
+    #[test]
+    fn create_update_append_and_remove_session() {
+        let home = unique_home("mutate");
+        let manager = SessionManager::new_with_home(Some(&home)).expect("manager");
+
+        let created = manager
+            .create(SessionCreateRequest {
+                title: Some("  Planning  ".to_string()),
+                default_server_ref: None,
+                adapter_ref: None,
+                tags: vec!["  alpha ".to_string(), "Beta".to_string()],
+                messages: vec![SessionMessageInput {
+                    role: "system".to_string(),
+                    content: "Be useful.".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: json!({"source":"test"}),
+                }],
+            })
+            .expect("create");
+
+        assert_eq!(created.metadata.title.as_deref(), Some("Planning"));
+        assert_eq!(created.metadata.message_count, 1);
+        assert_eq!(created.metadata.tags, vec!["alpha", "Beta"]);
+        assert!(created.messages_path.exists());
+
+        let updated = manager
+            .update(
+                &created.metadata.short_ref,
+                SessionUpdateRequest {
+                    title: SessionOptionalStringPatch::Set("Updated".to_string()),
+                    default_server_ref: SessionOptionalStringPatch::Unchanged,
+                    adapter_ref: SessionOptionalStringPatch::Unchanged,
+                    tags: Some(vec!["gamma".to_string()]),
+                },
+            )
+            .expect("update");
+
+        assert_eq!(updated.metadata.title.as_deref(), Some("Updated"));
+        assert_eq!(updated.metadata.tags, vec!["gamma"]);
+
+        let append = manager
+            .append_messages(
+                &created.metadata.short_ref,
+                vec![
+                    SessionMessageInput {
+                        role: "user".to_string(),
+                        content: "Hello".to_string(),
+                        server_ref: None,
+                        adapter_ref: None,
+                        metadata: json!({}),
+                    },
+                    SessionMessageInput {
+                        role: "assistant".to_string(),
+                        content: "Hi".to_string(),
+                        server_ref: None,
+                        adapter_ref: None,
+                        metadata: json!({"finish_reason":"stop"}),
+                    },
+                ],
+            )
+            .expect("append");
+
+        assert_eq!(append.metadata.message_count, 3);
+        assert_eq!(append.appended[0].index, 1);
+        assert_eq!(append.appended[1].index, 2);
+
+        let messages = manager
+            .messages(&created.metadata.short_ref, 10)
+            .expect("messages");
+        assert_eq!(messages.total_messages, 3);
+        assert_eq!(messages.messages[2].content, "Hi");
+
+        let removed = manager.remove(&created.metadata.short_ref).expect("remove");
+        assert_eq!(
+            removed.inspection.metadata.short_ref,
+            created.metadata.short_ref
+        );
+        assert!(!created.store_path.exists());
+    }
+
+    #[test]
+    fn append_creates_missing_messages_file_and_uses_actual_count() {
+        let home = unique_home("append-missing");
+        write_session(
+            &home,
+            "123456789abc000000000000",
+            "Append",
+            "2026-05-01T00:00:00Z",
+            "2026-05-01T00:10:00Z",
+            99,
+            None,
+        );
+        let manager = SessionManager::new_with_home(Some(&home)).expect("manager");
+
+        let append = manager
+            .append_messages(
+                "123456789abc",
+                vec![SessionMessageInput {
+                    role: "user".to_string(),
+                    content: "first".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: json!({}),
+                }],
+            )
+            .expect("append");
+
+        assert_eq!(append.appended[0].index, 0);
+        assert_eq!(append.metadata.message_count, 1);
+        assert!(home
+            .join("sessions/123456789abc000000000000/messages.jsonl")
+            .exists());
+    }
+
+    #[test]
+    fn invalid_mutations_fail_before_writing() {
+        let home = unique_home("invalid-mutations");
+        let manager = SessionManager::new_with_home(Some(&home)).expect("manager");
+
+        assert!(matches!(
+            manager.create(SessionCreateRequest {
+                title: Some("   ".to_string()),
+                default_server_ref: None,
+                adapter_ref: None,
+                tags: vec![],
+                messages: vec![],
+            }),
+            Err(SessionError::InvalidRequest(_))
+        ));
+
+        let created = manager
+            .create(SessionCreateRequest {
+                title: None,
+                default_server_ref: None,
+                adapter_ref: None,
+                tags: vec![],
+                messages: vec![SessionMessageInput {
+                    role: "user".to_string(),
+                    content: "hello".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: json!({}),
+                }],
+            })
+            .expect("create");
+
+        assert!(matches!(
+            manager.update(&created.metadata.short_ref, SessionUpdateRequest::default()),
+            Err(SessionError::InvalidRequest(_))
+        ));
+        assert!(matches!(
+            manager.update(
+                &created.metadata.short_ref,
+                SessionUpdateRequest {
+                    title: SessionOptionalStringPatch::Unchanged,
+                    default_server_ref: SessionOptionalStringPatch::Unchanged,
+                    adapter_ref: SessionOptionalStringPatch::Unchanged,
+                    tags: Some(vec!["x".to_string(), " x ".to_string()]),
+                },
+            ),
+            Err(SessionError::InvalidRequest(_))
+        ));
+        assert!(matches!(
+            manager.append_messages(
+                &created.metadata.short_ref,
+                vec![SessionMessageInput {
+                    role: "alien".to_string(),
+                    content: "hello".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: json!({}),
+                }]
+            ),
+            Err(SessionError::InvalidRequest(_))
+        ));
+        assert!(matches!(
+            manager.append_messages(
+                &created.metadata.short_ref,
+                vec![SessionMessageInput {
+                    role: "user".to_string(),
+                    content: "hello".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: Value::Null,
+                }]
+            ),
+            Err(SessionError::InvalidRequest(_))
+        ));
+        assert!(matches!(
+            manager.inspect("../bad"),
+            Err(SessionError::InvalidReference(_))
+        ));
+    }
+
+    #[test]
+    fn lock_timeout_returns_session_busy() {
+        let home = unique_home("busy");
+        write_session(
+            &home,
+            "abababababab000000000000",
+            "Busy",
+            "2026-05-01T00:00:00Z",
+            "2026-05-01T00:10:00Z",
+            0,
+            None,
+        );
+        let manager = SessionManager::new_with_home(Some(&home))
+            .expect("manager")
+            .with_lock_timing(Duration::from_millis(10), Duration::from_secs(120));
+        let lock_path = home.join("sessions/abababababab000000000000/session.lock");
+        fs::write(
+            &lock_path,
+            format!("pid={}\ncreated_at_unix=0\n", std::process::id()),
+        )
+        .expect("lock");
+
+        assert!(matches!(
+            manager.append_messages(
+                "abababababab",
+                vec![SessionMessageInput {
+                    role: "user".to_string(),
+                    content: "blocked".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: json!({}),
+                }]
+            ),
+            Err(SessionError::Busy(_))
         ));
     }
 

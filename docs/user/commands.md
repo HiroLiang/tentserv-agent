@@ -374,7 +374,19 @@ Server delete removes a stopped server spec only. Stop a running server before
 deleting it. Model and adapter delete may return `409 in_use` when server specs
 still reference them.
 
-Read local session metadata and transcript tails through the daemon:
+Create and inspect local sessions from the CLI:
+
+```bash
+tentgent session create --title "Planning" --tag draft
+tentgent session ls
+tentgent session inspect <session-ref>
+tentgent session append <session-ref> --role user --content "Hello"
+tentgent session messages <session-ref> --tail 100
+tentgent session update <session-ref> --title "Planning v2"
+tentgent session rm <session-ref>
+```
+
+Read and mutate local sessions through the daemon:
 
 ```bash
 curl -sS http://127.0.0.1:8790/v1/sessions \
@@ -383,10 +395,20 @@ curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS "http://127.0.0.1:8790/v1/sessions/<session-ref>/messages?tail=100" \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/sessions \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"title":"Planning","tags":["draft"]}'
+curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref>/messages \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-Session APIs are read-only in this release path. They do not create sessions,
-append chat messages, or change `/v1/chat` behavior yet.
+Session deletion is permanent. Session APIs do not change `/v1/chat` behavior
+yet; chat remains stateless until the session-aware chat slice.
 
 ## Adapters
 

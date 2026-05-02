@@ -53,6 +53,7 @@ pub(crate) async fn route_request(request: &HttpRequest, state: &DaemonHttpState
     match request.method.as_str() {
         "GET" => route_get(request, state).await,
         "POST" => route_post(request, state).await,
+        "PATCH" => route_patch(request, state).await,
         "DELETE" => route_delete(request, state).await,
         _ => method_not_allowed(request),
     }
@@ -126,14 +127,11 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         path if path.starts_with("/v1/auth/") => not_found_response(&request.path),
         path if dataset_tool_path(path) => method_not_allowed(request),
         path if store_mutation_path(path) => method_not_allowed(request),
-        path if path.starts_with("/v1/sessions/") => {
-            let reference = path.trim_start_matches("/v1/sessions/");
-            if reference.is_empty() || reference.contains('/') {
-                not_found_response(&request.path)
-            } else {
-                session::inspect_session_response(state, reference)
-            }
+        path if session::session_ref_path(path).is_some() => {
+            let reference = session::session_ref_path(path).expect("checked path");
+            session::inspect_session_response(state, reference)
         }
+        path if path.starts_with("/v1/sessions/") => not_found_response(&request.path),
         path if store_ref_path(path, "/v1/models/").is_some() => {
             let reference = store_ref_path(path, "/v1/models/").expect("checked path");
             store::inspect_model_response(state, reference)
@@ -194,7 +192,11 @@ async fn route_delete(request: &HttpRequest, state: &DaemonHttpState) -> HttpRes
             store::remove_server_response(state, request, reference)
         }
         path if path.starts_with("/v1/servers/") => not_found_response(&request.path),
-        path if session::is_session_route(path) => method_not_allowed(request),
+        path if session::session_ref_path(path).is_some() => {
+            let reference = session::session_ref_path(path).expect("checked path");
+            session::remove_session_response(state, request, reference)
+        }
+        path if session::is_session_route(path) => not_found_response(&request.path),
         path if train_plan_ref_path(path).is_some() => {
             let reference = train_plan_ref_path(path).expect("checked path");
             train::remove_train_plan_response(state, request, reference)
@@ -214,6 +216,7 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
         "/v1/chat/completions" => openai::chat_completions_response(state, request).await,
         "/v1/chat" => chat::proxy_chat_response(state, request).await,
         "/v1/servers" => lifecycle::create_server_response(state, request),
+        "/v1/sessions" => session::create_session_response(state, request),
         "/v1/train/lora/plans/preview" => train::preview_train_plan_response(state, request),
         "/v1/train/lora/plans" => train::create_train_plan_response(state, request),
         "/v1/models/import" => store_mutation::import_model_response(state, request).await,
@@ -259,7 +262,23 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
             }
             None => not_found_response(&request.path),
         },
+        path if session::session_messages_path(path).is_some() => {
+            let reference = session::session_messages_path(path).expect("checked path");
+            session::append_session_messages_response(state, request, reference)
+        }
         path if session::is_session_route(path) => method_not_allowed(request),
+        _ => not_found_response(&request.path),
+    }
+}
+
+async fn route_patch(request: &HttpRequest, state: &DaemonHttpState) -> HttpResponse {
+    match request.path.as_str() {
+        path if session::session_ref_path(path).is_some() => {
+            let reference = session::session_ref_path(path).expect("checked path");
+            session::update_session_response(state, request, reference)
+        }
+        path if session::is_session_route(path) => method_not_allowed(request),
+        path if path.starts_with("/v1/") => method_not_allowed(request),
         _ => not_found_response(&request.path),
     }
 }

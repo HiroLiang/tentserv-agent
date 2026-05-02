@@ -157,6 +157,15 @@ pub(crate) fn server_error_response(error: ServerError) -> HttpResponse {
 
 pub(crate) fn session_error_response(error: SessionError) -> HttpResponse {
     match error {
+        SessionError::InvalidRequest(message) | SessionError::InvalidReference(message) => {
+            json_response(
+                400,
+                ErrorResponse {
+                    error: "bad_request",
+                    message,
+                },
+            )
+        }
         SessionError::NotFound(reference) => json_response(
             404,
             ErrorResponse {
@@ -173,11 +182,94 @@ pub(crate) fn session_error_response(error: SessionError) -> HttpResponse {
                 ),
             },
         ),
+        SessionError::Busy(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "session_busy",
+                message: format!("session `{reference}` is busy; try again shortly"),
+            },
+        ),
         other => json_response(
             500,
             ErrorResponse {
                 error: "session_read_failed",
                 message: format!("failed to read sessions: {other}"),
+            },
+        ),
+    }
+}
+
+pub(crate) fn session_write_error_response(error: SessionError) -> HttpResponse {
+    match error {
+        SessionError::InvalidRequest(message) | SessionError::InvalidReference(message) => {
+            json_response(
+                400,
+                ErrorResponse {
+                    error: "bad_request",
+                    message,
+                },
+            )
+        }
+        SessionError::NotFound(reference) => json_response(
+            404,
+            ErrorResponse {
+                error: "not_found",
+                message: format!("session reference `{reference}` was not found"),
+            },
+        ),
+        SessionError::ServerNotFound(reference) => json_response(
+            404,
+            ErrorResponse {
+                error: "not_found",
+                message: format!("server reference `{reference}` was not found"),
+            },
+        ),
+        SessionError::AdapterNotFound(reference) => json_response(
+            404,
+            ErrorResponse {
+                error: "not_found",
+                message: format!("adapter reference `{reference}` was not found"),
+            },
+        ),
+        SessionError::AmbiguousRef(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "ambiguous_ref",
+                message: format!(
+                    "session reference `{reference}` is ambiguous; use a longer prefix"
+                ),
+            },
+        ),
+        SessionError::ServerAmbiguousRef(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "ambiguous_ref",
+                message: format!(
+                    "server reference `{reference}` is ambiguous; use a longer prefix"
+                ),
+            },
+        ),
+        SessionError::AdapterAmbiguousRef(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "ambiguous_ref",
+                message: format!(
+                    "adapter reference `{reference}` is ambiguous; use a longer prefix"
+                ),
+            },
+        ),
+        SessionError::Busy(reference) => json_response(
+            409,
+            ErrorResponse {
+                error: "session_busy",
+                message: format!("session `{reference}` is busy; try again shortly"),
+            },
+        ),
+        other => json_response(
+            500,
+            ErrorResponse {
+                error: "session_write_failed",
+                message: format!("failed to write sessions: {other}"),
             },
         ),
     }

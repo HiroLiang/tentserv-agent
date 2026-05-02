@@ -5,6 +5,7 @@ mod daemon;
 mod dataset;
 mod model;
 mod server;
+mod session;
 mod train;
 
 pub use adapter::AdapterCommands;
@@ -14,6 +15,7 @@ pub use daemon::{DaemonCommands, DaemonRunCommand};
 pub use dataset::DatasetCommands;
 pub use model::ModelCommands;
 pub use server::{ServerCommands, ServerRunCommand};
+pub use session::SessionCommands;
 pub use train::{
     TrainCommands, TrainLoraCommands, TrainLoraPlanCommands, TrainLoraRunCommand,
     TrainLoraRunWorkerCommand,
@@ -110,6 +112,16 @@ pub enum Commands {
     Server {
         #[command(subcommand)]
         action: ServerCommands,
+    },
+    /// Inspect and manage local chat sessions.
+    #[command(
+        name = "session",
+        about = "Inspect and manage local chat sessions.",
+        long_about = "Inspect and manage local chat sessions. Sessions are durable transcript records stored under TENTGENT_HOME/sessions and are separate from training datasets."
+    )]
+    Session {
+        #[command(subcommand)]
+        action: SessionCommands,
     },
     /// Inspect and manage provider authentication keys.
     #[command(

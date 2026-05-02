@@ -15,7 +15,7 @@ This document defines the first stable HTTP daemon boundary for the Rust
   lifecycle mutations, store import/pull mutations, deterministic dataset
   tooling, cloud dataset tooling, LoRA train-plan management, auth status,
   doctor diagnostics, daemon shutdown control, chat proxying, log diagnostics,
-  and read-only session discovery.
+  session discovery, and explicit session mutation.
 - Keep loopback-local daemon development usable without auth, while requiring a
   token or explicit unsafe flag for non-loopback and wildcard binds.
 
@@ -432,9 +432,63 @@ echo transcript content. Missing `messages.jsonl` returns `200` with an empty
 message list and a structured `messages_missing` warning.
 
 Session path fields are local diagnostics and may expose filesystem layout.
-They are intended for loopback-local daemon usage. Session APIs are read-only in
-this slice; they do not create sessions, append messages, export training data,
-or change `/v1/chat` behavior.
+They are intended for loopback-local daemon usage.
+
+`POST /v1/sessions` creates a session and returns `201`:
+
+```json
+{
+  "session": {
+    "session_ref": "abcdefabcdef000000000000",
+    "short_ref": "abcdefabcdef",
+    "title": "Planning session",
+    "created_at": "2026-05-01T00:00:00Z",
+    "updated_at": "2026-05-01T00:00:00Z",
+    "message_count": 0,
+    "default_server_ref": null,
+    "adapter_ref": null,
+    "tags": [],
+    "store_path": "/path/to/tentgent-home/sessions/abcdefabcdef000000000000",
+    "messages_path": "/path/to/tentgent-home/sessions/abcdefabcdef000000000000/messages.jsonl",
+    "warnings": []
+  },
+  "created": true
+}
+```
+
+The create body may include `title`, `default_server_ref`, `adapter_ref`,
+`tags`, and initial `messages`. `PATCH /v1/sessions/{session_ref}` updates
+metadata; `null` clears optional string fields, blank strings are invalid, and
+`tags` replaces the full tag list. Empty patch objects return `400`.
+
+`POST /v1/sessions/{session_ref}/messages` appends one to 100 messages.
+Tentgent assigns `created_at` and returns appended indexes:
+
+```json
+{
+  "session": {
+    "session_ref": "abcdefabcdef000000000000",
+    "short_ref": "abcdefabcdef",
+    "message_count": 2,
+    "updated_at": "2026-05-01T00:05:00Z"
+  },
+  "appended": [
+    { "index": 1, "role": "user", "created_at": "2026-05-01T00:05:00Z" }
+  ]
+}
+```
+
+Message content must be non-empty and no larger than 1 MiB. `metadata` is
+optional, defaults to `{}`, and must be a JSON object when present.
+
+`DELETE /v1/sessions/{session_ref}` permanently removes the session directory.
+There is no trash or recycle bin. DELETE bodies must be empty. All session
+mutation endpoints follow daemon auth rules.
+
+Session writes use lock files to coordinate CLI and HTTP writers. `409
+session_busy` means another writer held the lock for the acquisition timeout.
+Session-aware chat remains out of scope in this slice; `/v1/chat` and
+`/v1/chat/completions` stay stateless.
 
 `GET /v1/servers` returns stored server specs and their current process state:
 

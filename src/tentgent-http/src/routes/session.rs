@@ -1,16 +1,24 @@
 use tentgent_core::session::{
-    SessionInspection, SessionManager, SessionMessage, SessionMessages, SessionSummary,
+    SessionAppendOutcome, SessionCreateRequest as CoreSessionCreateRequest, SessionInspection,
+    SessionManager, SessionMessage, SessionMessageInput, SessionMessages,
+    SessionOptionalStringPatch, SessionRemovalOutcome, SessionSummary, SessionUpdateRequest,
     SessionWarning,
 };
 
 use crate::{
     app::DaemonHttpState,
     dto::{
-        SessionInspectionItem, SessionMessageItem, SessionMessagesResponse, SessionRefItem,
-        SessionResponse, SessionSummaryItem, SessionWarningItem, SessionsResponse,
+        RemoveSessionResponse, RemovedSessionItem, SessionAppendRequest, SessionAppendResponse,
+        SessionAppendSessionItem, SessionAppendedItem, SessionCreateRequest, SessionCreateResponse,
+        SessionInspectionItem, SessionMessageItem, SessionMessageRequest, SessionMessagesResponse,
+        SessionPatchRequest, SessionRefItem, SessionResponse, SessionSummaryItem,
+        SessionWarningItem, SessionsResponse,
     },
     http::{HttpRequest, HttpResponse},
-    response::{bad_request_response, json_response, session_error_response},
+    response::{
+        bad_request_response, json_response, parse_json_body, session_error_response,
+        session_write_error_response,
+    },
     routes::store::path_string,
 };
 
@@ -68,9 +76,123 @@ pub(crate) fn session_messages_response(
     }
 }
 
+pub(crate) fn create_session_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+) -> HttpResponse {
+    let body = match parse_json_body::<SessionCreateRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let manager = match SessionManager::new_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return session_write_error_response(error),
+    };
+    let request = CoreSessionCreateRequest {
+        title: body.title,
+        default_server_ref: body.default_server_ref,
+        adapter_ref: body.adapter_ref,
+        tags: body.tags,
+        messages: match message_inputs(body.messages) {
+            Ok(messages) => messages,
+            Err(response) => return response,
+        },
+    };
+    match manager.create(request) {
+        Ok(session) => json_response(
+            201,
+            SessionCreateResponse {
+                session: session_inspection_item(session),
+                created: true,
+            },
+        ),
+        Err(error) => session_write_error_response(error),
+    }
+}
+
+pub(crate) fn update_session_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    reference: &str,
+) -> HttpResponse {
+    let body = match parse_json_body::<SessionPatchRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let manager = match SessionManager::new_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return session_write_error_response(error),
+    };
+    let request = SessionUpdateRequest {
+        title: optional_patch(body.title),
+        default_server_ref: optional_patch(body.default_server_ref),
+        adapter_ref: optional_patch(body.adapter_ref),
+        tags: body.tags,
+    };
+    match manager.update(reference, request) {
+        Ok(session) => json_response(
+            200,
+            SessionResponse {
+                session: session_inspection_item(session),
+            },
+        ),
+        Err(error) => session_write_error_response(error),
+    }
+}
+
+pub(crate) fn append_session_messages_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    reference: &str,
+) -> HttpResponse {
+    let body = match parse_json_body::<SessionAppendRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let manager = match SessionManager::new_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return session_write_error_response(error),
+    };
+    let messages = match message_inputs(body.messages) {
+        Ok(messages) => messages,
+        Err(response) => return response,
+    };
+    match manager.append_messages(reference, messages) {
+        Ok(outcome) => json_response(200, session_append_item(outcome)),
+        Err(error) => session_write_error_response(error),
+    }
+}
+
+pub(crate) fn remove_session_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+    reference: &str,
+) -> HttpResponse {
+    if !request.body.is_empty() {
+        return bad_request_response("DELETE request body must be empty");
+    }
+    let manager = match SessionManager::new_with_home(Some(state.home_dir())) {
+        Ok(manager) => manager,
+        Err(error) => return session_write_error_response(error),
+    };
+    match manager.remove(reference) {
+        Ok(outcome) => json_response(200, session_removal_item(outcome)),
+        Err(error) => session_write_error_response(error),
+    }
+}
+
 pub(crate) fn session_messages_path(path: &str) -> Option<&str> {
     let rest = path.strip_prefix("/v1/sessions/")?;
     let reference = rest.strip_suffix("/messages")?;
+    if valid_session_reference_path(reference) {
+        Some(reference)
+    } else {
+        None
+    }
+}
+
+pub(crate) fn session_ref_path(path: &str) -> Option<&str> {
+    let reference = path.strip_prefix("/v1/sessions/")?;
     if valid_session_reference_path(reference) {
         Some(reference)
     } else {
@@ -142,6 +264,67 @@ fn session_messages_item(messages: SessionMessages) -> SessionMessagesResponse {
     }
 }
 
+fn session_append_item(outcome: SessionAppendOutcome) -> SessionAppendResponse {
+    SessionAppendResponse {
+        session: SessionAppendSessionItem {
+            session_ref: outcome.metadata.session_ref,
+            short_ref: outcome.metadata.short_ref,
+            message_count: outcome.metadata.message_count,
+            updated_at: outcome.metadata.updated_at,
+        },
+        appended: outcome
+            .appended
+            .into_iter()
+            .map(|message| SessionAppendedItem {
+                index: message.index,
+                role: message.role,
+                created_at: message.created_at,
+            })
+            .collect(),
+    }
+}
+
+fn session_removal_item(outcome: SessionRemovalOutcome) -> RemoveSessionResponse {
+    let store_path = path_string(&outcome.inspection.store_path);
+    RemoveSessionResponse {
+        removed: RemovedSessionItem {
+            kind: "session",
+            session_ref: outcome.inspection.metadata.session_ref.clone(),
+            short_ref: outcome.inspection.metadata.short_ref.clone(),
+            store_path,
+        },
+        session: session_inspection_item(outcome.inspection),
+    }
+}
+
+fn optional_patch(value: Option<Option<String>>) -> SessionOptionalStringPatch {
+    match value {
+        None => SessionOptionalStringPatch::Unchanged,
+        Some(None) => SessionOptionalStringPatch::Clear,
+        Some(Some(value)) => SessionOptionalStringPatch::Set(value),
+    }
+}
+
+fn message_inputs(
+    messages: Vec<SessionMessageRequest>,
+) -> Result<Vec<SessionMessageInput>, HttpResponse> {
+    messages
+        .into_iter()
+        .map(|message| {
+            if !message.metadata.is_object() {
+                return Err(bad_request_response("message metadata must be an object"));
+            }
+            Ok(SessionMessageInput {
+                role: message.role,
+                content: message.content,
+                server_ref: None,
+                adapter_ref: None,
+                metadata: message.metadata,
+            })
+        })
+        .collect()
+}
+
 fn session_message_item(message: SessionMessage) -> SessionMessageItem {
     SessionMessageItem {
         index: message.index,
@@ -185,5 +368,8 @@ fn parse_tail_messages(value: &str) -> Result<usize, HttpResponse> {
 }
 
 fn valid_session_reference_path(reference: &str) -> bool {
-    !reference.is_empty() && !reference.contains('/')
+    !reference.is_empty()
+        && !reference.contains('/')
+        && !reference.contains('\\')
+        && !reference.contains("..")
 }
