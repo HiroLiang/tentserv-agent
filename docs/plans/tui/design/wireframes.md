@@ -17,8 +17,9 @@ implementation intent in a form that is easier for agents to scan.
 
 The landing screen must work even when the daemon is down. Show runtime home,
 daemon URL, doctor summary, auth summary, inventory counts, and warnings. When
-the daemon is unreachable, show the current command to start it and a clear
-path to doctor diagnostics.
+the daemon is unreachable, show the resolved home, daemon URL, current
+`tentgent daemon start --home <PATH> --host 127.0.0.1 --port 8790` command, and
+a clear path to doctor diagnostics.
 
 ### List + Inspect
 

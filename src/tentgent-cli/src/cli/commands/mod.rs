@@ -11,7 +11,7 @@ mod train;
 pub use adapter::AdapterCommands;
 pub use auth::{AuthCommands, AuthProviderAction};
 pub use chat::ChatCommand;
-pub use daemon::{DaemonCommands, DaemonRunCommand};
+pub use daemon::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 pub use dataset::DatasetCommands;
 pub use model::ModelCommands;
 pub use server::{ServerCommands, ServerRunCommand};

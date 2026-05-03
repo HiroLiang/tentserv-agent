@@ -24,7 +24,8 @@ Known limits:
 
 - Provider key set/remove remains CLI-only.
 - `doctor --fix` remains CLI-only; HTTP doctor is observational.
-- `daemon run` remains the bootstrap entry point for the HTTP daemon itself.
+- `daemon start` is the primary background entry point for the HTTP daemon;
+  foreground `daemon run` remains available for debugging.
 - Cloud provider servers do not support request-time local adapters.
 - Generated dataset splits are not deduplicated against each other yet.
 - macOS signing and notarization are deferred to a later slice.

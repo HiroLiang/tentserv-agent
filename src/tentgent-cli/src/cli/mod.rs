@@ -46,3 +46,60 @@ pub async fn run() -> miette::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser as _;
+
+    use super::{
+        app::Cli,
+        commands::{Commands, DaemonCommands},
+    };
+
+    #[test]
+    fn parses_daemon_start() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "daemon",
+            "start",
+            "--home",
+            "/tmp/tentgent",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8790",
+            "--allow-unsafe-bind",
+        ])
+        .expect("parse daemon start");
+
+        match cli.command {
+            Commands::Daemon {
+                action: DaemonCommands::Start(command),
+            } => {
+                assert_eq!(
+                    command.home.as_deref(),
+                    Some(std::path::Path::new("/tmp/tentgent"))
+                );
+                assert_eq!(command.host.as_deref(), Some("127.0.0.1"));
+                assert_eq!(command.port, Some(8790));
+                assert!(command.allow_unsafe_bind);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_daemon_run_detach() {
+        let cli = Cli::try_parse_from(["tentgent", "daemon", "run", "--detach"])
+            .expect("parse daemon run --detach");
+
+        match cli.command {
+            Commands::Daemon {
+                action: DaemonCommands::Run(command),
+            } => {
+                assert!(command.detach);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+}

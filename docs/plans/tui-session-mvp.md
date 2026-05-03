@@ -52,9 +52,20 @@ tentgent daemon start [--home <PATH>] [--host 127.0.0.1] [--port 8790]
 tentgent daemon run --detach
 ```
 
-The exact daemon detach command can be decided in the daemon UX slice. The TUI
-should be able to detect a missing daemon and show the command needed to start
-one.
+Slice 0 fixes both commands as the supported detached daemon UX. `daemon start`
+is the primary user-facing command, and `daemon run --detach` must remain a thin
+entry over the same detached-launch implementation. The TUI should be able to
+detect a missing daemon and show the command needed to start one.
+
+Daemon URL discovery order for the TUI is:
+
+1. `--daemon-url <URL>`
+2. `TENTGENT_DAEMON_URL`
+3. daemon metadata `host` and `port`
+4. `http://127.0.0.1:8790`
+
+Token discovery order is `--token <TOKEN>`, then `TENTGENT_DAEMON_TOKEN`, then
+no token. No daemon token file is part of this MVP.
 
 ## Product Shape
 
@@ -119,6 +130,13 @@ Goals:
 - define how the TUI discovers daemon URL and token
 - show a friendly startup hint when no daemon is running
 - keep shutdown protected by existing daemon-control auth rules
+- keep `daemon start` and `daemon run --detach` on the same detached-launch
+  implementation
+- treat public `GET /healthz` readiness as authoritative; report `/v1/status`
+  `401` as an auth warning after health succeeds
+- keep idempotent start scoped to the resolved runtime home
+- let detached daemon children inherit daemon configuration environment while
+  preserving daemon-token sanitization for model-bound server children
 
 Review target:
 
@@ -210,8 +228,6 @@ Review target:
 
 - Should `tentgent tui` auto-start a daemon when token and bind settings are
   safe, or should it only show the exact command to run?
-- Should TUI tokens be read only from `TENTGENT_DAEMON_TOKEN`, or should a local
-  daemon-token file be introduced later?
 - Should provider key mutation remain CLI-only permanently, or get a separate
   guarded TUI flow after security review?
 - Should the first chat view support streaming immediately, or ship non-stream

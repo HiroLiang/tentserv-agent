@@ -98,7 +98,8 @@ model-bound server chat request と adapter rules は [docs/contracts/server-cha
 daemon control plane を起動:
 
 ```bash
-tentgent daemon run --host 127.0.0.1 --port 8790
+tentgent daemon start --host 127.0.0.1 --port 8790
+tentgent daemon status
 curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
 ```

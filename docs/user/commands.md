@@ -166,25 +166,28 @@ curl -N http://127.0.0.1:8780/v1/chat \
 
 ## Daemon
 
-Run the local daemon process in the foreground:
+Start the local daemon process in background mode:
 
 ```bash
-tentgent daemon run --host 127.0.0.1 --port 8790
+tentgent daemon start --host 127.0.0.1 --port 8790
+tentgent daemon status
 ```
 
-Loopback daemon binds can run without auth for local development. To protect
-daemon `/v1/*` routes, set a local bearer token before starting the daemon:
+`tentgent daemon start` and `tentgent daemon run --detach` use the same detached
+launch path. Loopback daemon binds can run without auth for local development.
+To protect daemon `/v1/*` routes, set a local bearer token before starting the
+daemon:
 
 ```bash
 export TENTGENT_DAEMON_TOKEN='<local-token>'
-tentgent daemon run --host 127.0.0.1 --port 8790
+tentgent daemon start --host 127.0.0.1 --port 8790
 ```
 
 When the token is enabled, add
 `-H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"` to every daemon `/v1/*`
 request. `GET /healthz` stays public.
 
-Inspect, call, or stop the daemon from another terminal:
+Inspect, call, or stop the daemon:
 
 ```bash
 tentgent daemon status
@@ -266,6 +269,12 @@ curl -sS http://127.0.0.1:8790/v1/daemon/shutdown \
 tentgent daemon stop
 ```
 
+For foreground debugging, use:
+
+```bash
+tentgent daemon run --host 127.0.0.1 --port 8790
+```
+
 The daemon records process metadata under `TENTGENT_HOME/runtime` and exposes
 Rust HTTP health/status, read-only store discovery, and controlled server
 lifecycle endpoints. `POST /v1/chat` proxies to an already-running model-bound
@@ -283,6 +292,9 @@ do not send it when calling the model-bound server port directly. Log diagnostic
 endpoints expose fixed daemon/server stdout and stderr paths for local debugging.
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the
 explicit `--allow-unsafe-bind` flag.
+Detached daemon children inherit daemon configuration environment variables,
+including `TENTGENT_DAEMON_TOKEN`; model-bound server children still remove that
+token before launch.
 `POST /v1/daemon/shutdown` requires `TENTGENT_DAEMON_TOKEN` even on loopback
 and stops only the daemon process; it does not stop running model-bound servers.
 

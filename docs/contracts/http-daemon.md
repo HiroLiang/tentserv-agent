@@ -1,7 +1,7 @@
 # HTTP Daemon
 
 This document defines the first stable HTTP daemon boundary for the Rust
-`tentgent-http` entry point and `tentgent daemon run`.
+`tentgent-http` entry point and `tentgent daemon` lifecycle commands.
 
 ## Scope
 
@@ -81,7 +81,9 @@ When the token is enabled:
 ```
 
 The daemon never writes the token value to runtime state, logs, server specs, or
-status responses. Model-bound server child processes do not inherit
+status responses. Detached daemon children inherit daemon configuration
+environment variables, including `TENTGENT_DAEMON_TOKEN`, so token-enabled start
+keeps auth enabled. Model-bound server child processes do not inherit
 `TENTGENT_DAEMON_TOKEN`; provider auth environment variables keep their existing
 behavior.
 
@@ -99,10 +101,33 @@ wildcard/non-loopback  no             no, unless --allow-unsafe-bind
 wildcard/non-loopback  yes            yes, with warning
 ```
 
-`--allow-unsafe-bind` is available on both `tentgent daemon run` and the
+`--allow-unsafe-bind` is available on all daemon CLI launch paths and the
 low-level `tentgent-http` binary. It is intended only for explicit local-network
 experiments; this MVP is not a public-service security model and does not add
 TLS, CORS, multi-user auth, keychain token storage, or per-endpoint permissions.
+
+## Lifecycle Commands And Discovery
+
+`tentgent daemon start` launches the daemon in background mode and waits for
+readiness. `tentgent daemon run --detach` uses the same detached-launch
+implementation. Plain `tentgent daemon run` remains foreground mode for
+debugging.
+
+Detached launch readiness is based on public `GET /healthz`. If
+`TENTGENT_DAEMON_TOKEN` is set, the parent may also probe `GET /v1/status` with
+the bearer token, but a `401` status is reported as an auth warning rather than
+a failed start after `/healthz` succeeds.
+
+Client and future TUI daemon URL discovery should use this order:
+
+1. explicit `--daemon-url`
+2. `TENTGENT_DAEMON_URL`
+3. daemon process metadata `host` and `port`
+4. `http://127.0.0.1:8790`
+
+Token discovery should use explicit `--token`, then `TENTGENT_DAEMON_TOKEN`,
+then no token. No token file or Keychain-backed daemon token is defined in this
+contract.
 
 ## Health And Status
 
@@ -224,8 +249,9 @@ returns `409 daemon_token_required` or `401 unauthorized`.
 ## Read-Only Store Discovery
 
 Read-only store endpoints use the daemon runtime home passed to
-`tentgent daemon run --home <PATH>` or `tentgent-http --home <PATH>`. Store
-specific directory overrides still win when set:
+`tentgent daemon start --home <PATH>`, `tentgent daemon run --home <PATH>`, or
+`tentgent-http --home <PATH>`. Store specific directory overrides still win when
+set:
 
 - `TENTGENT_MODELS_DIR`
 - `TENTGENT_ADAPTERS_DIR`

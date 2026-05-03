@@ -443,10 +443,11 @@ curl -N http://127.0.0.1:8000/v1/chat \
 
 ## Rust HTTP Daemon Entry
 
-Run the daemon from the CLI:
+Start the daemon from the CLI:
 
 ```bash
-cargo run -- daemon run --host 127.0.0.1 --port 8790
+cargo run -- daemon start --host 127.0.0.1 --port 8790
+cargo run -- daemon status
 ```
 
 Loopback daemon binds can run without auth for development. To exercise the
@@ -454,14 +455,21 @@ local bearer-token guard:
 
 ```bash
 export TENTGENT_DAEMON_TOKEN='<local-token>'
-cargo run -- daemon run --host 127.0.0.1 --port 8790
+cargo run -- daemon start --host 127.0.0.1 --port 8790
 ```
 
 When the token is enabled, add
 `-H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"` to every daemon `/v1/*`
 request. `GET /healthz` stays public.
 
-Check, call, or stop it from another terminal:
+`daemon start` and `daemon run --detach` share one detached launch path. The
+parent process waits up to five seconds for `GET /healthz`; if readiness times
+out, the output includes the resolved daemon URL, runtime home, and daemon
+stdout/stderr log paths. If `TENTGENT_DAEMON_TOKEN` is set, `/v1/status` is used
+only as a stronger confirmation; a `401` does not override successful
+`/healthz` readiness.
+
+Check, call, or stop it:
 
 ```bash
 cargo run -- daemon status
@@ -567,14 +575,23 @@ curl -sS http://127.0.0.1:8790/v1/daemon/shutdown \
 cargo run -- daemon stop
 ```
 
+For foreground debugging, use:
+
+```bash
+cargo run -- daemon run --host 127.0.0.1 --port 8790
+```
+
 The low-level Rust HTTP binary has the same lifecycle metadata behavior:
 
 ```bash
 cargo run -p tentgent-http --bin tentgent-http -- --host 127.0.0.1 --port 8790
 ```
 
-Both daemon entry points reject wildcard or non-loopback binds without
+All daemon CLI launch paths reject wildcard or non-loopback binds without
 `TENTGENT_DAEMON_TOKEN` unless `--allow-unsafe-bind` is passed explicitly.
+Detached daemon children inherit daemon configuration environment variables,
+including `TENTGENT_DAEMON_TOKEN`; model-bound server children still remove that
+token before launch.
 
 At this stage the daemon records process metadata and serves `GET /healthz`,
 `GET /v1/status`, and read-only discovery endpoints for models, adapters,
