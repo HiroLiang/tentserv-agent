@@ -122,8 +122,9 @@ Client and future TUI daemon URL discovery should use this order:
 
 1. explicit `--daemon-url`
 2. `TENTGENT_DAEMON_URL`
-3. daemon process metadata `host` and `port`
-4. `http://127.0.0.1:8790`
+3. `<TENTGENT_HOME>/config.toml` `[daemon].url`
+4. daemon process metadata `host` and `port`
+5. `http://127.0.0.1:8790`
 
 Token discovery should use explicit `--token`, then `TENTGENT_DAEMON_TOKEN`,
 then no token. No token file or Keychain-backed daemon token is defined in this

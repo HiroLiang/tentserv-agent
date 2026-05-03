@@ -27,8 +27,8 @@ tentgent auth openai
 tentgent auth openai rm
 ```
 
-The daemon exposes read-only auth status, but provider key set/remove remains
-CLI-only:
+The daemon exposes read-only auth status. Provider key set/remove stays
+local-only through the CLI or guarded TUI Keychain setup flows:
 
 ```bash
 curl -sS http://127.0.0.1:8790/v1/auth \
@@ -39,6 +39,31 @@ curl -sS http://127.0.0.1:8790/v1/auth/openai \
 
 Daemon auth status reports local env/keychain presence only. It does not print
 secrets and does not call provider validation endpoints.
+
+## TUI
+
+Open the local terminal operator console:
+
+```bash
+tentgent tui
+tentgent tui --home /path/to/tentgent-home
+tentgent tui --daemon-url http://127.0.0.1:8790
+```
+
+The TUI uses daemon HTTP for live status, auth, and doctor data. It uses shared
+local code only for bootstrap config, daemon discovery, explicit daemon start,
+and guarded Keychain-backed provider setup.
+
+When the daemon is down, pressing `s` in the TUI starts a local daemon through
+the same detached-launch helper as `tentgent daemon start`. The start host and
+port come from the resolved daemon URL, so `--daemon-url
+http://127.0.0.1:8791` starts `127.0.0.1:8791` rather than the default port.
+
+Daemon URL discovery order is `--daemon-url`,
+`TENTGENT_DAEMON_URL`, `<TENTGENT_HOME>/config.toml` `[daemon].url`,
+daemon metadata, then `http://127.0.0.1:8790`. Token discovery is `--token`,
+`TENTGENT_DAEMON_TOKEN`, then no token. The TUI never stores daemon tokens or
+provider secrets in config.
 
 ## Models
 

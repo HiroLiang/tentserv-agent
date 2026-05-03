@@ -104,6 +104,12 @@ curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
 ```
 
+terminal UI operator console を開く:
+
+```bash
+tentgent tui
+```
+
 完整な daemon API、endpoints、response shapes、auth、error mapping は [docs/contracts/http-daemon.md](../../../docs/contracts/http-daemon.md) を参照してください。
 
 ## API と Contracts
@@ -148,7 +154,7 @@ runtime home、Python runtime、Keychain prompt の詳細は [docs/user/runtime.
 
 ## 現在のバージョン
 
-`v0.2.0` はローカル HTTP daemon を拡張し、store、dataset、server、chat、training、diagnostics、bounded session workflow を API から利用できるようにします。
+`v0.2.0` はローカル HTTP daemon を拡張し、store、dataset、server、chat、training、diagnostics、bounded session workflow を API から利用できるようにし、最初の TUI setup surface も追加します。
 
 `v0.1.4` は `/v1/chat` の Server-Sent Events streaming を追加し、local model、compatible local adapter、OpenAI / Anthropic cloud provider server に対応します。
 
@@ -160,6 +166,7 @@ runtime home、Python runtime、Keychain prompt の詳細は [docs/user/runtime.
 - dataset validation、prompt templates、multi-split provider synthesis、provider evaluation
 - MLX、PEFT safetensors、llama-cpp GGUF path の one-shot local chat
 - store、dataset、server、chat、training、diagnostics、bounded session workflow を扱う local HTTP daemon API
+- daemon discovery、明示的な daemon 起動、non-secret config、guarded local Keychain setup のための terminal UI status/settings surface
 - managed LoRA train plans、durable run records、metrics/log inspection、実行可能な MLX / PEFT training loops
 - bounded transcript compaction を備えた local sessions
 - 通常 install 用の installer-managed Python runtime bootstrap

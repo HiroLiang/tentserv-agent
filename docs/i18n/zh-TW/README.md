@@ -104,6 +104,12 @@ curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
 ```
 
+開啟 terminal UI operator console：
+
+```bash
+tentgent tui
+```
+
 完整 daemon API、endpoint、response shape、auth 與 error mapping 請看 [docs/contracts/http-daemon.md](../../../docs/contracts/http-daemon.md)。
 
 ## API 與 Contracts
@@ -148,7 +154,7 @@ Tentgent 會先讀 `.env` / env，再 fallback 到系統 Keychain。若要讓 `.
 
 ## 目前版本
 
-`v0.2.0` 擴充本地 HTTP daemon，讓 store、dataset、server、chat、training、diagnostics 與 bounded session workflow 都能透過 API 使用。
+`v0.2.0` 擴充本地 HTTP daemon，讓 store、dataset、server、chat、training、diagnostics 與 bounded session workflow 都能透過 API 使用，並加入第一版 TUI setup surface。
 
 `v0.1.4` 加入 `/v1/chat` 的 Server-Sent Events streaming，支援本地模型、本地相容 adapter，以及 OpenAI / Anthropic cloud provider server。
 
@@ -160,6 +166,7 @@ Tentgent 會先讀 `.env` / env，再 fallback 到系統 Keychain。若要讓 `.
 - dataset validation、prompt templates、multi-split provider synthesis、provider evaluation
 - MLX、PEFT safetensors、llama-cpp GGUF 路徑的單次本地 chat
 - 本地 HTTP daemon API，涵蓋 store、dataset、server、chat、training、diagnostics 與 bounded session workflows
+- terminal UI status/settings surface，可做 daemon discovery、明確啟動 daemon、非秘密 config，以及受保護的本機 Keychain setup
 - managed LoRA train plans、durable run records、metrics/log inspection，以及可執行的 MLX / PEFT training loops
 - bounded transcript compaction 的本地 session，作為短期 working context
 - 一般安裝用的 installer-managed Python runtime bootstrap

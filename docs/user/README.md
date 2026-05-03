@@ -9,7 +9,8 @@ This directory keeps user-facing Tentgent docs out of the root README so the pro
 - [version.md](./version.md)
   Current version feature list, known limits, and release expectations.
 - [commands.md](./commands.md)
-  Common commands for auth, models, adapters, datasets, chat, servers, and LoRA training.
+  Common commands for TUI, auth, models, adapters, datasets, chat, servers,
+  daemon, and LoRA training.
 - [runtime.md](./runtime.md)
   Runtime home layout, environment overrides, backend support, and macOS Keychain prompts.
 

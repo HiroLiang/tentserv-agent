@@ -60,6 +60,51 @@ make run-cli ARGS='dataset eval --help'
 make run-cli ARGS='server run --help'
 ```
 
+## TUI Development
+
+Run the terminal UI from source:
+
+```bash
+cargo run -- tui
+cargo run -- tui --home "$TENTGENT_HOME"
+```
+
+The TUI is daemon-first for live status, auth, and doctor data. It does not
+silently auto-start the daemon on launch; press `s` inside the TUI to start the
+daemon explicitly through the shared detached-launch helper. The TUI derives
+the start host and port from the resolved daemon URL, including `--daemon-url`,
+`TENTGENT_DAEMON_URL`, config, metadata, or the default URL.
+
+Use a token-enabled daemon when checking auth-required behavior:
+
+```bash
+export TENTGENT_DAEMON_TOKEN='<local-token>'
+cargo run -- daemon start --host 127.0.0.1 --port 8790
+cargo run -- tui --token "$TENTGENT_DAEMON_TOKEN"
+```
+
+`GET /healthz` remains public. `/v1/status` returns `401` without a valid bearer
+token when daemon auth is enabled, and the TUI should show that as auth
+required rather than daemon down.
+
+Useful daemon lifecycle commands:
+
+```bash
+cargo run -- daemon start --host 127.0.0.1 --port 8790
+cargo run -- daemon status
+curl -sS http://127.0.0.1:8790/healthz
+curl -sS http://127.0.0.1:8790/v1/status \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+cargo run -- daemon stop
+```
+
+Detached daemon logs are written under the resolved runtime home:
+
+```text
+logs/daemon.stdout.log
+logs/daemon.stderr.log
+```
+
 ## Auth Commands
 
 ```bash

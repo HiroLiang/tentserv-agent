@@ -19,10 +19,13 @@ Added:
   and token-gated daemon shutdown.
 - HTTP and CLI session mutation, session-aware chat, OpenAI-compatible
   `session_ref` extensions, and destructive bounded session compaction.
+- Terminal UI skeleton with status/settings screens, daemon discovery,
+  explicit daemon start, non-secret config, and guarded local Keychain setup.
 
 Known limits:
 
-- Provider key set/remove remains CLI-only.
+- Provider key set/remove remains local-only through the CLI or guarded TUI
+  Keychain setup. No daemon HTTP secret mutation route exists.
 - `doctor --fix` remains CLI-only; HTTP doctor is observational.
 - `daemon start` is the primary background entry point for the HTTP daemon;
   foreground `daemon run` remains available for debugging.

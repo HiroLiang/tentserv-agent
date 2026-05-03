@@ -30,8 +30,9 @@ contracts:
 - Wireframes abbreviate paths such as `~/.tentgent` when space is tight. The
   real UI should show the resolved runtime home and shorten only for display.
 - The daemon HTTP default is `http://127.0.0.1:8790`.
-- TUI daemon URL discovery is `--daemon-url`, `TENTGENT_DAEMON_URL`, daemon
-  metadata, then the default URL.
+- TUI daemon URL discovery is `--daemon-url`, `TENTGENT_DAEMON_URL`,
+  `<TENTGENT_HOME>/config.toml` `[daemon].url`, daemon metadata, then the
+  default URL.
 - TUI token discovery is `--token`, `TENTGENT_DAEMON_TOKEN`, then no token.
 - Provider environment variables are `HF_TOKEN`, `OPENAI_API_KEY`, and
   `ANTHROPIC_API_KEY`.
@@ -40,5 +41,6 @@ contracts:
 - Missing-daemon screens should show the resolved home, daemon URL, and a
   copyable `tentgent daemon start --home <PATH> --host 127.0.0.1 --port 8790`
   command.
-- Provider key mutation is out of scope for the first TUI pass. The TUI may show
-  setup hints, but should not write secrets until a separate security review.
+- Provider key setup in Slice 1 is local-only through `AuthManager` and the
+  system Keychain. It must not add daemon HTTP mutation routes, persist secrets
+  in config, or display secret values.

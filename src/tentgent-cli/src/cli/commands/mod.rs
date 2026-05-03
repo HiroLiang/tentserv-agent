@@ -22,12 +22,26 @@ pub use train::{
 };
 
 use clap::{Args, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Debug, Args)]
 pub struct DoctorCommand {
     /// Developer bootstrap: create or sync the managed Python environment with uv before checking health.
     #[arg(short = 'f', long)]
     pub fix: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct TuiCommand {
+    /// Optional Tentgent runtime home override for TUI state and daemon lookup.
+    #[arg(short = 'H', long, value_name = "HOME")]
+    pub home: Option<PathBuf>,
+    /// Optional daemon HTTP URL override.
+    #[arg(long, value_name = "URL")]
+    pub daemon_url: Option<String>,
+    /// Optional daemon bearer token override.
+    #[arg(long, value_name = "TOKEN")]
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -46,6 +60,13 @@ pub enum Commands {
         long_about = "Run local installation and runtime health checks. Doctor checks platform, runtime-home writability, standard Tentgent directories, Python runtime assets, Python entry points, developer uv availability, and backend capability states. By default it reports findings without installing dependencies. Add --fix only for the current developer bootstrap path; release installers must not require users to preinstall uv."
     )]
     Doctor(DoctorCommand),
+    /// Open the terminal UI operator console.
+    #[command(
+        name = "tui",
+        about = "Open the terminal UI operator console.",
+        long_about = "Open the Tentgent terminal UI operator console. The TUI uses the local daemon HTTP API for live runtime workflows and shared local config/AuthManager paths for bootstrap and setup."
+    )]
+    Tui(TuiCommand),
     /// Inspect and manage registered models and downloaded runtimes.
     #[command(
         name = "model",

@@ -15,6 +15,7 @@ mod server;
 mod session;
 mod status;
 mod train;
+mod tui;
 
 use clap::{CommandFactory, Parser};
 use commands::Commands;
@@ -39,6 +40,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Server { action } => server::handle_server_command(action).await?,
         Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
+        Commands::Tui(command) => tui::handle_tui_command(command).await?,
         Commands::Status => status::handle_status_command()?,
         Commands::Train { action } => train::handle_train_command(action)?,
         Commands::Daemon { action } => daemon::handle_daemon_command(action).await?,
@@ -98,6 +100,33 @@ mod tests {
                 action: DaemonCommands::Run(command),
             } => {
                 assert!(command.detach);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_tui_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "tui",
+            "--home",
+            "/tmp/tentgent",
+            "--daemon-url",
+            "http://127.0.0.1:8790",
+            "--token",
+            "secret",
+        ])
+        .expect("parse tui command");
+
+        match cli.command {
+            Commands::Tui(command) => {
+                assert_eq!(
+                    command.home.as_deref(),
+                    Some(std::path::Path::new("/tmp/tentgent"))
+                );
+                assert_eq!(command.daemon_url.as_deref(), Some("http://127.0.0.1:8790"));
+                assert_eq!(command.token.as_deref(), Some("secret"));
             }
             other => panic!("unexpected command: {other:?}"),
         }

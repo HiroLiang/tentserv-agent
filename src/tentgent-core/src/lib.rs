@@ -1,5 +1,6 @@
 pub mod adapter;
 pub mod auth;
+pub mod config;
 pub mod daemon;
 pub mod dataset;
 pub mod dataset_runtime;

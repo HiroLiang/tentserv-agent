@@ -113,9 +113,16 @@ For model-bound server chat request and adapter rules, see
 Run the daemon control plane:
 
 ```bash
-tentgent daemon run --host 127.0.0.1 --port 8790
+tentgent daemon start --host 127.0.0.1 --port 8790
+tentgent daemon status
 curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
+```
+
+Open the terminal UI operator console:
+
+```bash
+tentgent tui
 ```
 
 For the full daemon API, endpoint list, response shapes, auth behavior, and
@@ -177,7 +184,7 @@ runtime-home rules, Python runtime resolution, and Keychain prompt notes.
 
 ## Versions
 
-- `v0.2.0`: local HTTP daemon parity expansion with store, dataset, server, chat, training, diagnostics, and bounded session APIs.
+- `v0.2.0`: local HTTP daemon parity expansion with store, dataset, server, chat, training, diagnostics, bounded session APIs, and a first TUI setup surface.
 - `v0.1.4`: HTTP chat streaming release with Server-Sent Events for local models, local adapters, and OpenAI/Anthropic cloud servers.
 - `v0.1.3`: dataset synthesis stability release with multi-split generation, per-split retry, and stronger provider output normalization.
 - `v0.1.2`: cloud provider server routing and provider-assisted dataset workflows.
@@ -195,6 +202,8 @@ Included:
 - dataset validation, prompt templates, multi-split provider synthesis, and provider evaluation
 - one-shot local chat for MLX, PEFT safetensors, and llama-cpp GGUF paths
 - local HTTP daemon API for store, dataset, server, chat, training, diagnostics, and bounded session workflows
+- terminal UI status/settings surface for daemon discovery, explicit daemon
+  start, non-secret config, and guarded local Keychain setup
 - managed LoRA train plans, durable run records, metrics/log inspection, and runnable MLX / PEFT training loops
 - local sessions with bounded transcript compaction for short-term working context
 - installer-managed Python runtime bootstrap for normal installs

@@ -1,9 +1,13 @@
 use std::{
     env,
+    fs::OpenOptions,
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{Command, Stdio},
     time::Duration,
 };
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
@@ -17,7 +21,6 @@ use tentgent_http::{
     security::{check_bind_safety, BindSafetyReport, DaemonSecurityConfig, DAEMON_TOKEN_ENV_VAR},
     DaemonHttpServer, DaemonHttpState,
 };
-use tokio::process::Command;
 use tokio::time::{sleep, Instant};
 
 use super::commands::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
@@ -99,15 +102,15 @@ async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct DetachedDaemonOptions {
-    home: Option<PathBuf>,
-    host: Option<String>,
-    port: Option<u16>,
-    allow_unsafe_bind: bool,
+pub(crate) struct DetachedDaemonOptions {
+    pub(crate) home: Option<PathBuf>,
+    pub(crate) host: Option<String>,
+    pub(crate) port: Option<u16>,
+    pub(crate) allow_unsafe_bind: bool,
 }
 
 impl DetachedDaemonOptions {
-    fn from_run(command: DaemonRunCommand) -> Self {
+    pub(crate) fn from_run(command: DaemonRunCommand) -> Self {
         Self {
             home: command.home,
             host: command.host,
@@ -116,7 +119,7 @@ impl DetachedDaemonOptions {
         }
     }
 
-    fn from_start(command: DaemonStartCommand) -> Self {
+    pub(crate) fn from_start(command: DaemonStartCommand) -> Self {
         Self {
             home: command.home,
             host: command.host,
@@ -140,11 +143,65 @@ struct DaemonReadiness {
     status_warning: Option<String>,
 }
 
+#[derive(Debug)]
+pub(crate) struct DetachedDaemonStartOutcome {
+    pub(crate) inspection: DaemonInspection,
+    pub(crate) daemon_url: String,
+    pub(crate) launched_pid: Option<u32>,
+    pub(crate) stdout_log_path: PathBuf,
+    pub(crate) stderr_log_path: PathBuf,
+    pub(crate) status_warning: Option<String>,
+    pub(crate) bind_warnings: Vec<String>,
+    pub(crate) already_running: bool,
+}
+
 async fn start_daemon(options: DetachedDaemonOptions) -> miette::Result<()> {
+    let outcome = start_daemon_detached(options).await?;
+    let title = if outcome.already_running {
+        "Daemon already running"
+    } else {
+        "Daemon started"
+    };
+    for warning in &outcome.bind_warnings {
+        println!("{} {}", style("warning").yellow().bold(), warning);
+    }
+    render_daemon_inspection(title, &outcome.inspection);
+    println!(
+        "{} listening on {}; try GET /healthz or GET /v1/status.",
+        style("http").green().bold(),
+        outcome.daemon_url
+    );
+    if let Some(pid) = outcome.launched_pid {
+        println!(
+            "{} launched background pid {}.",
+            style("pid").cyan().bold(),
+            pid
+        );
+    }
+    println!(
+        "{} stdout {}",
+        style("log").cyan().bold(),
+        outcome.stdout_log_path.display()
+    );
+    println!(
+        "{} stderr {}",
+        style("log").cyan().bold(),
+        outcome.stderr_log_path.display()
+    );
+    if let Some(warning) = outcome.status_warning {
+        println!("{} {}", style("warning").yellow().bold(), warning);
+    }
+
+    Ok(())
+}
+
+pub(crate) async fn start_daemon_detached(
+    options: DetachedDaemonOptions,
+) -> miette::Result<DetachedDaemonStartOutcome> {
     let manager = DaemonManager::new(options.home.as_deref()).into_diagnostic()?;
     let initial = manager.status().into_diagnostic()?;
     if initial.running {
-        return report_existing_daemon(&initial).await;
+        return existing_daemon_outcome(&initial).await;
     }
 
     let spec = match manager.prepare_run(DaemonRunRequest {
@@ -154,7 +211,7 @@ async fn start_daemon(options: DetachedDaemonOptions) -> miette::Result<()> {
         Ok(spec) => spec,
         Err(DaemonError::AlreadyRunning(_)) => {
             let inspection = manager.status().into_diagnostic()?;
-            return report_existing_daemon(&inspection).await;
+            return existing_daemon_outcome(&inspection).await;
         }
         Err(error) => return Err(error).into_diagnostic(),
     };
@@ -162,9 +219,7 @@ async fn start_daemon(options: DetachedDaemonOptions) -> miette::Result<()> {
     let security = DaemonSecurityConfig::from_env();
     let bind_safety =
         validate_daemon_bind_safety(&spec.host, &security, options.allow_unsafe_bind)?;
-    for warning in bind_safety.warnings {
-        println!("{} {}", style("warning").yellow().bold(), warning);
-    }
+    let bind_warnings = bind_safety.warnings;
 
     let child = build_detached_child_command(
         env::current_exe().into_diagnostic()?,
@@ -185,53 +240,37 @@ async fn start_daemon(options: DetachedDaemonOptions) -> miette::Result<()> {
     )
     .await?;
 
-    render_daemon_inspection("Daemon started", &readiness.inspection);
-    println!(
-        "{} listening on {}; try GET /healthz or GET /v1/status.",
-        style("http").green().bold(),
-        daemon_url_from_process_metadata(&readiness.inspection).unwrap_or(expected_url)
-    );
-    if let Some(pid) = launched_pid {
-        println!(
-            "{} launched background pid {}.",
-            style("pid").cyan().bold(),
-            pid
-        );
-    }
-    println!(
-        "{} stdout {}",
-        style("log").cyan().bold(),
-        child.stdout_log_path.display()
-    );
-    println!(
-        "{} stderr {}",
-        style("log").cyan().bold(),
-        child.stderr_log_path.display()
-    );
-    if let Some(warning) = readiness.status_warning {
-        println!("{} {}", style("warning").yellow().bold(), warning);
-    }
-
-    Ok(())
+    Ok(DetachedDaemonStartOutcome {
+        daemon_url: daemon_url_from_process_metadata(&readiness.inspection).unwrap_or(expected_url),
+        inspection: readiness.inspection,
+        launched_pid,
+        stdout_log_path: child.stdout_log_path,
+        stderr_log_path: child.stderr_log_path,
+        status_warning: readiness.status_warning,
+        bind_warnings,
+        already_running: false,
+    })
 }
 
-async fn report_existing_daemon(inspection: &DaemonInspection) -> miette::Result<()> {
+async fn existing_daemon_outcome(
+    inspection: &DaemonInspection,
+) -> miette::Result<DetachedDaemonStartOutcome> {
     let process = inspection.process.as_ref().ok_or_else(|| {
         miette!("daemon metadata was expected to be running but no process metadata was present")
     })?;
     let url = daemon_url(&process.host, process.port);
     let client = probe_client()?;
     match probe_healthz(&client, &url).await {
-        Ok(()) => {
-            render_daemon_inspection("Daemon already running", inspection);
-            println!("{} {}", style("http").green().bold(), url);
-            println!(
-                "{} start is scoped to this resolved home: {}",
-                style("home").cyan().bold(),
-                inspection.home_dir.display()
-            );
-            Ok(())
-        }
+        Ok(()) => Ok(DetachedDaemonStartOutcome {
+            inspection: inspection.clone(),
+            daemon_url: url,
+            launched_pid: None,
+            stdout_log_path: inspection.stdout_log_path.clone(),
+            stderr_log_path: inspection.stderr_log_path.clone(),
+            status_warning: None,
+            bind_warnings: Vec::new(),
+            already_running: true,
+        }),
         Err(detail) => Err(existing_daemon_unreachable_error(inspection, &url, &detail)),
     }
 }
@@ -274,38 +313,30 @@ fn build_detached_child_command(
 async fn launch_detached_child(
     command: &DetachedDaemonChildCommand,
 ) -> miette::Result<Option<u32>> {
-    let output = Command::new("sh")
-        .env("TENTGENT_STDOUT_LOG", &command.stdout_log_path)
-        .env("TENTGENT_STDERR_LOG", &command.stderr_log_path)
-        .arg("-c")
-        .arg(
-            "nohup \"$@\" >>\"$TENTGENT_STDOUT_LOG\" 2>>\"$TENTGENT_STDERR_LOG\" < /dev/null & echo $!",
-        )
-        .arg("sh")
-        .arg(&command.executable)
-        .args(&command.args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(false)
-        .output()
-        .await
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&command.stdout_log_path)
+        .into_diagnostic()?;
+    let stderr = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&command.stderr_log_path)
         .into_diagnostic()?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let detail = if stderr.is_empty() {
-            format!("status {}", output.status)
-        } else {
-            stderr
-        };
-        return Err(miette!("failed to launch detached daemon: {detail}"));
+    let mut child = Command::new(&command.executable);
+    child
+        .args(&command.args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
+    #[cfg(unix)]
+    {
+        child.process_group(0);
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse::<u32>()
-        .ok())
+    let child = child.spawn().into_diagnostic()?;
+    Ok(Some(child.id()))
 }
 
 async fn wait_for_daemon_readiness(

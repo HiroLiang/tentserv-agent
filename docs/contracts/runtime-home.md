@@ -58,6 +58,30 @@ Reserved runtime files:
 - `runtime/bootstrap/`
 - `config.toml`
 
+## Shared Config
+
+`config.toml` stores non-secret local preferences shared by the CLI and TUI.
+The current schema is:
+
+```toml
+schema_version = 1
+
+[tui]
+last_section = "status"
+auto_start_daemon = false
+
+[daemon]
+url = "http://127.0.0.1:8790"
+```
+
+Rules:
+
+- Config loading should tolerate unknown fields for forward compatibility.
+- Saves should be atomic: write a temp file, fsync when practical, then rename.
+- `daemon.url` must be an absolute `http` or `https` URL.
+- Provider secrets and `TENTGENT_DAEMON_TOKEN` must never be written to config.
+- Environment variables remain operator-controlled overrides over config.
+
 ## Development Usage
 
 - During repository development, run commands from the repository root.
@@ -155,4 +179,5 @@ The bootstrap helper also keeps `uv` package/cache data under `runtime/bootstrap
 - Do not rewrite or persist environment variables from inside the application.
 - Treat environment variables as operator-controlled overrides.
 - Treat the platform default runtime home as the fallback when no override is set.
-- Reserve `config.toml` as the future persistent config filename, but do not assume config-file loading exists until it is implemented.
+- Use `config.toml` only for non-secret preferences. Secret material belongs in
+  environment variables or the system Keychain according to its contract.

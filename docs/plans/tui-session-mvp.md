@@ -35,7 +35,9 @@ format, training registry, server registry, or provider runtime path.
 - Do not add long-term memory, semantic retrieval, or a dataset-grade transcript
   archive.
 - Do not add a separate TUI state model for stores, sessions, or runs.
-- Do not add provider key mutation in the first pass.
+- Do not add provider key mutation through daemon HTTP, config files, logs, or a
+  second secret store. A guarded local TUI setup flow may reuse the existing
+  `AuthManager` and system Keychain path.
 
 ## Command Surface
 
@@ -61,11 +63,17 @@ Daemon URL discovery order for the TUI is:
 
 1. `--daemon-url <URL>`
 2. `TENTGENT_DAEMON_URL`
-3. daemon metadata `host` and `port`
-4. `http://127.0.0.1:8790`
+3. `<TENTGENT_HOME>/config.toml` `[daemon].url`
+4. daemon metadata `host` and `port`
+5. `http://127.0.0.1:8790`
 
 Token discovery order is `--token <TOKEN>`, then `TENTGENT_DAEMON_TOKEN`, then
 no token. No daemon token file is part of this MVP.
+
+`config.toml` stores only non-secret preferences. It must tolerate unknown
+fields, save atomically through a temp file and rename, validate `daemon.url` as
+an absolute `http` or `https` URL, and never persist provider secrets or
+`TENTGENT_DAEMON_TOKEN`.
 
 ## Product Shape
 
@@ -143,7 +151,7 @@ Review target:
 - a user can start the daemon, run `tentgent tui`, and see status without
   opening a second foreground terminal.
 
-### Slice 1: TUI Architecture Skeleton
+### Slice 1: TUI Architecture Skeleton + Local Setup Foundation
 
 Choose the Rust TUI stack and command boundary.
 
@@ -151,13 +159,27 @@ Goals:
 
 - use `ratatui` plus `crossterm` unless a concrete blocker appears
 - add `tentgent tui`
-- implement app state, navigation, key handling, and a status screen
+- implement terminal lifecycle, app state, navigation, key handling, status, and
+  settings screens
 - keep rendering code separate from daemon API/client code
+- use daemon HTTP first for live status, auth, and doctor data
+- use core code only for bootstrap config, daemon discovery, explicit daemon
+  start, and guarded local Keychain auth setup
+- allow `s start daemon` only after explicit TUI action; do not silently
+  auto-start the daemon on launch
+- derive explicit daemon start host/port from the resolved daemon URL, so
+  `--daemon-url`, `TENTGENT_DAEMON_URL`, config, metadata, and default discovery
+  all feed the same start target
+- treat `/healthz` success plus `/v1/status` `401` as `AuthRequired`, not down
+- persist only non-secret daemon URL/UI preferences to `config.toml`
+- allow provider key set/remove only through local `AuthManager` and Keychain;
+  never through daemon HTTP, config, logs, or UI output
 
 Review target:
 
 - one minimal screen shows daemon status, runtime home, auth summary, and doctor
-  summary without launching model runtime work.
+  summary without launching model runtime work, and settings can edit local
+  non-secret setup safely.
 
 ### Slice 2: Read-Only Navigator
 
@@ -228,7 +250,13 @@ Review target:
 
 - Should `tentgent tui` auto-start a daemon when token and bind settings are
   safe, or should it only show the exact command to run?
-- Should provider key mutation remain CLI-only permanently, or get a separate
-  guarded TUI flow after security review?
 - Should the first chat view support streaming immediately, or ship non-stream
   first and add streaming after layout settles?
+
+Resolved in Slice 1:
+
+- `tentgent tui` does not silently auto-start the daemon. It may start the
+  daemon after an explicit `s` action through the shared detached-launch helper,
+  using the resolved daemon URL host/port as the start target.
+- Provider key setup may be exposed in TUI only as a guarded local
+  `AuthManager`/Keychain flow. No daemon HTTP secret mutation route is added.

@@ -58,6 +58,24 @@ Use these environment variables:
 - `tentgent auth anthropic set`
 - `tentgent auth anthropic rm`
 
+## TUI Surface
+
+`tentgent tui` may expose guarded local provider setup through the same
+`AuthManager` and system Keychain path used by the CLI.
+
+Rules:
+
+- Provider key set/remove is local-only and must not add daemon HTTP mutation
+  routes.
+- Provider secrets must be masked during input.
+- Provider secrets must never be displayed, logged, serialized, or written to
+  `config.toml`.
+- Environment-variable credentials remain the effective source when present;
+  the TUI must show that env overrides keychain.
+- Removal must be confirmable and name the provider/keychain entry affected.
+- Slice 1 does not perform provider network validation by default after set or
+  remove; it shows local status.
+
 ## Validation Endpoints
 
 - Hugging Face: `GET https://huggingface.co/api/whoami-v2`
@@ -92,5 +110,6 @@ This HTTP surface is diagnostic-only:
 - If no env override exists, Keychain presence checks may trigger the platform
   Keychain prompt.
 
-Provider key mutation remains CLI-only until a stricter HTTP secret mutation
-model is designed.
+Provider key mutation remains local-only through CLI or guarded TUI
+`AuthManager`/Keychain flows. Daemon HTTP secret mutation remains out of scope
+until a stricter HTTP secret mutation model is designed.
