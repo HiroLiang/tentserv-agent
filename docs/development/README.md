@@ -81,6 +81,11 @@ adapters, datasets, servers, sessions, train plans, and train runs. Navigator
 tail views use bounded requests for logs, metrics, and session messages; no TUI
 POST/PATCH/DELETE workflow is part of Slice 2.
 
+The `Resources` menu entry is read-only and local: press `r` there to run a
+bounded runtime-home disk/process scan. The normal dashboard refresh path should
+reuse the last completed resource snapshot and must not deep-scan directories,
+read Keychain, call `/v1/auth`, or issue mutation requests.
+
 Use a token-enabled daemon when checking auth-required behavior:
 
 ```bash

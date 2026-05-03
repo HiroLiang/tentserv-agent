@@ -31,6 +31,10 @@ use super::{
         NavigatorListKind, NavigatorLoadState, NavigatorRow, NavigatorState, TailPane, TailSource,
         LOG_TAIL_BYTES, SESSION_MESSAGES_TAIL, TRAIN_METRICS_TAIL,
     },
+    resource::{
+        collect_resource_snapshot, ResourceInputs, ResourceLoadState, ResourceSnapshot,
+        ResourceState,
+    },
     terminal::TerminalSession,
 };
 
@@ -76,6 +80,11 @@ enum TuiEvent {
         kind: NavigatorListKind,
         source: TailSource,
         result: Result<TailPane, NavigatorError>,
+    },
+    ResourceFinished {
+        request_id: u64,
+        generation: u64,
+        result: Result<ResourceSnapshot, String>,
     },
 }
 
@@ -144,6 +153,7 @@ pub(super) enum MenuItem {
     Servers,
     Sessions,
     Training,
+    Resources,
 }
 
 #[derive(Debug, Clone)]
@@ -238,6 +248,10 @@ pub(super) enum InputMode {
         value: String,
         cursor: usize,
     },
+    EditingResourceFilter {
+        value: String,
+        cursor: usize,
+    },
     EditingProviderKey {
         provider: Provider,
         value: String,
@@ -307,6 +321,7 @@ pub(super) struct TuiApp {
     pub(super) daemon: DaemonSnapshot,
     pub(super) auth_rows: Vec<ProviderAuthRow>,
     pub(super) navigator: NavigatorState,
+    pub(super) resources: ResourceState,
     pub(super) dashboard: DashboardState,
     pub(super) mode: AppMode,
     pub(super) focus: FocusPane,
@@ -323,6 +338,7 @@ pub(super) struct TuiApp {
     pub(super) navigator_in_flight: Option<(u64, NavigatorListKind)>,
     pub(super) detail_in_flight: Option<(u64, NavigatorListKind, String)>,
     pub(super) tail_in_flight: Option<(u64, NavigatorListKind)>,
+    pub(super) resource_in_flight: Option<u64>,
     generation: u64,
     request_counter: u64,
     flag_daemon_url: Option<String>,
@@ -360,6 +376,7 @@ impl TuiApp {
             daemon: DaemonSnapshot::idle(),
             auth_rows: provider_env_rows(),
             navigator: NavigatorState::default(),
+            resources: ResourceState::default(),
             dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
@@ -376,6 +393,7 @@ impl TuiApp {
             navigator_in_flight: None,
             detail_in_flight: None,
             tail_in_flight: None,
+            resource_in_flight: None,
             generation: 0,
             request_counter: 0,
             flag_daemon_url: command.daemon_url,
@@ -419,6 +437,12 @@ impl TuiApp {
                     item: MenuItem::Dashboard,
                     label: "Dashboard",
                     detail: "daemon monitoring summary",
+                    enabled: true,
+                },
+                MenuEntry {
+                    item: MenuItem::Resources,
+                    label: "Resources",
+                    detail: "local disk and process monitor",
                     enabled: true,
                 },
                 MenuEntry {
@@ -565,6 +589,9 @@ impl TuiApp {
             InputMode::EditingFilter { value, cursor, .. } => {
                 Some(input_line("filter", value, *cursor, false))
             }
+            InputMode::EditingResourceFilter { value, cursor } => {
+                Some(input_line("resource filter", value, *cursor, false))
+            }
             InputMode::EditingProviderKey { provider, value } => Some(format!(
                 "{} key: {}",
                 provider.display_name(),
@@ -669,7 +696,9 @@ impl TuiApp {
     }
 
     fn refresh_current_view(&mut self, tx: &TuiEventSender) {
-        if let Some(kind) = self.current_navigator_kind() {
+        if self.selected_menu_entry().item == MenuItem::Resources {
+            self.request_resource_snapshot(tx, "scanning local resources");
+        } else if let Some(kind) = self.current_navigator_kind() {
             if self.refresh_active_tail(kind, tx) {
                 return;
             }
@@ -677,6 +706,38 @@ impl TuiApp {
         } else {
             self.request_refresh(tx, "refreshing daemon status");
         }
+    }
+
+    fn ensure_resources_loaded(&mut self, tx: &TuiEventSender) {
+        if matches!(self.resources.load_state, ResourceLoadState::Idle)
+            && self.resources.snapshot.is_none()
+        {
+            self.request_resource_snapshot(tx, "scanning local resources");
+        }
+    }
+
+    fn request_resource_snapshot(&mut self, tx: &TuiEventSender, message: impl Into<String>) {
+        if self.resource_in_flight.is_some() {
+            return;
+        }
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.resource_in_flight = Some(request_id);
+        self.resources.load_state = ResourceLoadState::Loading { request_id };
+        self.message = message.into();
+        let inputs =
+            ResourceInputs::from_state(self.home.clone(), self.inspection.clone(), &self.navigator);
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || collect_resource_snapshot(inputs))
+                .await
+                .map_err(|error| error.to_string());
+            let _ = tx.send(TuiEvent::ResourceFinished {
+                request_id,
+                generation,
+                result,
+            });
+        });
     }
 
     fn request_navigator_list(
@@ -916,6 +977,14 @@ impl TuiApp {
     }
 
     fn begin_filter_edit(&mut self) {
+        if self.selected_menu_entry().item == MenuItem::Resources {
+            self.focus = FocusPane::Detail;
+            let value = self.resources.filter.clone();
+            let cursor = value.chars().count();
+            self.input_mode = InputMode::EditingResourceFilter { value, cursor };
+            self.message = "enter applies local resource filter; esc cancels".to_string();
+            return;
+        }
         let Some(kind) = self.current_navigator_kind() else {
             self.message = "filter is available inside navigator screens".to_string();
             return;
@@ -937,6 +1006,12 @@ impl TuiApp {
             .state_mut(kind)
             .set_filter(value.trim().to_string());
         self.message = format!("filtered {}", kind.label());
+    }
+
+    fn save_resource_filter(&mut self, value: String) {
+        self.bump_generation();
+        self.resources.set_filter(value.trim().to_string());
+        self.message = "filtered Resources locally".to_string();
     }
 
     fn daemon_client(&self) -> miette::Result<DaemonClient> {
@@ -1101,6 +1176,31 @@ impl TuiApp {
                 self.tail_in_flight = None;
                 self.apply_tail_result(kind, source, result);
             }
+            TuiEvent::ResourceFinished {
+                request_id,
+                generation,
+                result,
+            } => {
+                if self.resource_in_flight != Some(request_id) || self.generation != generation {
+                    return Ok(());
+                }
+                self.resource_in_flight = None;
+                match result {
+                    Ok(snapshot) => {
+                        let warning_count = snapshot.warnings.len();
+                        self.resources.snapshot = Some(snapshot);
+                        self.resources.load_state = ResourceLoadState::Ready;
+                        self.message = format!("resource scan complete; {warning_count} warnings");
+                    }
+                    Err(error) => {
+                        self.resources.load_state = ResourceLoadState::Error {
+                            message: error.clone(),
+                            stale: self.resources.snapshot.is_some(),
+                        };
+                        self.message = format!("resource scan failed: {error}");
+                    }
+                }
+            }
         }
         self.clamp_selection();
         Ok(())
@@ -1191,6 +1291,19 @@ impl TuiApp {
                     };
                 }
             },
+            InputMode::EditingResourceFilter {
+                mut value,
+                mut cursor,
+            } => match key.code {
+                KeyCode::Enter => self.save_resource_filter(value),
+                KeyCode::Esc => {
+                    self.message = "resource filter edit canceled".to_string();
+                }
+                _ => {
+                    edit_text_value(&mut value, &mut cursor, key.code);
+                    self.input_mode = InputMode::EditingResourceFilter { value, cursor };
+                }
+            },
             InputMode::EditingProviderKey {
                 provider,
                 mut value,
@@ -1241,13 +1354,21 @@ impl TuiApp {
                     && self.focus == FocusPane::Detail
                 {
                     self.toggle_training_tab(tx);
+                } else if self.selected_menu_entry().item == MenuItem::Resources
+                    && self.focus == FocusPane::Detail
+                {
+                    self.resources.tab.toggle();
+                    self.message = format!("Resources tab: {}", self.resources.tab.label());
                 } else if matches!(
                     self.selected_menu_entry().item,
-                    MenuItem::ProviderAuth | MenuItem::Settings
+                    MenuItem::ProviderAuth | MenuItem::Settings | MenuItem::Resources
                 ) || self.current_navigator_kind().is_some()
                 {
                     self.focus = FocusPane::Detail;
                     self.ensure_current_navigator_loaded(tx);
+                    if self.selected_menu_entry().item == MenuItem::Resources {
+                        self.ensure_resources_loaded(tx);
+                    }
                 }
             }
             KeyCode::Left => self.focus = FocusPane::Menu,
@@ -1326,6 +1447,10 @@ impl TuiApp {
                 }
             }
             MenuItem::Dashboard => {}
+            MenuItem::Resources => {
+                self.focus = FocusPane::Detail;
+                self.ensure_resources_loaded(tx);
+            }
             MenuItem::Models
             | MenuItem::Adapters
             | MenuItem::Datasets
@@ -1660,6 +1785,7 @@ impl TuiApp {
         self.config_error = config_error;
         self.daemon = DaemonSnapshot::idle();
         self.auth_rows = provider_env_rows();
+        self.resources = ResourceState::default();
         self.resolve_daemon_endpoint();
         self.message = format!("switched TUI home to {}", self.home.display());
         self.request_refresh(tx, "refreshing daemon after home change");
@@ -1792,7 +1918,7 @@ impl TuiApp {
             .min(self.settings_entries().len().saturating_sub(1));
         if !matches!(
             self.selected_menu_entry().item,
-            MenuItem::ProviderAuth | MenuItem::Settings
+            MenuItem::ProviderAuth | MenuItem::Settings | MenuItem::Resources
         ) && self.current_navigator_kind().is_none()
         {
             self.focus = FocusPane::Menu;
@@ -1811,6 +1937,7 @@ impl TuiApp {
         self.navigator_in_flight = None;
         self.detail_in_flight = None;
         self.tail_in_flight = None;
+        self.resource_in_flight = None;
         self.daemon_action = DaemonActionState::Idle;
     }
 }
@@ -2260,6 +2387,7 @@ impl TuiApp {
             daemon: DaemonSnapshot::idle(),
             auth_rows: provider_env_rows(),
             navigator: NavigatorState::default(),
+            resources: ResourceState::default(),
             dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
@@ -2276,6 +2404,7 @@ impl TuiApp {
             navigator_in_flight: None,
             detail_in_flight: None,
             tail_in_flight: None,
+            resource_in_flight: None,
             generation: 0,
             request_counter: 0,
             flag_daemon_url: Some("http://127.0.0.1:18791".to_string()),
@@ -2410,6 +2539,32 @@ mod tests {
         }
         assert!(!entries.iter().any(|entry| entry.label == "Daemon host"));
         assert!(!entries.iter().any(|entry| entry.label == "Daemon port"));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.item == MenuItem::Resources && entry.enabled));
+    }
+
+    #[test]
+    fn resources_menu_is_operator_only() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-resources-menu"));
+
+        assert!(!app
+            .menu_entries()
+            .iter()
+            .any(|entry| entry.item == MenuItem::Resources));
+
+        app.daemon = DaemonSnapshot {
+            state: DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.update_mode();
+
+        assert!(app
+            .menu_entries()
+            .iter()
+            .any(|entry| entry.item == MenuItem::Resources));
     }
 
     #[test]
@@ -2517,6 +2672,44 @@ mod tests {
         .expect("event handled");
 
         assert_eq!(app.daemon.state, DaemonConnectionState::Down);
+    }
+
+    #[test]
+    fn stale_resource_result_is_ignored_after_generation_change() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-resource-stale"));
+        app.resource_in_flight = Some(42);
+        app.generation = 3;
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let snapshot = collect_resource_snapshot(ResourceInputs::from_state(
+            app.home.clone(),
+            app.inspection.clone(),
+            &app.navigator,
+        ));
+
+        app.handle_tui_event(
+            TuiEvent::ResourceFinished {
+                request_id: 42,
+                generation: 2,
+                result: Ok(snapshot),
+            },
+            &tx,
+        )
+        .expect("event handled");
+
+        assert!(app.resources.snapshot.is_none());
+        assert_eq!(app.resource_in_flight, Some(42));
+    }
+
+    #[tokio::test]
+    async fn dashboard_refresh_does_not_trigger_resource_scan() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-resource-dashboard"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        app.request_refresh(&tx, "dashboard refresh");
+
+        assert!(app.refresh_in_flight.is_some());
+        assert_eq!(app.resource_in_flight, None);
+        assert!(matches!(app.resources.load_state, ResourceLoadState::Idle));
     }
 
     #[test]

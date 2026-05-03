@@ -14,6 +14,7 @@ use super::{
     },
     daemon_client::{token_source_label, url_source_label},
     navigator::{DashboardCard, NavigatorListKind, NavigatorLoadState},
+    resource_render::{render_resources, resource_summary_lines},
 };
 
 pub(super) fn render(frame: &mut Frame<'_>, app: &TuiApp) {
@@ -133,6 +134,7 @@ fn render_detail(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         | MenuItem::Servers
         | MenuItem::Sessions
         | MenuItem::Training => render_navigator(frame, area, app),
+        MenuItem::Resources => render_resources(frame, area, app),
     }
 }
 
@@ -360,6 +362,8 @@ fn render_dashboard(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     lines.extend(doctor_summary_lines(app.daemon.doctor.as_ref()));
     lines.push(Line::from(""));
     lines.extend(dashboard_count_lines(app));
+    lines.push(Line::from(""));
+    lines.extend(resource_summary_lines(app));
 
     frame.render_widget(
         Paragraph::new(lines)
@@ -587,7 +591,7 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         lines.push(render_input_line(input));
     } else {
         lines.push(Line::from(
-            "↑/↓ move | Enter select/inspect | / filter | Tab detail/training tab | r refresh | l logs | m messages | p metrics | Esc back | q quit",
+            "↑/↓ move | Enter select/inspect | / filter | Tab detail/subtab | r refresh/scan | l logs | m messages | p metrics | Esc back | q quit",
         ));
     }
     if !app.message.is_empty() {

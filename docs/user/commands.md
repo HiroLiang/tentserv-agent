@@ -66,6 +66,12 @@ Server logs, session message tails, train run metrics, and train run logs are
 bounded read-only views; chat and mutation workflows remain on the CLI until
 later TUI slices.
 
+The Operator menu also includes `Resources`, a read-only local monitor for
+runtime-home storage, daemon/server/train process pressure, disk-free state, and
+large/stale resource warnings. Open `Resources` and press `r` to scan; normal
+dashboard refresh uses only the last completed resource snapshot and does not
+deep-scan the runtime home.
+
 Daemon URL discovery order is `--daemon-url`,
 `TENTGENT_DAEMON_URL`, `<TENTGENT_HOME>/config.toml` `[daemon].url`,
 daemon metadata, then `http://127.0.0.1:8790`. Token discovery is `--token`,

@@ -90,6 +90,7 @@ The first screen should be useful immediately after install:
 │ Servers       │                                                         │
 │ Sessions      │ Actions: Enter inspect  n new  / search  ? help          │
 │ Training      │                                                         │
+│ Resources     │                                                         │
 │ Settings      │                                                         │
 └───────────────┴─────────────────────────────────────────────────────────┘
 ```
@@ -115,6 +116,7 @@ Primary sections:
 - Servers: list, inspect, start/stop/logs/chat entry.
 - Sessions: list, inspect, messages, compact, chat resume, delete.
 - Training: LoRA plan list/inspect/create and run list/inspect/logs/metrics.
+- Resources: read-only local disk/process/resource monitor.
 - Settings: home path, daemon URL, token source, Python/runtime paths.
 
 The TUI has two top-level interaction modes:
@@ -151,6 +153,9 @@ Operator mode rules:
 - Dashboard boxes are acceptable, but they are supporting UI, not blocking
   modal-like interactions.
 - All live workflow reads should go through daemon HTTP in this mode.
+- Resources is an Operator-mode read-only screen. It may use local runtime-home
+  path helpers and OS probes for disk/process pressure, but it must not create
+  cleanup, stop, delete, archive, or mutation actions.
 - Settings remain available while the daemon is running. TUI/client preferences
   such as daemon URL and UI section can update immediately. Daemon bind settings
   such as host/port and process token state apply to the next daemon start and
@@ -294,7 +299,7 @@ Add a read-only local resource dashboard before mutation-heavy workflows.
 Goals:
 
 - show runtime home disk usage by category: models, adapters, datasets,
-  sessions, logs, train plans, and train runs
+  sessions, servers, logs, runtime, and training
 - show daemon and managed server process resource summaries where available:
   pid, running state, RSS/memory, CPU sample, port, and log size
 - show local disk free space for the resolved runtime home
@@ -306,6 +311,14 @@ Goals:
   runtime paths, daemon status, server specs/process metadata, train run
   metadata, and OS process probes
 - degrade gracefully when platform resource probes are unavailable
+- add `Resources` to the Operator menu only; Bootstrap keeps workflow panels
+  hidden while daemon setup is incomplete
+- run directory scans off the render loop with bounded entry/time budgets,
+  skip symlink traversal, tolerate unreadable paths, and mark partial scans
+- use the last completed resource snapshot for dashboard cards; do not deep scan
+  runtime home on normal dashboard refresh
+- probe processes and disk free space without invoking a shell; CPU is
+  best-effort and may be unavailable
 
 Review target:
 
