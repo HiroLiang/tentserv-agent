@@ -6,7 +6,9 @@ It is a design aid for the TUI plan, not an API contract.
 ## Files
 
 - [index.html](./index.html)
-  Browser-friendly visual mockup with terminal-style wireframes.
+  Canonical browser-friendly visual mockup with terminal-style wireframes.
+- [index_v1.html](./index_v1.html)
+  Archived first draft retained for visual history only.
 - [wireframes.md](./wireframes.md)
   Implementation notes for each mockup screen.
 - [open-questions.md](./open-questions.md)
@@ -44,3 +46,13 @@ contracts:
 - Provider key setup in Slice 1 is local-only through `AuthManager` and the
   system Keychain. It must not add daemon HTTP mutation routes, persist secrets
   in config, or display secret values.
+- The implementation should keep the design draft's dense operator-console
+  style. A simpler bootstrap screen must still use the same visual language:
+  dynamic tables, selected rows, `●`/`○` option controls, and clear `↑`/`↓`,
+  Enter, Escape, and refresh hints.
+- Dashboard panels should appear only when daemon data is available. When the
+  daemon is down, use a focused bootstrap setup screen with a start action and
+  local settings.
+- The HTML mockup may use illustrative versions, paths, ports, and artifact
+  names. Runtime contracts and plan docs win for exact command behavior,
+  config persistence, Keychain service names, and daemon metadata paths.

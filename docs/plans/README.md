@@ -33,7 +33,9 @@ Use this directory for active or still-open implementation plans that are too la
 ## Deferred Plans
 
 - [packaging-install-mvp.md](./packaging-install-mvp.md)
-  Mostly implemented release/install track; Homebrew tap and signing/notarization remain deferred.
+  Mostly implemented release/install track; Homebrew tap and the macOS
+  Developer ID signing/notarization slice remain deferred until the TUI and
+  installer surfaces are ready to ship.
 
 ## Archived Plans
 

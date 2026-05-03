@@ -10,16 +10,49 @@ implementation intent in a form that is easier for agents to scan.
 - Use the right pane for the selected list, detail, chat, log, or action form.
 - Keep contextual key hints in the footer.
 - Confirm destructive actions explicitly.
+- Use dynamic tables for lists and summaries, selected-row styling for focus,
+  and radio-style controls (`●` selected, `○` unselected) for option sets.
+- Show keyboard navigation explicitly: `↑`/`↓` move, Enter selects, Escape backs
+  out, `r` refreshes, and destructive actions require confirmation.
+- Recompute layout on resize. Prefer hiding nonessential columns and collapsing
+  detail panels before wrapping dense table text.
 
 ## Screens
 
+### Bootstrap / Daemon Down
+
+When daemon HTTP is unreachable, the landing screen is a setup/action screen,
+not a dashboard. It should show resolved home, resolved daemon URL/source,
+token source, the start command, and local settings. The canonical visual draft
+is `index.html`; `index_v1.html` is archived for history only. Enabled actions:
+
+- `Start daemon`
+- daemon URL/token setup
+- provider auth setup by explicit provider selection
+- settings
+- quit
+
+Disabled sections should remain visible only as disabled menu entries or
+secondary hints. The TUI must not read Keychain or call auth routes repeatedly
+from this screen. Provider Keychain checks happen only after the user enters a
+specific provider setup/check/set/remove flow.
+
 ### Dashboard / Status
 
-The landing screen must work even when the daemon is down. Show runtime home,
-daemon URL, doctor summary, auth summary, inventory counts, and warnings. When
-the daemon is unreachable, show the resolved home, daemon URL, current
-`tentgent daemon start --home <PATH> --host 127.0.0.1 --port 8790` command, and
-a clear path to doctor diagnostics.
+The daemon-running landing screen is a function menu plus monitoring dashboard
+summary. Show runtime home, daemon URL, doctor summary, auth summary, inventory
+counts, warnings, and quick actions. Live dashboard data should come from daemon
+HTTP. The dashboard should not block normal menu navigation.
+
+### Start Daemon
+
+Selecting `Start daemon` should update the app to a stable starting state and
+then replace the screen with the resulting Bootstrap or Operator state. The TUI
+may show a compact progress table with phases such as resolving home, spawning
+detached daemon, polling `/healthz`, and ready/failed. It must not stream raw
+shell output, clear the terminal, scroll content, or leave partial frames
+visible. The detailed stdout/stderr daemon logs stay in the log files and can be
+opened or copied as paths.
 
 ### List + Inspect
 

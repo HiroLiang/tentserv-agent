@@ -14,7 +14,7 @@ use tentgent_core::{
         DaemonTokenResolution, DaemonUrlInputs, DaemonUrlResolution, TentgentConfig,
         DAEMON_URL_ENV_VAR,
     },
-    daemon::{DaemonInspection, DaemonManager, DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT},
+    daemon::{DaemonInspection, DaemonManager, DEFAULT_DAEMON_PORT},
 };
 use tentgent_http::security::DAEMON_TOKEN_ENV_VAR;
 
@@ -528,7 +528,7 @@ mod tests {
 
         let options = app.detached_start_options().expect("start options");
         assert_eq!(options.home.as_deref(), Some(home.as_path()));
-        assert_eq!(options.host.as_deref(), Some(DEFAULT_DAEMON_HOST));
+        assert_eq!(options.host.as_deref(), Some("127.0.0.1"));
         assert_eq!(options.port, Some(18791));
         assert!(!options.allow_unsafe_bind);
         assert_eq!(

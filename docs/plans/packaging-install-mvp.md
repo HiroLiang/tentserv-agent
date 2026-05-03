@@ -375,13 +375,33 @@ Review target:
 ### Slice 7: Signing And Notarization
 
 - Status: planned.
-- sign macOS binaries with Developer ID
-- optionally notarize release artifacts
-- document Keychain prompt behavior after signing
+- keep this as a release engineering/security slice, not part of the TUI
+  implementation track
+- sign macOS binaries with a stable Developer ID Application identity and
+  `com.tentserv.tentgent` signing identifier
+- use `--options runtime` and `--timestamp` for distribution-signed macOS
+  command-line binaries
+- verify the signed binary with `codesign --verify --strict --verbose=4` and
+  record the designated requirement with `codesign -dr -`
+- package macOS releases as signed `.pkg` or another artifact shape that can be
+  notarized and stapled; do not rely on stapling standalone Mach-O binaries
+- submit release artifacts to Apple notarization through `notarytool` using
+  credentials stored outside the repository
+- staple and validate distributable artifacts when the artifact type supports it
+- document development signing separately from release signing, including the
+  warning that `cargo run` may rebuild and replace a just-signed binary
+- document Keychain prompt behavior after signing and how stable designated
+  requirements reduce repeated `Always Allow` prompts
+- keep private signing keys, `.p12` files, App Store Connect API keys, and
+  notarization credentials out of the repository and out of plain-text
+  environment variables
+- restrict release signing to protected tags/branches and never expose signing
+  secrets to untrusted pull requests
 
 Review target:
 
-- reduce macOS trust prompts for normal users
+- macOS release artifacts pass Gatekeeper checks, have a stable code identity
+  for Keychain ACLs, and can be verified without exposing signing credentials
 
 ## Open Questions
 

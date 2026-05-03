@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Tentgent TUI — Design Draft</title>
+<title>Tentgent TUI — Design Draft v0.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -17,153 +17,115 @@
     --ink-3:     #7a7361;
     --rule:      #2c2920;
     --rule-2:    #3a3628;
-    --accent:    oklch(0.78 0.13 75);   /* amber */
-    --ok:        oklch(0.78 0.13 145);  /* green */
-    --warn:      oklch(0.82 0.14 85);   /* yellow */
-    --err:       oklch(0.72 0.16 25);   /* red */
-    --info:      oklch(0.78 0.10 220);  /* cool blue */
+    --accent:    oklch(0.78 0.13 75);
+    --ok:        oklch(0.78 0.13 145);
+    --warn:      oklch(0.82 0.14 85);
+    --err:       oklch(0.72 0.16 25);
+    --info:      oklch(0.78 0.10 220);
     --dim:       #6a6452;
     --sel:       #2a271c;
-    --sel-edge:  oklch(0.78 0.13 75 / 0.45);
 
     --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   }
-
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
-  body {
-    font-family: var(--sans);
-    font-size: 14px;
-    line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-  }
+  body { font-family: var(--sans); font-size: 14px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
 
-  /* ---------- top bar ---------- */
   .topbar {
     position: sticky; top: 0; z-index: 30;
     display: flex; align-items: center; gap: 16px;
     padding: 14px 28px;
-    background: rgba(20,19,15,0.92);
-    backdrop-filter: blur(8px);
+    background: rgba(20,19,15,0.92); backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--rule);
   }
-  .topbar .brand {
-    display: flex; align-items: baseline; gap: 10px;
-    font-family: var(--mono); font-weight: 700;
-    letter-spacing: -0.01em;
-  }
+  .topbar .brand { display: flex; align-items: baseline; gap: 10px; font-family: var(--mono); font-weight: 700; }
   .topbar .brand b { color: var(--accent); }
   .topbar .brand .sep { color: var(--dim); }
   .topbar .brand .label { color: var(--ink-2); font-weight: 500; font-size: 13px; }
-  .topbar .meta {
-    margin-left: auto;
-    display: flex; gap: 18px; align-items: center;
-    color: var(--ink-3); font-family: var(--mono); font-size: 12px;
-  }
-  .topbar .meta .pill {
-    padding: 3px 8px; border: 1px solid var(--rule-2); border-radius: 999px;
-    color: var(--ink-2);
-  }
+  .topbar .meta { margin-left: auto; display: flex; gap: 18px; align-items: center; color: var(--ink-3); font-family: var(--mono); font-size: 12px; }
+  .topbar .meta .pill { padding: 3px 8px; border: 1px solid var(--rule-2); border-radius: 999px; color: var(--ink-2); }
 
-  /* ---------- layout ---------- */
   .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); }
   .toc {
     position: sticky; top: 53px; align-self: start;
-    height: calc(100vh - 53px);
-    overflow: auto;
+    height: calc(100vh - 53px); overflow: auto;
     padding: 24px 18px 24px 28px;
-    border-right: 1px solid var(--rule);
-    background: var(--panel);
+    border-right: 1px solid var(--rule); background: var(--panel);
   }
   .toc h6 {
-    margin: 0 0 8px; padding: 0;
-    font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+    margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
     color: var(--ink-3); text-transform: uppercase;
   }
-  .toc ol {
-    list-style: none; margin: 0 0 22px; padding: 0;
-    counter-reset: tocnum;
-  }
-  .toc li {
-    counter-increment: tocnum;
-    margin: 0; padding: 0;
-  }
+  .toc ol { list-style: none; margin: 0 0 22px; padding: 0; counter-reset: tocnum; }
+  .toc li { counter-increment: tocnum; }
   .toc a {
     display: flex; gap: 10px; align-items: baseline;
     padding: 5px 10px; margin: 1px 0;
-    color: var(--ink-2); text-decoration: none;
-    border-radius: 4px;
-    font-size: 13px;
+    color: var(--ink-2); text-decoration: none; border-radius: 4px; font-size: 13px;
   }
   .toc a:hover { background: var(--bg-2); color: var(--ink); }
   .toc a::before {
     content: counter(tocnum, decimal-leading-zero);
-    color: var(--dim); font-family: var(--mono); font-size: 11px;
-    min-width: 22px;
+    color: var(--dim); font-family: var(--mono); font-size: 11px; min-width: 22px;
   }
   .toc .ref a::before { content: "·"; min-width: 14px; text-align: center; }
+  .toc .group-bar {
+    margin: 14px 0 8px; padding: 6px 10px;
+    font-family: var(--mono); font-size: 11px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.14em;
+    border-left: 2px solid var(--accent); background: var(--bg-2);
+  }
+  .toc .group-bar.op { color: var(--info); border-left-color: var(--info); }
 
   main { padding: 32px 48px 120px; min-width: 0; }
-  .lede {
-    max-width: 760px;
-    margin: 8px 0 48px;
-  }
-  .lede h1 {
-    font-family: var(--mono); font-weight: 700;
-    font-size: 32px; letter-spacing: -0.02em;
-    margin: 0 0 12px;
-  }
+  .lede { max-width: 800px; margin: 8px 0 40px; }
+  .lede h1 { font-family: var(--mono); font-weight: 700; font-size: 32px; letter-spacing: -0.02em; margin: 0 0 12px; }
   .lede h1 .accent { color: var(--accent); }
-  .lede p { color: var(--ink-2); margin: 0 0 10px; max-width: 640px; }
-  .lede .factbar {
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 1px;
-    margin-top: 28px;
-    background: var(--rule);
-    border: 1px solid var(--rule);
+  .lede p { color: var(--ink-2); margin: 0 0 10px; max-width: 680px; }
+  .modecard {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    margin-top: 28px; background: var(--rule); border: 1px solid var(--rule);
   }
-  .lede .factbar > div {
-    background: var(--bg);
-    padding: 12px 14px;
+  .modecard > div { background: var(--bg); padding: 16px 18px; }
+  .modecard h3 {
+    margin: 0 0 6px; font-family: var(--mono); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.12em;
   }
-  .lede .factbar .k {
-    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
-    text-transform: uppercase; letter-spacing: 0.1em;
-  }
-  .lede .factbar .v {
-    font-family: var(--mono); font-size: 14px; color: var(--ink); margin-top: 4px;
-  }
+  .modecard h3.boot { color: var(--accent); }
+  .modecard h3.op   { color: var(--info); }
+  .modecard p { margin: 0; color: var(--ink-2); font-size: 13px; }
+  .modecard code { font-family: var(--mono); color: var(--ink); }
 
-  /* ---------- section + screen ---------- */
-  section.screen {
-    margin: 0 0 64px;
-    scroll-margin-top: 80px;
+  /* mode banner */
+  .modebanner {
+    display: flex; align-items: center; gap: 12px;
+    margin: 0 0 22px; padding: 10px 14px;
+    border-radius: 4px; border: 1px solid var(--rule-2);
+    font-family: var(--mono); font-size: 12px;
+    background: var(--bg-2);
   }
+  .modebanner.boot { border-left: 3px solid var(--accent); }
+  .modebanner.op   { border-left: 3px solid var(--info); }
+  .modebanner .tag {
+    text-transform: uppercase; letter-spacing: 0.14em;
+    font-weight: 700; font-size: 11px;
+  }
+  .modebanner.boot .tag { color: var(--accent); }
+  .modebanner.op   .tag { color: var(--info); }
+  .modebanner .desc { color: var(--ink-2); }
+
+  section.screen { margin: 0 0 56px; scroll-margin-top: 80px; }
   .screen-head {
     display: flex; align-items: baseline; gap: 14px;
-    border-bottom: 1px solid var(--rule);
-    padding-bottom: 10px;
-    margin-bottom: 18px;
+    border-bottom: 1px solid var(--rule); padding-bottom: 10px; margin-bottom: 14px;
   }
-  .screen-head .num {
-    font-family: var(--mono); color: var(--accent);
-    font-size: 13px; font-weight: 700;
-  }
-  .screen-head h2 {
-    margin: 0; font-family: var(--mono); font-weight: 700;
-    font-size: 20px; letter-spacing: -0.01em;
-  }
-  .screen-head .size {
-    margin-left: auto; font-family: var(--mono); font-size: 11px;
-    color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.1em;
-  }
-  .screen p.purpose {
-    color: var(--ink-2); max-width: 720px; margin: 0 0 18px;
-  }
+  .screen-head .num { font-family: var(--mono); color: var(--accent); font-size: 13px; font-weight: 700; }
+  .screen-head .num.op { color: var(--info); }
+  .screen-head h2 { margin: 0; font-family: var(--mono); font-weight: 700; font-size: 20px; letter-spacing: -0.01em; }
+  .screen-head .size { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.1em; }
+  .screen p.purpose { color: var(--ink-2); max-width: 760px; margin: 0 0 16px; }
 
-  /* the terminal frame */
   .term {
     background: var(--panel);
     border: 1px solid var(--rule-2);
@@ -179,9 +141,7 @@
     font-family: var(--mono); font-size: 11px; color: var(--ink-3);
   }
   .term .chrome .dots { display: flex; gap: 5px; }
-  .term .chrome .dots span {
-    width: 9px; height: 9px; border-radius: 50%; background: var(--rule-2);
-  }
+  .term .chrome .dots span { width: 9px; height: 9px; border-radius: 50%; background: var(--rule-2); }
   .term .chrome .title { margin-left: 6px; color: var(--ink-2); }
   .term .chrome .right { margin-left: auto; color: var(--dim); }
 
@@ -192,19 +152,16 @@
     line-height: 1.45;
     color: var(--ink);
     white-space: pre;
-    tab-size: 2;
   }
-  /* token coloring inside the ascii art */
   pre.tui .b   { color: var(--ink); font-weight: 700; }
   pre.tui .dim { color: var(--ink-3); }
   pre.tui .rule{ color: var(--rule-2); }
   pre.tui .acc { color: var(--accent); }
+  pre.tui .inf { color: var(--info); }
   pre.tui .ok  { color: var(--ok); }
   pre.tui .wrn { color: var(--warn); }
   pre.tui .err { color: var(--err); }
-  pre.tui .inf { color: var(--info); }
   pre.tui .sel { background: var(--sel); }
-  pre.tui .nav-on { color: var(--accent); font-weight: 700; }
   pre.tui .key { color: var(--accent); font-weight: 700; }
   pre.tui .path{ color: var(--info); }
   pre.tui .ref { color: var(--ink-2); }
@@ -213,81 +170,57 @@
   pre.tui .tag-wrn { color: var(--warn); font-weight: 700; }
   pre.tui .tag-err { color: var(--err); font-weight: 700; }
   pre.tui .tag-dim { color: var(--ink-3); }
-  pre.tui .modal   { color: var(--accent); }
+  pre.tui .focus   { color: var(--accent); font-weight: 700; }
   pre.tui .userh   { color: var(--info); font-weight: 700; }
   pre.tui .systh   { color: var(--ink-3); font-weight: 700; }
   pre.tui .assth   { color: var(--accent); font-weight: 700; }
 
-  /* notes columns under each screen */
   .notes {
     display: grid; grid-template-columns: 1.2fr 1fr 1fr;
     gap: 1px; background: var(--rule); border: 1px solid var(--rule);
-    margin-top: 16px;
+    margin-top: 14px;
   }
   .notes > div { background: var(--bg); padding: 14px 16px; }
   .notes h4 {
     margin: 0 0 8px; font-family: var(--mono); font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent);
-    font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); font-weight: 700;
   }
+  .notes h4.op { color: var(--info); }
   .notes ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
   .notes li { margin: 3px 0; font-size: 13px; }
-  .notes code {
-    font-family: var(--mono); background: var(--bg-3);
-    padding: 1px 4px; border-radius: 3px; color: var(--ink); font-size: 12px;
-  }
-  .notes .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
-  .notes .keys kbd {
+  .notes code { font-family: var(--mono); background: var(--bg-3); padding: 1px 4px; border-radius: 3px; color: var(--ink); font-size: 12px; }
+  kbd {
     font-family: var(--mono); background: var(--bg-3); color: var(--accent);
-    padding: 1px 6px; border-radius: 3px; border: 1px solid var(--rule-2);
-    font-size: 11px;
+    padding: 1px 6px; border-radius: 3px; border: 1px solid var(--rule-2); font-size: 11px;
   }
-  .notes .keys span { color: var(--ink-2); font-size: 13px; }
 
-  /* state strip variants for screen 4 */
-  .strips { margin-top: 20px; display: grid; gap: 8px; }
+  .strips { margin-top: 16px; display: grid; gap: 8px; }
   .strips .strip {
     font-family: var(--mono); font-size: 12.5px;
     padding: 10px 14px; border-radius: 4px;
-    border: 1px solid var(--rule-2);
-    background: var(--bg-2);
-    color: var(--ink);
-    white-space: pre;
-    overflow: auto;
+    border: 1px solid var(--rule-2); background: var(--bg-2);
+    color: var(--ink); white-space: pre; overflow: auto;
   }
   .strips .strip.warn { border-color: oklch(0.82 0.14 85 / 0.5); }
   .strips .strip.err  { border-color: oklch(0.72 0.16 25 / 0.55); }
   .strips .label {
-    display: inline-block; min-width: 88px;
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
-    color: var(--ink-3);
+    display: inline-block; min-width: 100px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3);
   }
 
-  /* design system row at the top */
-  .ds {
-    display: grid; grid-template-columns: 1.2fr 1fr 1fr;
-    gap: 1px; background: var(--rule); border: 1px solid var(--rule);
-    margin: 0 0 64px;
+  /* mode flow diagram */
+  .flow {
+    margin-top: 14px;
+    background: var(--panel);
+    border: 1px solid var(--rule-2);
+    border-radius: 6px;
+    padding: 22px;
   }
-  .ds > div { background: var(--bg); padding: 18px 20px; }
-  .ds h3 {
-    margin: 0 0 10px; font-family: var(--mono); font-size: 12px;
-    text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent);
-  }
-  .ds dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; }
-  .ds dt {
-    font-family: var(--mono); color: var(--ink); font-size: 13px;
-  }
-  .ds dd { margin: 0; color: var(--ink-2); font-size: 13px; }
-  .ds .swatch {
-    display: inline-block; width: 10px; height: 10px; border-radius: 2px;
-    vertical-align: middle; margin-right: 6px;
-  }
-  .ds .glyph {
-    font-family: var(--mono); display: inline-block; width: 18px;
-  }
+  .flow pre { margin: 0; font-family: var(--mono); font-size: 13px; color: var(--ink-2); white-space: pre; }
+  .flow .b1 { color: var(--accent); }
+  .flow .b2 { color: var(--info); }
+  .flow .dim { color: var(--ink-3); }
 
-  /* footer */
   footer {
     border-top: 1px solid var(--rule);
     padding: 24px 48px;
@@ -297,14 +230,11 @@
   footer a { color: var(--ink-2); text-decoration: none; }
   footer a:hover { color: var(--accent); }
 
-  /* small helpers */
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
   @media (max-width: 1100px) {
     .shell { grid-template-columns: 1fr; }
     .toc { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--rule); }
     main { padding: 24px; }
-    .ds, .notes { grid-template-columns: 1fr; }
-    .row2 { grid-template-columns: 1fr; }
+    .modecard, .notes { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -312,11 +242,11 @@
 
 <div class="topbar">
   <div class="brand">
-    <b>tentgent</b><span class="sep">/</span><span class="label">tui · design draft</span>
+    <b>tentgent</b><span class="sep">/</span><span class="label">tui · design v0.2</span>
   </div>
   <div class="meta">
     <span class="pill">120 × 36</span>
-    <span>v0.1 · 2026-05-02</span>
+    <span>v0.2 · 2026-05-03</span>
     <span>docs/plans/tui/design</span>
   </div>
 </div>
@@ -324,292 +254,395 @@
 <div class="shell">
 
   <nav class="toc">
-    <h6>Wireframes</h6>
+    <div class="group-bar">Bootstrap mode</div>
     <ol>
-      <li><a href="#s1">Dashboard / Status</a></li>
-      <li><a href="#s2">List + Inspect — Models</a></li>
-      <li><a href="#s3">Servers</a></li>
-      <li><a href="#s4">Session chat</a></li>
-      <li><a href="#s5">Dataset tools</a></li>
-      <li><a href="#s6">Training</a></li>
-      <li><a href="#s7">Settings</a></li>
+      <li><a href="#b1">Entry · function menu</a></li>
+      <li><a href="#b2">Start daemon</a></li>
+      <li><a href="#b3">Daemon URL / token setup</a></li>
+      <li><a href="#b4">Provider auth · openai</a></li>
     </ol>
-    <h6>Reference</h6>
+    <div class="group-bar op">Operator mode</div>
+    <ol>
+      <li><a href="#o1">Entry · functions + dashboard</a></li>
+      <li><a href="#o2">Servers (dynamic table)</a></li>
+      <li><a href="#o3">Chat surface</a></li>
+      <li><a href="#o4">Settings</a></li>
+    </ol>
+    <h6 style="margin-top:18px">Reference</h6>
     <ul class="ref" style="list-style:none; padding:0; margin:0;">
-      <li><a href="#system">Design system</a></li>
-      <li><a href="#a1">A · 100 × 30 fallback</a></li>
-      <li><a href="#a2">B · Help overlay</a></li>
-      <li><a href="#a3">C · Open questions</a></li>
+      <li><a href="#flow">Mode transition</a></li>
+      <li><a href="#a1">100 × 30 collapse</a></li>
     </ul>
     <h6 style="margin-top:22px">Source</h6>
     <ul class="ref" style="list-style:none; padding:0; margin:0;">
-      <li><a href="README.md">README.md</a></li>
-      <li><a href="wireframes.md">wireframes.md</a></li>
-      <li><a href="open-questions.md">open-questions.md</a></li>
+      <li><a href="docs/plans/tui/design/README.md">README.md</a></li>
+      <li><a href="docs/plans/tui/design/wireframes.md">wireframes.md</a></li>
+      <li><a href="docs/plans/tui/design/open-questions.md">open-questions.md</a></li>
+      <li><a href="Tentgent TUI Design v1.html" style="color:var(--dim)">v1 (archived)</a></li>
     </ul>
   </nav>
 
   <main>
     <header class="lede">
-      <h1><span class="accent">tentgent tui</span> — local operator console</h1>
-      <p>A daemon-first, keyboard-only terminal UI for the Tentgent local AI runtime.
-         Two-pane layout, dense grids, explicit confirmation for destructive work,
-         and the daemon connection state always visible in the header.</p>
-      <p style="color: var(--ink-3); font-size: 13px;">
-         Wireframes are drawn at <code style="font-family:var(--mono); color:var(--ink-2);">120 × 36</code>
-         (primary) with a <code style="font-family:var(--mono); color:var(--ink-2);">100 × 30</code>
-         fallback variant in Appendix A. Implementation-neutral — fits ratatui / crossterm.</p>
-
-      <div class="factbar">
-        <div><div class="k">Layout</div><div class="v">left nav · right pane · hint bar</div></div>
-        <div><div class="k">Nav cols</div><div class="v">16</div></div>
-        <div><div class="k">Sections</div><div class="v">8</div></div>
-        <div><div class="k">Screens</div><div class="v">7 + 2 modals</div></div>
+      <h1><span class="accent">tentgent tui</span> — two modes, one shell</h1>
+      <p>A daemon-first, keyboard-only terminal UI. Designed as two sharply separated
+         modes — Bootstrap when the daemon isn't reachable, Operator when it is —
+         with no fake dashboards in between. Provider Keychain reads happen only
+         inside an explicit per-provider action, never as a startup side-effect.</p>
+      <div class="modecard">
+        <div>
+          <h3 class="boot">Bootstrap mode</h3>
+          <p>Resolved local facts (home, daemon URL/source, env-only token sources)
+             plus a vertical function menu: <code>Start daemon</code>,
+             <code>Daemon URL/token setup</code>, <code>Provider auth</code>,
+             <code>Settings</code>, <code>Quit</code>.</p>
+        </div>
+        <div>
+          <h3 class="op">Operator mode</h3>
+          <p>Function menu (Models · Adapters · Datasets · Servers · Sessions ·
+             Training · Settings · Quit) on the left; live monitoring dashboard on
+             the right. Dashboard panels render only when the daemon returned
+             data for them.</p>
+        </div>
       </div>
     </header>
 
-    <!-- ============ DESIGN SYSTEM ============ -->
-    <section id="system" class="ds">
-      <div>
-        <h3>Status vocabulary</h3>
-        <dl>
-          <dt><span class="glyph" style="color:var(--ok)">●</span></dt><dd>running / live</dd>
-          <dt><span class="glyph" style="color:var(--ink-3)">○</span></dt><dd>stopped / idle</dd>
-          <dt><span class="glyph" style="color:var(--warn)">◐</span></dt><dd>starting / transitioning</dd>
-          <dt><span class="glyph" style="color:var(--err)">✕</span></dt><dd>crashed / failed</dd>
-          <dt><span class="glyph" style="color:var(--ok)">[OK]</span></dt><dd>healthy</dd>
-          <dt><span class="glyph" style="color:var(--warn)">[WARN]</span></dt><dd>degraded but usable</dd>
-          <dt><span class="glyph" style="color:var(--err)">[ERR]</span></dt><dd>unusable; action required</dd>
-          <dt><span class="glyph" style="color:var(--ink-3)">[--]</span></dt><dd>unknown / no recent ping</dd>
-        </dl>
-      </div>
-      <div>
-        <h3>Color (additive only)</h3>
-        <dl>
-          <dt><span class="swatch" style="background:var(--accent)"></span>accent</dt><dd>focus, keys, brand</dd>
-          <dt><span class="swatch" style="background:var(--ok)"></span>ok</dt><dd>healthy / running</dd>
-          <dt><span class="swatch" style="background:var(--warn)"></span>warn</dt><dd>degraded / transitioning</dd>
-          <dt><span class="swatch" style="background:var(--err)"></span>err</dt><dd>failed / destructive</dd>
-          <dt><span class="swatch" style="background:var(--info)"></span>info</dt><dd>paths / refs</dd>
-          <dt><span class="swatch" style="background:var(--ink-3)"></span>dim</dt><dd>secondary / inactive</dd>
-        </dl>
-        <p style="margin: 10px 0 0; font-size: 12px; color: var(--ink-3);">
-          Every state is also encoded in a glyph or tag — the UI works under
-          <code style="font-family:var(--mono);">NO_COLOR</code>.
-        </p>
-      </div>
-      <div>
-        <h3>Global keys</h3>
-        <div class="keys" style="display:grid; grid-template-columns:auto 1fr; gap:4px 12px;">
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">Tab</kbd><span style="color:var(--ink-2); font-size:13px;">cycle pane focus</span>
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">1–8</kbd><span style="color:var(--ink-2); font-size:13px;">jump to nav section</span>
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">j / k</kbd><span style="color:var(--ink-2); font-size:13px;">move row</span>
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">/</kbd><span style="color:var(--ink-2); font-size:13px;">filter</span>
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">:</kbd><span style="color:var(--ink-2); font-size:13px;">command palette</span>
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">↵</kbd><span style="color:var(--ink-2); font-size:13px;">inspect / open</span>
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">y</kbd><span style="color:var(--ink-2); font-size:13px;">yank ref</span>
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">r</kbd><span style="color:var(--ink-2); font-size:13px;">refresh</span>
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">?</kbd><span style="color:var(--ink-2); font-size:13px;">help overlay</span>
-          <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">q</kbd><span style="color:var(--ink-2); font-size:13px;">quit</span>
-        </div>
-      </div>
-    </section>
+    <!-- ============ BOOTSTRAP ============ -->
+    <div class="modebanner boot">
+      <span class="tag">Bootstrap mode</span>
+      <span class="desc">Daemon not reachable · no dashboard, no keychain probes · keyboard menu of next steps</span>
+    </div>
 
-    <!-- ============ S1 STATUS ============ -->
-    <section id="s1" class="screen">
+    <!-- B1 -->
+    <section id="b1" class="screen">
       <div class="screen-head">
-        <span class="num">01</span>
-        <h2>Dashboard / Status</h2>
-        <span class="size">120 × 36 · landing</span>
+        <span class="num">B1</span>
+        <h2>Entry · function menu</h2>
+        <span class="size">120 × 36 · landing when daemon is down</span>
       </div>
-      <p class="purpose">Useful immediately after install. Renders even when the daemon is down — becomes the diagnostic landing page (doctor + paths + how to start). The first thing the operator sees.</p>
+      <p class="purpose">Resolved facts at the top — only what we know without the daemon and without probing secrets. Function menu at the bottom. <code>not checked</code> is shown literally; we don't guess.</p>
 
       <div class="term">
         <div class="chrome">
           <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui</span>
-          <span class="right">~/.tentgent · 120×36</span>
+          <span class="title">tentgent tui · bootstrap</span>
+          <span class="right">daemon offline</span>
         </div>
 <pre class="tui">
-<span class="rule">┌</span> <span class="b">tentgent · status</span> <span class="rule">────────────────</span> daemon <span class="ok">●</span> <span class="path">http://127.0.0.1:8790</span> <span class="rule">──</span> auth oai/hf/anth <span class="rule">─</span> <span class="dim">14:02</span> <span class="rule">┐</span>
-<span class="rule">│</span>                                                                                              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Status</span>     <span class="rule">│</span>  <span class="b">Runtime</span>                                                                       <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Models</span>   <span class="num">3</span> <span class="rule">│</span>    home        <span class="path">~/.tentgent</span>                                                     <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Adapters</span> <span class="num">2</span> <span class="rule">│</span>    python_dir  <span class="path">~/.tentgent/python</span>                                              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Datasets</span> <span class="num">5</span> <span class="rule">│</span>    env_dir     <span class="path">~/.tentgent/python/env</span>                                          <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Servers</span> <span class="ok">●1</span> <span class="rule">│</span>    cli         <span class="num">0.2.0</span>            daemon  <span class="num">0.2.0</span>            <span class="tag-ok">[OK]</span> match            <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Sessions</span> <span class="num">8</span> <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Training</span><span class="ok">●1</span><span class="wrn">!</span><span class="rule">│</span>  <span class="b">Daemon</span>                                                                        <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Settings</span>   <span class="rule">│</span>    url         <span class="path">http://127.0.0.1:8790</span>                                           <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    pid         <span class="num">48211</span>             uptime  <span class="num">03:12:44</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    token       <span class="ref">TENTGENT_DAEMON_TOKEN</span> present                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    doctor      <span class="tag-ok">[OK]</span> all checks pass                                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="b">Auth</span>                                                                          <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    openai      <span class="tag-ok">[OK]</span> <span class="ref">sk-…7Qa</span>   source: keychain                                 <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    huggingface <span class="tag-ok">[OK]</span> <span class="ref">hf_…m3K</span>   source: env  <span class="ref">HF_TOKEN</span>                            <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    anthropic   <span class="tag-dim">[--]</span> not set   hint: <span class="dim">tentgent auth anthropic set</span>              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="b">Inventory</span>                                                                     <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    models      <span class="num">3</span>        adapters  <span class="num">2</span>        datasets   <span class="num">5</span>                        <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    sessions    <span class="num">8</span>        servers   <span class="num">1/1</span> up   train      <span class="num">2</span> plans · <span class="num">1</span> run         <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="b">Warnings</span>                                                                      <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    <span class="wrn">!</span> training <span class="ref">run_3f9c1d</span> running &gt; 6h — verify progress in Training            <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    <span class="wrn">!</span> dataset <span class="ref">ds_alpaca_clean_4ab2c1</span> last validate failed (<span class="num">3</span> rows)              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">├─────────────┴────────────────────────────────────────────────────────────────────────────────┤</span>
-<span class="rule">│</span> <span class="key">1-8</span> nav   <span class="key">r</span> refresh   <span class="key">d</span> doctor   <span class="key">o</span> open home in shell   <span class="key">:</span>  cmd   <span class="key">/</span>  filter   <span class="key">?</span>  help   <span class="key">q</span> quit<span class="rule">│</span>
-<span class="rule">└──────────────────────────────────────────────────────────────────────────────────────────────┘</span>
-</pre>
-      </div>
-
-      <h3 style="font-family:var(--mono); font-size:13px; margin: 24px 0 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing:0.1em;">Daemon-down variant</h3>
-      <div class="term">
-        <div class="chrome">
-          <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui · daemon unreachable</span>
-        </div>
-<pre class="tui">
-<span class="rule">┌</span> <span class="b">tentgent · status</span> <span class="rule">────────────────</span> daemon <span class="err">○</span> <span class="path">http://127.0.0.1:8790</span> <span class="rule">──</span> <span class="dim">offline</span> <span class="rule">────────</span> <span class="dim">14:02</span> <span class="rule">┐</span>
-<span class="rule">│</span>                                                                                              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Status</span>     <span class="rule">│</span>  <span class="err">✕  daemon not reachable at</span> <span class="path">http://127.0.0.1:8790</span>                            <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Models</span>   <span class="num">3</span> <span class="rule">│</span>     last seen <span class="num">00:12:08</span> ago · pid file stale at <span class="path">~/.tentgent/run/daemon.pid</span>     <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Adapters</span> <span class="num">2</span> <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Datasets</span> <span class="num">5</span> <span class="rule">│</span>     <span class="key">[s]</span> start daemon     <span class="key">[c]</span> copy start command     <span class="key">[u]</span> change url     <span class="key">[d]</span> doctor    <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Servers</span>  <span class="dim">?</span> <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Sessions</span> <span class="dim">?</span> <span class="rule">│</span>  <span class="b">Doctor</span>                                                                        <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Training</span> <span class="dim">?</span> <span class="rule">│</span>    <span class="tag-ok">[OK]</span>   home directory exists and is writable                                  <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Settings</span>   <span class="rule">│</span>    <span class="tag-ok">[OK]</span>   python runtime present at <span class="path">~/.tentgent/python/env</span>                      <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    <span class="tag-ok">[OK]</span>   cli binary on PATH (<span class="num">0.2.0</span>)                                          <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    <span class="tag-wrn">[WARN]</span> daemon binary present but not running                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    <span class="tag-err">[ERR]</span>  cannot reach <span class="path">http://127.0.0.1:8790</span> · connection refused                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="b">Suggested</span>                                                                     <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    <span class="dim">$</span> tentgent daemon start --host 127.0.0.1 --port 8790                          <span class="rule">│</span>
-<span class="rule">├─────────────┴────────────────────────────────────────────────────────────────────────────────┤</span>
-<span class="rule">│</span> <span class="key">s</span> start  <span class="key">c</span> copy cmd  <span class="key">u</span> change url  <span class="key">d</span> doctor  <span class="key">o</span> open home  <span class="key">?</span> help  <span class="key">q</span> quit                <span class="rule">│</span>
-<span class="rule">└──────────────────────────────────────────────────────────────────────────────────────────────┘</span>
+<span class="rule">┌</span> <span class="b">tentgent</span> <span class="rule">─────────────────────────────────────────────────</span> <span class="acc">bootstrap mode</span> · <span class="dim">14:02</span> <span class="rule">─┐</span>
+<span class="rule">│</span>                                                                                    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="b">Resolved</span>                                                                         <span class="rule">│</span>
+<span class="rule">│</span>     home          <span class="path">~/.tentgent</span>                              source  <span class="ref">TENTGENT_HOME</span>   <span class="rule">│</span>
+<span class="rule">│</span>     daemon url    <span class="path">http://127.0.0.1:8765</span>                    source  <span class="dim">default</span>         <span class="rule">│</span>
+<span class="rule">│</span>     daemon token  <span class="dim">not set</span>                                  source  <span class="dim">--</span>              <span class="rule">│</span>
+<span class="rule">│</span>     cli           <span class="num">0.4.1</span>   <span class="path">~/.cargo/bin/tentgent</span>                                    <span class="rule">│</span>
+<span class="rule">│</span>                                                                                    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="b">Token sources</span> <span class="dim">(env only — keychain not probed)</span>                                   <span class="rule">│</span>
+<span class="rule">│</span>     openai        <span class="dim">not in env</span>                                                       <span class="rule">│</span>
+<span class="rule">│</span>     huggingface   <span class="ref">HF_TOKEN</span>  <span class="ok">set</span>                                                    <span class="rule">│</span>
+<span class="rule">│</span>     anthropic     <span class="dim">not in env</span>                                                       <span class="rule">│</span>
+<span class="rule">│</span>                                                                                    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="err">✕ Daemon not reachable at</span> <span class="path">http://127.0.0.1:8765</span> · <span class="dim">last seen 00:12:08 ago</span>        <span class="rule">│</span>
+<span class="rule">│</span>                                                                                    <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────────────────────────────────────┐</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="sel"><span class="focus">●</span>  <span class="b">Start daemon</span>                                  <span class="dim">tentgent daemon start</span>     </span> <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Daemon URL / token setup                      <span class="dim">configure connection</span>      <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Provider auth                                  <span class="dim">▸ openai · hf · anthropic</span> <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Settings                                      <span class="dim">paths · env · install</span>      <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Quit                                                                     <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────────────────────────────────────┘</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                                                                    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="key">↑/↓</span> select   <span class="key">↵</span> activate   <span class="key">Esc</span> cancel   <span class="key">?</span> help   <span class="key">q</span> quit                          <span class="rule">│</span>
+<span class="rule">└────────────────────────────────────────────────────────────────────────────────────┘</span>
 </pre>
       </div>
 
       <div class="notes">
         <div>
-          <h4>Information density</h4>
+          <h4>What's resolved</h4>
           <ul>
-            <li>Five blocks — Runtime, Daemon, Auth, Inventory, Warnings — each capped at ~6 rows so the screen fits 36 lines without scroll.</li>
-            <li>Counts mirror the left-nav badges so a glance at either side gives the same answer.</li>
-            <li>Warnings deep-link by selecting the originating row in the relevant section on <code>Enter</code>.</li>
+            <li>Paths from env / defaults — synchronous, no I/O.</li>
+            <li>Daemon URL with its source (env var name vs <code>default</code>).</li>
+            <li>Per-provider env-var presence — <i>not</i> the value.</li>
           </ul>
         </div>
         <div>
-          <h4>Why daemon-down is its own variant</h4>
+          <h4>What's deliberately absent</h4>
           <ul>
-            <li>The Status screen is the only one that must work without the daemon. The other six show a single banner and bail.</li>
-            <li>Doctor expands to fill the freed space — diagnosis is the job here.</li>
-            <li>Inventory counts collapse to <code>?</code> rather than guess from cache.</li>
+            <li>No inventory counts. There is no daemon to count from.</li>
+            <li>No keychain probes. Those happen in §B4 only.</li>
+            <li>No "doctor" panel pretending to be a dashboard.</li>
           </ul>
         </div>
         <div>
-          <h4>Screen keys</h4>
-          <div class="keys">
-            <kbd>r</kbd><span>refresh from daemon</span>
-            <kbd>d</kbd><span>run doctor</span>
-            <kbd>o</kbd><span>open home in shell</span>
-            <kbd>s</kbd><span>start daemon (when down)</span>
-            <kbd>:</kbd><span>command palette</span>
-          </div>
+          <h4>Menu mechanics</h4>
+          <ul>
+            <li>Radio glyphs <code>●/○</code> mark the focused row, not a setting.</li>
+            <li><kbd>↑/↓</kbd> moves focus, <kbd>↵</kbd> activates, <kbd>Esc</kbd> cancels.</li>
+            <li><code>Provider auth</code> expands inline — see §B4.</li>
+          </ul>
         </div>
       </div>
     </section>
 
-    <!-- ============ S2 MODELS ============ -->
-    <section id="s2" class="screen">
+    <!-- B2 -->
+    <section id="b2" class="screen">
       <div class="screen-head">
-        <span class="num">02</span>
-        <h2>List + Inspect — Models</h2>
-        <span class="size">reused for adapters · datasets · sessions · plans</span>
+        <span class="num">B2</span>
+        <h2>Start daemon</h2>
+        <span class="size">progress phases · auto-transition on healthz</span>
       </div>
-      <p class="purpose">The generic two-column workhorse: filterable list on the left, deep detail on the right. Same shell powers Models, Adapters, Datasets, Sessions, and Training plans — only column headers and detail fields change.</p>
+      <p class="purpose">Replaces the menu with a stable confirm + run panel. The TUI shows compact progress phases from its own state, not raw CLI stdout/stderr. On a successful <code>/healthz</code>, the UI redraws the full screen into Operator mode.</p>
 
       <div class="term">
         <div class="chrome">
           <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui · models</span>
-          <span class="right">filter active</span>
+          <span class="title">tentgent tui · bootstrap › start daemon</span>
         </div>
 <pre class="tui">
-<span class="rule">┌</span> <span class="b">tentgent · models</span> <span class="rule">────────────────</span> daemon <span class="ok">●</span> <span class="path">http://127.0.0.1:8790</span> <span class="rule">──</span> auth oai/hf/anth <span class="rule">─</span> <span class="dim">14:03</span> <span class="rule">┐</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="acc">/qwen3</span>                                          ▏ <span class="dim">Detail · </span><span class="ref">mdl_qwen3_8b_a1b2c3</span> <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Status</span>     <span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────┐</span><span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="nav-on">Models</span>   <span class="num">3</span><span class="acc">▌</span><span class="rule">│</span> <span class="rule">│</span>   ref         family       size   quant   age<span class="rule">│</span><span class="rule">│</span>  ref     <span class="ref">mdl_qwen3_8b_a1b2c3</span> <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Adapters</span> <span class="num">2</span> <span class="rule">│</span> <span class="rule">│</span> <span class="sel"><span class="acc">▌</span><span class="ref">m·a1b2c3</span>   qwen3-8b      <span class="num">14.9G</span>  fp16    <span class="num">3d</span> </span><span class="rule">│</span><span class="rule">│</span>  short   <span class="ref">m·a1b2c3</span>            <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Datasets</span> <span class="num">5</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="ref">m·77f0e2</span>   qwen3-8b       <span class="num">4.6G</span>  q4_K_M  <span class="num">3d</span> <span class="rule">│</span><span class="rule">│</span>  family  qwen3-8b            <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Servers</span> <span class="ok">●1</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="ref">m·c4d810</span>   llama3-8b      <span class="num">8.0G</span>  q8_0    <span class="num">9d</span> <span class="rule">│</span><span class="rule">│</span>  size    <span class="num">14.9 GiB</span>            <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Sessions</span> <span class="num">8</span> <span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────┘</span><span class="rule">│</span>  quant   fp16                <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Training</span><span class="ok">●1</span><span class="wrn">!</span><span class="rule">│</span>                                                 <span class="rule">│</span>  pulled  <span class="num">2026-04-29 11:22</span>    <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Settings</span>   <span class="rule">│</span>  <span class="dim">3 models · 27.5 GiB on disk</span>                    <span class="rule">│</span>  source  <span class="path">hf:Qwen/Qwen3-8B</span>    <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  <span class="b">Path</span>                        <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="path">~/.tentgent/models/</span>        <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>     <span class="path">qwen3_8b_a1b2c3/</span>        <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>       <span class="path">weights/</span>  <span class="path">config.json</span>  <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>       <span class="path">tokenizer/</span>  <span class="path">manifest</span>   <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  <span class="b">Used by</span>                     <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="ref">srv_local_qwen3_8b</span> <span class="ok">●</span>       <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="ref">plan_lora_support_v2</span>       <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  <span class="b">Integrity</span>                   <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   sha256  <span class="ref">9f3e…ab21</span>  <span class="tag-ok">[OK]</span>    <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   manifest          <span class="tag-ok">[OK]</span>     <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">├─────────────┴─────────────────────────────────────────────────┴──────────────────────────────┤</span>
-<span class="rule">│</span> <span class="key">↵</span> inspect   <span class="key">p</span> pull   <span class="key">x</span> remove   <span class="key">y</span> yank ref   <span class="key">o</span> open path   <span class="key">/</span>filter   <span class="key">&lt; &gt;</span> resize    <span class="key">?</span>  <span class="key">q</span>     <span class="rule">│</span>
-<span class="rule">└──────────────────────────────────────────────────────────────────────────────────────────────┘</span>
+<span class="rule">┌</span> <span class="b">tentgent · bootstrap › start daemon</span> <span class="rule">────────────────────────────────────</span> <span class="dim">14:02</span> <span class="rule">─┐</span>
+<span class="rule">│</span>                                                                                 <span class="rule">│</span>
+<span class="rule">│</span>   Command   <span class="dim">tentgent daemon start</span>                                               <span class="rule">│</span>
+<span class="rule">│</span>   Home      <span class="path">~/.tentgent</span>                                                         <span class="rule">│</span>
+<span class="rule">│</span>   URL       <span class="path">http://127.0.0.1:8765</span>                                               <span class="rule">│</span>
+<span class="rule">│</span>   Detach    on        <span class="acc">●</span>                                                         <span class="rule">│</span>
+<span class="rule">│</span>   Logs      <span class="path">~/.tentgent/logs/daemon.stdout.log</span>                                  <span class="rule">│</span>
+<span class="rule">│</span>             <span class="path">~/.tentgent/logs/daemon.stderr.log</span>                                  <span class="rule">│</span>
+<span class="rule">│</span>                                                                                 <span class="rule">│</span>
+<span class="rule">│</span>   <span class="b">Progress</span>                                                                      <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">┌────────────────────────────────────────────────────────────────────────┐</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="dim">14:02:11</span>  resolving home  <span class="path">~/.tentgent</span>                  <span class="tag-ok">[OK]</span>           <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="dim">14:02:11</span>  spawning detached daemon                         <span class="tag-ok">[OK]</span>           <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="dim">14:02:12</span>  polling <span class="path">/healthz</span>                                <span class="tag-ok">[OK]</span>           <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="dim">14:02:12</span>  daemon ready    <span class="dim">pid</span> <span class="num">49118</span>                    <span class="tag-ok">[OK]</span>           <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>                                                                        <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="acc">● ready; switching to operator mode...</span>                              <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">└────────────────────────────────────────────────────────────────────────┘</span>    <span class="rule">│</span>
+<span class="rule">│</span>                                                                                 <span class="rule">│</span>
+<span class="rule">│</span>   <span class="key">↵</span> retry   <span class="key">c</span> copy command   <span class="key">l</span> show log paths   <span class="key">Esc</span> back                       <span class="rule">│</span>
+<span class="rule">└─────────────────────────────────────────────────────────────────────────────────┘</span>
+</pre>
+      </div>
+    </section>
+
+    <!-- B3 -->
+    <section id="b3" class="screen">
+      <div class="screen-head">
+        <span class="num">B3</span>
+        <h2>Daemon URL / token setup</h2>
+        <span class="size">small form · t test connection · no keychain</span>
+      </div>
+      <p class="purpose">Inputs are explicitly delimited; <code>[edit]</code> shows which field is focused. Token field masks while typing. <kbd>t</kbd> hits <code>/healthz</code> — it does not write or read any secret store.</p>
+
+      <div class="term">
+        <div class="chrome">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <span class="title">tentgent tui · bootstrap › daemon connection</span>
+        </div>
+<pre class="tui">
+<span class="rule">┌</span> <span class="b">tentgent · bootstrap › daemon connection</span> <span class="rule">───────────────────────────────</span> <span class="dim">14:03</span> <span class="rule">─┐</span>
+<span class="rule">│</span>                                                                                 <span class="rule">│</span>
+<span class="rule">│</span>   <span class="b">URL</span>                                                                           <span class="rule">│</span>
+<span class="rule">│</span>   <span class="acc">▌</span> <span class="path">http://127.0.0.1:8765</span>                                          <span class="key">[edit]</span>       <span class="rule">│</span>
+<span class="rule">│</span>     <span class="dim">hint:  https://… for remote daemons. Local socket also accepted.</span>            <span class="rule">│</span>
+<span class="rule">│</span>                                                                                 <span class="rule">│</span>
+<span class="rule">│</span>   <span class="b">Token</span>  <span class="dim">(sent as Bearer; daemon owns rotation)</span>                                 <span class="rule">│</span>
+<span class="rule">│</span>     <span class="dim">••••••••••••••••••••</span>                                                        <span class="rule">│</span>
+<span class="rule">│</span>     <span class="dim">hint:  leave empty for unauthenticated localhost daemons.</span>                   <span class="rule">│</span>
+<span class="rule">│</span>                                                                                 <span class="rule">│</span>
+<span class="rule">│</span>   <span class="b">Persistence</span>                                                                   <span class="rule">│</span>
+<span class="rule">│</span>     <span class="acc">●</span>  write to <span class="path">~/.tentgent/.env</span>  <span class="dim">(TENTGENT_DAEMON_URL, TENTGENT_DAEMON_TOKEN)</span>  <span class="rule">│</span>
+<span class="rule">│</span>     <span class="dim">○</span>  this session only                                                        <span class="rule">│</span>
+<span class="rule">│</span>     <span class="dim">○</span>  print env block to stdout (don't write)                                  <span class="rule">│</span>
+<span class="rule">│</span>                                                                                 <span class="rule">│</span>
+<span class="rule">│</span>   <span class="key">↵</span> save   <span class="key">t</span> test connection   <span class="key">x</span> clear token   <span class="key">Esc</span> cancel                       <span class="rule">│</span>
+<span class="rule">└─────────────────────────────────────────────────────────────────────────────────┘</span>
+</pre>
+      </div>
+    </section>
+
+    <!-- B4 -->
+    <section id="b4" class="screen">
+      <div class="screen-head">
+        <span class="num">B4</span>
+        <h2>Provider auth · openai</h2>
+        <span class="size">the secret-store boundary</span>
+      </div>
+      <p class="purpose">"Provider auth" expands inline in the menu, listing per-provider env / keychain status. Selecting a provider opens the per-provider flow — the <b>only</b> place Keychain is read, and only when Check / Set / Remove is explicitly chosen.</p>
+
+      <h3 style="font-family:var(--mono); font-size:13px; margin: 0 0 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing:0.1em;">Inline expansion</h3>
+      <div class="term">
+        <div class="chrome">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <span class="title">tentgent tui · bootstrap · menu expanded</span>
+        </div>
+<pre class="tui">
+<span class="rule">┌──────────────────────────────────────────────────────────────────────────────┐</span>
+<span class="rule">│</span>  <span class="dim">○</span>  Start daemon                                  <span class="dim">tentgent daemon start</span>     <span class="rule">│</span>
+<span class="rule">│</span>  <span class="dim">○</span>  Daemon URL / token setup                      <span class="dim">configure connection</span>      <span class="rule">│</span>
+<span class="rule">│</span>  <span class="sel"><span class="focus">●</span>  <span class="b">Provider auth</span>                                  <span class="acc">▾</span>                        </span> <span class="rule">│</span>
+<span class="rule">│</span>       <span class="focus">●</span>  <span class="b">openai</span>          env:  <span class="dim">not set</span>    keychain:  <span class="dim">not checked</span>            <span class="rule">│</span>
+<span class="rule">│</span>       <span class="dim">○</span>  huggingface     env:  <span class="ref">HF_TOKEN</span>   keychain:  <span class="dim">not checked</span>            <span class="rule">│</span>
+<span class="rule">│</span>       <span class="dim">○</span>  anthropic       env:  <span class="dim">not set</span>    keychain:  <span class="dim">not checked</span>            <span class="rule">│</span>
+<span class="rule">│</span>  <span class="dim">○</span>  Settings                                      <span class="dim">paths · env · install</span>      <span class="rule">│</span>
+<span class="rule">│</span>  <span class="dim">○</span>  Quit                                                                     <span class="rule">│</span>
+<span class="rule">└──────────────────────────────────────────────────────────────────────────────┘</span>
+</pre>
+      </div>
+
+      <h3 style="font-family:var(--mono); font-size:13px; margin: 22px 0 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing:0.1em;">Per-provider flow</h3>
+      <div class="term">
+        <div class="chrome">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <span class="title">tentgent tui · bootstrap › provider auth › openai</span>
+        </div>
+<pre class="tui">
+<span class="rule">┌</span> <span class="b">tentgent · bootstrap › provider auth › openai</span> <span class="rule">─────────────────────────</span> <span class="dim">14:04</span> <span class="rule">─┐</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>   provider     <span class="b">openai</span>                                                            <span class="rule">│</span>
+<span class="rule">│</span>   env var      <span class="ref">OPENAI_API_KEY</span>              <span class="dim">not set</span>                               <span class="rule">│</span>
+<span class="rule">│</span>   keychain     <span class="ref">com.tentgent.openai</span>         <span class="dim">not checked</span>                           <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>   <span class="b">Choose action</span>                                                                  <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">┌────────────────────────────────────────────────────────────────────────┐</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="sel"><span class="focus">●</span>  <span class="b">Check keychain</span>                  <span class="dim">read once and report status       </span></span> <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="dim">○</span>  Set token                       <span class="dim">prompt for key, store in keychain</span>  <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="dim">○</span>  Set token (env-only)            <span class="dim">print export line; do not write</span>    <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="dim">○</span>  Remove from keychain            <span class="dim">delete entry, leave env untouched</span>  <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="dim">○</span>  Back                                                               <span class="rule">│</span>    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">└────────────────────────────────────────────────────────────────────────┘</span>    <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>   <span class="key">↑/↓</span> select   <span class="key">↵</span> activate   <span class="key">Esc</span> back                                             <span class="rule">│</span>
+<span class="rule">└──────────────────────────────────────────────────────────────────────────────────┘</span>
+</pre>
+      </div>
+
+      <h3 style="font-family:var(--mono); font-size:13px; margin: 22px 0 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing:0.1em;">Result strip after <code style="font-family:var(--mono);">Check keychain</code></h3>
+      <div class="strips">
+        <div class="strip"><span class="label">keychain</span><span style="color:var(--info)">com.tentgent.openai</span>         <span style="color:var(--ok); font-weight:700;">[OK]</span> <span style="color:var(--ink-2)">sk-…7Qa</span>  <span style="color:var(--ink-3)">(read 14:04:09)</span></div>
+        <div class="strip"><span class="label" style="color:var(--accent)">actions</span><span style="color:var(--accent); font-weight:700;">↵</span> ok    <span style="color:var(--accent); font-weight:700;">s</span> set new value    <span style="color:var(--accent); font-weight:700;">x</span> remove    <span style="color:var(--accent); font-weight:700;">Esc</span> back</div>
+      </div>
+
+      <div class="notes">
+        <div>
+          <h4>The boundary</h4>
+          <ul>
+            <li>Bootstrap entry &amp; menu: <b>no</b> keychain reads.</li>
+            <li>Per-provider flow: keychain read only on Check / Set / Remove.</li>
+            <li>The action name on screen tells the user what's about to happen.</li>
+          </ul>
+        </div>
+        <div>
+          <h4>Three set paths</h4>
+          <ul>
+            <li><b>Set token</b> — prompts and writes to keychain.</li>
+            <li><b>Set token (env-only)</b> — prints an <code>export</code> line; user pastes into shell.</li>
+            <li><b>Remove from keychain</b> — deletes the keychain entry, env left alone.</li>
+          </ul>
+        </div>
+        <div>
+          <h4>Per-provider</h4>
+          <ul>
+            <li>Same shell for openai / huggingface / anthropic.</li>
+            <li>Env-var name and keychain entry name are always shown.</li>
+            <li>Settings (§O4) reuses this exact flow.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ OPERATOR ============ -->
+    <div class="modebanner op">
+      <span class="tag">Operator mode</span>
+      <span class="desc">Daemon reachable · function menu + live monitoring · panels render only when daemon data is present</span>
+    </div>
+
+    <!-- O1 -->
+    <section id="o1" class="screen">
+      <div class="screen-head">
+        <span class="num op">O1</span>
+        <h2>Entry · functions + dashboard</h2>
+        <span class="size">120 × 36 · auto-refresh 2s</span>
+      </div>
+      <p class="purpose">Function menu on the left — the menu <i>is</i> the navigation. Dashboard on the right is composed of independently-rendered panels (Daemon, Inventory, Auth, Warnings); a panel only appears when the daemon returned its data.</p>
+
+      <div class="term">
+        <div class="chrome">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <span class="title">tentgent tui · operator</span>
+          <span class="right">refresh 2s</span>
+        </div>
+<pre class="tui">
+<span class="rule">┌</span> <span class="b">tentgent</span> <span class="rule">────────────────────────────────────</span> <span class="inf">operator</span> · daemon <span class="ok">●</span> <span class="path">http://127.0.0.1:8765</span> · <span class="dim">14:05</span> <span class="rule">─┐</span>
+<span class="rule">│</span>                                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="b">Functions</span>                              <span class="rule">│</span>  <span class="b">Dashboard</span>                                             <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">┌──────────────────────────────────────┐</span><span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────────┐</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="sel"><span class="focus">●</span>  <span class="b">Models</span>             <span class="num">3</span>            </span><span class="rule">│</span><span class="rule">│</span> <span class="rule">│</span> <span class="b">Daemon</span>                                           <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Adapters           <span class="num">2</span>            <span class="rule">│</span><span class="rule">│</span> <span class="rule">│</span>   pid       <span class="num">49118</span>   uptime   <span class="num">00:03:14</span>            <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Datasets           <span class="num">5</span>            <span class="rule">│</span><span class="rule">│</span> <span class="rule">│</span>   url       <span class="path">http://127.0.0.1:8765</span>                <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Servers            <span class="ok">●1</span> / <span class="num">5</span>        <span class="rule">│</span><span class="rule">│</span> <span class="rule">│</span>   home      <span class="path">~/.tentgent</span>                          <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Sessions           <span class="num">8</span>            <span class="rule">│</span><span class="rule">│</span> <span class="rule">│</span>   doctor    <span class="tag-ok">[OK]</span> all checks pass                 <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Training           <span class="ok">●1</span>  <span class="wrn">!1</span>        <span class="rule">│</span><span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────────┘</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Settings                         <span class="rule">│</span><span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────────┐</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>  Quit                             <span class="rule">│</span><span class="rule">│</span> <span class="rule">│</span> <span class="b">Inventory</span>                                        <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">└──────────────────────────────────────┘</span><span class="rule">│</span> <span class="rule">│</span>   models    <span class="num">3</span>        adapters  <span class="num">2</span>                 <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">│</span>   datasets  <span class="num">5</span>        sessions  <span class="num">8</span>                 <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="key">↑/↓</span> select   <span class="key">↵</span> open   <span class="key">:</span>  command       <span class="rule">│</span> <span class="rule">│</span>   servers   <span class="ok">1 up</span> · <span class="wrn">1 starting</span> · <span class="err">1 failed</span>         <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="key">/</span>   filter   <span class="key">?</span>  help   <span class="key">q</span>  quit         <span class="rule">│</span> <span class="rule">│</span>   training  <span class="num">2</span> plans · <span class="ok">1 active</span> run               <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────────┘</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────────┐</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">│</span> <span class="b">Auth</span> <span class="dim">(last refresh 14:05:02)</span>                     <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">│</span>   openai      <span class="tag-ok">[OK]</span>  source  keychain             <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">│</span>   huggingface <span class="tag-ok">[OK]</span>  source  env  <span class="ref">HF_TOKEN</span>        <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">│</span>   anthropic   <span class="tag-dim">[--]</span>  not configured               <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────────┘</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────────┐</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">│</span> <span class="b">Warnings</span>                                         <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">│</span>   <span class="wrn">!</span> training <span class="ref">run_3f9c1d</span> running &gt; 6h             <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">│</span>   <span class="wrn">!</span> dataset <span class="ref">ds_alpaca_clean_4ab2c1</span> validate fail <span class="rule">│</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────────┘</span>  <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span>                                                       <span class="rule">│</span>
+<span class="rule">│</span>                                         <span class="rule">│</span>  <span class="dim">Refresh  every 2s    last 14:05:08</span>                   <span class="rule">│</span>
+<span class="rule">└──────────────────────────────────────────────────────────────────────────────────────────────────┘</span>
 </pre>
       </div>
 
       <div class="notes">
         <div>
-          <h4>Reused shell</h4>
+          <h4 class="op">Dashboard rendering</h4>
           <ul>
-            <li>Adapters: <code>ref · base · rank · alpha · age</code></li>
-            <li>Datasets: <code>ref · format · rows · split · valid</code></li>
-            <li>Sessions: <code>ref · server · adapter · turns · last</code></li>
-            <li>Plans: <code>ref · base · dataset · rank · α</code></li>
+            <li>Each panel is independent. A failed sub-call collapses the panel.</li>
+            <li>A collapsed panel surfaces as <code>&lt;panel&gt;  [--] not available</code> in Warnings.</li>
+            <li>Counts on menu rows mirror the dashboard so eitherside reads the same.</li>
           </ul>
         </div>
         <div>
-          <h4>Refs</h4>
+          <h4 class="op">Auth panel</h4>
           <ul>
-            <li>List rows show 6-char shorts prefixed by 1-char type tag: <code>m·a1b2c3</code>.</li>
-            <li>Detail panels show full refs and copy-target hints.</li>
-            <li><kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">y</kbd> yanks the full ref to system clipboard.</li>
+            <li>Reflects state the daemon resolved at startup (env &gt; keychain).</li>
+            <li>Bootstrap's "not checked" disclaimer doesn't apply — the daemon owns the secret-store consumption.</li>
+            <li>Settings still gates per-provider Check / Set / Remove behind explicit action.</li>
           </ul>
         </div>
         <div>
-          <h4>Screen keys</h4>
-          <div class="keys">
-            <kbd>↵</kbd><span>inspect</span>
-            <kbd>p</kbd><span>pull from source</span>
-            <kbd>x</kbd><span>remove (confirm)</span>
-            <kbd>o</kbd><span>open path in shell</span>
-            <kbd>&lt; &gt;</kbd><span>resize list / detail split</span>
-            <kbd>/</kbd><span>filter list</span>
-          </div>
+          <h4 class="op">Keys</h4>
+          <ul>
+            <li><kbd>↑/↓</kbd> menu focus · <kbd>↵</kbd> open</li>
+            <li><kbd>r</kbd> refresh · <kbd>:</kbd> command palette</li>
+            <li><kbd>Tab</kbd> jump pane · <kbd>Esc</kbd> back</li>
+          </ul>
         </div>
       </div>
     </section>
 
-    <!-- ============ S3 SERVERS ============ -->
-    <section id="s3" class="screen">
+    <!-- O2 -->
+    <section id="o2" class="screen">
       <div class="screen-head">
-        <span class="num">03</span>
-        <h2>Servers</h2>
-        <span class="size">running / stopped · start · stop · logs · chat</span>
+        <span class="num op">O2</span>
+        <h2>Servers (dynamic table)</h2>
+        <span class="size">representative of all table screens</span>
       </div>
-      <p class="purpose">A live operations view. Mixed local + provider servers in one list, status glyph in column 1, last-six log lines previewed in the detail pane so the operator doesn't have to switch screens to see what just happened.</p>
+      <p class="purpose">Selecting a function row replaces the dashboard with a focused screen. Servers — Models, Adapters, Datasets, Sessions, Plans, Runs all share this shell. Filter / sort header, dynamic table, selected-row detail block, action band.</p>
 
       <div class="term">
         <div class="chrome">
@@ -617,346 +650,123 @@
           <span class="title">tentgent tui · servers</span>
         </div>
 <pre class="tui">
-<span class="rule">┌</span> <span class="b">tentgent · servers</span> <span class="rule">───────────────</span> daemon <span class="ok">●</span> <span class="path">http://127.0.0.1:8790</span> <span class="rule">──</span> auth oai/hf/anth <span class="rule">─</span> <span class="dim">14:05</span> <span class="rule">┐</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="rule">┌─────────────────────────────────────────────┐</span> <span class="rule">│</span> <span class="dim">Detail · </span><span class="ref">srv_local_qwen3_8b</span> <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Status</span>     <span class="rule">│</span> <span class="rule">│</span>  st  ref            kind     model/provider <span class="rule">│</span> <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Models</span>   <span class="num">3</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="ok">●</span>   <span class="ref">s·9c12ab</span>     local    qwen3-8b <span class="ref">a1b2c3</span>  <span class="rule">│</span> <span class="rule">│</span>  ref     <span class="ref">srv_local_qwen3_8b</span>  <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Adapters</span> <span class="num">2</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="ok">●</span>   <span class="ref">s·44ee01</span>     openai   gpt-4.1-mini     <span class="rule">│</span> <span class="rule">│</span>  kind    local · llama.cpp   <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Datasets</span> <span class="num">5</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="dim">○</span>   <span class="ref">s·77b3d9</span>     local    llama3-8b <span class="ref">c4d810</span> <span class="rule">│</span> <span class="rule">│</span>  status  <span class="ok">● running</span> <span class="num">02:14:09</span>  <span class="rule">│</span>
-<span class="rule">│</span>  <span class="nav-on">Servers</span> <span class="ok">●1</span><span class="acc">▌</span><span class="rule">│</span> <span class="rule">│</span>  <span class="wrn">◐</span>   <span class="ref">s·12c0aa</span>     local    qwen3-8b <span class="ref">77f0e2</span>  <span class="rule">│</span> <span class="rule">│</span>  pid     <span class="num">49004</span>               <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Sessions</span> <span class="num">8</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="err">✕</span>   <span class="ref">s·a01b22</span>     anthr.   claude-haiku-4.5 <span class="rule">│</span> <span class="rule">│</span>  port    <span class="path">127.0.0.1:18765</span>     <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Training</span><span class="ok">●1</span><span class="wrn">!</span><span class="rule">│</span> <span class="rule">└─────────────────────────────────────────────┘</span> <span class="rule">│</span>  model   <span class="ref">mdl_qwen3_8b_a1b2c3</span> <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Settings</span>   <span class="rule">│</span>  <span class="dim">5 servers · </span><span class="ok">1 running</span><span class="dim"> · </span><span class="wrn">1 starting</span><span class="dim"> · </span><span class="err">1 failed</span>  <span class="rule">│</span>  adapter <span class="ref">adp_support_44e1</span>    <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  context <span class="num">8192</span>   batch <span class="num">256</span>    <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  <span class="b">Health</span>                      <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="path">/healthz</span>   <span class="tag-ok">[OK]</span> 200  <span class="num">4ms</span>   <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   load avg   <span class="num">0.6</span>   gpu  <span class="num">41%</span>  <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   vram       <span class="num">11.2 / 24.0 GiB</span> <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  <span class="b">Last 6 log lines</span>            <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="dim">14:04:58</span> req  /v1/chat <span class="ok">200</span> <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="dim">14:04:51</span> req  /v1/chat <span class="ok">200</span> <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="dim">14:04:30</span> req  /v1/embed <span class="ok">200</span><span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="dim">14:03:12</span> warm cache hit    <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="dim">14:01:00</span> ready             <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="dim">14:00:46</span> loading weights   <span class="rule">│</span>
-<span class="rule">├─────────────┴─────────────────────────────────────────────────┴──────────────────────────────┤</span>
-<span class="rule">│</span> <span class="key">↵</span> detail   <span class="key">s</span> start   <span class="key">S</span> stop   <span class="key">l</span> logs   <span class="key">c</span> chat   <span class="key">x</span> remove   <span class="key">y</span> yank   <span class="key">/</span>filter   <span class="key">?</span>  <span class="key">q</span>          <span class="rule">│</span>
-<span class="rule">└──────────────────────────────────────────────────────────────────────────────────────────────┘</span>
-</pre>
-      </div>
-
-      <h3 style="font-family:var(--mono); font-size:13px; margin: 24px 0 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing:0.1em;">Stop confirmation overlay</h3>
-      <div class="term">
-        <div class="chrome">
-          <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui · confirm modal</span>
-        </div>
-<pre class="tui">
-<span class="dim">                     ╔════════ </span><span class="modal">Confirm: stop server</span><span class="dim"> ═════════╗</span>
-<span class="dim">                     ║                                       ║</span>
-<span class="dim">                     ║   </span><span class="ref">srv_local_qwen3_8b</span> · <span class="ok">● running</span>      <span class="dim">║</span>
-<span class="dim">                     ║   </span><span class="wrn">2 in-flight requests will be cut.</span>   <span class="dim">║</span>
-<span class="dim">                     ║                                       ║</span>
-<span class="dim">                     ║   </span><span class="key">[y]</span> yes        <span class="key">[N]</span> no  <span class="dim">(default)    ║</span>
-<span class="dim">                     ║                                       ║</span>
-<span class="dim">                     ╚═══════════════════════════════════════╝</span>
+<span class="rule">┌</span> <span class="b">tentgent · servers</span> <span class="rule">────────────────────────────────</span> daemon <span class="ok">●</span> <span class="path">127.0.0.1:8765</span> · <span class="dim">14:06</span> <span class="rule">─┐</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  filter  <span class="acc">/</span>                                                       <span class="dim">5 rows · sort: </span><span class="acc">status</span> <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────────────────────────────────────┐</span> <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span> <span class="dim">st  ref          kind     model / provider           ctx     port      age  </span> <span class="rule">│</span> <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span> <span class="sel"><span class="ok">●</span><span class="acc">▌</span>  <span class="ref">s·9c12ab</span>    local    qwen3-8b <span class="ref">a1b2c3</span>            <span class="num">8192</span>    <span class="num">18765</span>    <span class="dim">2h</span>   </span> <span class="rule">│</span> <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span> <span class="ok">●</span>   <span class="ref">s·44ee01</span>    openai   gpt-4.1-mini                 <span class="dim">-</span>        <span class="dim">-</span>    <span class="dim">1d</span>    <span class="rule">│</span> <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span> <span class="wrn">◐</span>   <span class="ref">s·12c0aa</span>    local    qwen3-8b <span class="ref">77f0e2</span>            <span class="num">8192</span>        <span class="dim">-</span>   <span class="dim">30s</span>    <span class="rule">│</span> <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span> <span class="dim">○</span>   <span class="ref">s·77b3d9</span>    local    llama3-8b <span class="ref">c4d810</span>           <span class="num">8192</span>        <span class="dim">-</span>    <span class="dim">9d</span>    <span class="rule">│</span> <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">│</span> <span class="err">✕</span>   <span class="ref">s·a01b22</span>    anthr.   claude-haiku-4.5              <span class="dim">-</span>        <span class="dim">-</span>   <span class="dim">yest</span>   <span class="rule">│</span> <span class="rule">│</span>
+<span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────────────────────────────────────┘</span> <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="b">Selected</span> · <span class="ref">srv_local_qwen3_8b</span> · <span class="ok">● running</span>                                       <span class="rule">│</span>
+<span class="rule">│</span>    pid     <span class="num">49004</span>        port    <span class="path">127.0.0.1:18765</span>        adapter  <span class="ref">adp_support_44e1</span> <span class="rule">│</span>
+<span class="rule">│</span>    health  <span class="path">/healthz</span> <span class="tag-ok">[OK]</span> <span class="num">4ms</span>    vram   <span class="num">11.2 / 24.0 GiB</span>                           <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="b">Actions</span>                                                                         <span class="rule">│</span>
+<span class="rule">│</span>    <span class="key">↵</span> inspect     <span class="key">c</span> chat     <span class="key">l</span> logs     <span class="key">s</span> start     <span class="key">S</span> stop     <span class="key">x</span> remove           <span class="rule">│</span>
+<span class="rule">│</span>    <span class="key">y</span> yank ref    <span class="key">o</span> open path                                                     <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="key">↑/↓</span> row   <span class="key">/</span>  filter   <span class="key">r</span>  refresh   <span class="key">Esc</span> back to functions   <span class="key">?</span>  help              <span class="rule">│</span>
+<span class="rule">└──────────────────────────────────────────────────────────────────────────────────┘</span>
 </pre>
       </div>
 
       <div class="notes">
         <div>
-          <h4>Mixed local + provider</h4>
+          <h4 class="op">Selected row</h4>
           <ul>
-            <li>Local servers (llama.cpp / Python runtime) and provider proxies (openai, anthropic) live in the same list — the operator thinks "where does the chat go", not "is this hosted".</li>
-            <li>Provider rows show no PID / port / vram; their detail surfaces upstream model id and last error instead.</li>
+            <li>Caret <code>▌</code> + inverse video on the row.</li>
+            <li>Detail block below the table mirrors the row, doesn't duplicate it.</li>
+            <li>Sort indicator lives in the table header band.</li>
           </ul>
         </div>
         <div>
-          <h4>Logs view</h4>
+          <h4 class="op">Reused shell</h4>
           <ul>
-            <li><kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">l</kbd> swaps the right pane for a full-height log stream.</li>
-            <li><kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">f</kbd> toggles follow-tail · <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">/</kbd> filters · <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">Esc</kbd> back.</li>
+            <li>Models / Adapters / Datasets / Sessions / Plans / Runs all use this layout.</li>
+            <li>Only the columns and detail keys change — the action band re-keys per screen.</li>
           </ul>
         </div>
         <div>
-          <h4>Confirmation pattern</h4>
+          <h4 class="op">Esc contract</h4>
           <ul>
-            <li>Default focus is <b>No</b>. <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">↵</kbd> = No, <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">y</kbd> = Yes.</li>
-            <li>Double border distinguishes modals from panes; rest of screen dims.</li>
-            <li>Irreversible variants require typing the short ref to confirm.</li>
+            <li>One step back: focused table → function menu.</li>
+            <li>Chat (§O3) returns to <i>this</i> screen, not directly to the menu.</li>
           </ul>
         </div>
       </div>
     </section>
 
-    <!-- ============ S4 SESSION CHAT ============ -->
-    <section id="s4" class="screen">
+    <!-- O3 -->
+    <section id="o3" class="screen">
       <div class="screen-head">
-        <span class="num">04</span>
-        <h2>Session chat</h2>
-        <span class="size">only top-bottom split — header strip · scroll · input</span>
+        <span class="num op">O3</span>
+        <h2>Chat surface</h2>
+        <span class="size">separate · only via Servers ▸ c chat or Sessions ▸ resume</span>
       </div>
-      <p class="purpose">The one screen where the right pane stacks vertically: a header strip showing the session's bound server / adapter / token state, a scrollable bounded message history, and a sticky input at the bottom. Compaction and provider state surface as a single colored strip.</p>
+      <p class="purpose">Chat is not in the function menu. It is reached only by selecting a running server and pressing <kbd>c</kbd>, or by resuming a session. <kbd>Esc</kbd> returns to whichever screen launched it.</p>
 
       <div class="term">
         <div class="chrome">
           <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui · sessions · chat</span>
+          <span class="title">tentgent tui · chat</span>
         </div>
 <pre class="tui">
-<span class="rule">┌</span> <span class="b">tentgent · sessions · chat</span> <span class="rule">───────</span> daemon <span class="ok">●</span> <span class="path">http://127.0.0.1:8790</span> <span class="rule">──</span> auth oai/hf/anth <span class="rule">─</span> <span class="dim">14:09</span> <span class="rule">┐</span>
-<span class="rule">│</span>             <span class="rule">│</span> session  <span class="ref">ses_5f1c0a</span> · <span class="b">"draft replies for support tickets"</span>     <span class="dim">edited 14:08</span>      <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Status</span>     <span class="rule">│</span> server   <span class="ref">srv_local_qwen3_8b</span> <span class="ok">●</span>     adapter  <span class="ref">adp_support_44e1</span>   ctx <span class="num">8192</span>          <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Models</span>   <span class="num">3</span> <span class="rule">│</span> tokens   <span class="num">3 421 / 8 192</span>   compaction: <span class="dim">idle</span>    cost   <span class="dim">$0.00 (local)</span>               <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Adapters</span> <span class="num">2</span> <span class="rule">├──────────────────────────────────────────────────────────────────────────────── </span>
-<span class="rule">│</span>  <span class="dim">Datasets</span> <span class="num">5</span> <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Servers</span> <span class="ok">●1</span> <span class="rule">│</span>  <span class="systh">─ system ─</span> <span class="dim">14:01</span>                                                              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="nav-on">Sessions</span> <span class="num">8</span><span class="acc">▌</span><span class="rule">│</span>   You are a polite, concise customer support assistant for Tentgent.           <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Training</span><span class="ok">●1</span><span class="wrn">!</span><span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Settings</span>   <span class="rule">│</span>  <span class="userh">─ user ── </span><span class="dim">14:02</span>                                                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>   Customer says their daemon won't start after upgrade. What should I reply?   <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="assth">─ asst ── </span><span class="dim">14:02   srv </span><span class="ok">●</span>  <span class="num">328ms</span>   tok <span class="num">187/in 412/out</span>                           <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>   Hi — sorry about the trouble. Could you share the output of                  <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>   <span class="path">tentgent doctor</span> and the last 20 lines of <span class="path">~/.tentgent/logs/daemon.log</span>?    <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>   In most cases an upgrade leaves a stale pid file at                          <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>   <span class="path">~/.tentgent/run/daemon.pid</span> — removing it and re-running                      <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>   <span class="path">tentgent daemon start</span> will resolve it.                                       <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="userh">─ user ── </span><span class="dim">14:08</span>                                                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>   Make it shorter and friendlier.                                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>   <span class="dim">… (scroll: 32 earlier messages, j/k to scroll, b for bookmark)</span>                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">├──────────────────────────────────────────────────────────────────────────────── </span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="acc">&gt;</span> <span class="rule">│</span>                                                                          <span class="rule">│</span> <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>   <span class="rule">│</span>  <span class="key">↵</span> send   <span class="key">S-↵</span> newline   <span class="key">/system</span> edit   <span class="key">/attach</span> file   <span class="key">/clear</span>              <span class="rule">│</span>
-<span class="rule">├─────────────┴──────────────────────────────────────────────────────────────────────────────── </span>
-<span class="rule">│</span> <span class="key">↵</span> send   <span class="key">t</span> switch session   <span class="key">v</span> switch server   <span class="key">a</span> swap adapter   <span class="key">c</span> compact   <span class="key">x</span> reset   <span class="key">?</span>  <span class="key">q</span>    <span class="rule">│</span>
-<span class="rule">└──────────────────────────────────────────────────────────────────────────────────────────────┘</span>
+<span class="rule">┌</span> <span class="b">tentgent · chat</span> <span class="rule">───────────────</span> <span class="ref">srv_local_qwen3_8b</span> <span class="ok">●</span> · <span class="ref">ses_5f1c0a</span> · <span class="dim">14:09</span> <span class="rule">─┐</span>
+<span class="rule">│</span> session  <span class="b">draft replies for support tickets</span>         tokens  <span class="num">3 421 / 8 192</span>   <span class="rule">│</span>
+<span class="rule">│</span> adapter  <span class="ref">adp_support_44e1</span>                          compact <span class="dim">idle</span>             <span class="rule">│</span>
+<span class="rule">├─────────────────────────────────────────────────────────────────────────────┤</span>
+<span class="rule">│</span>                                                                             <span class="rule">│</span>
+<span class="rule">│</span>  <span class="systh">─ system ─</span> <span class="dim">14:01</span>                                                           <span class="rule">│</span>
+<span class="rule">│</span>   You are a polite, concise customer support assistant for Tentgent.        <span class="rule">│</span>
+<span class="rule">│</span>                                                                             <span class="rule">│</span>
+<span class="rule">│</span>  <span class="userh">─ user ── </span><span class="dim">14:02</span>                                                            <span class="rule">│</span>
+<span class="rule">│</span>   Customer says their daemon won't start after upgrade. What should I       <span class="rule">│</span>
+<span class="rule">│</span>   reply?                                                                    <span class="rule">│</span>
+<span class="rule">│</span>                                                                             <span class="rule">│</span>
+<span class="rule">│</span>  <span class="assth">─ asst ── </span><span class="dim">14:02   srv </span><span class="ok">●</span>  <span class="num">328 ms</span>   tok <span class="num">187/in 412/out</span>                       <span class="rule">│</span>
+<span class="rule">│</span>   Hi — sorry about the trouble. Could you share the output of               <span class="rule">│</span>
+<span class="rule">│</span>   <span class="path">tentgent doctor</span> and the last 20 lines of                                <span class="rule">│</span>
+<span class="rule">│</span>   <span class="path">~/.tentgent/logs/daemon.log</span>? In most cases an upgrade leaves a stale     <span class="rule">│</span>
+<span class="rule">│</span>   pid file at <span class="path">~/.tentgent/run/daemon.pid</span> — removing it and re-running    <span class="rule">│</span>
+<span class="rule">│</span>   <span class="path">tentgent daemon start</span> will resolve it.                                   <span class="rule">│</span>
+<span class="rule">│</span>                                                                             <span class="rule">│</span>
+<span class="rule">│</span>  <span class="userh">─ user ── </span><span class="dim">14:08</span>                                                            <span class="rule">│</span>
+<span class="rule">│</span>   Make it shorter and friendlier.                                           <span class="rule">│</span>
+<span class="rule">│</span>                                                                             <span class="rule">│</span>
+<span class="rule">│</span>   <span class="dim">… 32 earlier messages collapsed (j/k scroll, b bookmark)</span>                  <span class="rule">│</span>
+<span class="rule">│</span>                                                                             <span class="rule">│</span>
+<span class="rule">├─────────────────────────────────────────────────────────────────────────────┤</span>
+<span class="rule">│</span> <span class="acc">&gt;</span> <span class="rule">│</span>                                                                       <span class="rule">│</span> <span class="rule">│</span>
+<span class="rule">│</span>   <span class="rule">│</span>  <span class="key">↵</span> send   <span class="key">S-↵</span> newline   <span class="key">/system</span>   <span class="key">/attach</span>   <span class="key">/clear</span>                    <span class="rule">│</span>
+<span class="rule">├─────────────────────────────────────────────────────────────────────────────┤</span>
+<span class="rule">│</span> <span class="key">t</span>  switch session   <span class="key">v</span>  switch server   <span class="key">a</span>  swap adapter   <span class="key">c</span>  compact         <span class="rule">│</span>
+<span class="rule">│</span> <span class="key">x</span>  reset memory   <span class="key">Esc</span>  back to servers   <span class="key">?</span>  help   <span class="key">q</span>  quit                  <span class="rule">│</span>
+<span class="rule">└─────────────────────────────────────────────────────────────────────────────┘</span>
 </pre>
       </div>
 
-      <h3 style="font-family:var(--mono); font-size:13px; margin: 24px 0 10px; color: var(--ink-2); text-transform: uppercase; letter-spacing:0.1em;">State strips</h3>
-      <p style="margin: 0 0 12px; color: var(--ink-3); font-size: 13px;">Replaces the metadata strip when the session enters a non-idle or error state. Single line — the layout never reflows.</p>
+      <h3 style="font-family:var(--mono); font-size:13px; margin: 18px 0 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing:0.1em;">State strips</h3>
       <div class="strips">
-        <div class="strip"><span class="label" style="color:var(--ink-3)">compaction</span>tokens <span style="color:var(--warn)">7 988 / 8 192</span>   compaction: <span style="color:var(--warn)">◐ running…</span>  est 4s</div>
-        <div class="strip warn"><span class="label" style="color:var(--warn)">session_busy</span><span style="color:var(--warn)">!</span> another request is in flight (started 14:09:11)        <span style="color:var(--accent)">[w]</span> wait  <span style="color:var(--accent)">[k]</span> kill</div>
-        <div class="strip err"><span class="label" style="color:var(--err)">server</span><span style="color:var(--err)">✕ server_not_running</span> — srv_local_qwen3_8b is stopped       <span style="color:var(--accent)">[s]</span> start    <span style="color:var(--accent)">[v]</span> choose another</div>
-        <div class="strip err"><span class="label" style="color:var(--err)">compaction</span><span style="color:var(--err)">✕ compaction_failed</span> — last attempt 14:07:55                  <span style="color:var(--accent)">[r]</span> retry  <span style="color:var(--accent)">[o]</span> open log</div>
-      </div>
-
-      <div class="notes">
-        <div>
-          <h4>Why top-bottom here only</h4>
-          <ul>
-            <li>Chat needs full reading width. A vertical split would clip messages and force the user to wrap mid-thought.</li>
-            <li>The header strip preserves "what is this chat bound to" — it's the deepest screen and easy to lose context in.</li>
-          </ul>
-        </div>
-        <div>
-          <h4>Bounded history</h4>
-          <ul>
-            <li>The session-store contract bounds what's kept in memory; older messages collapse into a "32 earlier messages" indicator.</li>
-            <li>Compaction status is a first-class strip element — never a hidden background process.</li>
-          </ul>
-        </div>
-        <div>
-          <h4>Screen keys</h4>
-          <div class="keys">
-            <kbd>↵</kbd><span>send</span>
-            <kbd>S-↵</kbd><span>newline in input</span>
-            <kbd>t</kbd><span>switch session</span>
-            <kbd>v</kbd><span>switch server</span>
-            <kbd>a</kbd><span>swap adapter</span>
-            <kbd>c</kbd><span>compact now</span>
-            <kbd>x</kbd><span>reset memory (confirm)</span>
-          </div>
-        </div>
+        <div class="strip"><span class="label">compaction</span>tokens <span style="color:var(--warn)">7 988 / 8 192</span>   compaction <span style="color:var(--warn)">◐ running…</span>  est 4s</div>
+        <div class="strip warn"><span class="label" style="color:var(--warn)">session_busy</span><span style="color:var(--warn)">!</span> request in flight (started 14:09:11)        <span style="color:var(--accent)">w</span> wait  <span style="color:var(--accent)">k</span> kill</div>
+        <div class="strip err"><span class="label" style="color:var(--err)">server</span><span style="color:var(--err)">✕ server_not_running</span> — srv_local_qwen3_8b is stopped       <span style="color:var(--accent)">s</span> start    <span style="color:var(--accent)">v</span> new</div>
+        <div class="strip err"><span class="label" style="color:var(--err)">compaction</span><span style="color:var(--err)">✕ compaction_failed</span> — last attempt 14:07:55                  <span style="color:var(--accent)">r</span> retry  <span style="color:var(--accent)">o</span> log</div>
       </div>
     </section>
 
-    <!-- ============ S5 DATASETS ============ -->
-    <section id="s5" class="screen">
+    <!-- O4 -->
+    <section id="o4" class="screen">
       <div class="screen-head">
-        <span class="num">05</span>
-        <h2>Dataset tools</h2>
-        <span class="size">list + inspect + action tray</span>
-      </div>
-      <p class="purpose">Extends the generic shell with an action tray pinned to the bottom of the detail pane. Provider-billable actions (synth, eval) route through a confirmation modal that surfaces estimated cost and the artifact output path before any spend.</p>
-
-      <div class="term">
-        <div class="chrome">
-          <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui · datasets</span>
-        </div>
-<pre class="tui">
-<span class="rule">┌</span> <span class="b">tentgent · datasets</span> <span class="rule">──────────────</span> daemon <span class="ok">●</span> <span class="path">http://127.0.0.1:8790</span> <span class="rule">──</span> auth oai/hf/anth <span class="rule">─</span> <span class="dim">14:14</span> <span class="rule">┐</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────┐</span> <span class="rule">│</span> <span class="dim">Detail · </span><span class="ref">ds_support_v3_4ab2</span> <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Status</span>     <span class="rule">│</span> <span class="rule">│</span>  ref         format   rows   split    valid <span class="rule">│</span> <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Models</span>   <span class="num">3</span> <span class="rule">│</span> <span class="rule">│</span> <span class="sel"><span class="acc">▌</span><span class="ref">d·4ab2c1</span>  jsonl     <span class="num">3 217</span>  80/10/10 <span class="tag-ok">[OK]</span>   </span><span class="rule">│</span> <span class="rule">│</span>  ref     <span class="ref">ds_support_v3_4ab2</span>  <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Adapters</span> <span class="num">2</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="ref">d·77ad03</span>  parquet     <span class="num">842</span>  90/10/--  <span class="tag-wrn">[WARN]</span><span class="rule">│</span> <span class="rule">│</span>  format  jsonl · sft         <span class="rule">│</span>
-<span class="rule">│</span>  <span class="nav-on">Datasets</span> <span class="num">5</span><span class="acc">▌</span><span class="rule">│</span> <span class="rule">│</span>  <span class="ref">d·c0d4ee</span>  jsonl     <span class="num">12.4k</span>  80/10/10 <span class="tag-ok">[OK]</span>   <span class="rule">│</span> <span class="rule">│</span>  rows    <span class="num">3 217</span>   tokens <span class="num">1.1M</span> <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Servers</span> <span class="ok">●1</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="ref">d·9912b1</span>  csv         <span class="num">500</span>  --/--/--  <span class="tag-err">[ERR]</span> <span class="rule">│</span> <span class="rule">│</span>  schema  prompt, response    <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Sessions</span> <span class="num">8</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="ref">d·11aa20</span>  jsonl       <span class="num">128</span>  100/--/-- <span class="tag-ok">[OK]</span>  <span class="rule">│</span> <span class="rule">│</span>  splits  train <span class="num">2 574</span>         <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Training</span><span class="ok">●1</span><span class="wrn">!</span><span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────┘</span> <span class="rule">│</span>          val   <span class="num">322</span>          <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Settings</span>   <span class="rule">│</span>  <span class="dim">5 datasets · 17 087 rows · </span><span class="wrn">1 needs attention</span>    <span class="rule">│</span>          test  <span class="num">321</span>          <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  <span class="b">Path</span>                        <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="path">~/.tentgent/datasets/</span>      <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>     <span class="path">support_v3_4ab2/</span>         <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>       <span class="path">train.jsonl</span>  <span class="path">val.jsonl</span> <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>       <span class="path">test.jsonl</span>   <span class="path">schema.json</span><span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  Last validate  <span class="dim">14:10</span>  <span class="tag-ok">[OK]</span>  <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  Last synth    <span class="dim">--</span>            <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  Last eval     <span class="dim">2026-04-30</span>    <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span> <span class="rule">─ </span><span class="b">Actions</span> <span class="rule">────────────────── </span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="key">v</span> validate    <span class="key">t</span> template   <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="key">e</span> export      <span class="key">D</span> diff       <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="key">y</span> synth       <span class="key">E</span> eval       <span class="rule">│</span>
-<span class="rule">├─────────────┴─────────────────────────────────────────────────┴──────────────────────────────┤</span>
-<span class="rule">│</span> <span class="key">↵</span> inspect   <span class="key">v</span> validate   <span class="key">y</span> synth   <span class="key">E</span> eval   <span class="key">e</span> export   <span class="key">D</span> diff   <span class="key">x</span> remove   <span class="key">/</span>filter   <span class="key">?</span>  <span class="key">q</span>  <span class="rule">│</span>
-<span class="rule">└──────────────────────────────────────────────────────────────────────────────────────────────┘</span>
-</pre>
-      </div>
-
-      <h3 style="font-family:var(--mono); font-size:13px; margin: 24px 0 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing:0.1em;">Provider confirmation (synth / eval)</h3>
-      <div class="term">
-        <div class="chrome">
-          <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui · provider confirm modal</span>
-        </div>
-<pre class="tui">
-<span class="dim">              ╔══════════ </span><span class="modal">Confirm: synth via provider</span><span class="dim"> ═══════════╗</span>
-<span class="dim">              ║                                                  ║</span>
-<span class="dim">              ║   </span><span class="ref">ds_support_v3_4ab2</span>  →  <span class="ok">+500 rows</span>               <span class="dim">║</span>
-<span class="dim">              ║   provider   </span><span class="b">openai · gpt-4.1-mini</span>               <span class="dim">║</span>
-<span class="dim">              ║   est. cost  </span><span class="wrn">~$0.42</span>       est. time  <span class="num">~3 min</span>      <span class="dim">║</span>
-<span class="dim">              ║                                                  ║</span>
-<span class="dim">              ║   output     </span><span class="path">~/.tentgent/datasets/support_v3_…/</span>  <span class="dim">║</span>
-<span class="dim">              ║              </span><span class="path">synth_2026-05-02T14-15.jsonl</span>        <span class="dim">║</span>
-<span class="dim">              ║                                                  ║</span>
-<span class="dim">              ║   </span><span class="key">[y]</span> run        <span class="key">[d]</span> dry-run        <span class="key">[N]</span> cancel   <span class="dim">║</span>
-<span class="dim">              ╚══════════════════════════════════════════════════╝</span>
-</pre>
-      </div>
-
-      <div class="notes">
-        <div>
-          <h4>Action tray</h4>
-          <ul>
-            <li>Pinned at the bottom of the detail pane so the actions stay in eye-line with what they'd act on.</li>
-            <li>Mirrors the bottom hint bar but with full labels — a discoverability surface.</li>
-          </ul>
-        </div>
-        <div>
-          <h4>Provider gate</h4>
-          <ul>
-            <li>Synth and Eval always go through the modal — no exception, even with cached cost estimates.</li>
-            <li><kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">d</kbd> dry-run runs against 5 rows and returns cost + sample without spending the rest.</li>
-          </ul>
-        </div>
-        <div>
-          <h4>Artifact paths</h4>
-          <ul>
-            <li>The output filename uses an ISO timestamp so repeated runs never collide.</li>
-            <li>The path is shown <i>before</i> confirmation, so the operator can <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">y</kbd> yank it for a follow-up command.</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ S6 TRAINING ============ -->
-    <section id="s6" class="screen">
-      <div class="screen-head">
-        <span class="num">06</span>
-        <h2>Training</h2>
-        <span class="size">plans (top) · runs (bottom) · live metrics</span>
-      </div>
-      <p class="purpose">The only screen with a stacked-list left side: Plans on top, Runs on the bottom. Selecting a run reveals phase, step counter, and the latest metrics in the detail pane, plus entry points to the raw log and metrics streams.</p>
-
-      <div class="term">
-        <div class="chrome">
-          <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui · training</span>
-        </div>
-<pre class="tui">
-<span class="rule">┌</span> <span class="b">tentgent · training</span> <span class="rule">──────────────</span> daemon <span class="ok">●</span> <span class="path">http://127.0.0.1:8790</span> <span class="rule">──</span> auth oai/hf/anth <span class="rule">─</span> <span class="dim">14:18</span> <span class="rule">┐</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="b">Plans</span>                                            <span class="rule">│</span> <span class="dim">Detail · </span><span class="ref">run_3f9c1d</span>         <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Status</span>     <span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────┐</span> <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Models</span>   <span class="num">3</span> <span class="rule">│</span> <span class="rule">│</span>  ref         base         dataset    rank α <span class="rule">│</span> <span class="rule">│</span>  plan    <span class="ref">plan_lora_support_v2</span><span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Adapters</span> <span class="num">2</span> <span class="rule">│</span> <span class="rule">│</span> <span class="sel"><span class="acc">▌</span><span class="ref">p·b1c2d3</span>  qwen3-8b     <span class="ref">d·4ab2c1</span>    <span class="num">16  32</span> </span><span class="rule">│</span> <span class="rule">│</span>  base    qwen3-8b <span class="ref">a1b2c3</span>     <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Datasets</span> <span class="num">5</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="ref">p·9988aa</span>  llama3-8b    <span class="ref">d·c0d4ee</span>    <span class="num">8   16</span> <span class="rule">│</span> <span class="rule">│</span>  dataset <span class="ref">ds_support_v3 4ab2</span>  <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Servers</span> <span class="ok">●1</span> <span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────┘</span> <span class="rule">│</span>  adapter (out) <span class="ref">adp_…</span> draft   <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Sessions</span> <span class="num">8</span> <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="nav-on">Training</span><span class="ok">●1</span><span class="wrn">!</span><span class="acc">▌</span> <span class="b">Runs</span>                                              <span class="rule">│</span>  Status  <span class="ok">● running</span>          <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Settings</span>   <span class="rule">│</span> <span class="rule">┌──────────────────────────────────────────────┐</span> <span class="rule">│</span>  phase   train · epoch <span class="num">2/3</span>  <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="rule">│</span>  st  ref         plan          started   eta <span class="rule">│</span> <span class="rule">│</span>  step    <span class="num">1284 / 2412</span>        <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="rule">│</span> <span class="sel"><span class="acc">▌</span><span class="ok">●</span>   <span class="ref">r·3f9c1d</span>  <span class="ref">p·b1c2d3</span>      <span class="dim">08:06</span>   <span class="num">~ 1h12m</span></span><span class="rule">│</span> <span class="rule">│</span>  eta     <span class="num">1h 12m</span>             <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="rule">│</span>  <span class="err">✕</span>   <span class="ref">r·22aa01</span>  <span class="ref">p·9988aa</span>      yest.    <span class="err">failed</span><span class="rule">│</span> <span class="rule">│</span>  started <span class="num">2026-05-02 08:06</span>   <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="rule">│</span>  <span class="dim">◯</span>   <span class="ref">r·77c0e1</span>  <span class="ref">p·b1c2d3</span>      <span class="dim">4d ago</span>   <span class="ok">done</span>  <span class="rule">│</span> <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="rule">│</span>  <span class="dim">◯</span>   <span class="ref">r·11dd02</span>  <span class="ref">p·9988aa</span>      <span class="dim">6d ago</span>   <span class="ok">done</span>  <span class="rule">│</span> <span class="rule">│</span>  <span class="b">Metrics (last)</span>             <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span> <span class="rule">└──────────────────────────────────────────────┘</span> <span class="rule">│</span>   loss/train     <span class="num">0.3142</span>     <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="dim">4 runs · </span><span class="ok">1 active</span><span class="dim"> · </span><span class="err">1 failed</span>                       <span class="rule">│</span>   loss/eval      <span class="num">0.3680</span>     <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   lr             <span class="num">1.20e-4</span>    <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   tok/sec        <span class="num">8 412</span>      <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   gpu mem        <span class="num">21.8 GiB</span>   <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>  <span class="b">Artifacts</span>                   <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="path">~/.tentgent/training/</span>      <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>     <span class="path">run_3f9c1d/</span>              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>       <span class="path">checkpoints/</span> <span class="path">log.txt</span>   <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>       <span class="path">metrics.jsonl</span>          <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span> <span class="rule">─ </span><span class="b">Open</span> <span class="rule">───────────────────── </span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="key">L</span> log     <span class="key">M</span> metrics        <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                 <span class="rule">│</span>   <span class="key">o</span> output dir              <span class="rule">│</span>
-<span class="rule">├─────────────┴─────────────────────────────────────────────────┴──────────────────────────────┤</span>
-<span class="rule">│</span> <span class="key">↵</span> detail   <span class="key">n</span> new run from plan   <span class="key">S</span> stop run   <span class="key">x</span> delete   <span class="key">L</span> log   <span class="key">M</span> metrics   <span class="key">/</span>filter   <span class="key">?</span>  <span class="key">q</span><span class="rule">│</span>
-<span class="rule">└──────────────────────────────────────────────────────────────────────────────────────────────┘</span>
-</pre>
-      </div>
-
-      <div class="notes">
-        <div>
-          <h4>Plans + runs in one view</h4>
-          <ul>
-            <li>Selecting a Plan filters the Runs list to runs of that plan.</li>
-            <li>Selecting a Run shows full live state in the detail pane — no further drill-down needed for a status check.</li>
-          </ul>
-        </div>
-        <div>
-          <h4>Live metrics</h4>
-          <ul>
-            <li>"Last" values refresh on each push from <code>metrics.jsonl</code>; no polling thrash.</li>
-            <li><kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">M</kbd> opens the full tabular metrics view with sparklines per series.</li>
-          </ul>
-        </div>
-        <div>
-          <h4>Screen keys</h4>
-          <div class="keys">
-            <kbd>n</kbd><span>new run from selected plan</span>
-            <kbd>S</kbd><span>stop active run (confirm)</span>
-            <kbd>x</kbd><span>delete run (typed confirm)</span>
-            <kbd>L</kbd><span>raw log tail</span>
-            <kbd>M</kbd><span>metrics table</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ S7 SETTINGS ============ -->
-    <section id="s7" class="screen">
-      <div class="screen-head">
-        <span class="num">07</span>
+        <span class="num op">O4</span>
         <h2>Settings</h2>
-        <span class="size">read-mostly · paths · tokens · install info</span>
+        <span class="size">read-mostly · keychain still gated</span>
       </div>
-      <p class="purpose">A read-mostly form. Editable fields are explicitly marked <code>[edit]</code>; everything else is sourced from the environment or config and shown read-only with the source noted in parentheses.</p>
+      <p class="purpose">Editable rows show <code>[edit]</code>; others show their source. Provider rows trigger the same per-provider flow defined in §B4 — keychain probe is gated by user action even in operator mode.</p>
 
       <div class="term">
         <div class="chrome">
@@ -964,164 +774,100 @@
           <span class="title">tentgent tui · settings</span>
         </div>
 <pre class="tui">
-<span class="rule">┌</span> <span class="b">tentgent · settings</span> <span class="rule">──────────────</span> daemon <span class="ok">●</span> <span class="path">http://127.0.0.1:8790</span> <span class="rule">──</span> auth oai/hf/anth <span class="rule">─</span> <span class="dim">14:22</span> <span class="rule">┐</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="b">Paths</span>                                                                          <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Status</span>     <span class="rule">│</span>    <span class="ref">TENTGENT_HOME</span>           <span class="path">~/.tentgent</span>                       <span class="dim">(env)</span>              <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Models</span>   <span class="num">3</span> <span class="rule">│</span>    <span class="ref">TENTGENT_PYTHON_DIR</span>     <span class="path">~/.tentgent/python</span>                <span class="dim">(default)</span>          <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Adapters</span> <span class="num">2</span> <span class="rule">│</span>    <span class="ref">TENTGENT_PYTHON_ENV_DIR</span> <span class="path">~/.tentgent/python/env</span>            <span class="dim">(default)</span>          <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Datasets</span> <span class="num">5</span> <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Servers</span> <span class="ok">●1</span> <span class="rule">│</span>  <span class="b">Daemon</span>                                                                        <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Sessions</span> <span class="num">8</span> <span class="rule">│</span>    url                     <span class="path">http://127.0.0.1:8790</span>    <span class="key">[edit]</span>                      <span class="rule">│</span>
-<span class="rule">│</span>  <span class="dim">Training</span><span class="ok">●1</span><span class="wrn">!</span><span class="rule">│</span>    autostart on tui open   off                      <span class="dim">(planned)</span>                   <span class="rule">│</span>
-<span class="rule">│</span>  <span class="nav-on">Settings</span>  <span class="acc">▌</span><span class="rule">│</span>    token source            <span class="ref">TENTGENT_DAEMON_TOKEN</span>                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="b">Auth · token sources</span>                                                          <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    openai                  keychain  <span class="dim">(</span><span class="ref">OPENAI_API_KEY</span><span class="dim"> overrides)</span>         <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    huggingface             env  <span class="ref">HF_TOKEN</span>                                       <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    anthropic               <span class="dim">not configured</span>   hint: <span class="dim">auth anthropic set</span>       <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="b">.env guidance</span>                                                                 <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    Tentgent reads shell env and cwd <span class="path">.env</span> at process start. Common keys:       <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>      <span class="ref">TENTGENT_HOME</span>              <span class="ref">OPENAI_API_KEY</span>                         <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>      <span class="ref">TENTGENT_PYTHON_DIR</span>        <span class="ref">HF_TOKEN</span>                               <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>      <span class="ref">TENTGENT_PYTHON_ENV_DIR</span>    <span class="ref">ANTHROPIC_API_KEY</span>                      <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>      <span class="ref">TENTGENT_DAEMON_TOKEN</span>      <span class="ref">TENTGENT_LOG_LEVEL</span>                     <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    Edit:  <span class="key">o</span> <span class="path">./.env</span>                 Reload:  <span class="key">R</span>   <span class="dim">(restarts daemon)</span>             <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>  <span class="b">Install / version</span>                                                             <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    cli              <span class="num">0.2.0</span>   <span class="path">~/.local/bin/tentgent</span>                              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    daemon           <span class="num">0.2.0</span>   same binary, foreground today                     <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    python runtime   <span class="num">3.13</span>   <span class="path">.../runtime/python-env/bin/python</span>                  <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    update channel   stable                              <span class="key">[c]</span> change              <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>    last checked     <span class="dim">2026-05-02 09:00</span>      <span class="key">[u]</span> check now                        <span class="rule">│</span>
-<span class="rule">│</span>             <span class="rule">│</span>                                                                                <span class="rule">│</span>
-<span class="rule">├─────────────┴────────────────────────────────────────────────────────────────────────────────┤</span>
-<span class="rule">│</span> <span class="key">↵</span> edit field   <span class="key">c</span> copy auth cmd   <span class="key">o</span> open .env   <span class="key">R</span> reload daemon   <span class="key">?</span> help   <span class="key">q</span> quit    <span class="rule">│</span>
-<span class="rule">└──────────────────────────────────────────────────────────────────────────────────────────────┘</span>
+<span class="rule">┌</span> <span class="b">tentgent · settings</span> <span class="rule">────────────────────────────</span> daemon <span class="ok">●</span> <span class="path">127.0.0.1:8765</span> · <span class="dim">14:22</span> <span class="rule">─┐</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="b">Paths</span>                                                                           <span class="rule">│</span>
+<span class="rule">│</span>    <span class="ref">TENTGENT_HOME</span>            <span class="path">~/.tentgent</span>                       <span class="dim">(env)</span>              <span class="rule">│</span>
+<span class="rule">│</span>    <span class="ref">TENTGENT_PYTHON_DIR</span>      <span class="path">~/.tentgent/python</span>                <span class="dim">(default)</span>          <span class="rule">│</span>
+<span class="rule">│</span>    <span class="ref">TENTGENT_PYTHON_ENV_DIR</span>  <span class="path">~/.tentgent/python/env</span>            <span class="dim">(default)</span>          <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="b">Daemon</span>                                                                          <span class="rule">│</span>
+<span class="rule">│</span>    url                      <span class="path">http://127.0.0.1:8765</span>    <span class="key">[edit]</span>                      <span class="rule">│</span>
+<span class="rule">│</span>    autostart on tui open    on                       <span class="key">[edit]</span>                      <span class="rule">│</span>
+<span class="rule">│</span>    socket                   <span class="path">~/.tentgent/run/daemon.sock</span>                          <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="b">Auth</span>                                                                            <span class="rule">│</span>
+<span class="rule">│</span>    openai        env: <span class="dim">not set</span>    keychain: <span class="tag-ok">[OK]</span>    <span class="acc">▸</span> check · set · remove        <span class="rule">│</span>
+<span class="rule">│</span>    huggingface   env: <span class="ref">HF_TOKEN</span>   keychain: <span class="dim">--</span>      <span class="acc">▸</span> check · set · remove        <span class="rule">│</span>
+<span class="rule">│</span>    anthropic     env: <span class="dim">not set</span>    keychain: <span class="dim">--</span>      <span class="acc">▸</span> check · set · remove        <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="b">.env</span>                                                                            <span class="rule">│</span>
+<span class="rule">│</span>    edit  <span class="key">o</span> <span class="path">~/.tentgent/.env</span>       reload  <span class="key">R</span>   <span class="dim">(restarts daemon)</span>                  <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="b">Install</span>                                                                         <span class="rule">│</span>
+<span class="rule">│</span>    cli            <span class="num">0.4.1</span>   <span class="path">~/.cargo/bin/tentgent</span>                                  <span class="rule">│</span>
+<span class="rule">│</span>    daemon         <span class="num">0.4.1</span>   <span class="path">~/.tentgent/bin/tentgent-daemon</span>                        <span class="rule">│</span>
+<span class="rule">│</span>    python         <span class="num">3.11.7</span>  <span class="path">~/.tentgent/python/env/bin/python</span>                      <span class="rule">│</span>
+<span class="rule">│</span>    update channel <span class="dim">stable</span>                                       <span class="key">[c]</span> change        <span class="rule">│</span>
+<span class="rule">│</span>                                                                                  <span class="rule">│</span>
+<span class="rule">│</span>  <span class="key">↵</span> activate field   <span class="key">Esc</span> back                                                     <span class="rule">│</span>
+<span class="rule">└──────────────────────────────────────────────────────────────────────────────────┘</span>
 </pre>
-      </div>
-
-      <div class="notes">
-        <div>
-          <h4>Read-mostly</h4>
-          <ul>
-            <li>Most settings are sourced from env / config — the source is annotated in parentheses so the operator knows where to change them outside Tentgent.</li>
-            <li><code>[edit]</code> is the explicit signal that a field is mutable from inside the TUI.</li>
-          </ul>
-        </div>
-        <div>
-          <h4>.env guidance, not .env editor</h4>
-          <ul>
-            <li>The TUI does not edit <code>.env</code> in place — it opens it in <code>$EDITOR</code> via <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">o</kbd>.</li>
-            <li><kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">R</kbd> reloads the daemon after .env changes — explicit, never silent.</li>
-          </ul>
-        </div>
-        <div>
-          <h4>Token surface</h4>
-          <ul>
-            <li>Per-provider source is shown — <code>keychain</code>, <code>env VAR</code>, or <code>not configured</code>.</li>
-            <li>Add-token flow lives behind <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">a</kbd>; mutation of existing tokens is intentionally out-of-scope for v1.</li>
-          </ul>
-        </div>
       </div>
     </section>
 
-    <!-- ============ APPENDICES ============ -->
+    <!-- ============ FLOW ============ -->
+    <section id="flow" class="screen">
+      <div class="screen-head">
+        <span class="num">↻</span>
+        <h2>Mode transition</h2>
+        <span class="size">automatic on healthz · manual on r</span>
+      </div>
+      <div class="flow">
+<pre>
+                      <span class="dim">┌─────────────────────┐</span>
+                      <span class="dim">│</span>   tentgent tui      <span class="dim">│</span>
+                      <span class="dim">└──────────┬──────────┘</span>
+                                 <span class="dim">│</span>
+                       <span class="dim">can reach daemon?</span>
+                          <span class="dim">│</span>           <span class="dim">│</span>
+                       <span class="dim">no</span> <span class="dim">│</span>           <span class="dim">│</span> <span class="dim">yes</span>
+                          <span class="dim">▼</span>           <span class="dim">▼</span>
+                   <span class="b1">┌────────────┐</span>  <span class="b2">┌────────────┐</span>
+                   <span class="b1">│ Bootstrap  │</span>  <span class="b2">│ Operator   │</span>
+                   <span class="b1">│ (§B1–B4)   │</span>  <span class="b2">│ (§O1–O4)   │</span>
+                   <span class="b1">└─────┬──────┘</span>  <span class="b2">└─────┬──────┘</span>
+                         <span class="dim">│</span>                <span class="dim">│</span>
+                start daemon (B2)         <span class="dim">▼</span>
+                         <span class="dim">│</span>         function menu
+                         <span class="dim">└──── auto ──┐</span>  selection
+                                      <span class="dim">▼</span>
+                              Servers · Models · …
+                                      <span class="dim">│</span>
+                              Servers › Chat (O3)
+</pre>
+      </div>
+    </section>
+
+    <!-- ============ APPENDIX ============ -->
     <section id="a1" class="screen">
       <div class="screen-head">
         <span class="num">A</span>
-        <h2>100 × 30 fallback (Models)</h2>
-        <span class="size">single-column · ] / [ to page</span>
+        <h2>100 × 30 collapse (Operator)</h2>
+        <span class="size">single column · ] reveals dashboard</span>
       </div>
-      <p class="purpose">When the terminal is at the minimum supported size, the list/detail split collapses into a single column. <code>]</code> / <code>[</code> page between list and detail. Below 100 × 24 the TUI shows a single full-screen "please resize" message.</p>
-
+      <p class="purpose">Below the primary 120 × 36, Operator collapses to the function menu only. <kbd>]</kbd> reveals the dashboard. Bootstrap is already a single column and stays as drawn.</p>
       <div class="term">
         <div class="chrome">
           <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui · models</span>
-          <span class="right">100×30</span>
+          <span class="title">tentgent tui · operator · 100×30</span>
         </div>
 <pre class="tui">
-<span class="rule">┌</span> <span class="b">tentgent · models</span> <span class="rule">─────── </span>daemon <span class="ok">●</span> <span class="path">127.0.0.1:8790</span> <span class="rule">─── </span><span class="dim">14:03</span> <span class="rule">┐</span>
-<span class="rule">│</span> <span class="dim">Status</span>   <span class="rule">│</span>  <span class="dim">list · 3 models · </span><span class="acc">/qwen3</span>                        <span class="rule">│</span>
-<span class="rule">│</span> <span class="nav-on">Models</span>  <span class="acc">▌</span><span class="rule">│</span> <span class="rule">┌───────────────────────────────────────────────┐</span><span class="rule">│</span>
-<span class="rule">│</span> <span class="dim">Adapters</span> <span class="rule">│</span> <span class="rule">│</span> <span class="sel"><span class="acc">▌</span><span class="ref">m·a1b2c3</span>   qwen3-8b      <span class="num">14.9G</span>  fp16    <span class="num">3d</span>  </span><span class="rule">│</span><span class="rule">│</span>
-<span class="rule">│</span> <span class="dim">Datasets</span> <span class="rule">│</span> <span class="rule">│</span>  <span class="ref">m·77f0e2</span>   qwen3-8b       <span class="num">4.6G</span>  q4_K_M  <span class="num">3d</span>  <span class="rule">│</span><span class="rule">│</span>
-<span class="rule">│</span> <span class="dim">Servers</span> <span class="ok">●</span><span class="rule">│</span> <span class="rule">│</span>  <span class="ref">m·c4d810</span>   llama3-8b      <span class="num">8.0G</span>  q8_0    <span class="num">9d</span>  <span class="rule">│</span><span class="rule">│</span>
-<span class="rule">│</span> <span class="dim">Sessions</span> <span class="rule">│</span> <span class="rule">└───────────────────────────────────────────────┘</span><span class="rule">│</span>
-<span class="rule">│</span> <span class="dim">Training</span><span class="wrn">!</span><span class="rule">│</span>  <span class="key">]</span> detail   <span class="key">↵</span> inspect   <span class="key">p</span> pull   <span class="key">x</span> remove        <span class="rule">│</span>
-<span class="rule">│</span> <span class="dim">Settings</span> <span class="rule">│</span>                                                  <span class="rule">│</span>
-<span class="rule">│</span>          <span class="rule">│</span>  selection                                       <span class="rule">│</span>
-<span class="rule">│</span>          <span class="rule">│</span>   <span class="ref">m·a1b2c3</span>   qwen3-8b · <span class="num">14.9 GiB</span> · fp16          <span class="rule">│</span>
-<span class="rule">│</span>          <span class="rule">│</span>   path  <span class="path">~/.tentgent/models/qwen3_8b_a1b2c3</span>       <span class="rule">│</span>
-<span class="rule">├──────────┴──────────────────────────────────────────────────┤</span>
-<span class="rule">│</span> <span class="key">1-8</span> nav  <span class="key">↵</span> open  <span class="key">/</span>find  <span class="key">?</span>help  <span class="key">q</span> quit                       <span class="rule">│</span>
-<span class="rule">└─────────────────────────────────────────────────────────────┘</span>
+<span class="rule">┌</span> <span class="b">tentgent · operator</span> · <span class="ok">●</span> <span class="dim">14:05</span> <span class="rule">─────────────────</span> <span class="rule">┐</span>
+<span class="rule">│</span>                                                    <span class="rule">│</span>
+<span class="rule">│</span>  <span class="b">Functions</span>                                         <span class="rule">│</span>
+<span class="rule">│</span>   <span class="sel"><span class="focus">●</span>  <span class="b">Models</span>             <span class="num">3</span>                         </span> <span class="rule">│</span>
+<span class="rule">│</span>   <span class="dim">○</span>  Adapters           <span class="num">2</span>                          <span class="rule">│</span>
+<span class="rule">│</span>   <span class="dim">○</span>  Datasets           <span class="num">5</span>                          <span class="rule">│</span>
+<span class="rule">│</span>   <span class="dim">○</span>  Servers            <span class="ok">●1</span> / <span class="num">5</span>                     <span class="rule">│</span>
+<span class="rule">│</span>   <span class="dim">○</span>  Sessions           <span class="num">8</span>                          <span class="rule">│</span>
+<span class="rule">│</span>   <span class="dim">○</span>  Training           <span class="ok">●1</span>  <span class="wrn">!1</span>                     <span class="rule">│</span>
+<span class="rule">│</span>   <span class="dim">○</span>  Settings                                       <span class="rule">│</span>
+<span class="rule">│</span>   <span class="dim">○</span>  Quit                                           <span class="rule">│</span>
+<span class="rule">│</span>                                                    <span class="rule">│</span>
+<span class="rule">│</span>  <span class="key">]</span>  show dashboard     <span class="key">↵</span> open     <span class="key">?</span>  help          <span class="rule">│</span>
+<span class="rule">└────────────────────────────────────────────────────┘</span>
 </pre>
-      </div>
-    </section>
-
-    <section id="a2" class="screen">
-      <div class="screen-head">
-        <span class="num">B</span>
-        <h2>Help overlay</h2>
-        <span class="size">? on any screen</span>
-      </div>
-      <p class="purpose">A centered modal listing every key for the current screen. Two columns; groups separated by section headers. <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">?</kbd> or <kbd style="font-family:var(--mono); background:var(--bg-3); color:var(--accent); padding:1px 6px; border-radius:3px; border:1px solid var(--rule-2); font-size:11px;">Esc</kbd> closes.</p>
-
-      <div class="term">
-        <div class="chrome">
-          <div class="dots"><span></span><span></span><span></span></div>
-          <span class="title">tentgent tui · help overlay</span>
-        </div>
-<pre class="tui">
-<span class="dim">                ╔═════════════ </span><span class="modal">Help · servers</span><span class="dim"> ══════════════╗</span>
-<span class="dim">                ║                                           ║</span>
-<span class="dim">                ║  </span><span class="b">Navigation</span>                               <span class="dim">║</span>
-<span class="dim">                ║    </span><span class="key">1-8</span>  jump section     <span class="key">Tab</span>  cycle pane  <span class="dim">║</span>
-<span class="dim">                ║    </span><span class="key">j/k</span>  move row         <span class="key">g/G</span>  top/bottom  <span class="dim">║</span>
-<span class="dim">                ║    </span><span class="key">/</span>    filter           <span class="key">:</span>    command     <span class="dim">║</span>
-<span class="dim">                ║                                           ║</span>
-<span class="dim">                ║  </span><span class="b">Actions</span>                                  <span class="dim">║</span>
-<span class="dim">                ║    </span><span class="key">↵</span>    inspect          <span class="key">s</span>    start       <span class="dim">║</span>
-<span class="dim">                ║    </span><span class="key">S</span>    stop             <span class="key">l</span>    logs        <span class="dim">║</span>
-<span class="dim">                ║    </span><span class="key">c</span>    chat             <span class="key">x</span>    remove      <span class="dim">║</span>
-<span class="dim">                ║    </span><span class="key">y</span>    yank ref         <span class="key">o</span>    open path   <span class="dim">║</span>
-<span class="dim">                ║                                           ║</span>
-<span class="dim">                ║  </span><span class="b">Global</span>                                   <span class="dim">║</span>
-<span class="dim">                ║    </span><span class="key">r</span>    refresh          <span class="key">?</span>    help        <span class="dim">║</span>
-<span class="dim">                ║    </span><span class="key">Esc</span>  back             <span class="key">q</span>    quit        <span class="dim">║</span>
-<span class="dim">                ║                                           ║</span>
-<span class="dim">                ╚═══════════════════════════════════════════╝</span>
-</pre>
-      </div>
-    </section>
-
-    <section id="a3" class="screen">
-      <div class="screen-head">
-        <span class="num">C</span>
-        <h2>Open questions</h2>
-        <span class="size">items needing a product call</span>
-      </div>
-      <p class="purpose">Working assumptions the draft makes that should be confirmed before implementation. Full text in <a href="open-questions.md" style="color:var(--accent);">open-questions.md</a>.</p>
-
-      <div class="row2">
-        <ol style="font-family: var(--sans); color: var(--ink-2); padding-left: 22px;">
-          <li><b>Daemon autostart from TUI</b> — opt-in setting, default off?</li>
-          <li><b>Multi-server chat</b> — auto-pick / prompt / require explicit?</li>
-          <li><b>Token redaction</b> — last-3-chars vs full mask?</li>
-          <li><b>Local cost line</b> — show <code>$0.00 (local)</code>, omit, or replace with energy?</li>
-          <li><b>Refs in lists</b> — 6 chars unique enough?</li>
-          <li><b>Compaction policy surface</b> — Settings, per-session, or both?</li>
-        </ol>
-        <ol start="7" style="font-family: var(--sans); color: var(--ink-2); padding-left: 22px;">
-          <li><b>Training metrics view</b> — sparkline vs ASCII line chart?</li>
-          <li><b>Typed-confirmation threshold</b> — exact list of irreversible actions.</li>
-          <li><b>Provider confirmation scope</b> — every call vs batch only?</li>
-          <li><b>Theme / color</b> — default light + dark, plus <code>NO_COLOR</code>.</li>
-          <li><b>Mouse support</b> — out of scope; if added, which interactions?</li>
-          <li><b>Remote daemon</b> — disable <code>open path</code> when non-localhost?</li>
-        </ol>
       </div>
     </section>
 
@@ -1129,10 +875,11 @@
 </div>
 
 <footer>
-  <span>tentgent · tui design draft v0.1</span>
-  <a href="README.md">README.md</a>
-  <a href="wireframes.md">wireframes.md</a>
-  <a href="open-questions.md">open-questions.md</a>
+  <span>tentgent · tui design v0.2</span>
+  <a href="docs/plans/tui/design/README.md">README.md</a>
+  <a href="docs/plans/tui/design/wireframes.md">wireframes.md</a>
+  <a href="docs/plans/tui/design/open-questions.md">open-questions.md</a>
+  <a href="Tentgent TUI Design v1.html">v1 (archived)</a>
 </footer>
 
 </body>

@@ -100,7 +100,7 @@ auth state are active.
 
 ## Navigation Model
 
-Use a two-pane layout by default:
+Use a two-pane layout by default after the daemon is reachable:
 
 - Left: stable navigation sections.
 - Right: list, detail, chat, logs, or action form for the selected section.
@@ -116,6 +116,61 @@ Primary sections:
 - Sessions: list, inspect, messages, compact, chat resume, delete.
 - Training: LoRA plan list/inspect/create and run list/inspect/logs/metrics.
 - Settings: home path, daemon URL, token source, Python/runtime paths.
+
+The TUI has two top-level interaction modes:
+
+- Bootstrap mode: daemon is down or auth is insufficient for live daemon
+  workflows. Show a focused setup screen with `Start daemon`, daemon URL/token
+  config, explicit per-provider auth setup, settings, and quit. Do not show fake
+  live workflow panels.
+- Operator mode: daemon is reachable. Show a menu plus monitoring dashboard
+  summary. Live workflow data should come through daemon HTTP unless a setting
+  is explicitly local-only.
+
+Bootstrap mode rules:
+
+- `Start daemon` is an explicit action. The TUI must not silently auto-start on
+  launch.
+- Starting should update app state to `starting`, keep the current terminal UI
+  stable, then replace the whole screen with the new daemon state after the
+  detached launch and readiness check finish. Do not clear the terminal, scroll
+  content, or expose launch logs as in-band UI output.
+- When the daemon is down, only local setup and auth setup actions are enabled.
+  Store, server, session, dataset, training, and dashboard workflow sections
+  remain disabled until daemon HTTP is reachable.
+- Provider auth status should not imply secret reads. The default auth summary
+  may show env presence and `keychain: not checked`; it should read Keychain
+  only after the user enters an explicit provider setup/check/set/remove flow.
+- Auto refresh must not read Keychain and must not call daemon routes that read
+  Keychain. Manual auth checks may prompt.
+
+Operator mode rules:
+
+- The landing view is a function menu plus compact monitoring dashboard table:
+  servers, sessions, stores, doctor, daemon status, and auth summary.
+- Dashboard boxes are acceptable, but they are supporting UI, not blocking
+  modal-like interactions.
+- All live workflow reads should go through daemon HTTP in this mode.
+- Settings remain available while the daemon is running. TUI/client preferences
+  such as daemon URL and UI section can update immediately. Daemon bind settings
+  such as host/port and process token state apply to the next daemon start and
+  should be marked as requiring restart.
+- Provider Keychain set/remove should take effect for future daemon workflows
+  that resolve auth after the change. Already launched runtime child processes
+  do not retroactively receive updated environment secrets.
+- Chat uses a separate workspace only after the user selects a running server
+  or starts a chat flow. The operator dashboard is not itself the chat UI.
+
+Interaction controls should preserve the visual style in the design draft:
+
+- Use dynamic tables for inventories, status summaries, and dashboard metrics.
+- Use radio/choice controls such as `●` selected and `○` unselected for option
+  sets.
+- Use explicit selection state and keyboard hints for `↑`/`↓`, Enter, Escape,
+  refresh, and destructive confirmations.
+- Resize events should recompute layout. Wide terminals may show menu plus
+  dashboard table; compact terminals should collapse detail panels and hide
+  nonessential columns before wrapping text.
 
 ## Design Artifacts
 
@@ -180,6 +235,37 @@ Review target:
 - one minimal screen shows daemon status, runtime home, auth summary, and doctor
   summary without launching model runtime work, and settings can edit local
   non-secret setup safely.
+
+### Slice 1.1: TUI Interaction Reset
+
+Fix the Slice 1 skeleton into the intended operator-console interaction model
+before adding read-only navigator workflows.
+
+Goals:
+
+- split app state into Bootstrap and Operator modes
+- make daemon-down landing a focused setup/action screen, not a live dashboard
+- make daemon-running landing a function menu plus monitoring dashboard summary
+- keep the design draft's dense terminal UI style, including dynamic tables,
+  selectable rows, radio-style choices, and keyboard hints
+- remove auto Keychain reads from startup and periodic refresh
+- avoid calling daemon `/v1/auth` automatically from the landing refresh path if
+  it would trigger Keychain prompts
+- keep provider auth setup explicit and provider-scoped
+- make `Start daemon` render a stable `starting` state and then replace the
+  full screen with the resulting state
+- ensure start/refresh interactions never clear the terminal, scroll the UI, or
+  leave partial frames visible
+- make settings editable while the daemon is running, distinguishing immediate
+  TUI/client settings from daemon process settings that require restart
+- handle terminal resize by recalculating layout instead of relying on fixed
+  panel dimensions
+
+Review target:
+
+- a user can launch `tentgent tui`, start a missing daemon, inspect the operator
+  menu/dashboard, and enter explicit auth setup without repeated Keychain
+  prompts or terminal redraw artifacts.
 
 ### Slice 2: Read-Only Navigator
 
