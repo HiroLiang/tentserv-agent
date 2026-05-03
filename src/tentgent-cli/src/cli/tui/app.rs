@@ -2,7 +2,7 @@ use std::{
     env,
     net::IpAddr,
     path::{Path, PathBuf},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -17,7 +17,7 @@ use tentgent_core::{
     daemon::{DaemonInspection, DaemonManager, DEFAULT_DAEMON_PORT},
 };
 use tentgent_http::security::DAEMON_TOKEN_ENV_VAR;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinHandle};
 
 use crate::cli::{
     commands::TuiCommand,
@@ -25,6 +25,11 @@ use crate::cli::{
 };
 
 use super::{
+    chat::{
+        adapter_rows_from_navigator, ChatClient, ChatConflictKind, ChatContextMode, ChatError,
+        ChatFocus, ChatLoadState, ChatMessages, ChatOverview, ChatPhase, ChatSendRequest,
+        ChatSendState, ChatState, ChatStreamEvent, SseDecoder,
+    },
     daemon_client::{DaemonClient, DaemonConnectionState, DaemonSnapshot, TuiTokenSource},
     navigator::{
         count_label, DashboardCountUpdate, DashboardState, NavigatorDetail, NavigatorError,
@@ -85,6 +90,44 @@ enum TuiEvent {
         request_id: u64,
         generation: u64,
         result: Result<ResourceSnapshot, String>,
+    },
+    ChatOverviewFinished {
+        request_id: u64,
+        generation: u64,
+        result: Result<ChatOverview, ChatError>,
+    },
+    ChatSessionCreated {
+        request_id: u64,
+        generation: u64,
+        result: Result<super::chat::ChatSessionRow, ChatError>,
+    },
+    ChatMessagesFinished {
+        request_id: u64,
+        generation: u64,
+        session_ref: String,
+        result: Result<ChatMessages, ChatError>,
+    },
+    ChatDelta {
+        request_id: u64,
+        generation: u64,
+        delta: String,
+    },
+    ChatDone {
+        request_id: u64,
+        generation: u64,
+        finish_reason: String,
+    },
+    ChatSendError {
+        request_id: u64,
+        generation: u64,
+        error: ChatError,
+        retry: Option<ChatSendRequest>,
+        may_have_committed: bool,
+    },
+    ChatNonStreamFinished {
+        request_id: u64,
+        generation: u64,
+        result: Result<String, ChatError>,
     },
 }
 
@@ -147,6 +190,7 @@ pub(super) enum MenuItem {
     ProviderAuth,
     Settings,
     Dashboard,
+    Chat,
     Models,
     Adapters,
     Datasets,
@@ -322,6 +366,7 @@ pub(super) struct TuiApp {
     pub(super) auth_rows: Vec<ProviderAuthRow>,
     pub(super) navigator: NavigatorState,
     pub(super) resources: ResourceState,
+    pub(super) chat: ChatState,
     pub(super) dashboard: DashboardState,
     pub(super) mode: AppMode,
     pub(super) focus: FocusPane,
@@ -339,6 +384,8 @@ pub(super) struct TuiApp {
     pub(super) detail_in_flight: Option<(u64, NavigatorListKind, String)>,
     pub(super) tail_in_flight: Option<(u64, NavigatorListKind)>,
     pub(super) resource_in_flight: Option<u64>,
+    pub(super) chat_in_flight: Option<u64>,
+    chat_task: Option<JoinHandle<()>>,
     generation: u64,
     request_counter: u64,
     flag_daemon_url: Option<String>,
@@ -377,6 +424,7 @@ impl TuiApp {
             auth_rows: provider_env_rows(),
             navigator: NavigatorState::default(),
             resources: ResourceState::default(),
+            chat: ChatState::default(),
             dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
@@ -394,6 +442,8 @@ impl TuiApp {
             detail_in_flight: None,
             tail_in_flight: None,
             resource_in_flight: None,
+            chat_in_flight: None,
+            chat_task: None,
             generation: 0,
             request_counter: 0,
             flag_daemon_url: command.daemon_url,
@@ -437,6 +487,12 @@ impl TuiApp {
                     item: MenuItem::Dashboard,
                     label: "Dashboard",
                     detail: "daemon monitoring summary",
+                    enabled: true,
+                },
+                MenuEntry {
+                    item: MenuItem::Chat,
+                    label: "Chat",
+                    detail: "session workspace",
                     enabled: true,
                 },
                 MenuEntry {
@@ -696,7 +752,9 @@ impl TuiApp {
     }
 
     fn refresh_current_view(&mut self, tx: &TuiEventSender) {
-        if self.selected_menu_entry().item == MenuItem::Resources {
+        if self.selected_menu_entry().item == MenuItem::Chat {
+            self.refresh_chat_view(tx);
+        } else if self.selected_menu_entry().item == MenuItem::Resources {
             self.request_resource_snapshot(tx, "scanning local resources");
         } else if let Some(kind) = self.current_navigator_kind() {
             if self.refresh_active_tail(kind, tx) {
@@ -1022,6 +1080,299 @@ impl TuiApp {
         )
     }
 
+    fn chat_client(&self) -> miette::Result<ChatClient> {
+        ChatClient::new(
+            self.daemon_url.url.clone(),
+            self.daemon_token.token.clone(),
+            self.daemon_token.source,
+        )
+    }
+
+    fn ensure_chat_loaded(&mut self, tx: &TuiEventSender) {
+        if matches!(self.chat.load_state, ChatLoadState::Idle) && self.chat.servers.is_empty() {
+            self.request_chat_overview(tx, "loading chat workspace");
+        }
+    }
+
+    fn refresh_chat_view(&mut self, tx: &TuiEventSender) {
+        if self.chat.phase == ChatPhase::Workspace {
+            if let Some(session_ref) = self.chat.selected_session_ref.clone() {
+                self.request_chat_messages(session_ref, tx, "refreshing chat messages");
+                return;
+            }
+        }
+        self.request_chat_overview(tx, "refreshing chat choices");
+    }
+
+    fn request_chat_overview(&mut self, tx: &TuiEventSender, message: impl Into<String>) {
+        if self.chat_in_flight.is_some() {
+            return;
+        }
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.chat_in_flight = Some(request_id);
+        self.chat.load_state = ChatLoadState::Loading { request_id };
+        self.message = message.into();
+        let client = match self.chat_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.chat_in_flight = None;
+                self.chat.load_state = ChatLoadState::Error {
+                    message: error.to_string(),
+                    stale: !self.chat.servers.is_empty() || !self.chat.sessions.is_empty(),
+                };
+                return;
+            }
+        };
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result = client.overview().await;
+            let _ = tx.send(TuiEvent::ChatOverviewFinished {
+                request_id,
+                generation,
+                result,
+            });
+        });
+    }
+
+    fn request_chat_messages(
+        &mut self,
+        session_ref: String,
+        tx: &TuiEventSender,
+        message: impl Into<String>,
+    ) {
+        if self.chat_in_flight.is_some() {
+            return;
+        }
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.chat_in_flight = Some(request_id);
+        self.chat.load_state = ChatLoadState::Loading { request_id };
+        self.message = message.into();
+        let client = match self.chat_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.chat_in_flight = None;
+                self.chat.load_state = ChatLoadState::Error {
+                    message: error.to_string(),
+                    stale: !self.chat.transcript.is_empty(),
+                };
+                return;
+            }
+        };
+        let session_ref_for_task = session_ref.clone();
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result = match client.inspect_session(&session_ref_for_task).await {
+                Ok(_) => client.session_messages(&session_ref_for_task).await,
+                Err(error) => Err(error),
+            };
+            let _ = tx.send(TuiEvent::ChatMessagesFinished {
+                request_id,
+                generation,
+                session_ref,
+                result,
+            });
+        });
+    }
+
+    fn begin_chat_create_session(&mut self, tx: &TuiEventSender) {
+        if self.chat_in_flight.is_some() || self.chat.send_state.is_in_flight() {
+            self.message = "chat action already in progress".to_string();
+            return;
+        }
+        let Some(server_ref) = self.chat.selected_server_ref.clone() else {
+            self.chat.phase = ChatPhase::ChooseServer;
+            self.message = "choose a running server before creating a session".to_string();
+            return;
+        };
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        let title = format!("TUI chat {}", timestamp_label());
+        let adapter_ref = self.chat.selected_adapter_ref.clone();
+        self.chat_in_flight = Some(request_id);
+        self.chat.send_state = ChatSendState::CreatingSession { request_id };
+        self.message = "creating chat session".to_string();
+        let client = match self.chat_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.chat_in_flight = None;
+                self.chat.send_state = ChatSendState::Error;
+                self.chat.last_error = Some(error.to_string());
+                return;
+            }
+        };
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result = client.create_session(title, server_ref, adapter_ref).await;
+            let _ = tx.send(TuiEvent::ChatSessionCreated {
+                request_id,
+                generation,
+                result,
+            });
+        });
+    }
+
+    fn begin_chat_send(&mut self, tx: &TuiEventSender, stream: bool) {
+        if self.chat_in_flight.is_some() || self.chat.send_state.is_in_flight() {
+            self.message = "chat send already in progress".to_string();
+            return;
+        }
+        let request_id = self.next_request_id();
+        let Some(request) = self.chat_send_request(request_id, stream) else {
+            return;
+        };
+        let generation = self.generation;
+        self.chat_in_flight = Some(request_id);
+        if stream {
+            self.chat
+                .start_pending_send(request_id, request.prompt.clone());
+            self.chat.composer.clear();
+            self.chat.composer_cursor = 0;
+            self.message = "streaming chat turn".to_string();
+        } else {
+            self.chat.pending_user = Some(request.prompt.clone());
+            self.chat.pending_assistant = Some(String::new());
+            self.chat.pending_interrupted = false;
+            self.chat.send_state = ChatSendState::Sending { request_id };
+            self.chat.retry_non_stream = None;
+            self.message = "sending non-stream retry".to_string();
+        }
+        let client = match self.chat_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.chat_in_flight = None;
+                self.chat.send_state = ChatSendState::Error;
+                self.chat.last_error = Some(error.to_string());
+                return;
+            }
+        };
+        let tx = tx.clone();
+        if stream {
+            let request_for_retry = request.clone();
+            let handle = tokio::spawn(async move {
+                run_chat_stream_task(
+                    client,
+                    request,
+                    request_for_retry,
+                    request_id,
+                    generation,
+                    tx,
+                )
+                .await;
+            });
+            self.chat_task = Some(handle);
+        } else {
+            let handle = tokio::spawn(async move {
+                let result = client.post_non_stream(&request).await;
+                let _ = tx.send(TuiEvent::ChatNonStreamFinished {
+                    request_id,
+                    generation,
+                    result,
+                });
+            });
+            self.chat_task = Some(handle);
+        }
+    }
+
+    fn chat_send_request(&mut self, request_id: u64, stream: bool) -> Option<ChatSendRequest> {
+        if self.chat.phase != ChatPhase::Workspace {
+            self.message = "choose a running server and session before sending".to_string();
+            return None;
+        }
+        let Some(server_ref) = self.chat.selected_server_ref.clone() else {
+            self.chat.phase = ChatPhase::ChooseServer;
+            self.message = "choose a running server before sending".to_string();
+            return None;
+        };
+        let Some(session_ref) = self.chat.selected_session_ref.clone() else {
+            self.chat.phase = ChatPhase::ChooseSession;
+            self.message = "choose or create a session before sending".to_string();
+            return None;
+        };
+        let prompt = self.chat.composer.trim().to_string();
+        if prompt.is_empty() {
+            self.message = "composer is empty".to_string();
+            return None;
+        }
+        let context_mode = self.chat.context_mode;
+        Some(ChatSendRequest {
+            request_id,
+            server_ref,
+            session_ref,
+            adapter_ref: self.chat.selected_adapter_ref.clone(),
+            prompt,
+            context_mode,
+            max_session_messages: context_mode.max_session_messages(),
+            stream,
+        })
+    }
+
+    fn begin_chat_retry_non_stream(&mut self, tx: &TuiEventSender) {
+        let Some(request) = self.chat.retry_non_stream.clone() else {
+            self.message = "no non-stream retry is available".to_string();
+            return;
+        };
+        self.chat.composer = request.prompt.clone();
+        self.chat.composer_cursor = self.chat.composer.chars().count();
+        let request_id = self.next_request_id();
+        self.begin_chat_send_with_request(tx, request.with_request_id(request_id).non_stream());
+    }
+
+    fn begin_chat_send_with_request(&mut self, tx: &TuiEventSender, request: ChatSendRequest) {
+        if self.chat_in_flight.is_some() || self.chat.send_state.is_in_flight() {
+            self.message = "chat send already in progress".to_string();
+            return;
+        }
+        let request_id = request.request_id;
+        let generation = self.generation;
+        self.chat_in_flight = Some(request_id);
+        self.chat.pending_user = Some(request.prompt.clone());
+        self.chat.pending_assistant = Some(String::new());
+        self.chat.pending_interrupted = false;
+        self.chat.send_state = ChatSendState::Sending { request_id };
+        self.chat.retry_non_stream = None;
+        self.chat.composer.clear();
+        self.chat.composer_cursor = 0;
+        self.message = "sending non-stream retry".to_string();
+        let client = match self.chat_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.chat_in_flight = None;
+                self.chat.send_state = ChatSendState::Error;
+                self.chat.last_error = Some(error.to_string());
+                return;
+            }
+        };
+        let tx = tx.clone();
+        self.chat_task = Some(tokio::spawn(async move {
+            let result = client.post_non_stream(&request).await;
+            let _ = tx.send(TuiEvent::ChatNonStreamFinished {
+                request_id,
+                generation,
+                result,
+            });
+        }));
+    }
+
+    fn cancel_chat_task(&mut self, tx: &TuiEventSender) {
+        if !self.chat.send_state.is_in_flight() {
+            return;
+        }
+        if let Some(handle) = self.chat_task.take() {
+            handle.abort();
+        }
+        self.bump_generation();
+        self.chat.send_state = ChatSendState::Idle;
+        self.chat.pending_interrupted = true;
+        self.chat.last_error =
+            Some("chat request canceled; refreshing daemon transcript".to_string());
+        self.message = "chat request canceled".to_string();
+        if let Some(session_ref) = self.chat.selected_session_ref.clone() {
+            self.request_chat_messages(session_ref, tx, "refreshing after cancel");
+        }
+    }
+
     fn request_refresh(&mut self, tx: &TuiEventSender, message: impl Into<String>) {
         if self.refresh_in_flight.is_some() {
             return;
@@ -1201,6 +1552,168 @@ impl TuiApp {
                     }
                 }
             }
+            TuiEvent::ChatOverviewFinished {
+                request_id,
+                generation,
+                result,
+            } => {
+                if self.chat_in_flight != Some(request_id) || self.generation != generation {
+                    return Ok(());
+                }
+                self.chat_in_flight = None;
+                match result {
+                    Ok(overview) => {
+                        let adapters = adapter_rows_from_navigator(&self.navigator.adapters.rows);
+                        let running = overview.servers.len();
+                        self.chat
+                            .apply_overview(overview.servers, overview.sessions, adapters);
+                        self.message = if running == 0 {
+                            "no running server; start one from CLI or later server actions"
+                                .to_string()
+                        } else {
+                            format!("loaded chat workspace; {running} running servers")
+                        };
+                    }
+                    Err(error) => self.apply_chat_error(error, tx, false),
+                }
+            }
+            TuiEvent::ChatSessionCreated {
+                request_id,
+                generation,
+                result,
+            } => {
+                if self.chat_in_flight != Some(request_id) || self.generation != generation {
+                    return Ok(());
+                }
+                self.chat_in_flight = None;
+                match result {
+                    Ok(session) => {
+                        self.chat.selected_session_ref = Some(session.session_ref.clone());
+                        self.chat.sessions.insert(0, session);
+                        self.chat.selected_session = 1;
+                        self.chat.send_state = ChatSendState::Idle;
+                        self.chat.recompute_phase();
+                        self.message = "created chat session".to_string();
+                        if let Some(session_ref) = self.chat.selected_session_ref.clone() {
+                            self.request_chat_messages(session_ref, tx, "loading new session");
+                        }
+                    }
+                    Err(error) => self.apply_chat_error(error, tx, true),
+                }
+            }
+            TuiEvent::ChatMessagesFinished {
+                request_id,
+                generation,
+                session_ref,
+                result,
+            } => {
+                if self.chat_in_flight != Some(request_id) || self.generation != generation {
+                    return Ok(());
+                }
+                self.chat_in_flight = None;
+                if self.chat.selected_session_ref.as_deref() != Some(session_ref.as_str()) {
+                    return Ok(());
+                }
+                match result {
+                    Ok(messages) => {
+                        let count = messages.total_messages;
+                        if let Some(selected) = &self.chat.selected_session_ref {
+                            if let Some(session) = self
+                                .chat
+                                .sessions
+                                .iter_mut()
+                                .find(|row| row.session_ref == *selected)
+                            {
+                                session.message_count = Some(count);
+                            }
+                        }
+                        self.chat.apply_messages(messages);
+                        self.chat.recompute_phase();
+                        self.message = format!("loaded {count} session messages");
+                    }
+                    Err(error) => self.apply_chat_error(error, tx, true),
+                }
+            }
+            TuiEvent::ChatDelta {
+                request_id,
+                generation,
+                delta,
+            } => {
+                if self.chat_in_flight != Some(request_id) || self.generation != generation {
+                    return Ok(());
+                }
+                self.chat.append_delta(&delta);
+                self.chat.send_state = ChatSendState::Streaming { request_id };
+            }
+            TuiEvent::ChatDone {
+                request_id,
+                generation,
+                finish_reason,
+            } => {
+                if self.chat_in_flight != Some(request_id) || self.generation != generation {
+                    return Ok(());
+                }
+                self.chat_task = None;
+                self.chat_in_flight = None;
+                self.chat.send_state = ChatSendState::RefreshingAfterSend { request_id };
+                self.message = format!("chat stream done: {finish_reason}; refreshing transcript");
+                if let Some(session_ref) = self.chat.selected_session_ref.clone() {
+                    self.request_chat_messages(session_ref, tx, "refreshing persisted transcript");
+                }
+            }
+            TuiEvent::ChatSendError {
+                request_id,
+                generation,
+                error,
+                retry,
+                may_have_committed,
+            } => {
+                if self.chat_in_flight != Some(request_id) || self.generation != generation {
+                    return Ok(());
+                }
+                self.chat_task = None;
+                self.chat_in_flight = None;
+                if let Some(request) = retry {
+                    self.chat.retry_non_stream = Some(request.non_stream());
+                }
+                self.chat.pending_interrupted = true;
+                self.chat.send_state = ChatSendState::Error;
+                let refresh_after = may_have_committed && self.chat.selected_session_ref.is_some();
+                self.apply_chat_error(error, tx, refresh_after);
+                if refresh_after {
+                    if let Some(session_ref) = self.chat.selected_session_ref.clone() {
+                        self.request_chat_messages(session_ref, tx, "refreshing after chat error");
+                    }
+                }
+            }
+            TuiEvent::ChatNonStreamFinished {
+                request_id,
+                generation,
+                result,
+            } => {
+                if self.chat_in_flight != Some(request_id) || self.generation != generation {
+                    return Ok(());
+                }
+                self.chat_task = None;
+                self.chat_in_flight = None;
+                match result {
+                    Ok(text) => {
+                        self.chat.pending_assistant = Some(text);
+                        self.chat.send_state = ChatSendState::RefreshingAfterSend { request_id };
+                        self.message =
+                            "non-stream retry completed; refreshing persisted transcript"
+                                .to_string();
+                        if let Some(session_ref) = self.chat.selected_session_ref.clone() {
+                            self.request_chat_messages(
+                                session_ref,
+                                tx,
+                                "refreshing persisted transcript",
+                            );
+                        }
+                    }
+                    Err(error) => self.apply_chat_error(error, tx, true),
+                }
+            }
         }
         self.clamp_selection();
         Ok(())
@@ -1340,6 +1853,12 @@ impl TuiApp {
     }
 
     fn handle_normal_key(&mut self, key: KeyEvent, tx: &TuiEventSender) -> miette::Result<()> {
+        if self.selected_menu_entry().item == MenuItem::Chat
+            && self.focus == FocusPane::Detail
+            && self.handle_chat_key(key, tx)?
+        {
+            return Ok(());
+        }
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Esc => {
@@ -1359,15 +1878,25 @@ impl TuiApp {
                 {
                     self.resources.tab.toggle();
                     self.message = format!("Resources tab: {}", self.resources.tab.label());
+                } else if self.selected_menu_entry().item == MenuItem::Chat
+                    && self.focus == FocusPane::Detail
+                {
+                    self.chat.focus = self.chat.focus.next();
+                    self.message = format!("Chat focus: {}", self.chat.focus.label());
                 } else if matches!(
                     self.selected_menu_entry().item,
-                    MenuItem::ProviderAuth | MenuItem::Settings | MenuItem::Resources
+                    MenuItem::ProviderAuth
+                        | MenuItem::Settings
+                        | MenuItem::Resources
+                        | MenuItem::Chat
                 ) || self.current_navigator_kind().is_some()
                 {
                     self.focus = FocusPane::Detail;
                     self.ensure_current_navigator_loaded(tx);
                     if self.selected_menu_entry().item == MenuItem::Resources {
                         self.ensure_resources_loaded(tx);
+                    } else if self.selected_menu_entry().item == MenuItem::Chat {
+                        self.ensure_chat_loaded(tx);
                     }
                 }
             }
@@ -1384,7 +1913,12 @@ impl TuiApp {
             KeyCode::Char('k') => self.begin_provider_key_edit(),
             KeyCode::Char('x') => self.begin_provider_remove_confirm(),
             KeyCode::Char('c') => {
-                if self.selected_menu_entry().item == MenuItem::ProviderAuth {
+                if matches!(
+                    self.selected_menu_entry().item,
+                    MenuItem::Servers | MenuItem::Sessions
+                ) {
+                    self.begin_chat_from_current_navigator(tx);
+                } else if self.selected_menu_entry().item == MenuItem::ProviderAuth {
                     self.begin_provider_action(
                         self.selected_provider(),
                         ProviderActionRequest::Check,
@@ -1395,6 +1929,226 @@ impl TuiApp {
             _ => {}
         }
         Ok(())
+    }
+
+    fn handle_chat_key(&mut self, key: KeyEvent, tx: &TuiEventSender) -> miette::Result<bool> {
+        if self.chat.phase == ChatPhase::Workspace
+            && self.chat.focus == super::chat::ChatFocus::Composer
+        {
+            match key.code {
+                KeyCode::Esc => {
+                    if self.chat.send_state.is_in_flight() {
+                        self.cancel_chat_task(tx);
+                    } else {
+                        self.chat.focus = super::chat::ChatFocus::Chooser;
+                        self.message = "left composer; Esc again returns to menu".to_string();
+                    }
+                    return Ok(true);
+                }
+                KeyCode::Tab => {
+                    self.chat.focus = self.chat.focus.next();
+                    self.message = format!("Chat focus: {}", self.chat.focus.label());
+                    return Ok(true);
+                }
+                KeyCode::Enter => {
+                    if self.chat.send_state.is_idle() {
+                        self.begin_chat_send(tx, true);
+                    } else {
+                        self.message = "chat send in progress; Enter is disabled".to_string();
+                    }
+                    return Ok(true);
+                }
+                KeyCode::Backspace
+                | KeyCode::Delete
+                | KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Home
+                | KeyCode::End
+                | KeyCode::Char(_) => {
+                    if self.chat.send_state.is_idle() {
+                        edit_text_value(
+                            &mut self.chat.composer,
+                            &mut self.chat.composer_cursor,
+                            key.code,
+                        );
+                    } else {
+                        self.message = "composer is locked while chat sends".to_string();
+                    }
+                    return Ok(true);
+                }
+                _ => {}
+            }
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                if self.chat.send_state.is_in_flight() {
+                    self.cancel_chat_task(tx);
+                } else {
+                    self.focus = FocusPane::Menu;
+                }
+                Ok(true)
+            }
+            KeyCode::Tab | KeyCode::Right => {
+                self.chat.focus = self.chat.focus.next();
+                self.message = format!("Chat focus: {}", self.chat.focus.label());
+                Ok(true)
+            }
+            KeyCode::Up => {
+                self.chat.move_selection(-1);
+                Ok(true)
+            }
+            KeyCode::Down => {
+                self.chat.move_selection(1);
+                Ok(true)
+            }
+            KeyCode::Enter => {
+                self.activate_chat_selection(tx);
+                Ok(true)
+            }
+            KeyCode::Char('n') => {
+                self.begin_chat_create_session(tx);
+                Ok(true)
+            }
+            KeyCode::Char('s') => {
+                self.chat.phase = ChatPhase::ChooseServer;
+                self.chat.focus = super::chat::ChatFocus::Chooser;
+                self.message = "choose a running server".to_string();
+                Ok(true)
+            }
+            KeyCode::Char('a') => {
+                self.chat.select_adapter_next();
+                self.message = self
+                    .chat
+                    .selected_adapter_row()
+                    .map(|row| {
+                        format!(
+                            "selected adapter {}; compatibility unverified",
+                            row.short_ref
+                        )
+                    })
+                    .unwrap_or_else(|| "adapter selection cleared".to_string());
+                Ok(true)
+            }
+            KeyCode::Char('r') => {
+                self.refresh_chat_view(tx);
+                Ok(true)
+            }
+            KeyCode::Char('h') => {
+                if self.chat.send_state.is_in_flight() {
+                    self.message =
+                        "chat send in progress; context change applies after it finishes"
+                            .to_string();
+                } else {
+                    self.chat.cycle_context_mode();
+                    self.message = format!(
+                        "chat context for next send: {}",
+                        self.chat.context_mode.label()
+                    );
+                }
+                Ok(true)
+            }
+            KeyCode::Char('f') => {
+                self.begin_chat_retry_non_stream(tx);
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    fn activate_chat_selection(&mut self, tx: &TuiEventSender) {
+        match self.chat.phase {
+            ChatPhase::NoRunningServer => {
+                self.message =
+                    "no running server; Slice 3 does not start servers from TUI".to_string();
+            }
+            ChatPhase::ChooseServer => {
+                self.chat.select_server_by_index(self.chat.selected_server);
+                self.chat.phase = ChatPhase::ChooseSession;
+                self.message = "server selected; choose or create a session".to_string();
+            }
+            ChatPhase::ChooseSession => {
+                if self.chat.selected_session == 0 {
+                    self.begin_chat_create_session(tx);
+                } else {
+                    self.chat
+                        .select_session_by_index(self.chat.selected_session);
+                    self.chat.recompute_phase();
+                    if let Some(session_ref) = self.chat.selected_session_ref.clone() {
+                        self.request_chat_messages(session_ref, tx, "loading session messages");
+                    }
+                }
+            }
+            ChatPhase::Workspace => {
+                if self.chat.focus != super::chat::ChatFocus::Composer {
+                    self.chat.focus = super::chat::ChatFocus::Composer;
+                    self.message = "composer focused".to_string();
+                } else if self.chat.send_state.is_idle() {
+                    self.begin_chat_send(tx, true);
+                }
+            }
+        }
+    }
+
+    fn begin_chat_from_current_navigator(&mut self, tx: &TuiEventSender) {
+        match self.selected_menu_entry().item {
+            MenuItem::Servers => {
+                let Some(row) = self
+                    .navigator
+                    .state(NavigatorListKind::Servers)
+                    .selected_row()
+                    .cloned()
+                else {
+                    self.message = "select a server before opening Chat".to_string();
+                    return;
+                };
+                let running = row
+                    .raw
+                    .get("running")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                if !running {
+                    self.message = "server is not running; Chat needs a running server".to_string();
+                    return;
+                }
+                self.chat.selected_server_ref = Some(row.item_ref.clone());
+                self.chat.selected_session_ref = None;
+                self.chat.selected_session = 0;
+                self.chat.phase = ChatPhase::ChooseSession;
+                self.selected_menu = self
+                    .menu_entries()
+                    .iter()
+                    .position(|entry| entry.item == MenuItem::Chat)
+                    .unwrap_or(self.selected_menu);
+                self.focus = FocusPane::Detail;
+                self.message = "opened Chat from selected server".to_string();
+                self.request_chat_overview(tx, "loading chat sessions");
+            }
+            MenuItem::Sessions => {
+                let Some(row) = self
+                    .navigator
+                    .state(NavigatorListKind::Sessions)
+                    .selected_row()
+                    .cloned()
+                else {
+                    self.message = "select a session before opening Chat".to_string();
+                    return;
+                };
+                self.chat.selected_session_ref = Some(row.item_ref.clone());
+                self.chat.selected_server_ref = None;
+                self.chat.selected_session = 1;
+                self.chat.phase = ChatPhase::ChooseServer;
+                self.selected_menu = self
+                    .menu_entries()
+                    .iter()
+                    .position(|entry| entry.item == MenuItem::Chat)
+                    .unwrap_or(self.selected_menu);
+                self.focus = FocusPane::Detail;
+                self.message = "opened Chat from selected session".to_string();
+                self.request_chat_overview(tx, "loading running servers for session");
+            }
+            _ => {}
+        }
     }
 
     fn move_selection(&mut self, delta: isize) {
@@ -1409,6 +2163,10 @@ impl TuiApp {
         {
             let entries = self.settings_entries();
             self.selected_setting = move_index(self.selected_setting, entries.len(), delta);
+        } else if self.focus == FocusPane::Detail
+            && self.selected_menu_entry().item == MenuItem::Chat
+        {
+            self.chat.move_selection(delta);
         } else if self.focus == FocusPane::Detail {
             if let Some(kind) = self.current_navigator_kind() {
                 self.navigator.state_mut(kind).move_selection(delta);
@@ -1447,6 +2205,10 @@ impl TuiApp {
                 }
             }
             MenuItem::Dashboard => {}
+            MenuItem::Chat => {
+                self.focus = FocusPane::Detail;
+                self.ensure_chat_loaded(tx);
+            }
             MenuItem::Resources => {
                 self.focus = FocusPane::Detail;
                 self.ensure_resources_loaded(tx);
@@ -1640,6 +2402,70 @@ impl TuiApp {
         self.message = format!("{} read failed: {error}", kind.label());
     }
 
+    fn apply_chat_error(
+        &mut self,
+        error: ChatError,
+        tx: &TuiEventSender,
+        refresh_if_down_or_committed: bool,
+    ) {
+        if error.is_auth_required() {
+            self.daemon = DaemonSnapshot {
+                state: DaemonConnectionState::AuthRequired,
+                detail: error.to_string(),
+                status: None,
+                doctor: None,
+            };
+            self.update_mode();
+            self.chat.last_error = Some(error.to_string());
+            self.message = "daemon auth required for Chat".to_string();
+            return;
+        }
+        if error.is_down() {
+            self.chat.load_state = ChatLoadState::Error {
+                message: error.to_string(),
+                stale: !self.chat.transcript.is_empty(),
+            };
+            self.chat.last_error = Some(error.to_string());
+            self.message = "chat request failed; confirming daemon health".to_string();
+            self.request_refresh(tx, "confirming daemon health after chat failure");
+            return;
+        }
+        match &error {
+            ChatError::NotFound(message) => {
+                self.chat.load_state = ChatLoadState::StaleSelection {
+                    message: format!("{message}; refresh and reselect"),
+                };
+                self.message = "selected chat session or server disappeared".to_string();
+            }
+            ChatError::Conflict { kind, message } => {
+                self.chat.last_error = Some(chat_conflict_guidance(*kind, message));
+                self.message = chat_conflict_guidance(*kind, message);
+            }
+            ChatError::StreamUnsupported(message) => {
+                self.chat.last_error = Some(format!(
+                    "{message}; press f for an explicit non-stream retry"
+                ));
+                self.message =
+                    "streaming unavailable; press f to retry non-stream manually".to_string();
+            }
+            ChatError::ServerProxyFailed(message) => {
+                self.chat.last_error = Some(format!(
+                    "{message}; target server may be unreachable, check server health/logs"
+                ));
+                self.message = "target server unreachable; check server logs".to_string();
+            }
+            _ => {
+                self.chat.last_error = Some(error.to_string());
+                self.message = format!("chat failed: {error}");
+            }
+        }
+        if refresh_if_down_or_committed && self.chat.selected_session_ref.is_some() {
+            if let Some(session_ref) = self.chat.selected_session_ref.clone() {
+                self.request_chat_messages(session_ref, tx, "refreshing chat after error");
+            }
+        }
+    }
+
     fn begin_selected_setting_edit(&mut self) {
         match self.selected_setting_entry().item {
             SettingsItem::RuntimeHome => self.begin_home_edit(),
@@ -1786,6 +2612,7 @@ impl TuiApp {
         self.daemon = DaemonSnapshot::idle();
         self.auth_rows = provider_env_rows();
         self.resources = ResourceState::default();
+        self.chat.reset_runtime();
         self.resolve_daemon_endpoint();
         self.message = format!("switched TUI home to {}", self.home.display());
         self.request_refresh(tx, "refreshing daemon after home change");
@@ -1918,7 +2745,7 @@ impl TuiApp {
             .min(self.settings_entries().len().saturating_sub(1));
         if !matches!(
             self.selected_menu_entry().item,
-            MenuItem::ProviderAuth | MenuItem::Settings | MenuItem::Resources
+            MenuItem::ProviderAuth | MenuItem::Settings | MenuItem::Resources | MenuItem::Chat
         ) && self.current_navigator_kind().is_none()
         {
             self.focus = FocusPane::Menu;
@@ -1938,8 +2765,137 @@ impl TuiApp {
         self.detail_in_flight = None;
         self.tail_in_flight = None;
         self.resource_in_flight = None;
+        self.chat_in_flight = None;
+        if let Some(handle) = self.chat_task.take() {
+            handle.abort();
+        }
         self.daemon_action = DaemonActionState::Idle;
     }
+}
+
+async fn run_chat_stream_task(
+    client: ChatClient,
+    request: ChatSendRequest,
+    request_for_retry: ChatSendRequest,
+    request_id: u64,
+    generation: u64,
+    tx: TuiEventSender,
+) {
+    let response = match client.post_stream(&request).await {
+        Ok(response) => response,
+        Err(error) => {
+            let retry = error
+                .is_stream_unsupported()
+                .then_some(request_for_retry.non_stream());
+            let _ = tx.send(TuiEvent::ChatSendError {
+                request_id,
+                generation,
+                error,
+                retry,
+                may_have_committed: false,
+            });
+            return;
+        }
+    };
+    let mut response = response;
+    let mut decoder = SseDecoder::default();
+    loop {
+        let chunk = match response.chunk().await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(error) => {
+                let _ = tx.send(TuiEvent::ChatSendError {
+                    request_id,
+                    generation,
+                    error: ChatError::Down(format!("failed to read chat stream: {error}")),
+                    retry: None,
+                    may_have_committed: true,
+                });
+                return;
+            }
+        };
+        let events = match decoder.push(&chunk) {
+            Ok(events) => events,
+            Err(error) => {
+                let _ = tx.send(TuiEvent::ChatSendError {
+                    request_id,
+                    generation,
+                    error,
+                    retry: None,
+                    may_have_committed: true,
+                });
+                return;
+            }
+        };
+        for event in events {
+            match event {
+                ChatStreamEvent::Delta(delta) => {
+                    let _ = tx.send(TuiEvent::ChatDelta {
+                        request_id,
+                        generation,
+                        delta,
+                    });
+                }
+                ChatStreamEvent::Done(finish_reason) => {
+                    let _ = tx.send(TuiEvent::ChatDone {
+                        request_id,
+                        generation,
+                        finish_reason,
+                    });
+                    return;
+                }
+                ChatStreamEvent::Error(message) => {
+                    let _ = tx.send(TuiEvent::ChatSendError {
+                        request_id,
+                        generation,
+                        error: ChatError::Server(message),
+                        retry: None,
+                        may_have_committed: true,
+                    });
+                    return;
+                }
+            }
+        }
+    }
+    if let Err(error) = decoder.finish(false) {
+        let _ = tx.send(TuiEvent::ChatSendError {
+            request_id,
+            generation,
+            error,
+            retry: None,
+            may_have_committed: true,
+        });
+    }
+}
+
+fn chat_conflict_guidance(kind: ChatConflictKind, message: &str) -> String {
+    match kind {
+        ChatConflictKind::SessionBusy => format!("{message}; retry after this session is idle"),
+        ChatConflictKind::ServerStopped => {
+            "server stopped; choose another running server".to_string()
+        }
+        ChatConflictKind::MultipleRunningServers => {
+            "multiple running servers; choose one explicitly".to_string()
+        }
+        ChatConflictKind::NoRunningServer => {
+            "no running server; Slice 3 does not start servers from TUI".to_string()
+        }
+        ChatConflictKind::CompactionRequired => {
+            "session compaction required; manual compact is deferred".to_string()
+        }
+        ChatConflictKind::CompactionFailed => {
+            "session compaction failed; check server health and logs".to_string()
+        }
+        ChatConflictKind::Other => message.to_string(),
+    }
+}
+
+fn timestamp_label() -> String {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    format!("{seconds}s")
 }
 
 pub(super) async fn run_tui(command: TuiCommand) -> miette::Result<()> {
@@ -2388,6 +3344,7 @@ impl TuiApp {
             auth_rows: provider_env_rows(),
             navigator: NavigatorState::default(),
             resources: ResourceState::default(),
+            chat: ChatState::default(),
             dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
@@ -2405,6 +3362,8 @@ impl TuiApp {
             detail_in_flight: None,
             tail_in_flight: None,
             resource_in_flight: None,
+            chat_in_flight: None,
+            chat_task: None,
             generation: 0,
             request_counter: 0,
             flag_daemon_url: Some("http://127.0.0.1:18791".to_string()),
@@ -2552,6 +3511,10 @@ mod tests {
             .menu_entries()
             .iter()
             .any(|entry| entry.item == MenuItem::Resources));
+        assert!(!app
+            .menu_entries()
+            .iter()
+            .any(|entry| entry.item == MenuItem::Chat));
 
         app.daemon = DaemonSnapshot {
             state: DaemonConnectionState::Ready,
@@ -2565,6 +3528,21 @@ mod tests {
             .menu_entries()
             .iter()
             .any(|entry| entry.item == MenuItem::Resources));
+        assert!(app
+            .menu_entries()
+            .iter()
+            .any(|entry| entry.item == MenuItem::Chat));
+        let chat_index = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Chat)
+            .expect("chat menu");
+        let dashboard_index = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Dashboard)
+            .expect("dashboard menu");
+        assert_eq!(chat_index, dashboard_index + 1);
     }
 
     #[test]
@@ -2626,6 +3604,7 @@ mod tests {
         let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-generation"));
         app.refresh_in_flight = Some(1);
         app.start_in_flight = Some(2);
+        app.chat_in_flight = Some(3);
         app.daemon_action = DaemonActionState::Starting {
             request_id: 2,
             phase: StartPhase::PollingHealthz,
@@ -2637,7 +3616,153 @@ mod tests {
         assert_eq!(app.generation, 1);
         assert_eq!(app.refresh_in_flight, None);
         assert_eq!(app.start_in_flight, None);
+        assert_eq!(app.chat_in_flight, None);
         assert_eq!(app.daemon_action, DaemonActionState::Idle);
+    }
+
+    #[test]
+    fn chat_overview_without_running_server_enters_blocked_state() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-empty"));
+        app.daemon = DaemonSnapshot {
+            state: DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.update_mode();
+
+        app.chat.apply_overview(Vec::new(), Vec::new(), Vec::new());
+
+        assert_eq!(app.chat.phase, ChatPhase::NoRunningServer);
+        assert!(app.chat.selected_server_ref.is_none());
+    }
+
+    #[test]
+    fn chat_send_lifecycle_prevents_double_submit() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-send"));
+        app.chat.phase = ChatPhase::Workspace;
+        app.chat.selected_server_ref = Some("server".to_string());
+        app.chat.selected_session_ref = Some("session".to_string());
+        app.chat.context_mode = ChatContextMode::Last10;
+        app.chat.composer = "hello".to_string();
+
+        let request = app.chat_send_request(7, true).expect("request");
+        assert_eq!(request.request_id, 7);
+        assert_eq!(request.context_mode, ChatContextMode::Last10);
+        assert_eq!(request.max_session_messages, 10);
+        app.chat.start_pending_send(7, request.prompt);
+        app.chat_in_flight = Some(7);
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        app.begin_chat_send(&tx, true);
+
+        assert_eq!(app.message, "chat send already in progress");
+        assert!(app.chat.send_state.is_in_flight());
+    }
+
+    #[test]
+    fn chat_context_toggle_is_local_and_respects_send_state() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-context"));
+        app.chat.phase = ChatPhase::Workspace;
+        app.chat.focus = ChatFocus::Chooser;
+        app.chat.context_mode = ChatContextMode::None;
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        app.handle_chat_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE), &tx)
+            .expect("handled");
+        assert_eq!(app.chat.context_mode, ChatContextMode::Last2);
+
+        app.chat.send_state = ChatSendState::Streaming { request_id: 5 };
+        app.handle_chat_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE), &tx)
+            .expect("handled");
+        assert_eq!(app.chat.context_mode, ChatContextMode::Last2);
+        assert!(app.message.contains("send in progress"));
+    }
+
+    #[test]
+    fn chat_context_key_types_when_composer_is_focused() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-context-typing"));
+        app.chat.phase = ChatPhase::Workspace;
+        app.chat.focus = ChatFocus::Composer;
+        app.chat.context_mode = ChatContextMode::Last2;
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        app.handle_chat_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE), &tx)
+            .expect("handled");
+
+        assert_eq!(app.chat.context_mode, ChatContextMode::Last2);
+        assert_eq!(app.chat.composer, "h");
+    }
+
+    #[test]
+    fn chat_done_refresh_replaces_pending_transcript() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-done"));
+        app.chat.phase = ChatPhase::Workspace;
+        app.chat.selected_session_ref = Some("session".to_string());
+        app.chat.pending_user = Some("hello".to_string());
+        app.chat.pending_assistant = Some("streamed".to_string());
+
+        app.chat.apply_messages(ChatMessages {
+            messages: vec![crate::cli::tui::chat::ChatMessageRow {
+                index: Some(0),
+                role: "assistant".to_string(),
+                content: "persisted".to_string(),
+                created_at: None,
+                server_ref: None,
+                adapter_ref: None,
+            }],
+            total_messages: 1,
+            truncated: false,
+        });
+
+        assert!(app.chat.pending_user.is_none());
+        assert!(app.chat.pending_assistant.is_none());
+        assert_eq!(app.chat.transcript[0].content, "persisted");
+    }
+
+    #[test]
+    fn stream_failure_exposes_manual_non_stream_retry_without_auto_send() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-fallback"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        app.chat_in_flight = Some(9);
+        app.chat.send_state = ChatSendState::Streaming { request_id: 9 };
+        app.generation = 4;
+        let request = ChatSendRequest {
+            request_id: 9,
+            server_ref: "server".to_string(),
+            session_ref: "session".to_string(),
+            adapter_ref: None,
+            prompt: "hello".to_string(),
+            context_mode: ChatContextMode::Last10,
+            max_session_messages: 10,
+            stream: true,
+        };
+
+        app.handle_tui_event(
+            TuiEvent::ChatSendError {
+                request_id: 9,
+                generation: 4,
+                error: ChatError::StreamUnsupported("stream unsupported".to_string()),
+                retry: Some(request.clone()),
+                may_have_committed: false,
+            },
+            &tx,
+        )
+        .expect("event handled");
+
+        assert_eq!(app.chat_in_flight, None);
+        assert!(matches!(app.chat.send_state, ChatSendState::Error));
+        assert_eq!(
+            app.chat.retry_non_stream.as_ref().map(|retry| retry.stream),
+            Some(false)
+        );
+        assert_eq!(
+            app.chat
+                .retry_non_stream
+                .as_ref()
+                .map(|retry| (retry.context_mode, retry.max_session_messages)),
+            Some((ChatContextMode::Last10, 10))
+        );
     }
 
     #[test]

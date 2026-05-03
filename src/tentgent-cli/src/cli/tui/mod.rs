@@ -1,4 +1,6 @@
 mod app;
+mod chat;
+mod chat_render;
 mod daemon_client;
 mod navigator;
 mod render;

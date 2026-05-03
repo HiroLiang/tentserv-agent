@@ -84,6 +84,7 @@ The first screen should be useful immediately after install:
 │ Home: ~/Library/Application Support/com.tentserv.tentgent   Daemon: OK  │
 ├───────────────┬─────────────────────────────────────────────────────────┤
 │ Status        │ Doctor: ready with warnings                             │
+│ Chat          │ Session workspace: choose running server and session     │
 │ Models        │ Auth: OpenAI env, HF missing, Anthropic missing          │
 │ Adapters      │ Models: 2  Adapters: 1  Datasets: 3  Sessions: 4         │
 │ Datasets      │ Running servers: 1  Running train runs: 0                │
@@ -110,6 +111,7 @@ Use a two-pane layout by default after the daemon is reachable:
 Primary sections:
 
 - Status: daemon status, doctor summary, auth status, runtime paths.
+- Chat: session-aware workspace over existing daemon chat/session routes.
 - Models: list, inspect, import/pull shortcuts later.
 - Adapters: list, inspect, bind/import shortcuts later.
 - Datasets: list, inspect, validate/template/export/diff/synth/eval actions.
@@ -165,6 +167,11 @@ Operator mode rules:
   do not retroactively receive updated environment secrets.
 - Chat uses a separate workspace only after the user selects a running server
   or starts a chat flow. The operator dashboard is not itself the chat UI.
+- Chat must make context scope visible. A continued session sends recent
+  persisted session messages back to the model, which is useful for follow-up
+  work but can pollute unrelated topics. New-topic actions and context-size
+  controls should be first-class rather than hidden behind raw session
+  mechanics.
 
 Interaction controls should preserve the visual style in the design draft:
 
@@ -332,17 +339,79 @@ Add a session-aware chat view.
 
 Goals:
 
-- create or resume a session
-- choose a running server and optional adapter
-- send native daemon chat with `session_ref`
-- display bounded session history and compaction status
-- make failures explicit: server stopped, session busy, compaction failed, or
-  context unsupported
+- add `Chat` to Operator mode only, near the top after Dashboard
+- choose a running server; if no server is running, show a blocked state and do
+  not start a server from the TUI
+- create a session through existing `POST /v1/sessions` or resume an existing
+  session through existing session GET routes
+- send native daemon chat through existing `POST /v1/chat` with explicit
+  `server_ref`, `session_ref`, `max_session_messages`, and request messages
+- keep daemon session storage as the source of truth; streaming deltas are
+  transient UI only, and `ChatDone` refreshes bounded session messages
+- stream by default, but never auto-retry non-stream after an ambiguous stream
+  failure; show a visible manual retry action instead
+- do not use `PATCH /v1/sessions/{ref}` in this slice
+- keep adapter selection optional and label compatibility as unverified unless
+  existing metadata proves otherwise
+- prevent double submit while sending or streaming, and make `Esc`
+  state-dependent: cancel in-flight work first, then navigate
+- make failures explicit: stale server/session `404`, server stopped, session
+  busy, compaction required/failed, stream unsupported, and target server proxy
+  failure
 
 Review target:
 
 - users can leave and resume a compact terminal chat session without learning
   the raw session endpoints.
+
+Known issue from Slice 3 smoke:
+
+- A same-session greeting can keep influencing later unrelated prompts because
+  Slice 3 sends the last 50 session messages by default. Small local models are
+  especially prone to repeating the earlier assistant greeting before answering
+  the new question. This is expected from the current session semantics, but the
+  TUI does not yet make "continue session" versus "new topic" explicit enough.
+
+### Slice 3.1: Chat Context Controls
+
+Make chat context scope explicit before adding store/server mutations.
+
+Goals:
+
+- add a visible chat context mode to the workspace header and metadata pane:
+  `none`, `last 2`, `last 10`, and `last 50`
+- default new TUI chat sessions and resumed sessions to `last 2` unless the
+  user changes it during the current TUI run
+- do not persist context mode into session metadata, config, or any new store in
+  this slice
+- keep `n` as "new session/new topic" and make that label visible in the footer
+  and chooser; it creates a new session and does not clear, rewrite, compact,
+  fork, delete, or mutate the current session
+- add a quick context toggle key, such as `h`, that cycles context modes without
+  leaving the workspace; it must not mutate an in-flight send request
+- send the selected mode as `max_session_messages` on `POST /v1/chat`; `none`
+  means `max_session_messages: 0`, no prior persisted messages, only the current
+  user request
+- keep transcript display separate from send context: the UI may still refresh
+  `GET /v1/sessions/{ref}/messages?tail=50` while sending only the selected
+  context window to the model
+- capture context mode, `max_session_messages`, prompt, session ref, server ref,
+  adapter ref, and stream mode into the immutable send request before dispatch
+- show a warning when a session has repeated greeting-like turns or when the
+  transcript is long enough that prior context may dominate small local models;
+  these warnings are local, bounded to the refreshed transcript tail, and never
+  block send
+- preserve daemon session storage as the source of truth; context mode is a TUI
+  send preference, not a second transcript store
+- do not add daemon routes, session schema fields, compaction actions, or
+  transcript rewrites in this slice; the allowed mutation set remains session
+  create plus chat send
+
+Review target:
+
+- a user can clearly choose between continuing a conversation and starting a new
+  topic, and unrelated prompts no longer inherit earlier greeting behavior by
+  accident.
 
 ### Slice 4: Store And Dataset Actions
 
@@ -380,13 +449,16 @@ Review target:
 
 - Should `tentgent tui` auto-start a daemon when token and bind settings are
   safe, or should it only show the exact command to run?
-- Should the first chat view support streaming immediately, or ship non-stream
-  first and add streaming after layout settles?
-
 Resolved in Slice 1:
 
 - `tentgent tui` does not silently auto-start the daemon. It may start the
   daemon after an explicit `s` action through the shared detached-launch helper,
   using the resolved daemon URL host/port as the start target.
+
+Resolved in Slice 3:
+
+- The first Chat workspace streams by default. Non-stream fallback is available
+  only as an explicit user action when the stream failure is known to be
+  pre-processing or mapping-related, avoiding duplicate chat turns.
 - Provider key setup may be exposed in TUI only as a guarded local
   `AuthManager`/Keychain flow. No daemon HTTP secret mutation route is added.

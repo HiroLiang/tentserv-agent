@@ -2268,6 +2268,44 @@ tags = []
     }
 
     #[test]
+    fn chat_turn_zero_context_uses_only_request_messages() {
+        let home = unique_home("chat-turn-zero-context");
+        write_session(
+            &home,
+            "cececececece000000000000",
+            "Chat",
+            "2026-05-01T00:00:00Z",
+            "2026-05-01T00:10:00Z",
+            2,
+            Some(&[
+                message("user", "old greeting"),
+                message("assistant", "old answer"),
+            ]),
+        );
+        let manager = SessionManager::new_with_home(Some(&home)).expect("manager");
+
+        let turn = manager
+            .begin_chat_turn(
+                "cececececece",
+                0,
+                vec![SessionMessageInput {
+                    role: "user".to_string(),
+                    content: "new topic".to_string(),
+                    server_ref: None,
+                    adapter_ref: None,
+                    metadata: json!({}),
+                }],
+            )
+            .expect("turn");
+
+        assert!(turn.truncated);
+        assert_eq!(turn.historical_messages, 0);
+        assert_eq!(turn.max_session_messages, 0);
+        assert_eq!(turn.context_messages.len(), 1);
+        assert_eq!(turn.context_messages[0].content, "new topic");
+    }
+
+    #[test]
     fn chat_turn_rejects_selected_tool_messages_and_large_context() {
         let home = unique_home("chat-turn-invalid");
         write_session(

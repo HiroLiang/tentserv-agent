@@ -12,6 +12,7 @@ use super::{
         AppMode, BootstrapReason, DaemonActionState, FocusPane, InputLine, MenuItem, StartPhase,
         TuiApp,
     },
+    chat_render::render_chat,
     daemon_client::{token_source_label, url_source_label},
     navigator::{DashboardCard, NavigatorListKind, NavigatorLoadState},
     resource_render::{render_resources, resource_summary_lines},
@@ -128,6 +129,7 @@ fn render_detail(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         MenuItem::ProviderAuth => render_provider_detail(frame, area, app),
         MenuItem::Settings => render_settings_detail(frame, area, app),
         MenuItem::Dashboard => render_dashboard(frame, area, app),
+        MenuItem::Chat => render_chat(frame, area, app),
         MenuItem::Models
         | MenuItem::Adapters
         | MenuItem::Datasets
@@ -591,7 +593,7 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         lines.push(render_input_line(input));
     } else {
         lines.push(Line::from(
-            "↑/↓ move | Enter select/inspect | / filter | Tab detail/subtab | r refresh/scan | l logs | m messages | p metrics | Esc back | q quit",
+        "↑/↓ move | Enter select/inspect | / filter | Tab detail/subtab | r refresh/scan | h context | l logs | m messages | p metrics | Esc back | q quit",
         ));
     }
     if !app.message.is_empty() {
@@ -767,5 +769,30 @@ mod tests {
         terminal
             .draw(|frame| render(frame, &app))
             .expect("compact render");
+    }
+
+    #[test]
+    fn compact_chat_layout_renders_without_panic() {
+        let home = std::env::temp_dir().join("tentgent-tui-render-chat");
+        let mut app = TuiApp::test_app(home);
+        app.daemon = crate::cli::tui::daemon_client::DaemonSnapshot {
+            state: crate::cli::tui::daemon_client::DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.mode = AppMode::Operator;
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Chat)
+            .expect("chat menu");
+        app.focus = FocusPane::Detail;
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+
+        terminal
+            .draw(|frame| render(frame, &app))
+            .expect("compact chat render");
     }
 }

@@ -110,6 +110,12 @@ curl -sS http://127.0.0.1:8790/v1/status
 tentgent tui
 ```
 
+TUI 的 Operator mode 現在包含 `Chat` workspace，可透過既有 daemon
+session/chat route 選擇 running server、建立或續接 session，並串流回覆；
+預設只送出最近 2 則 persisted session messages 作為 context，composer
+沒有 focus 時可按 `h` 在 `none` / `last 2` / `last 10` / `last 50` 間切換。
+server/model lifecycle 與刪除/cleanup 類 mutation 仍保留在後續 slices。
+
 完整 daemon API、endpoint、response shape、auth 與 error mapping 請看 [docs/contracts/http-daemon.md](../../../docs/contracts/http-daemon.md)。
 
 ## API 與 Contracts

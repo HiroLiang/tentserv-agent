@@ -78,8 +78,16 @@ metadata, or the default URL.
 
 With the daemon running, use the operator menu to browse read-only models,
 adapters, datasets, servers, sessions, train plans, and train runs. Navigator
-tail views use bounded requests for logs, metrics, and session messages; no TUI
-POST/PATCH/DELETE workflow is part of Slice 2.
+tail views use bounded requests for logs, metrics, and session messages.
+
+The `Chat` menu entry is the first TUI mutation surface. It is limited to
+existing daemon session/chat routes: `POST /v1/sessions` to create a session and
+`POST /v1/chat` to send a turn. It streams by default, refreshes persisted
+messages after completion, and never calls `PATCH /v1/sessions`, `/v1/auth`, or
+server/model lifecycle routes. TUI chat defaults to `last 2` context, can cycle
+`none` / `last 2` / `last 10` / `last 50` with `h` when the composer is not
+focused, and keeps transcript display tail separate from the context sent to
+`POST /v1/chat`.
 
 The `Resources` menu entry is read-only and local: press `r` there to run a
 bounded runtime-home disk/process scan. The normal dashboard refresh path should

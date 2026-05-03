@@ -63,8 +63,16 @@ default port.
 When the daemon is running, the TUI can browse models, adapters, datasets,
 servers, sessions, train plans, and train runs in read-only navigator screens.
 Server logs, session message tails, train run metrics, and train run logs are
-bounded read-only views; chat and mutation workflows remain on the CLI until
-later TUI slices.
+bounded read-only views.
+
+The Operator menu includes `Chat`, a session workspace over existing daemon
+session and chat routes. It can choose a running server, create or resume a
+session, stream assistant output through `POST /v1/chat`, and refresh the
+persisted session transcript. Chat defaults to sending only the last 2 persisted
+session messages as context; focus outside the composer and press `h` to cycle
+`none`, `last 2`, `last 10`, and `last 50`. The transcript display still shows a
+bounded tail separately. The TUI does not start servers, pull models, delete
+sessions, compact manually, or store transcript files itself.
 
 The Operator menu also includes `Resources`, a read-only local monitor for
 runtime-home storage, daemon/server/train process pressure, disk-free state, and

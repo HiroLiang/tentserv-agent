@@ -110,6 +110,13 @@ terminal UI operator console を開く:
 tentgent tui
 ```
 
+TUI の Operator mode には `Chat` workspace があり、既存の daemon
+session/chat route で running server を選び、session を作成または再開して
+streaming 応答を表示できます。デフォルトでは直近 2 件の persisted
+session messages だけを context として送り、composer 以外に focus がある時は
+`h` で `none` / `last 2` / `last 10` / `last 50` を切り替えます。server/model
+lifecycle や delete/cleanup 系の mutation は後続 slices に残します。
+
 完整な daemon API、endpoints、response shapes、auth、error mapping は [docs/contracts/http-daemon.md](../../../docs/contracts/http-daemon.md) を参照してください。
 
 ## API と Contracts
