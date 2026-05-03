@@ -69,11 +69,17 @@ cargo run -- tui
 cargo run -- tui --home "$TENTGENT_HOME"
 ```
 
-The TUI is daemon-first for live status, auth, and doctor data. It does not
-silently auto-start the daemon on launch; press `s` inside the TUI to start the
-daemon explicitly through the shared detached-launch helper. The TUI derives
-the start host and port from the resolved daemon URL, including `--daemon-url`,
-`TENTGENT_DAEMON_URL`, config, metadata, or the default URL.
+The TUI is daemon-first for live status, doctor data, and read-only operator
+navigation. It does not silently auto-start the daemon on launch; select
+`Start daemon` and press Enter to start the daemon explicitly through the shared
+detached-launch helper. The TUI derives the start host and port from the
+resolved daemon URL, including `--daemon-url`, `TENTGENT_DAEMON_URL`, config,
+metadata, or the default URL.
+
+With the daemon running, use the operator menu to browse read-only models,
+adapters, datasets, servers, sessions, train plans, and train runs. Navigator
+tail views use bounded requests for logs, metrics, and session messages; no TUI
+POST/PATCH/DELETE workflow is part of Slice 2.
 
 Use a token-enabled daemon when checking auth-required behavior:
 

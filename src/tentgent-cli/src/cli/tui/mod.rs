@@ -1,5 +1,6 @@
 mod app;
 mod daemon_client;
+mod navigator;
 mod render;
 mod terminal;
 

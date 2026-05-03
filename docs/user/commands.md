@@ -50,14 +50,21 @@ tentgent tui --home /path/to/tentgent-home
 tentgent tui --daemon-url http://127.0.0.1:8790
 ```
 
-The TUI uses daemon HTTP for live status, auth, and doctor data. It uses shared
-local code only for bootstrap config, daemon discovery, explicit daemon start,
-and guarded Keychain-backed provider setup.
+The TUI uses daemon HTTP for live status, doctor data, and read-only operator
+navigation. It uses shared local code only for bootstrap config, daemon
+discovery, explicit daemon start, and guarded Keychain-backed provider setup.
 
-When the daemon is down, pressing `s` in the TUI starts a local daemon through
-the same detached-launch helper as `tentgent daemon start`. The start host and
-port come from the resolved daemon URL, so `--daemon-url
-http://127.0.0.1:8791` starts `127.0.0.1:8791` rather than the default port.
+When the daemon is down, select `Start daemon` and press Enter to start a local
+daemon through the same detached-launch helper as `tentgent daemon start`. The
+start host and port come from the configured daemon host/port, so
+`--daemon-url http://127.0.0.1:8791` starts `127.0.0.1:8791` rather than the
+default port.
+
+When the daemon is running, the TUI can browse models, adapters, datasets,
+servers, sessions, train plans, and train runs in read-only navigator screens.
+Server logs, session message tails, train run metrics, and train run logs are
+bounded read-only views; chat and mutation workflows remain on the CLI until
+later TUI slices.
 
 Daemon URL discovery order is `--daemon-url`,
 `TENTGENT_DAEMON_URL`, `<TENTGENT_HOME>/config.toml` `[daemon].url`,

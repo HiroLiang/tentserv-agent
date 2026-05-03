@@ -4,6 +4,11 @@ use reqwest::StatusCode;
 use serde_json::Value;
 use tentgent_core::config::DaemonUrlSource;
 
+use super::navigator::{
+    count_label, parse_detail, parse_list, parse_tail, DashboardCountUpdate, NavigatorDetail,
+    NavigatorError, NavigatorListKind, NavigatorRow, TailPane, TailSource,
+};
+
 const DAEMON_HTTP_TIMEOUT: Duration = Duration::from_millis(700);
 #[cfg(test)]
 pub(super) const AUTO_REFRESH_PATHS: [&str; 3] = ["/healthz", "/v1/status", "/v1/doctor"];
@@ -166,6 +171,65 @@ impl DaemonClient {
             return None;
         }
         response.json::<Value>().await.ok()
+    }
+
+    pub(super) async fn list_navigator(
+        &self,
+        kind: NavigatorListKind,
+    ) -> Result<Vec<NavigatorRow>, NavigatorError> {
+        let path = kind.list_path();
+        let value = self.get_json_value(path).await?;
+        parse_list(kind, value).map_err(|error| {
+            NavigatorError::Protocol(format!("invalid {} JSON: {error}", kind.label()))
+        })
+    }
+
+    pub(super) async fn inspect_navigator(
+        &self,
+        kind: NavigatorListKind,
+        item_ref: &str,
+    ) -> Result<NavigatorDetail, NavigatorError> {
+        let path = kind.inspect_path(item_ref);
+        let value = self.get_json_value(&path).await?;
+        parse_detail(kind, value).map_err(|error| {
+            NavigatorError::Protocol(format!("invalid {} detail JSON: {error}", kind.label()))
+        })
+    }
+
+    pub(super) async fn fetch_tail(&self, source: TailSource) -> Result<TailPane, NavigatorError> {
+        let path = source.path();
+        let value = self.get_json_value(&path).await?;
+        parse_tail(source, value)
+            .map_err(|error| NavigatorError::Protocol(format!("invalid tail JSON: {error}")))
+    }
+
+    pub(super) async fn dashboard_counts(&self) -> Vec<DashboardCountUpdate> {
+        let mut updates = Vec::new();
+        for kind in NavigatorListKind::ALL_DASHBOARD {
+            let result = self
+                .list_navigator(kind)
+                .await
+                .map(|rows| count_label(kind, &rows));
+            updates.push(DashboardCountUpdate { kind, result });
+        }
+        updates
+    }
+
+    async fn get_json_value(&self, path: &str) -> Result<Value, NavigatorError> {
+        let response = self.get(path).send().await.map_err(|error| {
+            if error.is_timeout() {
+                NavigatorError::Timeout(format!("GET {path} timed out: {error}"))
+            } else {
+                NavigatorError::Down(format!("GET {path} failed: {error}"))
+            }
+        })?;
+        if let Some(error) = NavigatorError::from_status(response.status(), path) {
+            return Err(error);
+        }
+        response
+            .json::<Value>()
+            .await
+            .map_err(|error| NavigatorError::Protocol(format!("invalid {path} JSON: {error}")))
     }
 
     fn endpoint(&self, path: &str) -> String {

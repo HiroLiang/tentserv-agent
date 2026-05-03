@@ -13,6 +13,7 @@ use super::{
         TuiApp,
     },
     daemon_client::{token_source_label, url_source_label},
+    navigator::{DashboardCard, NavigatorListKind, NavigatorLoadState},
 };
 
 pub(super) fn render(frame: &mut Frame<'_>, app: &TuiApp) {
@@ -131,7 +132,7 @@ fn render_detail(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         | MenuItem::Datasets
         | MenuItem::Servers
         | MenuItem::Sessions
-        | MenuItem::Training => render_slice2_placeholder(frame, area, app),
+        | MenuItem::Training => render_navigator(frame, area, app),
     }
 }
 
@@ -358,7 +359,7 @@ fn render_dashboard(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     lines.push(Line::from(""));
     lines.extend(doctor_summary_lines(app.daemon.doctor.as_ref()));
     lines.push(Line::from(""));
-    lines.push(Line::from("Slice 2 will add read-only navigators for models, servers, sessions, datasets, and training."));
+    lines.extend(dashboard_count_lines(app));
 
     frame.render_widget(
         Paragraph::new(lines)
@@ -372,23 +373,212 @@ fn render_dashboard(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     );
 }
 
-fn render_slice2_placeholder(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
-    let entry = app.selected_menu_entry();
-    let lines = vec![
-        Line::from(vec![
-            Span::styled(entry.label, Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" is not implemented in Slice 1.1."),
-        ]),
-        Line::from(""),
-        Line::from("This operator shell intentionally lands before read-only navigators."),
-        Line::from("Use Dashboard and Settings in this slice."),
-    ];
+fn render_navigator(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let Some(kind) = app.current_navigator_kind() else {
+        return;
+    };
+    let state = app.navigator.state(kind);
+    if let Some(tail) = &state.active_tail {
+        let mut lines = vec![
+            line_kv("source", tail.source.title()),
+            line_kv("loaded_at", &tail.loaded_at),
+            line_kv("truncated", tail.truncated.to_string()),
+            line_kv("scroll", tail.scroll_offset.to_string()),
+        ];
+        if let Some(error) = &tail.error {
+            lines.push(line_kv("error", error));
+        }
+        lines.push(Line::from(""));
+        for line in tail
+            .lines
+            .iter()
+            .take(area.height.saturating_sub(8) as usize)
+        {
+            lines.push(Line::from(line.clone()));
+        }
+        frame.render_widget(
+            Paragraph::new(lines)
+                .block(
+                    Block::default()
+                        .title(tail.source.title())
+                        .borders(Borders::ALL),
+                )
+                .wrap(Wrap { trim: false }),
+            area,
+        );
+        return;
+    }
+
+    let rows = state.visible_rows();
+    let chunks = if area.height > 18 {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(8), Constraint::Length(9)])
+            .split(area)
+    } else {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(6), Constraint::Length(5)])
+            .split(area)
+    };
+    render_navigator_table(frame, chunks[0], app, kind);
+    render_navigator_detail(frame, chunks[1], app, kind, rows.len());
+}
+
+fn render_navigator_table(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    app: &TuiApp,
+    kind: NavigatorListKind,
+) {
+    let state = app.navigator.state(kind);
+    let visible = state.visible_rows();
+    let headers = kind.column_headers();
+    let compact = area.width < 110;
+    let rows = visible.iter().enumerate().map(|(index, row)| {
+        let selected = index == state.selected_index && app.focus == FocusPane::Detail;
+        let marker = if index == state.selected_index {
+            if selected {
+                "●"
+            } else {
+                ">"
+            }
+        } else {
+            "○"
+        };
+        let style = if selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        let mut cells = vec![Cell::from(marker.to_string())];
+        let take = if compact { 3 } else { 5 };
+        for value in row.columns.iter().take(take) {
+            cells.push(Cell::from(value.clone()));
+        }
+        Row::new(cells).style(style)
+    });
+    let mut header_cells = vec![Cell::from("")];
+    let take = if compact { 3 } else { 5 };
+    header_cells.extend(headers.iter().take(take).map(|value| Cell::from(*value)));
+    let widths = if compact {
+        vec![
+            Constraint::Length(2),
+            Constraint::Length(14),
+            Constraint::Length(16),
+            Constraint::Min(18),
+        ]
+    } else {
+        vec![
+            Constraint::Length(2),
+            Constraint::Length(14),
+            Constraint::Length(14),
+            Constraint::Length(18),
+            Constraint::Length(18),
+            Constraint::Min(20),
+        ]
+    };
+    let title = if kind == NavigatorListKind::TrainPlans || kind == NavigatorListKind::TrainRuns {
+        format!(
+            "{} · {} tab · filter `{}` · {} rows · {}",
+            kind.title(),
+            app.navigator.training_tab.label(),
+            state.filter,
+            visible.len(),
+            state.load_state.label()
+        )
+    } else {
+        format!(
+            "{} · filter `{}` · {} rows · {}",
+            kind.title(),
+            state.filter,
+            visible.len(),
+            state.load_state.label()
+        )
+    };
     frame.render_widget(
-        Paragraph::new(lines)
-            .block(Block::default().title(entry.label).borders(Borders::ALL))
-            .wrap(Wrap { trim: true }),
+        Table::new(rows, widths)
+            .header(Row::new(header_cells).style(Style::default().add_modifier(Modifier::BOLD)))
+            .block(Block::default().title(title).borders(Borders::ALL)),
         area,
     );
+}
+
+fn render_navigator_detail(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    app: &TuiApp,
+    kind: NavigatorListKind,
+    visible_count: usize,
+) {
+    let state = app.navigator.state(kind);
+    let mut lines = Vec::new();
+    if visible_count == 0 {
+        lines.push(Line::from(match &state.load_state {
+            NavigatorLoadState::Idle => "not loaded; press r to refresh",
+            NavigatorLoadState::Loading { .. } => "loading rows",
+            NavigatorLoadState::Ready => "empty",
+            NavigatorLoadState::Error { .. } | NavigatorLoadState::StaleItem { .. } => {
+                "no visible rows; see state above"
+            }
+        }));
+    } else if let Some(row) = state.selected_row() {
+        lines.push(Line::from(vec![
+            Span::styled("Selected ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(&row.item_ref),
+        ]));
+        lines.push(line_kv("short_ref", row.short_ref.as_str()));
+        if let Some(detail) = state.selected_detail() {
+            lines.push(line_kv("detail_ref", detail.item_ref.as_str()));
+            lines.push(line_kv("detail_loaded_at", detail.loaded_at.as_str()));
+            lines.push(line_kv(
+                "raw_fields",
+                detail
+                    .raw
+                    .as_object()
+                    .map(|object| object.len().to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+            ));
+            for (key, value) in detail.lines.iter().take(6) {
+                lines.push(line_kv(key.as_str(), value.as_str()));
+            }
+        } else {
+            for (key, value) in row.summary.iter().take(7) {
+                lines.push(line_kv(key.as_str(), value.as_str()));
+            }
+        }
+    }
+    lines.push(Line::from(""));
+    lines.extend(navigator_action_lines(kind, app));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title("Detail").borders(Borders::ALL))
+            .wrap(Wrap { trim: false }),
+        area,
+    );
+}
+
+fn navigator_action_lines(kind: NavigatorListKind, app: &TuiApp) -> Vec<Line<'static>> {
+    let mut actions = vec![Line::from(
+        "Enter inspect | / filter | r refresh | Esc menu | no mutations in Slice 2",
+    )];
+    match kind {
+        NavigatorListKind::Servers => actions.push(Line::from(format!(
+            "l load {} log | o toggle stdout/stderr",
+            app.navigator.state(kind).server_log_kind.label()
+        ))),
+        NavigatorListKind::Sessions => actions.push(Line::from("m load message tail")),
+        NavigatorListKind::TrainPlans => actions.push(Line::from("Tab switch Plans/Runs")),
+        NavigatorListKind::TrainRuns => {
+            actions.push(Line::from(
+                "l load raw log | p load metrics | Tab switch Plans/Runs",
+            ));
+        }
+        _ => {}
+    }
+    actions
 }
 
 fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
@@ -397,7 +587,7 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         lines.push(render_input_line(input));
     } else {
         lines.push(Line::from(
-            "↑/↓ move | Enter select/edit | Tab detail | Esc menu | r refresh | q quit | provider: k set key, x remove",
+            "↑/↓ move | Enter select/inspect | / filter | Tab detail/training tab | r refresh | l logs | m messages | p metrics | Esc back | q quit",
         ));
     }
     if !app.message.is_empty() {
@@ -469,6 +659,45 @@ fn auth_summary_lines(app: &TuiApp) -> Vec<Line<'static>> {
         )));
     }
     lines
+}
+
+fn dashboard_count_lines(app: &TuiApp) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(Span::styled(
+        "Inventory",
+        Style::default().add_modifier(Modifier::BOLD),
+    ))];
+    for kind in [
+        NavigatorListKind::Models,
+        NavigatorListKind::Adapters,
+        NavigatorListKind::Datasets,
+        NavigatorListKind::Servers,
+        NavigatorListKind::Sessions,
+        NavigatorListKind::TrainPlans,
+        NavigatorListKind::TrainRuns,
+    ] {
+        lines.push(dashboard_card_line(app.dashboard.card(kind)));
+    }
+    lines
+}
+
+fn dashboard_card_line(card: DashboardCard) -> Line<'static> {
+    let count = card.count_label.unwrap_or_else(|| "--".to_string());
+    let stale = if card.stale { " stale" } else { "" };
+    let updated = card
+        .last_ok
+        .map(|value| format!(" ok@{value}"))
+        .unwrap_or_default();
+    let error = card
+        .error
+        .map(|value| format!("; error: {value}"))
+        .unwrap_or_default();
+    Line::from(vec![
+        Span::styled(
+            format!("{}: ", card.label),
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::raw(format!("{count}{stale}{updated}{error}")),
+    ])
 }
 
 fn doctor_summary_lines(doctor: Option<&Value>) -> Vec<Line<'static>> {

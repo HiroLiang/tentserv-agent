@@ -2056,6 +2056,7 @@ dependencies = [
  "ratatui",
  "reqwest",
  "rpassword",
+ "serde",
  "serde_json",
  "tentgent-core",
  "tentgent-http",

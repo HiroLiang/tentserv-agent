@@ -26,6 +26,11 @@ use crate::cli::{
 
 use super::{
     daemon_client::{DaemonClient, DaemonConnectionState, DaemonSnapshot, TuiTokenSource},
+    navigator::{
+        count_label, DashboardCountUpdate, DashboardState, NavigatorDetail, NavigatorError,
+        NavigatorListKind, NavigatorLoadState, NavigatorRow, NavigatorState, TailPane, TailSource,
+        LOG_TAIL_BYTES, SESSION_MESSAGES_TAIL, TRAIN_METRICS_TAIL,
+    },
     terminal::TerminalSession,
 };
 
@@ -52,6 +57,26 @@ enum TuiEvent {
         provider: Provider,
         result: ProviderActionResult,
     },
+    NavigatorListFinished {
+        request_id: u64,
+        generation: u64,
+        kind: NavigatorListKind,
+        result: Result<Vec<NavigatorRow>, NavigatorError>,
+    },
+    NavigatorDetailFinished {
+        request_id: u64,
+        generation: u64,
+        kind: NavigatorListKind,
+        item_ref: String,
+        result: Result<NavigatorDetail, NavigatorError>,
+    },
+    NavigatorTailFinished {
+        request_id: u64,
+        generation: u64,
+        kind: NavigatorListKind,
+        source: TailSource,
+        result: Result<TailPane, NavigatorError>,
+    },
 }
 
 #[derive(Debug)]
@@ -62,6 +87,7 @@ struct RefreshData {
     daemon_url: DaemonUrlResolution,
     daemon_token: TuiDaemonToken,
     daemon: DaemonSnapshot,
+    dashboard_counts: Option<Vec<DashboardCountUpdate>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,12 +217,34 @@ pub(super) struct ProviderAuthRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum InputMode {
     Normal,
-    EditingHome { value: String, cursor: usize },
-    EditingDaemonHost { value: String, cursor: usize },
-    EditingDaemonPort { value: String, cursor: usize },
-    EditingDaemonToken { value: String, cursor: usize },
-    EditingProviderKey { provider: Provider, value: String },
-    ConfirmRemove { provider: Provider },
+    EditingHome {
+        value: String,
+        cursor: usize,
+    },
+    EditingDaemonHost {
+        value: String,
+        cursor: usize,
+    },
+    EditingDaemonPort {
+        value: String,
+        cursor: usize,
+    },
+    EditingDaemonToken {
+        value: String,
+        cursor: usize,
+    },
+    EditingFilter {
+        kind: NavigatorListKind,
+        value: String,
+        cursor: usize,
+    },
+    EditingProviderKey {
+        provider: Provider,
+        value: String,
+    },
+    ConfirmRemove {
+        provider: Provider,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -258,6 +306,8 @@ pub(super) struct TuiApp {
     pub(super) daemon_token: TuiDaemonToken,
     pub(super) daemon: DaemonSnapshot,
     pub(super) auth_rows: Vec<ProviderAuthRow>,
+    pub(super) navigator: NavigatorState,
+    pub(super) dashboard: DashboardState,
     pub(super) mode: AppMode,
     pub(super) focus: FocusPane,
     pub(super) selected_menu: usize,
@@ -270,6 +320,9 @@ pub(super) struct TuiApp {
     pub(super) refresh_in_flight: Option<u64>,
     pub(super) start_in_flight: Option<u64>,
     pub(super) provider_action_in_flight: Option<(u64, Provider)>,
+    pub(super) navigator_in_flight: Option<(u64, NavigatorListKind)>,
+    pub(super) detail_in_flight: Option<(u64, NavigatorListKind, String)>,
+    pub(super) tail_in_flight: Option<(u64, NavigatorListKind)>,
     generation: u64,
     request_counter: u64,
     flag_daemon_url: Option<String>,
@@ -306,6 +359,8 @@ impl TuiApp {
             daemon_token,
             daemon: DaemonSnapshot::idle(),
             auth_rows: provider_env_rows(),
+            navigator: NavigatorState::default(),
+            dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
             selected_menu: 0,
@@ -318,6 +373,9 @@ impl TuiApp {
             refresh_in_flight: None,
             start_in_flight: None,
             provider_action_in_flight: None,
+            navigator_in_flight: None,
+            detail_in_flight: None,
+            tail_in_flight: None,
             generation: 0,
             request_counter: 0,
             flag_daemon_url: command.daemon_url,
@@ -378,38 +436,38 @@ impl TuiApp {
                 MenuEntry {
                     item: MenuItem::Models,
                     label: "Models",
-                    detail: "Slice 2 navigator",
-                    enabled: false,
+                    detail: "read-only navigator",
+                    enabled: true,
                 },
                 MenuEntry {
                     item: MenuItem::Adapters,
                     label: "Adapters",
-                    detail: "Slice 2 navigator",
-                    enabled: false,
+                    detail: "read-only navigator",
+                    enabled: true,
                 },
                 MenuEntry {
                     item: MenuItem::Datasets,
                     label: "Datasets",
-                    detail: "Slice 2 navigator",
-                    enabled: false,
+                    detail: "read-only navigator",
+                    enabled: true,
                 },
                 MenuEntry {
                     item: MenuItem::Servers,
                     label: "Servers",
-                    detail: "Slice 2 navigator",
-                    enabled: false,
+                    detail: "read-only navigator",
+                    enabled: true,
                 },
                 MenuEntry {
                     item: MenuItem::Sessions,
                     label: "Sessions",
-                    detail: "Slice 2 navigator",
-                    enabled: false,
+                    detail: "read-only navigator",
+                    enabled: true,
                 },
                 MenuEntry {
                     item: MenuItem::Training,
                     label: "Training",
-                    detail: "Slice 2 navigator",
-                    enabled: false,
+                    detail: "plans / runs",
+                    enabled: true,
                 },
             ],
         }
@@ -504,6 +562,9 @@ impl TuiApp {
             InputMode::EditingDaemonToken { value, cursor } => {
                 Some(input_line("daemon token", value, *cursor, true))
             }
+            InputMode::EditingFilter { value, cursor, .. } => {
+                Some(input_line("filter", value, *cursor, false))
+            }
             InputMode::EditingProviderKey { provider, value } => Some(format!(
                 "{} key: {}",
                 provider.display_name(),
@@ -581,6 +642,309 @@ impl TuiApp {
         daemon_url_port(&self.daemon_url.url)
             .map(|port| port.to_string())
             .unwrap_or_else(|| format!("(implicit {DEFAULT_DAEMON_PORT})"))
+    }
+
+    pub(super) fn current_navigator_kind(&self) -> Option<NavigatorListKind> {
+        match self.selected_menu_entry().item {
+            MenuItem::Models => Some(NavigatorListKind::Models),
+            MenuItem::Adapters => Some(NavigatorListKind::Adapters),
+            MenuItem::Datasets => Some(NavigatorListKind::Datasets),
+            MenuItem::Servers => Some(NavigatorListKind::Servers),
+            MenuItem::Sessions => Some(NavigatorListKind::Sessions),
+            MenuItem::Training => Some(self.navigator.training_tab.list_kind()),
+            _ => None,
+        }
+    }
+
+    fn ensure_current_navigator_loaded(&mut self, tx: &TuiEventSender) {
+        let Some(kind) = self.current_navigator_kind() else {
+            return;
+        };
+        if matches!(
+            self.navigator.state(kind).load_state,
+            NavigatorLoadState::Idle
+        ) {
+            self.request_navigator_list(kind, tx, format!("loading {}", kind.label()));
+        }
+    }
+
+    fn refresh_current_view(&mut self, tx: &TuiEventSender) {
+        if let Some(kind) = self.current_navigator_kind() {
+            if self.refresh_active_tail(kind, tx) {
+                return;
+            }
+            self.request_navigator_list(kind, tx, format!("refreshing {}", kind.label()));
+        } else {
+            self.request_refresh(tx, "refreshing daemon status");
+        }
+    }
+
+    fn request_navigator_list(
+        &mut self,
+        kind: NavigatorListKind,
+        tx: &TuiEventSender,
+        message: impl Into<String>,
+    ) {
+        if self.navigator_in_flight.is_some() {
+            return;
+        }
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.navigator_in_flight = Some((request_id, kind));
+        self.navigator.state_mut(kind).load_state = NavigatorLoadState::Loading { request_id };
+        self.message = message.into();
+        let client = match self.daemon_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.navigator_in_flight = None;
+                self.navigator.state_mut(kind).load_state = NavigatorLoadState::Error {
+                    message: error.to_string(),
+                    stale: !self.navigator.state(kind).rows.is_empty(),
+                };
+                return;
+            }
+        };
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result = client.list_navigator(kind).await;
+            let _ = tx.send(TuiEvent::NavigatorListFinished {
+                request_id,
+                generation,
+                kind,
+                result,
+            });
+        });
+    }
+
+    fn request_selected_detail(&mut self, kind: NavigatorListKind, tx: &TuiEventSender) {
+        if self.detail_in_flight.is_some() {
+            return;
+        }
+        let Some(item_ref) = self
+            .navigator
+            .state(kind)
+            .selected_row()
+            .map(|row| row.item_ref.clone())
+        else {
+            self.message = format!("{} has no selected row", kind.label());
+            return;
+        };
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.detail_in_flight = Some((request_id, kind, item_ref.clone()));
+        self.message = format!("inspecting {item_ref}");
+        let client = match self.daemon_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.detail_in_flight = None;
+                self.navigator.state_mut(kind).load_state = NavigatorLoadState::Error {
+                    message: error.to_string(),
+                    stale: true,
+                };
+                return;
+            }
+        };
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result = client.inspect_navigator(kind, &item_ref).await;
+            let _ = tx.send(TuiEvent::NavigatorDetailFinished {
+                request_id,
+                generation,
+                kind,
+                item_ref,
+                result,
+            });
+        });
+    }
+
+    fn request_current_tail(&mut self, tx: &TuiEventSender) {
+        let Some(kind) = self.current_navigator_kind() else {
+            return;
+        };
+        let source = match kind {
+            NavigatorListKind::Servers => {
+                let state = self.navigator.state(kind);
+                let Some(row) = state.selected_row() else {
+                    self.message = "select a server before opening logs".to_string();
+                    return;
+                };
+                TailSource::ServerLog {
+                    server_ref: row.item_ref.clone(),
+                    kind: state.server_log_kind,
+                    tail_bytes: LOG_TAIL_BYTES,
+                }
+            }
+            NavigatorListKind::TrainRuns => {
+                let Some(row) = self.navigator.state(kind).selected_row() else {
+                    self.message = "select a train run before opening logs".to_string();
+                    return;
+                };
+                TailSource::TrainRunRawLog {
+                    run_ref: row.item_ref.clone(),
+                    tail_bytes: LOG_TAIL_BYTES,
+                }
+            }
+            NavigatorListKind::Sessions => {
+                self.request_session_messages(tx);
+                return;
+            }
+            _ => {
+                self.message =
+                    "logs are available for servers and train runs in Slice 2".to_string();
+                return;
+            }
+        };
+        self.request_tail(kind, source, tx);
+    }
+
+    fn request_session_messages(&mut self, tx: &TuiEventSender) {
+        let Some(kind) = self.current_navigator_kind() else {
+            return;
+        };
+        if kind != NavigatorListKind::Sessions {
+            return;
+        }
+        let Some(row) = self.navigator.state(kind).selected_row() else {
+            self.message = "select a session before opening messages".to_string();
+            return;
+        };
+        self.request_tail(
+            kind,
+            TailSource::SessionMessages {
+                session_ref: row.item_ref.clone(),
+                tail: SESSION_MESSAGES_TAIL,
+            },
+            tx,
+        );
+    }
+
+    fn request_train_metrics(&mut self, tx: &TuiEventSender) {
+        let kind = NavigatorListKind::TrainRuns;
+        if self.current_navigator_kind() != Some(kind) {
+            self.message = "metrics are available on Training Runs".to_string();
+            return;
+        }
+        let Some(row) = self.navigator.state(kind).selected_row() else {
+            self.message = "select a train run before opening metrics".to_string();
+            return;
+        };
+        self.request_tail(
+            kind,
+            TailSource::TrainRunMetrics {
+                run_ref: row.item_ref.clone(),
+                tail: TRAIN_METRICS_TAIL,
+            },
+            tx,
+        );
+    }
+
+    fn request_tail(&mut self, kind: NavigatorListKind, source: TailSource, tx: &TuiEventSender) {
+        if self.tail_in_flight.is_some() {
+            return;
+        }
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.tail_in_flight = Some((request_id, kind));
+        self.message = format!("loading {}", source.title());
+        let client = match self.daemon_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.tail_in_flight = None;
+                self.navigator.state_mut(kind).load_state = NavigatorLoadState::Error {
+                    message: error.to_string(),
+                    stale: true,
+                };
+                return;
+            }
+        };
+        let source_for_task = source.clone();
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result = client.fetch_tail(source_for_task).await;
+            let _ = tx.send(TuiEvent::NavigatorTailFinished {
+                request_id,
+                generation,
+                kind,
+                source,
+                result,
+            });
+        });
+    }
+
+    fn refresh_active_tail(&mut self, kind: NavigatorListKind, tx: &TuiEventSender) -> bool {
+        let Some(source) = self
+            .navigator
+            .state(kind)
+            .active_tail
+            .as_ref()
+            .map(|tail| tail.source.clone())
+        else {
+            return false;
+        };
+        self.request_tail(kind, source, tx);
+        true
+    }
+
+    fn close_tail_view(&mut self) -> bool {
+        let Some(kind) = self.current_navigator_kind() else {
+            return false;
+        };
+        let state = self.navigator.state_mut(kind);
+        if state.active_tail.is_some() {
+            state.active_tail = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn toggle_training_tab(&mut self, tx: &TuiEventSender) {
+        self.navigator.training_tab.toggle();
+        let kind = self.navigator.training_tab.list_kind();
+        self.message = format!("Training tab: {}", self.navigator.training_tab.label());
+        self.request_navigator_list(kind, tx, format!("loading {}", kind.label()));
+    }
+
+    fn toggle_server_log_kind(&mut self) {
+        if self.current_navigator_kind() != Some(NavigatorListKind::Servers) {
+            return;
+        }
+        let state = self.navigator.state_mut(NavigatorListKind::Servers);
+        state.server_log_kind.toggle();
+        state.active_tail = None;
+        self.message = format!("server log source: {}", state.server_log_kind.label());
+    }
+
+    fn begin_filter_edit(&mut self) {
+        let Some(kind) = self.current_navigator_kind() else {
+            self.message = "filter is available inside navigator screens".to_string();
+            return;
+        };
+        self.focus = FocusPane::Detail;
+        let value = self.navigator.state(kind).filter.clone();
+        let cursor = value.chars().count();
+        self.input_mode = InputMode::EditingFilter {
+            kind,
+            value,
+            cursor,
+        };
+        self.message = "enter applies local filter; esc cancels".to_string();
+    }
+
+    fn save_filter(&mut self, kind: NavigatorListKind, value: String) {
+        self.bump_generation();
+        self.navigator
+            .state_mut(kind)
+            .set_filter(value.trim().to_string());
+        self.message = format!("filtered {}", kind.label());
+    }
+
+    fn daemon_client(&self) -> miette::Result<DaemonClient> {
+        DaemonClient::new(
+            self.daemon_url.url.clone(),
+            self.daemon_token.token.clone(),
+            self.daemon_token.source,
+        )
     }
 
     fn request_refresh(&mut self, tx: &TuiEventSender, message: impl Into<String>) {
@@ -694,6 +1058,49 @@ impl TuiApp {
                 self.set_provider_state(provider, result.state);
                 self.message = result.message;
             }
+            TuiEvent::NavigatorListFinished {
+                request_id,
+                generation,
+                kind,
+                result,
+            } => {
+                if self.navigator_in_flight != Some((request_id, kind))
+                    || self.generation != generation
+                {
+                    return Ok(());
+                }
+                self.navigator_in_flight = None;
+                self.apply_navigator_list_result(kind, result);
+            }
+            TuiEvent::NavigatorDetailFinished {
+                request_id,
+                generation,
+                kind,
+                item_ref,
+                result,
+            } => {
+                if self.detail_in_flight != Some((request_id, kind, item_ref.clone()))
+                    || self.generation != generation
+                {
+                    return Ok(());
+                }
+                self.detail_in_flight = None;
+                self.apply_navigator_detail_result(kind, item_ref, result);
+            }
+            TuiEvent::NavigatorTailFinished {
+                request_id,
+                generation,
+                kind,
+                source,
+                result,
+            } => {
+                if self.tail_in_flight != Some((request_id, kind)) || self.generation != generation
+                {
+                    return Ok(());
+                }
+                self.tail_in_flight = None;
+                self.apply_tail_result(kind, source, result);
+            }
         }
         self.clamp_selection();
         Ok(())
@@ -764,6 +1171,26 @@ impl TuiApp {
                     self.input_mode = InputMode::EditingDaemonToken { value, cursor };
                 }
             },
+            InputMode::EditingFilter {
+                kind,
+                mut value,
+                mut cursor,
+            } => match key.code {
+                KeyCode::Enter => {
+                    self.save_filter(kind, value);
+                }
+                KeyCode::Esc => {
+                    self.message = "filter edit canceled".to_string();
+                }
+                _ => {
+                    edit_text_value(&mut value, &mut cursor, key.code);
+                    self.input_mode = InputMode::EditingFilter {
+                        kind,
+                        value,
+                        cursor,
+                    };
+                }
+            },
             InputMode::EditingProviderKey {
                 provider,
                 mut value,
@@ -802,20 +1229,37 @@ impl TuiApp {
     fn handle_normal_key(&mut self, key: KeyEvent, tx: &TuiEventSender) -> miette::Result<()> {
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Esc => self.focus = FocusPane::Menu,
+            KeyCode::Esc => {
+                if self.close_tail_view() {
+                    self.message = "closed tail pane".to_string();
+                } else {
+                    self.focus = FocusPane::Menu;
+                }
+            }
             KeyCode::Tab | KeyCode::Right => {
-                if matches!(
+                if self.selected_menu_entry().item == MenuItem::Training
+                    && self.focus == FocusPane::Detail
+                {
+                    self.toggle_training_tab(tx);
+                } else if matches!(
                     self.selected_menu_entry().item,
                     MenuItem::ProviderAuth | MenuItem::Settings
-                ) {
+                ) || self.current_navigator_kind().is_some()
+                {
                     self.focus = FocusPane::Detail;
+                    self.ensure_current_navigator_loaded(tx);
                 }
             }
             KeyCode::Left => self.focus = FocusPane::Menu,
             KeyCode::Down => self.move_selection(1),
             KeyCode::Up => self.move_selection(-1),
             KeyCode::Enter => self.activate_selected(tx)?,
-            KeyCode::Char('r') => self.request_refresh(tx, "refreshing daemon status"),
+            KeyCode::Char('r') => self.refresh_current_view(tx),
+            KeyCode::Char('/') => self.begin_filter_edit(),
+            KeyCode::Char('l') => self.request_current_tail(tx),
+            KeyCode::Char('m') => self.request_session_messages(tx),
+            KeyCode::Char('p') => self.request_train_metrics(tx),
+            KeyCode::Char('o') => self.toggle_server_log_kind(),
             KeyCode::Char('k') => self.begin_provider_key_edit(),
             KeyCode::Char('x') => self.begin_provider_remove_confirm(),
             KeyCode::Char('c') => {
@@ -844,6 +1288,13 @@ impl TuiApp {
         {
             let entries = self.settings_entries();
             self.selected_setting = move_index(self.selected_setting, entries.len(), delta);
+        } else if self.focus == FocusPane::Detail {
+            if let Some(kind) = self.current_navigator_kind() {
+                self.navigator.state_mut(kind).move_selection(delta);
+            } else {
+                let entries = self.menu_entries();
+                self.selected_menu = move_index(self.selected_menu, entries.len(), delta);
+            }
         } else {
             let entries = self.menu_entries();
             self.selected_menu = move_index(self.selected_menu, entries.len(), delta);
@@ -881,7 +1332,18 @@ impl TuiApp {
             | MenuItem::Servers
             | MenuItem::Sessions
             | MenuItem::Training => {
-                self.message = format!("{} navigator lands in Slice 2", entry.label);
+                self.focus = FocusPane::Detail;
+                if let Some(kind) = self.current_navigator_kind() {
+                    if matches!(
+                        self.navigator.state(kind).load_state,
+                        NavigatorLoadState::Idle
+                    ) || self.navigator.state(kind).rows.is_empty()
+                    {
+                        self.request_navigator_list(kind, tx, format!("loading {}", kind.label()));
+                    } else {
+                        self.request_selected_detail(kind, tx);
+                    }
+                }
             }
         }
         Ok(())
@@ -942,6 +1404,115 @@ impl TuiApp {
                 result,
             });
         });
+    }
+
+    fn apply_navigator_list_result(
+        &mut self,
+        kind: NavigatorListKind,
+        result: Result<Vec<NavigatorRow>, NavigatorError>,
+    ) {
+        match result {
+            Ok(rows) => {
+                let count = rows.len();
+                let label = count_label(kind, &rows);
+                self.navigator.state_mut(kind).apply_rows(rows);
+                self.dashboard.apply_updates(vec![DashboardCountUpdate {
+                    kind,
+                    result: Ok(label),
+                }]);
+                self.message = format!("loaded {count} {}", kind.label());
+            }
+            Err(error) => self.apply_navigator_error(kind, error, false),
+        }
+    }
+
+    fn apply_navigator_detail_result(
+        &mut self,
+        kind: NavigatorListKind,
+        item_ref: String,
+        result: Result<NavigatorDetail, NavigatorError>,
+    ) {
+        match result {
+            Ok(detail) => {
+                self.navigator
+                    .state_mut(kind)
+                    .detail_cache
+                    .insert(item_ref.clone(), detail);
+                self.navigator.state_mut(kind).load_state = NavigatorLoadState::Ready;
+                self.message = format!("inspected {item_ref}");
+            }
+            Err(error) => self.apply_navigator_error(kind, error, true),
+        }
+    }
+
+    fn apply_tail_result(
+        &mut self,
+        kind: NavigatorListKind,
+        source: TailSource,
+        result: Result<TailPane, NavigatorError>,
+    ) {
+        match result {
+            Ok(tail) => {
+                self.navigator.state_mut(kind).active_tail = Some(tail);
+                self.navigator.state_mut(kind).load_state = NavigatorLoadState::Ready;
+                self.message = format!("loaded {}", source.title());
+            }
+            Err(error) => {
+                if error.is_not_found() {
+                    self.navigator.state_mut(kind).active_tail = Some(TailPane {
+                        source,
+                        loaded_at: "not loaded".to_string(),
+                        scroll_offset: 0,
+                        truncated: false,
+                        lines: Vec::new(),
+                        error: Some(error.to_string()),
+                    });
+                    self.navigator.state_mut(kind).load_state = NavigatorLoadState::StaleItem {
+                        message: error.to_string(),
+                    };
+                    self.message = "selected tail target disappeared; refresh the list".to_string();
+                } else {
+                    self.apply_navigator_error(kind, error, true);
+                }
+            }
+        }
+    }
+
+    fn apply_navigator_error(
+        &mut self,
+        kind: NavigatorListKind,
+        error: NavigatorError,
+        selected_item: bool,
+    ) {
+        if error.is_auth_required() {
+            self.daemon = DaemonSnapshot {
+                state: DaemonConnectionState::AuthRequired,
+                detail: error.to_string(),
+                status: None,
+                doctor: None,
+            };
+            self.update_mode();
+            self.message = "daemon auth required for navigator data".to_string();
+            return;
+        }
+        if error.is_down() {
+            self.daemon = DaemonSnapshot::down(error.to_string());
+            self.update_mode();
+            self.message = "daemon became unreachable".to_string();
+            return;
+        }
+        let stale = !self.navigator.state(kind).rows.is_empty();
+        self.navigator.state_mut(kind).load_state = if error.is_not_found() && selected_item {
+            NavigatorLoadState::StaleItem {
+                message: format!("{error}; refresh to update the list"),
+            }
+        } else {
+            NavigatorLoadState::Error {
+                message: error.to_string(),
+                stale,
+            }
+        };
+        self.message = format!("{} read failed: {error}", kind.label());
     }
 
     fn begin_selected_setting_edit(&mut self) {
@@ -1150,6 +1721,9 @@ impl TuiApp {
         self.daemon_url = data.daemon_url;
         self.daemon_token = data.daemon_token;
         self.daemon = data.daemon;
+        if let Some(counts) = data.dashboard_counts {
+            self.dashboard.apply_updates(counts);
+        }
         self.update_mode();
         self.message = "refreshed daemon state".to_string();
     }
@@ -1219,7 +1793,8 @@ impl TuiApp {
         if !matches!(
             self.selected_menu_entry().item,
             MenuItem::ProviderAuth | MenuItem::Settings
-        ) {
+        ) && self.current_navigator_kind().is_none()
+        {
             self.focus = FocusPane::Menu;
         }
     }
@@ -1233,6 +1808,9 @@ impl TuiApp {
         self.generation = self.generation.saturating_add(1);
         self.start_in_flight = None;
         self.refresh_in_flight = None;
+        self.navigator_in_flight = None;
+        self.detail_in_flight = None;
+        self.tail_in_flight = None;
         self.daemon_action = DaemonActionState::Idle;
     }
 }
@@ -1310,6 +1888,11 @@ async fn collect_refresh(inputs: RefreshInputs) -> Result<RefreshData, String> {
     )
     .map_err(|error| error.to_string())?;
     let daemon = client.refresh_auto().await;
+    let dashboard_counts = if daemon.state == DaemonConnectionState::Ready {
+        Some(client.dashboard_counts().await)
+    } else {
+        None
+    };
     Ok(RefreshData {
         inspection,
         config,
@@ -1317,6 +1900,7 @@ async fn collect_refresh(inputs: RefreshInputs) -> Result<RefreshData, String> {
         daemon_url,
         daemon_token,
         daemon,
+        dashboard_counts,
     })
 }
 
@@ -1675,6 +2259,8 @@ impl TuiApp {
             daemon_token: resolve_tui_daemon_token(None, None, None),
             daemon: DaemonSnapshot::idle(),
             auth_rows: provider_env_rows(),
+            navigator: NavigatorState::default(),
+            dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
             selected_menu: 0,
@@ -1687,6 +2273,9 @@ impl TuiApp {
             refresh_in_flight: None,
             start_in_flight: None,
             provider_action_in_flight: None,
+            navigator_in_flight: None,
+            detail_in_flight: None,
+            tail_in_flight: None,
             generation: 0,
             request_counter: 0,
             flag_daemon_url: Some("http://127.0.0.1:18791".to_string()),
@@ -1914,6 +2503,7 @@ mod tests {
                 status: None,
                 doctor: None,
             },
+            dashboard_counts: None,
         };
 
         app.handle_tui_event(
@@ -1927,6 +2517,87 @@ mod tests {
         .expect("event handled");
 
         assert_eq!(app.daemon.state, DaemonConnectionState::Down);
+    }
+
+    #[test]
+    fn navigator_auth_error_enters_auth_required_bootstrap() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-nav-auth"));
+
+        app.apply_navigator_list_result(
+            NavigatorListKind::Models,
+            Err(NavigatorError::AuthRequired("token missing".to_string())),
+        );
+
+        assert_eq!(app.mode, AppMode::Bootstrap(BootstrapReason::AuthRequired));
+        assert_eq!(app.daemon.state, DaemonConnectionState::AuthRequired);
+    }
+
+    #[test]
+    fn navigator_404_marks_selected_item_stale_without_auth_transition() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-nav-404"));
+        app.daemon = DaemonSnapshot {
+            state: DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.update_mode();
+
+        app.apply_navigator_detail_result(
+            NavigatorListKind::Models,
+            "missing".to_string(),
+            Err(NavigatorError::NotFound("missing".to_string())),
+        );
+
+        assert_eq!(app.mode, AppMode::Operator);
+        assert!(matches!(
+            app.navigator.state(NavigatorListKind::Models).load_state,
+            NavigatorLoadState::StaleItem { .. }
+        ));
+    }
+
+    #[test]
+    fn filter_change_invalidates_in_flight_navigator_results() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-filter"));
+        app.navigator_in_flight = Some((9, NavigatorListKind::Models));
+        app.detail_in_flight = Some((10, NavigatorListKind::Models, "model".to_string()));
+        app.tail_in_flight = Some((11, NavigatorListKind::Servers));
+
+        app.save_filter(NavigatorListKind::Models, "qwen".to_string());
+
+        assert_eq!(app.navigator_in_flight, None);
+        assert_eq!(app.detail_in_flight, None);
+        assert_eq!(app.tail_in_flight, None);
+        assert_eq!(
+            app.navigator.state(NavigatorListKind::Models).filter,
+            "qwen"
+        );
+    }
+
+    #[test]
+    fn training_tab_switch_stays_inside_training_navigator() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-training"));
+        app.daemon = DaemonSnapshot {
+            state: DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.update_mode();
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Training)
+            .expect("training entry");
+        app.focus = FocusPane::Detail;
+
+        app.navigator.training_tab.toggle();
+
+        assert_eq!(
+            app.current_navigator_kind(),
+            Some(NavigatorListKind::TrainRuns)
+        );
+        assert_eq!(app.focus, FocusPane::Detail);
     }
 
     #[test]

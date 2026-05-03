@@ -29,6 +29,7 @@ Use this directory for active or still-open implementation plans that are too la
 1. Add daemon detach/start UX so the TUI does not require a second foreground
    terminal.
 2. Build the daemon-first TUI skeleton and read-only navigator.
+3. Add a read-only local resource monitor before chat and mutation workflows.
 
 ## Deferred Plans
 

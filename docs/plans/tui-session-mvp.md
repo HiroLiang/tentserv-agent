@@ -220,8 +220,8 @@ Goals:
 - use daemon HTTP first for live status, auth, and doctor data
 - use core code only for bootstrap config, daemon discovery, explicit daemon
   start, and guarded local Keychain auth setup
-- allow `s start daemon` only after explicit TUI action; do not silently
-  auto-start the daemon on launch
+- allow daemon start only after an explicit `Start daemon` selection; do not
+  silently auto-start the daemon on launch
 - derive explicit daemon start host/port from the resolved daemon URL, so
   `--daemon-url`, `TENTGENT_DAEMON_URL`, config, metadata, and default discovery
   all feed the same start target
@@ -275,12 +275,43 @@ Goals:
 
 - list and inspect models, adapters, datasets, servers, sessions, train plans,
   and train runs
-- show server logs, train run metrics, and session message tails
+- keep Training as one menu entry with read-only Plans and Runs sub-tabs
+- show bounded server logs, train run metrics/logs, and session message tails
+- use local filters only; do not add pagination/query routes in this slice
+- preserve previous dashboard counts when one read endpoint fails
+- treat inspect/tail `404` as a stale selected item, not an auth or daemon-down
+  transition
 - preserve existing CLI/HTTP behavior for errors and auth
 
 Review target:
 
 - users can orient themselves without memorizing CLI commands.
+
+### Slice 2.5: Local Resource Monitor
+
+Add a read-only local resource dashboard before mutation-heavy workflows.
+
+Goals:
+
+- show runtime home disk usage by category: models, adapters, datasets,
+  sessions, logs, train plans, and train runs
+- show daemon and managed server process resource summaries where available:
+  pid, running state, RSS/memory, CPU sample, port, and log size
+- show local disk free space for the resolved runtime home
+- show large files, stale logs, stale pid/process metadata, and long-running or
+  stale train runs as warnings
+- keep this slice read-only; cleanup, delete, stop, compact, and archive actions
+  remain deferred to later mutation slices
+- avoid adding a second runtime state model; derive resource rows from existing
+  runtime paths, daemon status, server specs/process metadata, train run
+  metadata, and OS process probes
+- degrade gracefully when platform resource probes are unavailable
+
+Review target:
+
+- users can understand local disk and process pressure from the TUI without
+  leaving the operator console or running separate `du`, `ps`, `btop`, or
+  `htop` commands.
 
 ### Slice 3: Session Chat Workspace
 
