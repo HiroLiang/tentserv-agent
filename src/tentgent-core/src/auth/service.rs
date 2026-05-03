@@ -12,6 +12,17 @@ pub struct KeyStatus {
     pub validation: KeyValidationState,
 }
 
+pub fn env_key_status(provider: Provider) -> KeyStatus {
+    let env_present = env::read_provider_env(provider).is_some();
+    KeyStatus {
+        provider,
+        env_present,
+        keychain_present: false,
+        effective_source: env_present.then_some(KeySource::Env),
+        validation: KeyValidationState::NotChecked,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AuthManager {
     keychain: KeychainStore,

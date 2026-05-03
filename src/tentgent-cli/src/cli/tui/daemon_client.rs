@@ -2,9 +2,19 @@ use std::time::Duration;
 
 use reqwest::StatusCode;
 use serde_json::Value;
-use tentgent_core::config::{DaemonTokenSource, DaemonUrlSource};
+use tentgent_core::config::DaemonUrlSource;
 
 const DAEMON_HTTP_TIMEOUT: Duration = Duration::from_millis(700);
+#[cfg(test)]
+pub(super) const AUTO_REFRESH_PATHS: [&str; 3] = ["/healthz", "/v1/status", "/v1/doctor"];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TuiTokenSource {
+    Session,
+    Flag,
+    Env,
+    None,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DaemonConnectionState {
@@ -34,7 +44,6 @@ pub(super) struct DaemonSnapshot {
     pub(super) state: DaemonConnectionState,
     pub(super) detail: String,
     pub(super) status: Option<Value>,
-    pub(super) auth: Option<Value>,
     pub(super) doctor: Option<Value>,
 }
 
@@ -44,7 +53,6 @@ impl DaemonSnapshot {
             state: DaemonConnectionState::Down,
             detail: detail.into(),
             status: None,
-            auth: None,
             doctor: None,
         }
     }
@@ -57,7 +65,7 @@ impl DaemonSnapshot {
 pub(super) struct DaemonClient {
     base_url: String,
     token: Option<String>,
-    token_source: DaemonTokenSource,
+    token_source: TuiTokenSource,
     client: reqwest::Client,
 }
 
@@ -65,7 +73,7 @@ impl DaemonClient {
     pub(super) fn new(
         base_url: String,
         token: Option<String>,
-        token_source: DaemonTokenSource,
+        token_source: TuiTokenSource,
     ) -> miette::Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(DAEMON_HTTP_TIMEOUT)
@@ -79,7 +87,7 @@ impl DaemonClient {
         })
     }
 
-    pub(super) async fn refresh(&self) -> DaemonSnapshot {
+    pub(super) async fn refresh_auto(&self) -> DaemonSnapshot {
         let health = self.client.get(self.endpoint("/healthz")).send().await;
         match health {
             Ok(response) if response.status().is_success() => {}
@@ -108,7 +116,6 @@ impl DaemonClient {
                     state: DaemonConnectionState::Timeout,
                     detail: format!("GET /v1/status timed out after /healthz succeeded: {error}"),
                     status: None,
-                    auth: None,
                     doctor: None,
                 };
             }
@@ -117,7 +124,6 @@ impl DaemonClient {
                     state: DaemonConnectionState::DaemonError,
                     detail: format!("GET /v1/status failed after /healthz succeeded: {error}"),
                     status: None,
-                    auth: None,
                     doctor: None,
                 };
             }
@@ -136,14 +142,12 @@ impl DaemonClient {
             }
         };
 
-        let auth = self.optional_json("/v1/auth").await;
         let doctor = self.optional_json("/v1/doctor").await;
 
         DaemonSnapshot {
             state: DaemonConnectionState::Ready,
             detail: "daemon HTTP is reachable".to_string(),
             status: Some(status_json),
-            auth,
             doctor,
         }
     }
@@ -184,14 +188,12 @@ pub(super) fn snapshot_for_health_failure(
             state: DaemonConnectionState::Down,
             detail: format!("GET /healthz failed: {detail}"),
             status: None,
-            auth: None,
             doctor: None,
         },
         DaemonHealthFailure::Timeout => DaemonSnapshot {
             state: DaemonConnectionState::Timeout,
             detail: format!("GET /healthz timed out: {detail}"),
             status: None,
-            auth: None,
             doctor: None,
         },
     }
@@ -199,22 +201,22 @@ pub(super) fn snapshot_for_health_failure(
 
 pub(super) fn snapshot_for_status_failure(
     status: StatusCode,
-    token_source: DaemonTokenSource,
+    token_source: TuiTokenSource,
 ) -> Option<DaemonSnapshot> {
     if status.is_success() {
         return None;
     }
     if status == StatusCode::UNAUTHORIZED {
         let hint = match token_source {
-            DaemonTokenSource::Flag => "the --token value was rejected",
-            DaemonTokenSource::Env => "TENTGENT_DAEMON_TOKEN was rejected",
-            DaemonTokenSource::None => "set --token or TENTGENT_DAEMON_TOKEN",
+            TuiTokenSource::Session => "the current TUI token was rejected",
+            TuiTokenSource::Flag => "the --token value was rejected",
+            TuiTokenSource::Env => "TENTGENT_DAEMON_TOKEN was rejected",
+            TuiTokenSource::None => "set --token or TENTGENT_DAEMON_TOKEN",
         };
         return Some(DaemonSnapshot {
             state: DaemonConnectionState::AuthRequired,
             detail: format!("/healthz is ready, but /v1/status requires bearer auth; {hint}"),
             status: None,
-            auth: None,
             doctor: None,
         });
     }
@@ -223,7 +225,6 @@ pub(super) fn snapshot_for_status_failure(
             state: DaemonConnectionState::DaemonError,
             detail: format!("/v1/status returned {status}"),
             status: None,
-            auth: None,
             doctor: None,
         });
     }
@@ -232,7 +233,6 @@ pub(super) fn snapshot_for_status_failure(
         state: DaemonConnectionState::DaemonError,
         detail: format!("/v1/status returned {status}"),
         status: None,
-        auth: None,
         doctor: None,
     })
 }
@@ -242,7 +242,6 @@ pub(super) fn protocol_error_snapshot(detail: impl Into<String>) -> DaemonSnapsh
         state: DaemonConnectionState::DaemonProtocolError,
         detail: detail.into(),
         status: None,
-        auth: None,
         doctor: None,
     }
 }
@@ -257,11 +256,12 @@ pub(super) fn url_source_label(source: DaemonUrlSource) -> &'static str {
     }
 }
 
-pub(super) fn token_source_label(source: DaemonTokenSource) -> &'static str {
+pub(super) fn token_source_label(source: TuiTokenSource) -> &'static str {
     match source {
-        DaemonTokenSource::Flag => "flag",
-        DaemonTokenSource::Env => "env",
-        DaemonTokenSource::None => "none",
+        TuiTokenSource::Session => "session",
+        TuiTokenSource::Flag => "flag",
+        TuiTokenSource::Env => "env",
+        TuiTokenSource::None => "none",
     }
 }
 
@@ -271,9 +271,8 @@ mod tests {
 
     #[test]
     fn status_mapping_treats_401_as_auth_required_not_down() {
-        let snapshot =
-            snapshot_for_status_failure(StatusCode::UNAUTHORIZED, DaemonTokenSource::None)
-                .expect("snapshot");
+        let snapshot = snapshot_for_status_failure(StatusCode::UNAUTHORIZED, TuiTokenSource::None)
+            .expect("snapshot");
 
         assert_eq!(snapshot.state, DaemonConnectionState::AuthRequired);
         assert!(snapshot.detail.contains("/healthz is ready"));
@@ -282,7 +281,7 @@ mod tests {
     #[test]
     fn status_mapping_covers_5xx_and_protocol_error() {
         let snapshot =
-            snapshot_for_status_failure(StatusCode::INTERNAL_SERVER_ERROR, DaemonTokenSource::Env)
+            snapshot_for_status_failure(StatusCode::INTERNAL_SERVER_ERROR, TuiTokenSource::Env)
                 .expect("snapshot");
         assert_eq!(snapshot.state, DaemonConnectionState::DaemonError);
 
@@ -297,5 +296,10 @@ mod tests {
 
         let timeout = snapshot_for_health_failure(DaemonHealthFailure::Timeout, "deadline");
         assert_eq!(timeout.state, DaemonConnectionState::Timeout);
+    }
+
+    #[test]
+    fn automatic_refresh_paths_do_not_include_auth_route() {
+        assert!(!AUTO_REFRESH_PATHS.contains(&"/v1/auth"));
     }
 }

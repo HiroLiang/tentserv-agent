@@ -1,14 +1,17 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs, Wrap},
+    widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Wrap},
     Frame,
 };
 use serde_json::Value;
 
 use super::{
-    app::{InputMode, Screen, TuiApp},
+    app::{
+        AppMode, BootstrapReason, DaemonActionState, FocusPane, InputLine, MenuItem, StartPhase,
+        TuiApp,
+    },
     daemon_client::{token_source_label, url_source_label},
 };
 
@@ -17,220 +20,452 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &TuiApp) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Min(8),
+            Constraint::Length(4),
+            Constraint::Min(10),
             Constraint::Length(3),
         ])
         .split(area);
 
-    let tabs = Tabs::new(vec!["Status", "Settings"])
-        .select(app.screen.index())
-        .block(Block::default().title("Tentgent TUI").borders(Borders::ALL))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
-    frame.render_widget(tabs, chunks[0]);
+    render_header(frame, chunks[0], app);
+    render_body(frame, chunks[1], app);
+    render_footer(frame, chunks[2], app);
+}
 
-    match app.screen {
-        Screen::Status => render_status(frame, chunks[1], app),
-        Screen::Settings => render_settings(frame, chunks[1], app),
-    }
-
-    let footer = footer_lines(app);
+fn render_header(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let mode_style = match app.mode {
+        AppMode::Operator => Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+        AppMode::Bootstrap(BootstrapReason::AuthRequired) => Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+        AppMode::Bootstrap(_) => Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    };
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("tentgent", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" · "),
+            Span::styled(app.mode.label(), mode_style),
+            Span::raw(" · "),
+            Span::raw(app.daemon.state.label()),
+        ]),
+        Line::from(vec![
+            kv_span("home", app.home.display().to_string()),
+            Span::raw("  "),
+            kv_span("url", app.daemon_url.url.clone()),
+            Span::raw("  "),
+            kv_span("token", token_source_label(app.daemon_token.source)),
+        ]),
+    ];
     frame.render_widget(
-        Paragraph::new(footer)
-            .block(Block::default().borders(Borders::ALL).title("Command"))
+        Paragraph::new(lines)
+            .block(Block::default().title("Tentgent TUI").borders(Borders::ALL))
             .wrap(Wrap { trim: true }),
-        chunks[2],
+        area,
     );
 }
 
-fn render_status(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &TuiApp) {
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(52), Constraint::Percentage(48)])
-        .split(area);
-
-    let mut left = vec![
-        line_kv("home", app.home.display().to_string()),
-        line_kv("daemon_url", &app.daemon_url.url),
-        line_kv("url_source", url_source_label(app.daemon_url.source)),
-        line_kv("token_source", token_source_label(app.daemon_token.source)),
-        line_kv("daemon_state", app.daemon.state.label()),
-        line_kv("detail", &app.daemon.detail),
-    ];
-    if let Some(error) = &app.config_error {
-        left.push(line_kv("config_error", error));
-    }
-    if !app.inspection.running {
-        left.push(Line::from(""));
-        left.push(Line::from("Daemon is not running."));
-        left.push(line_kv("start", app.start_command()));
-    }
-    left.push(Line::from(""));
-    left.push(line_kv(
-        "runtime_dir",
-        app.inspection.runtime_dir.display().to_string(),
-    ));
-    left.push(line_kv(
-        "log_dir",
-        app.inspection.log_dir.display().to_string(),
-    ));
-    left.push(line_kv(
-        "stdout_log",
-        app.inspection.stdout_log_path.display().to_string(),
-    ));
-    left.push(line_kv(
-        "stderr_log",
-        app.inspection.stderr_log_path.display().to_string(),
-    ));
-
-    frame.render_widget(
-        Paragraph::new(left)
-            .block(Block::default().title("Status").borders(Borders::ALL))
-            .wrap(Wrap { trim: false }),
-        columns[0],
-    );
-
-    let mut right = Vec::new();
-    if let Some(status) = &app.daemon.status {
-        right.push(Line::from(Span::styled(
-            "Daemon HTTP",
-            Style::default().add_modifier(Modifier::BOLD),
-        )));
-        push_json_kv(&mut right, status, "status");
-        push_json_kv(&mut right, status, "pid");
-        push_json_kv(&mut right, status, "host");
-        push_json_kv(&mut right, status, "port");
-        push_json_kv(&mut right, status, "runtime_home");
-        push_json_kv(&mut right, status, "process_path");
-        push_json_kv(&mut right, status, "pid_path");
+fn render_body(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    if area.width < 100 {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(10), Constraint::Min(8)])
+            .split(area);
+        render_menu(frame, rows[0], app);
+        render_detail(frame, rows[1], app);
     } else {
-        right.push(Line::from("Daemon HTTP data unavailable."));
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(34), Constraint::Min(40)])
+            .split(area);
+        render_menu(frame, columns[0], app);
+        render_detail(frame, columns[1], app);
     }
-    right.push(Line::from(""));
-    right.extend(auth_summary_lines(app.daemon.auth.as_ref(), &app.auth_rows));
-    right.push(Line::from(""));
-    right.extend(doctor_summary_lines(app.daemon.doctor.as_ref()));
-
-    frame.render_widget(
-        Paragraph::new(right)
-            .block(Block::default().title("Live Data").borders(Borders::ALL))
-            .wrap(Wrap { trim: false }),
-        columns[1],
-    );
 }
 
-fn render_settings(frame: &mut Frame<'_>, area: ratatui::layout::Rect, app: &TuiApp) {
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-
-    let daemon_url_pref = app.config.daemon.url.as_deref().unwrap_or("(unset)");
-    let mut config_lines = vec![
-        line_kv("config", app.config_path.display().to_string()),
-        line_kv("schema_version", app.config.schema_version.to_string()),
-        line_kv("last_section", &app.config.tui.last_section),
-        line_kv(
-            "auto_start_daemon",
-            app.config.tui.auto_start_daemon.to_string(),
-        ),
-        line_kv("daemon.url", daemon_url_pref),
-        line_kv("resolved_url", &app.daemon_url.url),
-        line_kv("url_source", url_source_label(app.daemon_url.source)),
-        line_kv("token_source", token_source_label(app.daemon_token.source)),
-    ];
-    if let Some(error) = &app.config_error {
-        config_lines.push(line_kv("config_error", error));
-    }
-
-    frame.render_widget(
-        Paragraph::new(config_lines)
-            .block(Block::default().title("Config").borders(Borders::ALL))
-            .wrap(Wrap { trim: false }),
-        columns[0],
-    );
-
-    let provider_items: Vec<ListItem> = app
-        .auth_rows
+fn render_menu(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let entries = app.menu_entries();
+    let items: Vec<ListItem> = entries
         .iter()
         .enumerate()
-        .map(|(index, row)| {
-            let marker = if index == app.selected_provider {
-                ">"
+        .map(|(index, entry)| {
+            let selected = index == app.selected_menu && app.focus == FocusPane::Menu;
+            let marker = if index == app.selected_menu {
+                "●"
             } else {
-                " "
+                "○"
             };
-            let source = row.effective_source.unwrap_or("none");
-            let line = format!(
-                "{marker} {}  source={} env={} keychain={}  {}",
-                row.provider.display_name(),
-                source,
-                row.env_present,
-                row.keychain_present,
-                row.note
-            );
-            ListItem::new(line)
+            let mut style = if entry.enabled {
+                Style::default()
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            if selected {
+                style = style.fg(Color::Cyan).add_modifier(Modifier::BOLD);
+            }
+            ListItem::new(Line::from(vec![
+                Span::styled(marker, style),
+                Span::raw(" "),
+                Span::styled(entry.label, style),
+                Span::raw("  "),
+                Span::styled(entry.detail, Style::default().fg(Color::DarkGray)),
+            ]))
         })
         .collect();
     frame.render_widget(
-        List::new(provider_items).block(
-            Block::default()
-                .title("Provider Auth")
-                .borders(Borders::ALL),
-        ),
-        columns[1],
+        List::new(items).block(Block::default().title("Menu").borders(Borders::ALL)),
+        area,
     );
 }
 
-fn footer_lines(app: &TuiApp) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-    let input = app.active_input_label();
-    match input {
-        Some(value) => lines.push(Line::from(value)),
-        None => lines.push(Line::from(
-            "q quit | Ctrl-C quit | r refresh | s start daemon | tab switch | u edit URL | k set key | x remove key",
+fn render_detail(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    match app.selected_menu_entry().item {
+        MenuItem::StartDaemon => render_start_detail(frame, area, app),
+        MenuItem::ProviderAuth => render_provider_detail(frame, area, app),
+        MenuItem::Settings => render_settings_detail(frame, area, app),
+        MenuItem::Dashboard => render_dashboard(frame, area, app),
+        MenuItem::Models
+        | MenuItem::Adapters
+        | MenuItem::Datasets
+        | MenuItem::Servers
+        | MenuItem::Sessions
+        | MenuItem::Training => render_slice2_placeholder(frame, area, app),
+    }
+}
+
+fn render_start_detail(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let mut lines = vec![
+        line_kv("state", app.daemon.state.label()),
+        line_kv("detail", &app.daemon.detail),
+        line_kv("resolved_url", &app.daemon_url.url),
+        line_kv("url_source", url_source_label(app.daemon_url.source)),
+        line_kv("start", app.start_command()),
+        line_kv(
+            "stdout_log",
+            app.inspection.stdout_log_path.display().to_string(),
+        ),
+        line_kv(
+            "stderr_log",
+            app.inspection.stderr_log_path.display().to_string(),
+        ),
+    ];
+    if let Some(error) = &app.config_error {
+        lines.push(line_kv("config_error", error));
+    }
+    if let Some(warning) = app.start_target_warning() {
+        lines.push(line_kv("warning", warning));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Progress",
+        Style::default().add_modifier(Modifier::BOLD),
+    )));
+    lines.extend(start_progress_lines(app));
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title("Start Daemon").borders(Borders::ALL))
+            .wrap(Wrap { trim: false }),
+        area,
+    );
+}
+
+fn start_progress_lines(app: &TuiApp) -> Vec<Line<'static>> {
+    match &app.daemon_action {
+        DaemonActionState::Idle => vec![Line::from("○ waiting for explicit start action")],
+        DaemonActionState::Starting { phase, warning, .. } => {
+            let mut lines = Vec::new();
+            lines.push(phase_line(
+                "resolving home",
+                *phase,
+                StartPhase::ResolvingHome,
+            ));
+            lines.push(phase_line(
+                "spawning detached daemon",
+                *phase,
+                StartPhase::SpawningDetachedDaemon,
+            ));
+            lines.push(phase_line(
+                "polling /healthz",
+                *phase,
+                StartPhase::PollingHealthz,
+            ));
+            if let Some(warning) = warning {
+                lines.push(line_kv("warning", warning));
+            }
+            lines
+        }
+        DaemonActionState::StartFailed {
+            message,
+            stdout_log,
+            stderr_log,
+        } => {
+            let mut lines = vec![Line::from(vec![
+                Span::styled("● failed: ", Style::default().fg(Color::Red)),
+                Span::raw(message.clone()),
+            ])];
+            if let Some(path) = stdout_log {
+                lines.push(line_kv("stdout_log", path.display().to_string()));
+            }
+            if let Some(path) = stderr_log {
+                lines.push(line_kv("stderr_log", path.display().to_string()));
+            }
+            lines
+        }
+        DaemonActionState::Ready => vec![Line::from(vec![
+            Span::styled("● ready", Style::default().fg(Color::Green)),
+            Span::raw("; switching to operator mode"),
+        ])],
+    }
+}
+
+fn phase_line(label: &'static str, current: StartPhase, phase: StartPhase) -> Line<'static> {
+    let marker = if current == phase {
+        "◐"
+    } else if phase_rank(current) > phase_rank(phase) {
+        "●"
+    } else {
+        "○"
+    };
+    Line::from(format!("{marker} {label}"))
+}
+
+fn phase_rank(phase: StartPhase) -> u8 {
+    match phase {
+        StartPhase::ResolvingHome => 0,
+        StartPhase::SpawningDetachedDaemon => 1,
+        StartPhase::PollingHealthz => 2,
+    }
+}
+
+fn render_provider_detail(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let rows = app.auth_rows.iter().enumerate().map(|(index, row)| {
+        let selected = index == app.selected_provider;
+        let marker = if selected && app.focus == FocusPane::Detail {
+            "●"
+        } else if selected {
+            ">"
+        } else {
+            "○"
+        };
+        let style = if selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        Row::new(vec![
+            Cell::from(marker),
+            Cell::from(row.provider.display_name()),
+            Cell::from(row.provider.env_var()),
+            Cell::from(row.state.source_label()),
+            Cell::from(row.state.label()),
+        ])
+        .style(style)
+    });
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(2),
+            Constraint::Length(16),
+            Constraint::Length(18),
+            Constraint::Length(22),
+            Constraint::Min(22),
+        ],
+    )
+    .header(
+        Row::new(vec!["", "Provider", "Env", "Source", "Status"])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+    )
+    .block(
+        Block::default()
+            .title("Provider Auth")
+            .borders(Borders::ALL),
+    );
+    frame.render_widget(table, area);
+}
+
+fn render_settings_detail(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let table_rows = app
+        .settings_entries()
+        .into_iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let selected = index == app.selected_setting;
+            let marker = if selected && app.focus == FocusPane::Detail {
+                "●"
+            } else if selected {
+                ">"
+            } else {
+                "○"
+            };
+            let style = if selected {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            let edit = if entry.editable { "edit" } else { "read-only" };
+            Row::new(vec![
+                marker.to_string(),
+                entry.label.to_string(),
+                entry.value,
+                entry.detail.to_string(),
+                edit.to_string(),
+            ])
+            .style(style)
+        });
+    let table = Table::new(
+        table_rows,
+        [
+            Constraint::Length(2),
+            Constraint::Length(16),
+            Constraint::Length(28),
+            Constraint::Min(24),
+            Constraint::Length(10),
+        ],
+    )
+    .header(
+        Row::new(vec!["", "Setting", "Value", "Applies", "Mode"])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+    )
+    .block(Block::default().title("Settings").borders(Borders::ALL));
+    frame.render_widget(table, area);
+}
+
+fn render_dashboard(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "Daemon",
+            Style::default().add_modifier(Modifier::BOLD),
         )),
+        line_kv("state", app.daemon.state.label()),
+        line_kv("detail", &app.daemon.detail),
+    ];
+    if let Some(status) = &app.daemon.status {
+        push_json_kv(&mut lines, status, "status");
+        push_json_kv(&mut lines, status, "pid");
+        push_json_kv(&mut lines, status, "host");
+        push_json_kv(&mut lines, status, "port");
+        push_json_kv(&mut lines, status, "runtime_home");
+    }
+    lines.push(Line::from(""));
+    lines.extend(auth_summary_lines(app));
+    lines.push(Line::from(""));
+    lines.extend(doctor_summary_lines(app.daemon.doctor.as_ref()));
+    lines.push(Line::from(""));
+    lines.push(Line::from("Slice 2 will add read-only navigators for models, servers, sessions, datasets, and training."));
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title("Operator Dashboard")
+                    .borders(Borders::ALL),
+            )
+            .wrap(Wrap { trim: false }),
+        area,
+    );
+}
+
+fn render_slice2_placeholder(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let entry = app.selected_menu_entry();
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(entry.label, Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" is not implemented in Slice 1.1."),
+        ]),
+        Line::from(""),
+        Line::from("This operator shell intentionally lands before read-only navigators."),
+        Line::from("Use Dashboard and Settings in this slice."),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title(entry.label).borders(Borders::ALL))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
+fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let mut lines = Vec::new();
+    if let Some(input) = app.active_input_line() {
+        lines.push(render_input_line(input));
+    } else {
+        lines.push(Line::from(
+            "↑/↓ move | Enter select/edit | Tab detail | Esc menu | r refresh | q quit | provider: k set key, x remove",
+        ));
     }
     if !app.message.is_empty() {
         lines.push(Line::from(app.message.clone()));
     }
-    if matches!(app.input_mode, InputMode::Normal) {
-        lines.push(Line::from(
-            "1 status | 2 settings | up/down select provider",
-        ));
-    }
-    lines
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title("Command").borders(Borders::ALL))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
-fn auth_summary_lines(
-    daemon_auth: Option<&Value>,
-    local_rows: &[super::app::ProviderAuthRow],
-) -> Vec<Line<'static>> {
+fn render_input_line(input: InputLine) -> Line<'static> {
+    let display_value = if input.masked {
+        mask_for_display(&input.value)
+    } else {
+        input.value
+    };
+    let chars: Vec<char> = display_value.chars().collect();
+    let cursor = input.cursor.min(chars.len());
+    let mut spans = vec![
+        Span::styled(
+            format!("{}: ", input.label),
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::raw(""),
+    ];
+    for (index, ch) in chars.iter().enumerate() {
+        if index == cursor {
+            spans.push(Span::styled(
+                ch.to_string(),
+                Style::default().bg(Color::Cyan).fg(Color::Black),
+            ));
+        } else {
+            spans.push(Span::raw(ch.to_string()));
+        }
+    }
+    if cursor == chars.len() {
+        spans.push(Span::styled(
+            " ",
+            Style::default().bg(Color::Cyan).fg(Color::Black),
+        ));
+    }
+    spans.push(Span::styled(
+        "  ←/→ move",
+        Style::default().fg(Color::DarkGray),
+    ));
+    Line::from(spans)
+}
+
+fn mask_for_display(value: &str) -> String {
+    "*".repeat(value.chars().count())
+}
+
+fn auth_summary_lines(app: &TuiApp) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(Span::styled(
         "Auth",
         Style::default().add_modifier(Modifier::BOLD),
     ))];
-    if let Some(value) = daemon_auth {
-        let count = value
-            .get("providers")
-            .and_then(Value::as_array)
-            .map(Vec::len)
-            .unwrap_or(0);
-        lines.push(line_kv("daemon_auth_providers", count.to_string()));
-    } else {
-        lines.push(Line::from("daemon auth unavailable; showing local state"));
-    }
-    for row in local_rows {
-        let source = row.effective_source.unwrap_or("none");
+    lines.push(Line::from(
+        "source: env-only / manual checks; automatic refresh skips /v1/auth",
+    ));
+    for row in &app.auth_rows {
         lines.push(Line::from(format!(
-            "{}: source={} {}",
+            "{}: {}",
             row.provider.display_name(),
-            source,
-            row.note
+            row.state.label()
         )));
     }
     lines
@@ -278,4 +513,26 @@ fn line_kv(key: impl Into<String>, value: impl Into<String>) -> Line<'static> {
         ),
         Span::raw(value.into()),
     ])
+}
+
+fn kv_span(key: &'static str, value: impl Into<String>) -> Span<'static> {
+    Span::raw(format!("{key}: {}", value.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{backend::TestBackend, Terminal};
+
+    #[test]
+    fn compact_terminal_layout_renders_without_panic() {
+        let home = std::env::temp_dir().join("tentgent-tui-render-compact");
+        let app = TuiApp::test_app(home);
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+
+        terminal
+            .draw(|frame| render(frame, &app))
+            .expect("compact render");
+    }
 }
