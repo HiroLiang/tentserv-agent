@@ -102,8 +102,14 @@ jobs:
             tag="${{ github.ref_name }}"
           fi
           version="${tag#v}"
+          if [[ "${version}" == *-* ]]; then
+            is_prerelease="true"
+          else
+            is_prerelease="false"
+          fi
           echo "tag=${tag}" >>"${GITHUB_OUTPUT}"
           echo "version=${version}" >>"${GITHUB_OUTPUT}"
+          echo "is_prerelease=${is_prerelease}" >>"${GITHUB_OUTPUT}"
 
       - name: Checkout installer
         uses: actions/checkout@v6
