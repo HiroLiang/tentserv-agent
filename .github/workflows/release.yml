@@ -42,8 +42,14 @@ jobs:
             tag="${{ github.ref_name }}"
           fi
           version="${tag#v}"
+          if [[ "${version}" == *-* ]]; then
+            is_prerelease="true"
+          else
+            is_prerelease="false"
+          fi
           echo "tag=${tag}" >>"${GITHUB_OUTPUT}"
           echo "version=${version}" >>"${GITHUB_OUTPUT}"
+          echo "is_prerelease=${is_prerelease}" >>"${GITHUB_OUTPUT}"
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -201,15 +207,25 @@ jobs:
         run: |
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" dist-release/*.tar.gz dist-release/*.zip dist-release/checksums.txt dist-release/install.sh dist-release/install.ps1 --clobber
-            gh release edit "${TAG}" --draft=false --latest --title "Tentgent ${TAG}" --notes-file release-notes.md
+            if [[ "${{ steps.release.outputs.is_prerelease }}" == "true" ]]; then
+              gh release edit "${TAG}" --draft=false --prerelease --title "Tentgent ${TAG}" --notes-file release-notes.md
+            else
+              gh release edit "${TAG}" --draft=false --latest --title "Tentgent ${TAG}" --notes-file release-notes.md
+            fi
           else
+            release_flags=()
+            if [[ "${{ steps.release.outputs.is_prerelease }}" == "true" ]]; then
+              release_flags+=(--prerelease)
+            else
+              release_flags+=(--latest)
+            fi
             gh release create "${TAG}" \
               dist-release/*.tar.gz \
               dist-release/*.zip \
               dist-release/checksums.txt \
               dist-release/install.sh \
               dist-release/install.ps1 \
-              --latest \
+              "${release_flags[@]}" \
               --title "Tentgent ${TAG}" \
               --notes-file release-notes.md
           fi
