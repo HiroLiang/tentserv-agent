@@ -112,9 +112,10 @@ Primary sections:
 
 - Status: daemon status, doctor summary, auth status, runtime paths.
 - Chat: session-aware workspace over existing daemon chat/session routes.
-- Models: list, inspect, import/pull shortcuts later.
-- Adapters: list, inspect, bind/import shortcuts later.
-- Datasets: list, inspect, validate/template/export/diff/synth/eval actions.
+- Models: list, inspect, guarded import/pull/remove actions.
+- Adapters: list, inspect, guarded bind/import/pull/remove actions.
+- Datasets: list, inspect, guarded validate/template/export/diff/synth/eval/remove
+  actions.
 - Servers: list, inspect, start/stop/logs/chat entry.
 - Sessions: list, inspect, messages, compact, chat resume, delete.
 - Training: LoRA plan list/inspect/create and run list/inspect/logs/metrics.
@@ -415,35 +416,180 @@ Review target:
 
 ### Slice 4: Store And Dataset Actions
 
-Expose safe store and dataset workflows.
+Expose guarded store and dataset workflows through existing daemon HTTP routes.
 
 Goals:
 
-- import/pull models and adapters through existing HTTP endpoints
-- import/validate/template/export/diff datasets
-- run synth/eval only after explicit provider/auth confirmation
-- show generated artifact paths without dumping raw provider output
+- add a reusable TUI action state machine for Models, Adapters, and Datasets:
+  action selection, form editing, confirmation, running, result, and error
+  states
+- keep all mutations daemon-first; do not shell out to CLI, call core store
+  managers directly, or edit runtime-home files from the TUI
+- use only existing daemon routes: model/adapter pull/import/delete, adapter
+  bind, dataset import/validate/template/export/diff/synth/eval/delete
+- URL-encode every model, adapter, and dataset ref path segment
+- require exact short-ref or full-ref typed confirmation for destructive
+  remove actions
+- validate only basic form shape in the TUI, such as non-empty required fields
+  and absolute path fields; daemon APIs remain the source of truth for format
+  and filesystem authorization
+- run pull/import/synth/eval as nonblocking TUI requests with visible elapsed
+  time in Slice 4; Slice 4.1 upgrades long actions to daemon-side jobs with
+  progress and background tracking
+- run synth/eval only after explicit provider/network-credit confirmation; do
+  not read Keychain or call `/v1/auth` as part of the confirmation
+- show bounded summaries and artifact/debug paths without storing raw provider
+  output in renderable TUI state, logs, panic output, or test snapshots
+- refresh affected navigator sections after success and mark Resource snapshots
+  stale without deep-scanning runtime home immediately
+- keep server lifecycle, training lifecycle, session delete/compact, and chat
+  transcript mutation out of this slice
 
 Review target:
 
 - common dataset and store workflows are discoverable from terminal menus while
   preserving the existing HTTP contracts.
 
-### Slice 5: Server And Training Actions
+Known issue from Slice 4 smoke:
 
-Expose runtime and training controls.
+- Long-running model pull currently renders as a plain `Action Running` request
+  panel with elapsed time only. It does not show file/byte progress, percent,
+  speed, or ETA.
+- The TUI can keep rendering while waiting for the HTTP request, but the action
+  is not a true daemon-side background job. Leaving the action view only aborts
+  the local TUI wait; there is no durable job id to follow from another screen.
+- The UI should not expose raw method/route/debug request details as the primary
+  user experience for common downloads.
+
+### Slice 4.1: Background Action Jobs + Progress UI
+
+Turn long-running store and dataset actions into trackable daemon-side jobs with
+a polished TUI progress surface.
 
 Goals:
 
-- start, inspect, stop, and remove server specs
-- preview/create/remove LoRA plans
-- start LoRA runs and poll run status, metrics, and logs
-- make destructive actions confirmable
+- introduce a daemon job/progress contract for long-running actions such as
+  model pull, adapter pull, model/adapter import when slow, dataset synth, and
+  dataset eval
+- preserve existing synchronous route semantics. Existing `POST
+  /v1/models/pull`, `POST /v1/models/import`, `POST /v1/adapters/pull`, `POST
+  /v1/adapters/import`, `POST /v1/datasets/import`, `POST
+  /v1/datasets/synth`, and `POST /v1/datasets/eval` keep their original
+  response shapes; async work uses explicit `/jobs` routes.
+- add async routes: `POST /v1/models/pull/jobs`, `POST
+  /v1/models/import/jobs`, `POST /v1/adapters/pull/jobs`, `POST
+  /v1/adapters/import/jobs`, `POST /v1/datasets/import/jobs`, `POST
+  /v1/datasets/synth/jobs`, and `POST /v1/datasets/eval/jobs`
+- add read-only job routes: `GET /v1/jobs` and `GET /v1/jobs/{job_id}`
+- persist bounded job records under the resolved runtime home. Jobs survive TUI
+  navigation and TUI process exit; active jobs are marked `interrupted` after a
+  daemon restart in this slice.
+- keep short actions synchronous where appropriate; do not force every mutation
+  through the job system
+- start a long-running action and return a `job_id` quickly so the TUI can leave
+  the form/result screen and continue browsing
+- expose read-only job status/progress through daemon HTTP using existing auth
+  rules; do not leak provider secrets, daemon tokens, raw provider output, or
+  unbounded logs
+- track stage, status, started/updated timestamps, bytes/files progress when
+  available, percent, speed/ETA when derivable, current artifact path, warning,
+  and final result/error summary
+- render active jobs in the Operator dashboard or footer as a compact progress
+  area, with a dedicated Jobs/Downloads detail pane if the list outgrows the
+  dashboard
+- let users hide/background the action detail and continue using Models,
+  Adapters, Datasets, Chat, Resources, and Settings while jobs run
+- refresh affected navigator sections when a job completes, preserving
+  selection by ref where possible and marking Resources stale without immediate
+  deep scan
+- make cancellation explicit only if the daemon can actually cancel the job;
+  otherwise provide `hide/background`, not fake cancel
+- improve the action UI so common workflows render as product-level progress
+  cards instead of raw method/route panels
+- do not add daemon-side cancellation in Slice 4.1. Job items report
+  `cancellable: false`.
+
+Review target:
+
+- a user can start a model pull from the TUI, navigate away, keep working, and
+  still see download progress and completion/failure without relying on a
+  terminal command or raw request panel.
+
+### Slice 5: Server And Training Actions
+
+Expose runtime and training controls through existing daemon HTTP routes only.
+
+Goals:
+
+- add guarded TUI runtime actions for `Servers` and `Training`
+- create server specs, start with bounded readiness wait, stop, and remove
+  stopped server specs
+- offer explicit shortcuts from selected model to server creation and selected
+  dataset to LoRA plan creation
+- preview/create/remove LoRA plans with Basic and Advanced form sections
+- start LoRA runs with explicit local resource confirmation
+- poll active run status, metrics, and bounded raw log tails without tying HTTP
+  requests to render frames
+- make destructive remove actions require exact short/full ref confirmation
+
+Boundaries:
+
+- use only existing daemon routes; do not add backend routes or schemas
+- server start uses the existing start route and is not converted into a
+  Slice 4.1 job
+- training runs remain in the training registry and are not mirrored into the
+  job registry
+- do not call `/v1/auth`, read Keychain, shell out to CLI, or mutate core files
+- do not show fake cancellation for server start or training runs
 
 Review target:
 
 - the TUI can operate the local runtime loop from model selection through a
-  small training run without adding new backend semantics.
+  small training run without adding new backend semantics, while preserving
+  Chat stale-server handling and bounded log/metrics reads.
+
+### Slice 5.1: Picker-Based Runtime Forms
+
+Replace ref-heavy runtime action forms with chooser-first workflows.
+
+Reason:
+
+- managed local resources are already known to Tentgent, so the TUI should let
+  users select models, datasets, and plans instead of copying refs from another
+  table or terminal
+- text input should remain available for cloud/runtime refs and advanced
+  overrides, but it should not be the primary path for local managed resources
+- picker flows reduce invalid refs, make server creation and LoRA plan creation
+  discoverable, and better match the TUI goal of minimizing terminal work
+
+Goals:
+
+- add model pickers for server creation and LoRA plan creation
+- add dataset pickers for LoRA plan creation and dataset-backed training flows
+- add backend and boolean option pickers where choices are finite, such as
+  `backend`, `lazy_load`, `mask_prompt`, `mlx_grad_checkpoint`,
+  `peft_load_in_4bit`, and `peft_load_in_8bit`
+- collapse advanced LoRA overrides behind an explicit advanced section so the
+  default plan form starts with only model, dataset, optional name, and backend
+- keep manual text entry as an advanced fallback for cloud refs, pasted refs,
+  and values that do not have a finite local list
+- show selected row metadata beside picker choices, such as model format,
+  source, dataset splits, tuning readiness, and plan blockers
+
+Boundaries:
+
+- use existing navigator/list data and existing daemon GET routes only
+- do not add backend routes or schemas
+- do not auto-pull models, auto-import datasets, start servers, or start runs
+  from a picker
+- do not read Keychain or call `/v1/auth`
+- keep exact ref confirmation for destructive actions
+
+Review target:
+
+- a user can create a local server and a LoRA plan from managed local resources
+  without manually typing or copying a model/dataset ref, while cloud/runtime
+  text entry remains available as an advanced path.
 
 ## Open Questions
 

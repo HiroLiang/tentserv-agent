@@ -385,6 +385,7 @@ async fn model_import_works_repeats_and_validates_inputs() {
     let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
     let model_ref = body["model"]["model_ref"].as_str().expect("model_ref");
     assert_eq!(response.status_code, 200);
+    assert!(body.get("job").is_none());
     assert_eq!(body["mutation"]["kind"], "import");
     assert_eq!(body["mutation"]["deduplicated"], false);
     assert_eq!(body["model"]["source_path"], path_string(&source));
@@ -440,6 +441,72 @@ async fn model_import_works_repeats_and_validates_inputs() {
     let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
     assert_eq!(response.status_code, 400);
     assert_eq!(body["error"], "unsupported_layout");
+}
+
+#[tokio::test]
+async fn async_import_job_returns_accepted_and_persists_job_record() {
+    let home = unique_home("model-import-job");
+    let source = write_model_import_source(&home);
+    let state = state_for(home.clone());
+
+    let response = route_request(
+        &post(
+            "/v1/models/import/jobs",
+            format!(r#"{{"path":"{}"}}"#, path_string(&source)).as_bytes(),
+        ),
+        &state,
+    )
+    .await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let job_id = body["job"]["job_id"].as_str().expect("job id").to_string();
+
+    assert_eq!(response.status_code, 202);
+    assert_eq!(body["job"]["kind"], "model_import");
+    assert_eq!(body["job"]["target_section"], "models");
+    assert_eq!(body["job"]["cancellable"], false);
+
+    for _ in 0..20 {
+        let inspect = route_request(&get(&format!("/v1/jobs/{job_id}")), &state).await;
+        let inspect_body: Value = serde_json::from_slice(response_buffer(&inspect)).expect("json");
+        if inspect_body["job"]["status"] == "succeeded" {
+            assert_eq!(inspect_body["job"]["refresh_targets"][0], "models");
+            assert!(inspect_body["job"]["artifact_path"]
+                .as_str()
+                .expect("artifact path")
+                .contains("/models/store/"));
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    panic!("model import job did not finish");
+}
+
+#[tokio::test]
+async fn async_job_validation_happens_before_job_creation() {
+    let state = state_for(unique_home("job-validation"));
+    let response = route_request(&post("/v1/models/pull/jobs", br#"{"repo_id":""}"#), &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    assert_eq!(response.status_code, 400);
+    assert_eq!(body["error"], "bad_request");
+
+    let jobs = route_request(&get("/v1/jobs"), &state).await;
+    let jobs_body: Value = serde_json::from_slice(response_buffer(&jobs)).expect("json");
+    assert_eq!(jobs_body["jobs"].as_array().expect("jobs").len(), 0);
+}
+
+#[tokio::test]
+async fn jobs_routes_follow_daemon_auth() {
+    let state = state_with_token(unique_home("jobs-auth"), "secret");
+    let unauthorized = route_request(&get("/v1/jobs"), &state).await;
+    assert_eq!(unauthorized.status_code, 401);
+
+    let authorized = route_request(
+        &get_with_header("/v1/jobs", "Authorization", "Bearer secret"),
+        &state,
+    )
+    .await;
+    assert_eq!(authorized.status_code, 200);
 }
 
 #[tokio::test]

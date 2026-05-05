@@ -653,8 +653,72 @@ return `409 provider_auth_failed`; Hugging Face helper invocation/output
 failures return `502 pull_failed`; unexpected store mutation failures return
 `500 store_mutation_failed`.
 
-These endpoints are synchronous MVP calls. Large local imports or Hugging Face
-pulls may exceed client timeouts until future job/progress APIs exist.
+These endpoints remain synchronous compatibility surfaces. Large local imports
+or Hugging Face pulls may exceed short client timeouts; clients that want
+daemon-side background progress should use the explicit job routes below.
+
+## Background Action Jobs
+
+Long-running store and dataset actions can opt into daemon-side jobs without
+changing the synchronous route response shape:
+
+```text
+POST /v1/models/import/jobs
+POST /v1/models/pull/jobs
+POST /v1/adapters/import/jobs
+POST /v1/adapters/pull/jobs
+POST /v1/datasets/import/jobs
+POST /v1/datasets/synth/jobs
+POST /v1/datasets/eval/jobs
+GET /v1/jobs
+GET /v1/jobs/{job_id}
+```
+
+The async `POST .../jobs` request bodies are the same JSON DTOs accepted by the
+corresponding synchronous route. They reject unknown fields in the same way and
+return `202` with:
+
+```json
+{
+  "job": {
+    "job_id": "job-...",
+    "kind": "model_pull",
+    "label": "owner/name",
+    "target_section": "models",
+    "target_ref": null,
+    "status": "queued",
+    "stage": "queued",
+    "cancellable": false,
+    "refresh_targets": ["models"],
+    "bytes_done": null,
+    "bytes_total": null,
+    "files_done": null,
+    "files_total": null,
+    "percent": null,
+    "speed_bytes_per_sec": null,
+    "eta_seconds": null,
+    "started_at": "2026-05-04T00:00:00Z",
+    "updated_at": "2026-05-04T00:00:00Z",
+    "finished_at": null,
+    "artifact_ref": null,
+    "artifact_path": null,
+    "warning_summary": null,
+    "result_summary": null,
+    "error_summary": null
+  }
+}
+```
+
+Job `status` values are `queued`, `running`, `succeeded`, `failed`, and
+`interrupted`; `canceled` is reserved for a future cancel contract. Slice 4.1
+does not expose a cancel route, so `cancellable` is always `false`. Job records
+are persisted under the resolved runtime home. Active jobs survive TUI
+navigation and TUI process exit, but daemon restart marks previously queued or
+running jobs as terminal `interrupted` instead of resuming them.
+
+Job records must not contain daemon tokens, provider secrets, raw provider
+output, or unbounded logs. `/v1/jobs*` follows the same daemon bearer-token auth
+rules as other `/v1/*` routes.
 
 ## Dataset Deterministic Tools
 
@@ -798,8 +862,8 @@ POST /v1/datasets/eval
 
 These endpoints follow daemon auth rules and may call OpenAI or Anthropic with
 selected local content. All path fields are daemon-host paths. Direct content is
-for dataset/spec-sized inputs only; multipart upload and background jobs are
-future work.
+for dataset/spec-sized inputs only; multipart upload is future work. Background
+execution is available through the explicit `/jobs` variants described above.
 
 `POST /v1/datasets/synth` accepts exactly one prompt source: `brief`,
 `spec_content`, or absolute `spec_path`. Prompt-only mode does not require

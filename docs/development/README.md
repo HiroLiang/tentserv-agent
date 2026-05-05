@@ -80,6 +80,32 @@ With the daemon running, use the operator menu to browse read-only models,
 adapters, datasets, servers, sessions, train plans, and train runs. Navigator
 tail views use bounded requests for logs, metrics, and session messages.
 
+The `Models`, `Adapters`, and `Datasets` navigator screens have guarded action
+menus opened with `a`. Slice 4 actions are allowlisted daemon HTTP mutations
+only: model/adapter pull/import/remove, adapter bind, and dataset
+import/validate/template/export/diff/synth/eval/remove. They must not shell out
+to the CLI, call `/v1/auth`, read Keychain for confirmation, call server or
+training lifecycle routes, or write store files directly. DELETE actions use an
+empty body and require exact selected-ref confirmation. Provider-backed
+synth/eval actions render bounded summaries and artifact/debug paths, not raw
+provider output.
+
+Long-running TUI actions use daemon-side background jobs. Model/adapter
+pull/import, dataset import, and provider-backed dataset synth/eval start via
+explicit `/jobs` routes, then surface progress in the footer, dashboard, and
+Operator `Jobs` screen. The original synchronous daemon routes keep their old
+response shapes for CLI and existing HTTP clients. Slice 4.1 records jobs under
+runtime home and marks active jobs `interrupted` after daemon restart; it does
+not expose cancellation.
+
+Server and training lifecycle actions are TUI-only clients of existing daemon
+HTTP routes. Server start uses `POST /v1/servers/{ref}/start` with bounded
+readiness wait and is not a `/jobs` job. LoRA run start uses the existing
+training run registry; the TUI polls active runs with bounded metrics/log tail
+requests and does not mirror runs into the job registry. These flows must not
+call `/v1/auth`, read Keychain, shell out to the CLI, or show fake cancel
+controls.
+
 The `Chat` menu entry is the first TUI mutation surface. It is limited to
 existing daemon session/chat routes: `POST /v1/sessions` to create a session and
 `POST /v1/chat` to send a turn. It streams by default, refreshes persisted
@@ -677,7 +703,12 @@ filesystem paths. Store import, pull, inspect, and remove parity is available th
 `GET`/`DELETE /v1/models/<ref>`, `/v1/adapters/<ref>`, `/v1/datasets/<ref>`,
 and `DELETE /v1/servers/<ref>`; server delete removes stopped specs only.
 Import paths are absolute paths on the daemon host. Pull endpoints are
-synchronous MVP calls and do not expose progress or cancellation yet.
+synchronous compatibility calls. Background variants use
+`POST /v1/models/pull/jobs`, `POST /v1/models/import/jobs`, `POST
+/v1/adapters/pull/jobs`, `POST /v1/adapters/import/jobs`, `POST
+/v1/datasets/import/jobs`, `POST /v1/datasets/synth/jobs`, and `POST
+/v1/datasets/eval/jobs`, then expose progress through `GET /v1/jobs` and `GET
+/v1/jobs/<job-id>`. No cancel route exists in Slice 4.1.
 Request logs are emitted to stderr with peer, method, path, status, and elapsed
 time fields. Auth failures never log token or header values.
 Auth status is read-only and reports local env/keychain presence without

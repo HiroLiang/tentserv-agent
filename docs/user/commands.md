@@ -65,6 +65,31 @@ servers, sessions, train plans, and train runs in read-only navigator screens.
 Server logs, session message tails, train run metrics, and train run logs are
 bounded read-only views.
 
+In the `Models`, `Adapters`, and `Datasets` screens, press `a` to open guarded
+store actions. These forms call existing daemon HTTP routes for model/adapter
+pull/import/remove, adapter bind, and dataset import/validate/template/export/
+diff/synth/eval/remove. Destructive remove actions require typing the selected
+short ref or full ref. Provider-backed synth/eval actions show an explicit
+network/provider-credit confirmation and do not read Keychain before submit.
+The TUI never shells out to `tentgent`, edits store files directly, or stores
+raw provider output in the UI.
+
+Long-running TUI store actions use daemon-side background jobs. Model/adapter
+pull, imports, and provider-backed dataset synth/eval can be backgrounded while
+you keep browsing. The Operator menu includes `Jobs`, and the footer/dashboard
+show active job progress. Job records are read-only and use the same daemon
+auth as other `/v1/*` routes; Slice 4.1 does not expose cancellation.
+
+The `Servers` and `Training` screens expose guarded runtime actions through
+the same daemon HTTP lifecycle routes documented below. Press `a` in `Servers`
+to create/start/stop/remove server specs. Press `a` in `Training` Plans to
+preview/create/remove LoRA plans or start a run from a selected plan. Press `A`
+from `Models` to prefill server creation from the selected model, or from
+`Datasets` to prefill LoRA plan creation from the selected dataset. Server
+start uses a bounded readiness wait and is not a background job; LoRA runs stay
+in the training run registry and are monitored with bounded metrics/log tails.
+The TUI does not expose fake cancellation.
+
 The Operator menu includes `Chat`, a session workspace over existing daemon
 session and chat routes. It can choose a running server, create or resume a
 session, stream assistant output through `POST /v1/chat`, and refresh the
@@ -357,6 +382,11 @@ curl -sS http://127.0.0.1:8790/v1/models/pull \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{"repo_id":"owner/name","revision":null}'
+curl -sS http://127.0.0.1:8790/v1/models/pull/jobs \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"repo_id":"owner/name","revision":null}'
 curl -sS http://127.0.0.1:8790/v1/adapters/import \
   -X POST \
   -H 'Content-Type: application/json' \
@@ -421,11 +451,17 @@ curl -sS -X DELETE http://127.0.0.1:8790/v1/datasets/<dataset-ref> \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS -X DELETE http://127.0.0.1:8790/v1/servers/<server-ref> \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/jobs \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/jobs/<job-id> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 ```
 
 Import paths are read from the daemon host filesystem, must be absolute, and
 may expose local source/store paths in responses. Pull endpoints are synchronous
-MVP calls and may outlive short client timeouts on large downloads.
+compatibility calls and may outlive short client timeouts on large downloads.
+Use the `/jobs` variants for daemon-side background progress without changing
+the synchronous response shape for existing clients.
 Dataset validation failures return HTTP `200` with `valid:false`; HTTP `400`
 is reserved for malformed daemon requests. Dataset template returns the prompt
 body in JSON and does not write a file. Dataset export writes only to a missing

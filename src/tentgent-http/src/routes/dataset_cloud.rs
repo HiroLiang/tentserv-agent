@@ -21,7 +21,8 @@ use crate::{
         DatasetEvalRequest, DatasetEvalResponse, DatasetRuntimeDebugItem, DatasetSynthPromptItem,
         DatasetSynthPromptResponse, DatasetSynthRequest, DatasetSynthResponse, ErrorResponse,
     },
-    http::{HttpRequest, HttpResponse},
+    http::{HttpBody, HttpRequest, HttpResponse},
+    jobs::{JobRegistry, JobResponse},
     response::{bad_request_response, json_response, parse_json_body},
 };
 
@@ -226,6 +227,81 @@ pub(crate) async fn eval_dataset_response(
     }
 }
 
+pub(crate) fn synth_dataset_job_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+) -> HttpResponse {
+    let body = match parse_json_body::<DatasetSynthRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    if body.print_prompt {
+        return bad_request_response("print_prompt is synchronous; use /v1/datasets/synth");
+    }
+    if let Err(response) = validate_synth_job_request(&body) {
+        return response;
+    }
+    let label = body
+        .brief
+        .as_deref()
+        .map(|brief| format!("synth {}", brief.trim()))
+        .or_else(|| {
+            body.spec_path
+                .as_deref()
+                .map(|path| format!("synth {path}"))
+        })
+        .unwrap_or_else(|| "synth dataset".to_string());
+    let registry = state.jobs().clone();
+    let job = registry.create("dataset_synth", label, "datasets", ["datasets".to_string()]);
+    let job_id = job.job_id.clone();
+    let state = state.clone();
+    let request = request.clone();
+
+    tokio::spawn(async move {
+        registry.start(&job_id, "running dataset synth");
+        let response = synth_dataset_response(&state, &request).await;
+        finish_dataset_job(&registry, &job_id, response, "synth");
+    });
+
+    json_response(202, JobResponse { job })
+}
+
+pub(crate) fn eval_dataset_job_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+) -> HttpResponse {
+    let body = match parse_json_body::<DatasetEvalRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    if let Err(response) = validate_eval_job_request(state.home_dir(), &body) {
+        return response;
+    }
+    let label = body
+        .dataset_ref
+        .as_deref()
+        .map(|reference| format!("eval {reference}"))
+        .or_else(|| {
+            body.input_path
+                .as_deref()
+                .map(|path| format!("eval {path}"))
+        })
+        .unwrap_or_else(|| "eval dataset".to_string());
+    let registry = state.jobs().clone();
+    let job = registry.create("dataset_eval", label, "datasets", ["datasets".to_string()]);
+    let job_id = job.job_id.clone();
+    let state = state.clone();
+    let request = request.clone();
+
+    tokio::spawn(async move {
+        registry.start(&job_id, "running dataset eval");
+        let response = eval_dataset_response(&state, &request).await;
+        finish_dataset_job(&registry, &job_id, response, "eval");
+    });
+
+    json_response(202, JobResponse { job })
+}
+
 struct SynthSource {
     kind: &'static str,
     brief: Option<String>,
@@ -275,6 +351,23 @@ fn resolve_synth_source(body: &DatasetSynthRequest) -> Result<SynthSource, HttpR
         spec_content: None,
         spec_path: Some(spec_path),
     })
+}
+
+fn validate_synth_job_request(body: &DatasetSynthRequest) -> Result<(), HttpResponse> {
+    let source = resolve_synth_source(body)?;
+    let _ = synth_counts(body)?;
+    let _ = required_string(body.provider.as_deref(), "provider")?;
+    let _ = required_string(body.model.as_deref(), "model")?;
+    let output_path = required_absolute_path(body.output_path.as_deref(), "output_path")?;
+    ensure_missing_or_empty_dir(&output_path)?;
+    let _ = optional_positive_u32(body.max_tokens, "max_tokens")?;
+    let _ = optional_f32(body.temperature, 0.0, "temperature")?;
+    let _ = optional_range_f32(body.timeout_seconds, 180.0, "timeout_seconds")?;
+    let _ = optional_max_u32(body.retries, 1, 10, "retries")?;
+    if let Some(spec_path) = &source.spec_path {
+        let _ = canonical_input_path(spec_path)?;
+    }
+    Ok(())
 }
 
 fn materialize_synth_spec(
@@ -343,6 +436,76 @@ fn resolve_eval_input(home: &Path, body: &DatasetEvalRequest) -> Result<PathBuf,
     }
     let input_path = required_absolute_path(input_path.as_deref(), "input_path")?;
     canonical_input_path(&input_path)
+}
+
+fn validate_eval_job_request(home: &Path, body: &DatasetEvalRequest) -> Result<(), HttpResponse> {
+    let _ = required_string(body.provider.as_deref(), "provider")?;
+    let _ = required_string(body.model.as_deref(), "model")?;
+    let output_path = required_absolute_path(body.output_path.as_deref(), "output_path")?;
+    ensure_missing_or_empty_dir(&output_path)?;
+
+    let dataset_ref = optional_nonblank(body.dataset_ref.clone(), "dataset_ref")?;
+    let input_content = optional_content(body.input_content.clone(), "input_content")?;
+    let input_path = optional_nonblank(body.input_path.clone(), "input_path")?;
+    let selected = [
+        dataset_ref.is_some(),
+        input_content.is_some(),
+        input_path.is_some(),
+    ]
+    .into_iter()
+    .filter(|selected| *selected)
+    .count();
+    if selected != 1 {
+        return Err(bad_request_response(
+            "exactly one of `dataset_ref`, `input_content`, or `input_path` is required",
+        ));
+    }
+    if let Some(reference) = dataset_ref {
+        if reference.contains('/') {
+            return Err(bad_request_response(
+                "`dataset_ref` must be a managed ref, not a path",
+            ));
+        }
+        let manager = DatasetManager::new_with_home(Some(home)).map_err(dataset_error_response)?;
+        let _ = manager
+            .inspect(&reference)
+            .map_err(dataset_error_response)?;
+    }
+    if let Some(content) = input_content {
+        let format = body
+            .input_format
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("jsonl");
+        if format != "jsonl" {
+            return Err(bad_request_response("`input_format` must be `jsonl`"));
+        }
+        if content.len() > INPUT_CONTENT_MAX_BYTES {
+            return Err(bad_request_response(format!(
+                "`input_content` must be at most {INPUT_CONTENT_MAX_BYTES} bytes"
+            )));
+        }
+    } else if body.input_format.is_some() {
+        return Err(bad_request_response(
+            "`input_format` is only accepted with `input_content`",
+        ));
+    }
+    if let Some(path) = input_path {
+        let path = required_absolute_path(Some(&path), "input_path")?;
+        let _ = canonical_input_path(&path)?;
+    }
+
+    let _ = normalize_split(
+        body.split.as_deref(),
+        &["train", "valid", "test", "eval_cases", "all"],
+    )?;
+    let _ = optional_positive_u32(body.max_records, "max_records")?;
+    let _ = optional_nonblank(body.criteria.clone(), "criteria")?;
+    let _ = optional_positive_u32(body.max_tokens, "max_tokens")?;
+    let _ = optional_f32(body.temperature, 0.0, "temperature")?;
+    let _ = optional_range_f32(body.timeout_seconds, 180.0, "timeout_seconds")?;
+    Ok(())
 }
 
 fn synth_counts(body: &DatasetSynthRequest) -> Result<(String, DatasetSynthCounts), HttpResponse> {
@@ -597,6 +760,55 @@ fn output_exists_response(path: &Path) -> HttpResponse {
             ),
         },
     )
+}
+
+fn finish_dataset_job(
+    registry: &JobRegistry,
+    job_id: &str,
+    response: HttpResponse,
+    response_key: &'static str,
+) {
+    let status = response.status_code;
+    let HttpBody::Buffered(body) = response.body else {
+        registry.fail(
+            job_id,
+            "dataset job returned a non-buffered daemon response",
+        );
+        return;
+    };
+    let value = serde_json::from_slice::<serde_json::Value>(&body).ok();
+    if (200..300).contains(&status) {
+        let artifact_path = value
+            .as_ref()
+            .and_then(|value| value.get(response_key))
+            .and_then(|value| value.get("output_dir"))
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned);
+        let progress_events = value
+            .as_ref()
+            .and_then(|value| value.get("progress_events"))
+            .and_then(serde_json::Value::as_array)
+            .map(|events| format!("{} progress event(s)", events.len()));
+        registry.succeed(
+            job_id,
+            None,
+            None,
+            artifact_path,
+            progress_events.unwrap_or_else(|| format!("dataset {response_key} completed")),
+        );
+    } else {
+        let message = value
+            .as_ref()
+            .and_then(|value| {
+                value
+                    .get("message")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| value.get("error").and_then(serde_json::Value::as_str))
+            })
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("dataset {response_key} returned HTTP {status}"));
+        registry.fail(job_id, message);
+    }
 }
 
 fn stage_content(home: &Path, prefix: &str, file_name: &str, content: &str) -> io::Result<PathBuf> {

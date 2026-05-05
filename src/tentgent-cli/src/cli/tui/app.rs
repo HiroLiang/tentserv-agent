@@ -26,11 +26,12 @@ use crate::cli::{
 
 use super::{
     chat::{
-        adapter_rows_from_navigator, ChatClient, ChatConflictKind, ChatContextMode, ChatError,
-        ChatFocus, ChatLoadState, ChatMessages, ChatOverview, ChatPhase, ChatSendRequest,
-        ChatSendState, ChatState, ChatStreamEvent, SseDecoder,
+        adapter_rows_from_navigator, ChatClient, ChatConflictKind, ChatError, ChatLoadState,
+        ChatMessages, ChatOverview, ChatPhase, ChatSendRequest, ChatSendState, ChatState,
+        ChatStreamEvent, SseDecoder,
     },
     daemon_client::{DaemonClient, DaemonConnectionState, DaemonSnapshot, TuiTokenSource},
+    jobs::{JobClient, JobError, JobLoadState, JobState, TuiJobItem},
     navigator::{
         count_label, DashboardCountUpdate, DashboardState, NavigatorDetail, NavigatorError,
         NavigatorListKind, NavigatorLoadState, NavigatorRow, NavigatorState, TailPane, TailSource,
@@ -40,11 +41,22 @@ use super::{
         collect_resource_snapshot, ResourceInputs, ResourceLoadState, ResourceSnapshot,
         ResourceState,
     },
+    runtime_action::{
+        build_runtime_action_request, runtime_actions_for, RuntimeActionClient, RuntimeActionError,
+        RuntimeActionForm, RuntimeActionKind, RuntimeActionRequest, RuntimeActionResult,
+        RuntimeActionState,
+    },
+    store_action::{
+        actions_for, build_action_request, ActionState, StoreActionClient, StoreActionError,
+        StoreActionForm, StoreActionKind, StoreActionRequest, StoreActionResult,
+    },
     terminal::TerminalSession,
 };
 
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const AUTO_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
+const JOB_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const TRAIN_RUN_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 type TuiEventSender = mpsc::UnboundedSender<TuiEvent>;
 type TuiEventReceiver = mpsc::UnboundedReceiver<TuiEvent>;
@@ -129,6 +141,26 @@ enum TuiEvent {
         generation: u64,
         result: Result<String, ChatError>,
     },
+    StoreActionFinished {
+        request_id: u64,
+        generation: u64,
+        result: Result<StoreActionResult, StoreActionError>,
+    },
+    StoreJobStarted {
+        request_id: u64,
+        generation: u64,
+        result: Result<TuiJobItem, StoreActionError>,
+    },
+    JobsFinished {
+        request_id: u64,
+        generation: u64,
+        result: Result<Vec<TuiJobItem>, JobError>,
+    },
+    RuntimeActionFinished {
+        request_id: u64,
+        generation: u64,
+        result: Result<RuntimeActionResult, RuntimeActionError>,
+    },
 }
 
 #[derive(Debug)]
@@ -191,6 +223,7 @@ pub(super) enum MenuItem {
     Settings,
     Dashboard,
     Chat,
+    Jobs,
     Models,
     Adapters,
     Datasets,
@@ -367,6 +400,9 @@ pub(super) struct TuiApp {
     pub(super) navigator: NavigatorState,
     pub(super) resources: ResourceState,
     pub(super) chat: ChatState,
+    pub(super) jobs: JobState,
+    pub(super) store_action: ActionState,
+    pub(super) runtime_action: RuntimeActionState,
     pub(super) dashboard: DashboardState,
     pub(super) mode: AppMode,
     pub(super) focus: FocusPane,
@@ -385,7 +421,9 @@ pub(super) struct TuiApp {
     pub(super) tail_in_flight: Option<(u64, NavigatorListKind)>,
     pub(super) resource_in_flight: Option<u64>,
     pub(super) chat_in_flight: Option<u64>,
+    pub(super) jobs_in_flight: Option<u64>,
     chat_task: Option<JoinHandle<()>>,
+    action_task: Option<JoinHandle<()>>,
     generation: u64,
     request_counter: u64,
     flag_daemon_url: Option<String>,
@@ -425,6 +463,9 @@ impl TuiApp {
             navigator: NavigatorState::default(),
             resources: ResourceState::default(),
             chat: ChatState::default(),
+            jobs: JobState::default(),
+            store_action: ActionState::Idle,
+            runtime_action: RuntimeActionState::Idle,
             dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
@@ -443,7 +484,9 @@ impl TuiApp {
             tail_in_flight: None,
             resource_in_flight: None,
             chat_in_flight: None,
+            jobs_in_flight: None,
             chat_task: None,
+            action_task: None,
             generation: 0,
             request_counter: 0,
             flag_daemon_url: command.daemon_url,
@@ -493,6 +536,12 @@ impl TuiApp {
                     item: MenuItem::Chat,
                     label: "Chat",
                     detail: "session workspace",
+                    enabled: true,
+                },
+                MenuEntry {
+                    item: MenuItem::Jobs,
+                    label: "Jobs",
+                    detail: "background action progress",
                     enabled: true,
                 },
                 MenuEntry {
@@ -754,6 +803,8 @@ impl TuiApp {
     fn refresh_current_view(&mut self, tx: &TuiEventSender) {
         if self.selected_menu_entry().item == MenuItem::Chat {
             self.refresh_chat_view(tx);
+        } else if self.selected_menu_entry().item == MenuItem::Jobs {
+            self.request_jobs(tx, "refreshing background jobs");
         } else if self.selected_menu_entry().item == MenuItem::Resources {
             self.request_resource_snapshot(tx, "scanning local resources");
         } else if let Some(kind) = self.current_navigator_kind() {
@@ -764,6 +815,24 @@ impl TuiApp {
         } else {
             self.request_refresh(tx, "refreshing daemon status");
         }
+    }
+
+    fn has_active_train_runs(&self) -> bool {
+        self.navigator
+            .state(NavigatorListKind::TrainRuns)
+            .rows
+            .iter()
+            .any(|row| {
+                row.columns
+                    .get(1)
+                    .map(|status| {
+                        matches!(
+                            status.as_str(),
+                            "queued" | "running" | "starting" | "live" | "stale"
+                        )
+                    })
+                    .unwrap_or(false)
+            })
     }
 
     fn ensure_resources_loaded(&mut self, tx: &TuiEventSender) {
@@ -791,6 +860,37 @@ impl TuiApp {
                 .await
                 .map_err(|error| error.to_string());
             let _ = tx.send(TuiEvent::ResourceFinished {
+                request_id,
+                generation,
+                result,
+            });
+        });
+    }
+
+    fn request_jobs(&mut self, tx: &TuiEventSender, message: impl Into<String>) {
+        if self.mode != AppMode::Operator || self.jobs_in_flight.is_some() {
+            return;
+        }
+        let client = match self.job_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.jobs.load_state = JobLoadState::Error {
+                    message: error.to_string(),
+                    stale: !self.jobs.jobs.is_empty(),
+                };
+                self.message = "failed to create daemon job client".to_string();
+                return;
+            }
+        };
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.jobs_in_flight = Some(request_id);
+        self.jobs.load_state = JobLoadState::Loading { request_id };
+        self.message = message.into();
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result = client.list_jobs().await;
+            let _ = tx.send(TuiEvent::JobsFinished {
                 request_id,
                 generation,
                 result,
@@ -1086,6 +1186,972 @@ impl TuiApp {
             self.daemon_token.token.clone(),
             self.daemon_token.source,
         )
+    }
+
+    fn store_action_client(&self) -> miette::Result<StoreActionClient> {
+        StoreActionClient::new(
+            self.daemon_url.url.clone(),
+            self.daemon_token.token.clone(),
+            self.daemon_token.source,
+        )
+    }
+
+    fn runtime_action_client(&self) -> miette::Result<RuntimeActionClient> {
+        RuntimeActionClient::new(
+            self.daemon_url.url.clone(),
+            self.daemon_token.token.clone(),
+            self.daemon_token.source,
+        )
+    }
+
+    fn job_client(&self) -> miette::Result<JobClient> {
+        JobClient::new(
+            self.daemon_url.url.clone(),
+            self.daemon_token.token.clone(),
+            self.daemon_token.source,
+        )
+    }
+
+    fn current_store_action_kind(&self) -> Option<NavigatorListKind> {
+        match self.current_navigator_kind()? {
+            kind @ (NavigatorListKind::Models
+            | NavigatorListKind::Adapters
+            | NavigatorListKind::Datasets) => Some(kind),
+            _ => None,
+        }
+    }
+
+    fn selected_store_action_row(&self, kind: NavigatorListKind) -> Option<NavigatorRow> {
+        self.navigator.state(kind).selected_row().cloned()
+    }
+
+    fn current_runtime_action_kind(&self) -> Option<NavigatorListKind> {
+        match self.current_navigator_kind()? {
+            NavigatorListKind::Models
+            | NavigatorListKind::Datasets
+            | NavigatorListKind::Servers
+            | NavigatorListKind::TrainPlans
+            | NavigatorListKind::TrainRuns => Some(self.current_navigator_kind()?),
+            _ => None,
+        }
+    }
+
+    fn selected_runtime_action_row(&self, kind: NavigatorListKind) -> Option<NavigatorRow> {
+        self.navigator.state(kind).selected_row().cloned()
+    }
+
+    fn begin_runtime_actions(&mut self, tx: &TuiEventSender) -> bool {
+        if self.mode != AppMode::Operator {
+            self.message = "runtime actions are available only in Operator mode".to_string();
+            return true;
+        }
+        let Some(kind) = self.current_runtime_action_kind() else {
+            return false;
+        };
+        let actions = runtime_actions_for(kind, self.navigator.training_tab.list_kind());
+        if actions.is_empty() {
+            return false;
+        }
+        self.focus = FocusPane::Detail;
+        self.ensure_current_navigator_loaded(tx);
+        self.runtime_action = RuntimeActionState::SelectingAction {
+            kind,
+            actions,
+            selected: 0,
+        };
+        self.message = format!("opened {} runtime action menu", kind.label());
+        true
+    }
+
+    fn begin_store_actions(&mut self, tx: &TuiEventSender) {
+        if self.mode != AppMode::Operator {
+            self.message = "store actions are available only in Operator mode".to_string();
+            return;
+        }
+        let Some(kind) = self.current_store_action_kind() else {
+            self.message = "actions are available for Models, Adapters, and Datasets".to_string();
+            return;
+        };
+        let actions = actions_for(kind);
+        if actions.is_empty() {
+            self.message = format!("{} has no Slice 4 actions", kind.label());
+            return;
+        }
+        self.focus = FocusPane::Detail;
+        self.ensure_current_navigator_loaded(tx);
+        self.store_action = ActionState::SelectingAction {
+            kind,
+            actions,
+            selected: 0,
+        };
+        self.message = format!("opened {} action menu", kind.label());
+    }
+
+    fn open_store_action_form(
+        &mut self,
+        kind: NavigatorListKind,
+        action: StoreActionKind,
+        tx: &TuiEventSender,
+    ) {
+        let selected = self.selected_store_action_row(kind);
+        if action.requires_selection() && selected.is_none() {
+            self.store_action = ActionState::Error {
+                action,
+                message: format!("{} requires a selected managed row", action.label()),
+                recoverable: true,
+            };
+            self.message = "select a row before running this action".to_string();
+            return;
+        }
+        let form = StoreActionForm::new(action);
+        self.store_action = ActionState::EditingForm {
+            kind,
+            selected,
+            form,
+            error: None,
+        };
+        if matches!(
+            self.store_action,
+            ActionState::EditingForm {
+                ref form, ..
+            } if form.is_empty()
+        ) {
+            self.submit_store_action_form(tx);
+        } else {
+            self.message =
+                "fill action form; provider actions require explicit confirmation".to_string();
+        }
+    }
+
+    fn submit_store_action_form(&mut self, tx: &TuiEventSender) {
+        let state = std::mem::replace(&mut self.store_action, ActionState::Idle);
+        let ActionState::EditingForm {
+            kind,
+            selected,
+            form,
+            ..
+        } = state
+        else {
+            self.store_action = state;
+            return;
+        };
+        let values = form.values();
+        match build_action_request(form.action, selected.as_ref(), &values) {
+            Ok(request) => {
+                if request.confirmation_token.is_some() || request.provider_confirmation {
+                    let message = if request.provider_confirmation {
+                        "Type RUN to confirm provider/network-credit action".to_string()
+                    } else {
+                        format!(
+                            "Type {} or full ref to confirm destructive remove",
+                            request
+                                .confirmation_token
+                                .as_deref()
+                                .unwrap_or("(selected ref)")
+                        )
+                    };
+                    self.store_action = ActionState::Confirming {
+                        request,
+                        typed: String::new(),
+                        cursor: 0,
+                        message,
+                    };
+                    self.message = "confirmation required before submit".to_string();
+                } else {
+                    self.begin_store_action_request(request, tx);
+                }
+            }
+            Err(error) => {
+                self.store_action = ActionState::EditingForm {
+                    kind,
+                    selected,
+                    form,
+                    error: Some(error.clone()),
+                };
+                self.message = format!("action form needs correction: {error}");
+            }
+        }
+    }
+
+    fn begin_store_action_request(&mut self, request: StoreActionRequest, tx: &TuiEventSender) {
+        let client = match self.store_action_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.store_action = ActionState::Error {
+                    action: request.action,
+                    message: error.to_string(),
+                    recoverable: true,
+                };
+                self.message = "failed to create daemon action client".to_string();
+                return;
+            }
+        };
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.message = if request.long_running {
+            format!("starting background job for {}", request.action.label())
+        } else {
+            format!("running {}", request.action.label())
+        };
+        self.store_action = ActionState::Running {
+            request_id,
+            generation,
+            request: request.clone(),
+            started_at: Instant::now(),
+        };
+        let tx = tx.clone();
+        self.action_task = Some(tokio::spawn(async move {
+            if request.long_running {
+                let result = client.start_job(request).await;
+                let _ = tx.send(TuiEvent::StoreJobStarted {
+                    request_id,
+                    generation,
+                    result,
+                });
+            } else {
+                let result = client.execute(request).await;
+                let _ = tx.send(TuiEvent::StoreActionFinished {
+                    request_id,
+                    generation,
+                    result,
+                });
+            }
+        }));
+    }
+
+    fn handle_store_action_key(
+        &mut self,
+        key: KeyEvent,
+        tx: &TuiEventSender,
+    ) -> miette::Result<bool> {
+        if !self.store_action.is_active() {
+            return Ok(false);
+        }
+        let state = std::mem::replace(&mut self.store_action, ActionState::Idle);
+        match state {
+            ActionState::SelectingAction {
+                kind,
+                actions,
+                mut selected,
+            } => match key.code {
+                KeyCode::Up => {
+                    selected = move_index(selected, actions.len(), -1);
+                    self.store_action = ActionState::SelectingAction {
+                        kind,
+                        actions,
+                        selected,
+                    };
+                }
+                KeyCode::Down => {
+                    selected = move_index(selected, actions.len(), 1);
+                    self.store_action = ActionState::SelectingAction {
+                        kind,
+                        actions,
+                        selected,
+                    };
+                }
+                KeyCode::Enter => {
+                    if let Some(action) = actions.get(selected).copied() {
+                        self.open_store_action_form(kind, action, tx);
+                    } else {
+                        self.store_action = ActionState::Idle;
+                    }
+                }
+                KeyCode::Esc => {
+                    self.message = "action menu closed".to_string();
+                }
+                _ => {
+                    self.store_action = ActionState::SelectingAction {
+                        kind,
+                        actions,
+                        selected,
+                    };
+                }
+            },
+            ActionState::EditingForm {
+                kind,
+                selected,
+                mut form,
+                error: _,
+            } => match key.code {
+                KeyCode::Up => {
+                    form.move_field(-1);
+                    self.store_action = ActionState::EditingForm {
+                        kind,
+                        selected,
+                        form,
+                        error: None,
+                    };
+                }
+                KeyCode::Down => {
+                    form.move_field(1);
+                    self.store_action = ActionState::EditingForm {
+                        kind,
+                        selected,
+                        form,
+                        error: None,
+                    };
+                }
+                KeyCode::Enter => {
+                    self.store_action = ActionState::EditingForm {
+                        kind,
+                        selected,
+                        form,
+                        error: None,
+                    };
+                    self.submit_store_action_form(tx);
+                }
+                KeyCode::Esc => {
+                    self.message = "action form canceled".to_string();
+                }
+                _ => {
+                    if let Some(field) = form.selected_field_mut() {
+                        edit_text_value(&mut field.value, &mut field.cursor, key.code);
+                    }
+                    self.store_action = ActionState::EditingForm {
+                        kind,
+                        selected,
+                        form,
+                        error: None,
+                    };
+                }
+            },
+            ActionState::Confirming {
+                request,
+                mut typed,
+                mut cursor,
+                message,
+            } => match key.code {
+                KeyCode::Enter => {
+                    if request.confirmation_matches(&typed) {
+                        self.begin_store_action_request(request, tx);
+                    } else {
+                        self.message = "confirmation text does not match".to_string();
+                        self.store_action = ActionState::Confirming {
+                            request,
+                            typed,
+                            cursor,
+                            message,
+                        };
+                    }
+                }
+                KeyCode::Esc => {
+                    self.message = "action confirmation canceled".to_string();
+                }
+                _ => {
+                    edit_text_value(&mut typed, &mut cursor, key.code);
+                    self.store_action = ActionState::Confirming {
+                        request,
+                        typed,
+                        cursor,
+                        message,
+                    };
+                }
+            },
+            ActionState::Running {
+                request_id,
+                generation,
+                request,
+                started_at,
+            } => match key.code {
+                KeyCode::Esc => {
+                    if let Some(handle) = self.action_task.take() {
+                        handle.abort();
+                    }
+                    self.generation = self.generation.saturating_add(1);
+                    let action = request.action;
+                    self.store_action = ActionState::Error {
+                        action,
+                        message: "local TUI request aborted; daemon-side work may continue"
+                            .to_string(),
+                        recoverable: true,
+                    };
+                    self.message =
+                        "aborted local action request; daemon may still be working".to_string();
+                }
+                _ => {
+                    self.store_action = ActionState::Running {
+                        request_id,
+                        generation,
+                        request,
+                        started_at,
+                    };
+                }
+            },
+            ActionState::Result(_) | ActionState::Error { .. } => match key.code {
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.message = "returned to table".to_string();
+                }
+                _ => {
+                    self.store_action = state;
+                }
+            },
+            ActionState::Idle => {}
+        }
+        Ok(true)
+    }
+
+    fn apply_store_action_result(
+        &mut self,
+        result: Result<StoreActionResult, StoreActionError>,
+        tx: &TuiEventSender,
+    ) {
+        self.action_task = None;
+        match result {
+            Ok(result) => {
+                let refresh_targets = result.refresh_targets.clone();
+                let label = result.action.label();
+                self.store_action = ActionState::Result(result);
+                self.mark_resources_snapshot_stale();
+                for kind in refresh_targets {
+                    self.request_navigator_list(kind, tx, format!("refreshing {}", kind.label()));
+                }
+                self.message = format!("{label} completed");
+            }
+            Err(error) => self.apply_store_action_error(error),
+        }
+    }
+
+    fn apply_store_action_error(&mut self, error: StoreActionError) {
+        let running_request = match &self.store_action {
+            ActionState::Running { request, .. } => Some(request.clone()),
+            _ => None,
+        };
+        let action = match &running_request {
+            Some(request) => request.action,
+            _ => StoreActionKind::ModelPull,
+        };
+        if let (StoreActionError::BadRequest(message), Some(request)) = (&error, &running_request) {
+            let mut form = StoreActionForm::new(request.action);
+            for field in &mut form.fields {
+                if let Some((_, value)) = request
+                    .form_values
+                    .iter()
+                    .find(|(name, _)| *name == field.spec.name)
+                {
+                    field.value = value.clone();
+                    field.cursor = field.value.chars().count();
+                }
+            }
+            let selected = request.selected_ref.as_ref().map(|item_ref| NavigatorRow {
+                item_ref: item_ref.clone(),
+                short_ref: request
+                    .selected_short_ref
+                    .clone()
+                    .unwrap_or_else(|| item_ref.clone()),
+                columns: Vec::new(),
+                search_text: String::new(),
+                summary: Vec::new(),
+                raw: serde_json::Value::Null,
+            });
+            self.store_action = ActionState::EditingForm {
+                kind: request.action.section(),
+                selected,
+                form,
+                error: Some(message.clone()),
+            };
+            self.message = "daemon rejected the form; values were preserved".to_string();
+            return;
+        }
+        if let StoreActionError::AuthRequired(message) = &error {
+            self.daemon = DaemonSnapshot {
+                state: DaemonConnectionState::AuthRequired,
+                detail: message.clone(),
+                status: None,
+                doctor: None,
+            };
+            self.update_mode();
+            self.store_action = ActionState::Error {
+                action,
+                message: message.clone(),
+                recoverable: true,
+            };
+            self.message = "daemon auth required for store action".to_string();
+            return;
+        }
+        if let StoreActionError::NotFound(message) = &error {
+            if let Some(kind) = running_request
+                .as_ref()
+                .map(|request| request.action.section())
+                .or_else(|| self.current_store_action_kind())
+            {
+                self.navigator.state_mut(kind).load_state = NavigatorLoadState::StaleItem {
+                    message: format!("{message}; refresh the list"),
+                };
+            }
+            self.store_action = ActionState::Error {
+                action,
+                message: message.clone(),
+                recoverable: true,
+            };
+            self.message = "selected store item is stale; refresh and reselect".to_string();
+            return;
+        }
+        if let StoreActionError::Down(message) | StoreActionError::Timeout(message) = &error {
+            self.store_action = ActionState::Error {
+                action,
+                message: message.clone(),
+                recoverable: true,
+            };
+            self.message = "store action failed; daemon may be unavailable".to_string();
+            return;
+        }
+        self.store_action = ActionState::Error {
+            action,
+            message: error.to_string(),
+            recoverable: true,
+        };
+        self.message = format!("store action failed: {error}");
+    }
+
+    fn open_runtime_action_form(
+        &mut self,
+        kind: NavigatorListKind,
+        action: RuntimeActionKind,
+        tx: &TuiEventSender,
+    ) {
+        let selected = self.selected_runtime_action_row(kind);
+        if action.requires_selection() && selected.is_none() {
+            self.runtime_action = RuntimeActionState::Error {
+                action,
+                message: format!("{} requires a selected row", action.label()),
+                recoverable: true,
+            };
+            self.message = "select a row before running this action".to_string();
+            return;
+        }
+        let form = RuntimeActionForm::new(action, selected.as_ref());
+        self.runtime_action = RuntimeActionState::EditingForm {
+            kind,
+            selected,
+            form,
+            error: None,
+        };
+        if matches!(
+            self.runtime_action,
+            RuntimeActionState::EditingForm {
+                ref form, ..
+            } if form.is_empty()
+        ) {
+            self.submit_runtime_action_form(tx);
+        } else {
+            self.message = "fill runtime action form; advanced fields are optional".to_string();
+        }
+    }
+
+    fn submit_runtime_action_form(&mut self, tx: &TuiEventSender) {
+        let state = std::mem::replace(&mut self.runtime_action, RuntimeActionState::Idle);
+        let RuntimeActionState::EditingForm {
+            kind,
+            selected,
+            form,
+            ..
+        } = state
+        else {
+            self.runtime_action = state;
+            return;
+        };
+        let values = form.values();
+        match build_runtime_action_request(form.action, selected.as_ref(), &values) {
+            Ok(request) => {
+                if request.confirmation_token.is_some()
+                    || request.resource_confirmation
+                    || request.warning.is_some()
+                {
+                    let message = if request.resource_confirmation {
+                        "Type RUN to confirm local training resource use".to_string()
+                    } else if let Some(warning) = &request.warning {
+                        format!("{warning}; type CONFIRM to continue")
+                    } else {
+                        format!(
+                            "Type {} or full ref to confirm destructive remove",
+                            request
+                                .confirmation_token
+                                .as_deref()
+                                .unwrap_or("(selected ref)")
+                        )
+                    };
+                    self.runtime_action = RuntimeActionState::Confirming {
+                        request,
+                        typed: String::new(),
+                        cursor: 0,
+                        message,
+                    };
+                    self.message = "runtime confirmation required before submit".to_string();
+                } else {
+                    self.begin_runtime_action_request(request, tx);
+                }
+            }
+            Err(error) => {
+                self.runtime_action = RuntimeActionState::EditingForm {
+                    kind,
+                    selected,
+                    form,
+                    error: Some(error.clone()),
+                };
+                self.message = format!("runtime action form needs correction: {error}");
+            }
+        }
+    }
+
+    fn begin_runtime_action_request(&mut self, request: RuntimeActionRequest, tx: &TuiEventSender) {
+        let client = match self.runtime_action_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.runtime_action = RuntimeActionState::Error {
+                    action: request.action,
+                    message: error.to_string(),
+                    recoverable: true,
+                };
+                self.message = "failed to create daemon runtime action client".to_string();
+                return;
+            }
+        };
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.message = format!("running {}", request.action.label());
+        self.runtime_action = RuntimeActionState::Running {
+            request_id,
+            generation,
+            request: request.clone(),
+            started_at: Instant::now(),
+        };
+        let tx = tx.clone();
+        self.action_task = Some(tokio::spawn(async move {
+            let result = client.execute(request).await;
+            let _ = tx.send(TuiEvent::RuntimeActionFinished {
+                request_id,
+                generation,
+                result,
+            });
+        }));
+    }
+
+    fn handle_runtime_action_key(
+        &mut self,
+        key: KeyEvent,
+        tx: &TuiEventSender,
+    ) -> miette::Result<bool> {
+        if !self.runtime_action.is_active() {
+            return Ok(false);
+        }
+        let state = std::mem::replace(&mut self.runtime_action, RuntimeActionState::Idle);
+        match state {
+            RuntimeActionState::SelectingAction {
+                kind,
+                actions,
+                mut selected,
+            } => match key.code {
+                KeyCode::Up => {
+                    selected = move_index(selected, actions.len(), -1);
+                    self.runtime_action = RuntimeActionState::SelectingAction {
+                        kind,
+                        actions,
+                        selected,
+                    };
+                }
+                KeyCode::Down => {
+                    selected = move_index(selected, actions.len(), 1);
+                    self.runtime_action = RuntimeActionState::SelectingAction {
+                        kind,
+                        actions,
+                        selected,
+                    };
+                }
+                KeyCode::Enter => {
+                    if let Some(action) = actions.get(selected).copied() {
+                        self.open_runtime_action_form(kind, action, tx);
+                    } else {
+                        self.runtime_action = RuntimeActionState::Idle;
+                    }
+                }
+                KeyCode::Esc => {
+                    self.message = "runtime action menu closed".to_string();
+                }
+                _ => {
+                    self.runtime_action = RuntimeActionState::SelectingAction {
+                        kind,
+                        actions,
+                        selected,
+                    };
+                }
+            },
+            RuntimeActionState::EditingForm {
+                kind,
+                selected,
+                mut form,
+                error: _,
+            } => match key.code {
+                KeyCode::Up => {
+                    form.move_field(-1);
+                    self.runtime_action = RuntimeActionState::EditingForm {
+                        kind,
+                        selected,
+                        form,
+                        error: None,
+                    };
+                }
+                KeyCode::Down => {
+                    form.move_field(1);
+                    self.runtime_action = RuntimeActionState::EditingForm {
+                        kind,
+                        selected,
+                        form,
+                        error: None,
+                    };
+                }
+                KeyCode::Enter => {
+                    self.runtime_action = RuntimeActionState::EditingForm {
+                        kind,
+                        selected,
+                        form,
+                        error: None,
+                    };
+                    self.submit_runtime_action_form(tx);
+                }
+                KeyCode::Esc => {
+                    self.message = "runtime action form canceled".to_string();
+                }
+                _ => {
+                    if let Some(field) = form.selected_field_mut() {
+                        edit_text_value(&mut field.value, &mut field.cursor, key.code);
+                    }
+                    self.runtime_action = RuntimeActionState::EditingForm {
+                        kind,
+                        selected,
+                        form,
+                        error: None,
+                    };
+                }
+            },
+            RuntimeActionState::Confirming {
+                request,
+                mut typed,
+                mut cursor,
+                message,
+            } => match key.code {
+                KeyCode::Enter => {
+                    let warning_confirmed = request.warning.is_some() && typed.trim() == "CONFIRM";
+                    if request.confirmation_matches(&typed) || warning_confirmed {
+                        self.begin_runtime_action_request(request, tx);
+                    } else {
+                        self.message = "confirmation text does not match".to_string();
+                        self.runtime_action = RuntimeActionState::Confirming {
+                            request,
+                            typed,
+                            cursor,
+                            message,
+                        };
+                    }
+                }
+                KeyCode::Esc => {
+                    self.message = "runtime action confirmation canceled".to_string();
+                }
+                _ => {
+                    edit_text_value(&mut typed, &mut cursor, key.code);
+                    self.runtime_action = RuntimeActionState::Confirming {
+                        request,
+                        typed,
+                        cursor,
+                        message,
+                    };
+                }
+            },
+            RuntimeActionState::Running {
+                request_id,
+                generation,
+                request,
+                started_at,
+            } => match key.code {
+                KeyCode::Esc => {
+                    if let Some(handle) = self.action_task.take() {
+                        handle.abort();
+                    }
+                    self.generation = self.generation.saturating_add(1);
+                    let action = request.action;
+                    self.runtime_action = RuntimeActionState::Error {
+                        action,
+                        message: "local TUI wait aborted; daemon-side work may continue"
+                            .to_string(),
+                        recoverable: true,
+                    };
+                    self.message = "aborted local runtime action wait; daemon may still be working"
+                        .to_string();
+                }
+                _ => {
+                    self.runtime_action = RuntimeActionState::Running {
+                        request_id,
+                        generation,
+                        request,
+                        started_at,
+                    };
+                }
+            },
+            RuntimeActionState::Result(_) | RuntimeActionState::Error { .. } => match key.code {
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.message = "returned to table".to_string();
+                }
+                _ => {
+                    self.runtime_action = state;
+                }
+            },
+            RuntimeActionState::Idle => {}
+        }
+        Ok(true)
+    }
+
+    fn apply_runtime_action_result(
+        &mut self,
+        result: Result<RuntimeActionResult, RuntimeActionError>,
+        tx: &TuiEventSender,
+    ) {
+        self.action_task = None;
+        match result {
+            Ok(result) => {
+                let refresh_targets = result.refresh_targets.clone();
+                let action = result.action;
+                let selected_ref = result.selected_ref.clone();
+                self.runtime_action = RuntimeActionState::Result(result);
+                self.mark_resources_snapshot_stale();
+                if matches!(
+                    action,
+                    RuntimeActionKind::ServerStop | RuntimeActionKind::ServerRemove
+                ) {
+                    if let Some(server_ref) = selected_ref.as_deref() {
+                        self.mark_chat_server_stale(server_ref);
+                    }
+                }
+                for kind in refresh_targets {
+                    self.request_navigator_list(kind, tx, format!("refreshing {}", kind.label()));
+                }
+                if matches!(action, RuntimeActionKind::ServerStart) {
+                    self.request_current_server_detail_after_action(tx);
+                    self.request_chat_overview(tx, "refreshing chat server choices");
+                }
+                if matches!(action, RuntimeActionKind::TrainRunStart) {
+                    self.navigator.training_tab = super::navigator::TrainingTab::Runs;
+                    self.request_navigator_list(
+                        NavigatorListKind::TrainRuns,
+                        tx,
+                        "refreshing train runs",
+                    );
+                }
+                self.message = format!("{} completed", action.label());
+            }
+            Err(error) => self.apply_runtime_action_error(error),
+        }
+    }
+
+    fn apply_runtime_action_error(&mut self, error: RuntimeActionError) {
+        let running_request = match &self.runtime_action {
+            RuntimeActionState::Running { request, .. } => Some(request.clone()),
+            _ => None,
+        };
+        let action = running_request
+            .as_ref()
+            .map(|request| request.action)
+            .unwrap_or(RuntimeActionKind::ServerCreate);
+        if let (RuntimeActionError::BadRequest(message), Some(request)) = (&error, &running_request)
+        {
+            let mut form = RuntimeActionForm::new(request.action, None);
+            for field in &mut form.fields {
+                if let Some((_, value)) = request
+                    .form_values
+                    .iter()
+                    .find(|(name, _)| *name == field.spec.name)
+                {
+                    field.value = value.clone();
+                    field.cursor = field.value.chars().count();
+                }
+            }
+            let selected = request.selected_ref.as_ref().map(|item_ref| NavigatorRow {
+                item_ref: item_ref.clone(),
+                short_ref: request
+                    .selected_short_ref
+                    .clone()
+                    .unwrap_or_else(|| item_ref.clone()),
+                columns: Vec::new(),
+                search_text: String::new(),
+                summary: Vec::new(),
+                raw: serde_json::Value::Null,
+            });
+            self.runtime_action = RuntimeActionState::EditingForm {
+                kind: request.action.primary_section(),
+                selected,
+                form,
+                error: Some(message.clone()),
+            };
+            self.message = "daemon rejected the form; values were preserved".to_string();
+            return;
+        }
+        if let RuntimeActionError::AuthRequired(message) = &error {
+            self.daemon = DaemonSnapshot {
+                state: DaemonConnectionState::AuthRequired,
+                detail: message.clone(),
+                status: self.daemon.status.clone(),
+                doctor: self.daemon.doctor.clone(),
+            };
+            self.update_mode();
+            self.runtime_action = RuntimeActionState::Error {
+                action,
+                message: message.clone(),
+                recoverable: true,
+            };
+            self.message = "daemon auth required for runtime action".to_string();
+            return;
+        }
+        if let RuntimeActionError::NotFound(message) = &error {
+            if let Some(kind) = running_request
+                .as_ref()
+                .map(|request| request.action.primary_section())
+                .or_else(|| self.current_runtime_action_kind())
+            {
+                self.navigator.state_mut(kind).load_state = NavigatorLoadState::StaleItem {
+                    message: format!("{message}; refresh the list"),
+                };
+            }
+            self.runtime_action = RuntimeActionState::Error {
+                action,
+                message: message.clone(),
+                recoverable: true,
+            };
+            self.message = "selected runtime item is stale; refresh and reselect".to_string();
+            return;
+        }
+        self.runtime_action = RuntimeActionState::Error {
+            action,
+            message: error.to_string(),
+            recoverable: true,
+        };
+        self.message = format!("runtime action failed: {error}");
+    }
+
+    fn request_current_server_detail_after_action(&mut self, tx: &TuiEventSender) {
+        if self.selected_menu_entry().item == MenuItem::Servers {
+            self.request_selected_detail(NavigatorListKind::Servers, tx);
+        }
+    }
+
+    fn mark_chat_server_stale(&mut self, server_ref: &str) {
+        if self.chat.selected_server_ref.as_deref() == Some(server_ref) {
+            self.chat.selected_server_ref = None;
+            self.chat.phase = ChatPhase::ChooseServer;
+            self.chat.load_state = ChatLoadState::StaleSelection {
+                message: "selected server was stopped or removed; choose another server"
+                    .to_string(),
+            };
+            self.chat.last_error =
+                Some("selected server was stopped or removed; reselect before sending".to_string());
+        }
+    }
+
+    fn mark_resources_snapshot_stale(&mut self) {
+        if self.resources.snapshot.is_some() {
+            self.resources.load_state = ResourceLoadState::Error {
+                message: "store/dataset action may have changed local disk usage".to_string(),
+                stale: true,
+            };
+        }
     }
 
     fn ensure_chat_loaded(&mut self, tx: &TuiEventSender) {
@@ -1421,7 +2487,14 @@ impl TuiApp {
                 }
                 self.refresh_in_flight = None;
                 match result {
-                    Ok(data) => self.apply_refresh(data),
+                    Ok(data) => {
+                        self.apply_refresh(data);
+                        if self.mode == AppMode::Operator
+                            && matches!(self.jobs.load_state, JobLoadState::Idle)
+                        {
+                            self.request_jobs(tx, "loading background jobs");
+                        }
+                    }
                     Err(error) => {
                         self.daemon = DaemonSnapshot::down(error.clone());
                         self.message = format!("refresh failed: {error}");
@@ -1714,6 +2787,118 @@ impl TuiApp {
                     Err(error) => self.apply_chat_error(error, tx, true),
                 }
             }
+            TuiEvent::StoreActionFinished {
+                request_id,
+                generation,
+                result,
+            } => {
+                if self.store_action.in_flight() != Some(request_id)
+                    || self.generation != generation
+                {
+                    return Ok(());
+                }
+                self.apply_store_action_result(result, tx);
+            }
+            TuiEvent::StoreJobStarted {
+                request_id,
+                generation,
+                result,
+            } => {
+                if self.store_action.in_flight() != Some(request_id)
+                    || self.generation != generation
+                {
+                    return Ok(());
+                }
+                self.action_task = None;
+                match result {
+                    Ok(job) => {
+                        let label = job.label.clone();
+                        let progress = super::jobs::job_progress_label(&job);
+                        let job_id = job.job_id.clone();
+                        let status = job.status.clone();
+                        let stage = job.stage.clone();
+                        self.jobs.jobs.insert(0, job.clone());
+                        self.jobs.load_state = JobLoadState::Ready;
+                        self.store_action = ActionState::Result(StoreActionResult {
+                            action: running_action_from_job(&job),
+                            status: 202,
+                            lines: vec![
+                                ("job_id".to_string(), job_id),
+                                ("status".to_string(), status),
+                                ("stage".to_string(), stage),
+                                ("progress".to_string(), progress),
+                            ],
+                            raw_summary: "background job accepted".to_string(),
+                            refresh_targets: Vec::new(),
+                        });
+                        self.message =
+                            format!("started background job for {label}; continue from Jobs");
+                        self.request_jobs(tx, "refreshing background jobs");
+                    }
+                    Err(error) => self.apply_store_action_error(error),
+                }
+            }
+            TuiEvent::JobsFinished {
+                request_id,
+                generation,
+                result,
+            } => {
+                if self.jobs_in_flight != Some(request_id) || self.generation != generation {
+                    return Ok(());
+                }
+                self.jobs_in_flight = None;
+                match result {
+                    Ok(jobs) => {
+                        let completed = self.jobs.apply_jobs(jobs);
+                        for job in completed.iter().filter(|job| job.status == "succeeded") {
+                            for kind in job.refresh_kinds() {
+                                self.request_navigator_list(
+                                    kind,
+                                    tx,
+                                    format!("refreshing {} after job", kind.label()),
+                                );
+                            }
+                        }
+                        if !completed.is_empty() {
+                            self.mark_resources_snapshot_stale();
+                        }
+                        let active = self.jobs.active_jobs().len();
+                        self.message = if active == 0 {
+                            format!("jobs refreshed; {} recent job(s)", self.jobs.jobs.len())
+                        } else {
+                            format!("jobs refreshed; {active} active")
+                        };
+                    }
+                    Err(error) => {
+                        if let JobError::AuthRequired(message) = &error {
+                            self.daemon = DaemonSnapshot {
+                                state: DaemonConnectionState::AuthRequired,
+                                detail: message.clone(),
+                                status: self.daemon.status.clone(),
+                                doctor: self.daemon.doctor.clone(),
+                            };
+                            self.update_mode();
+                        }
+                        self.jobs.load_state = JobLoadState::Error {
+                            message: error.to_string(),
+                            stale: !self.jobs.jobs.is_empty(),
+                        };
+                        self.message = format!("jobs refresh failed: {error}");
+                    }
+                }
+            }
+            TuiEvent::RuntimeActionFinished {
+                request_id,
+                generation,
+                result,
+            } => {
+                if self.runtime_action.in_flight() != Some(request_id)
+                    || self.generation != generation
+                {
+                    return Ok(());
+                }
+                self.apply_runtime_action_result(result, tx);
+            }
         }
         self.clamp_selection();
         Ok(())
@@ -1722,6 +2907,14 @@ impl TuiApp {
     fn handle_key(&mut self, key: KeyEvent, tx: &TuiEventSender) -> miette::Result<()> {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             self.should_quit = true;
+            return Ok(());
+        }
+
+        if self.store_action.is_active() && self.handle_store_action_key(key, tx)? {
+            return Ok(());
+        }
+
+        if self.runtime_action.is_active() && self.handle_runtime_action_key(key, tx)? {
             return Ok(());
         }
 
@@ -1887,6 +3080,7 @@ impl TuiApp {
                     self.selected_menu_entry().item,
                     MenuItem::ProviderAuth
                         | MenuItem::Settings
+                        | MenuItem::Jobs
                         | MenuItem::Resources
                         | MenuItem::Chat
                 ) || self.current_navigator_kind().is_some()
@@ -1897,6 +3091,8 @@ impl TuiApp {
                         self.ensure_resources_loaded(tx);
                     } else if self.selected_menu_entry().item == MenuItem::Chat {
                         self.ensure_chat_loaded(tx);
+                    } else if self.selected_menu_entry().item == MenuItem::Jobs {
+                        self.request_jobs(tx, "loading background jobs");
                     }
                 }
             }
@@ -1905,6 +3101,26 @@ impl TuiApp {
             KeyCode::Up => self.move_selection(-1),
             KeyCode::Enter => self.activate_selected(tx)?,
             KeyCode::Char('r') => self.refresh_current_view(tx),
+            KeyCode::Char('b') => {
+                if self.selected_menu_entry().item == MenuItem::Jobs {
+                    self.focus = FocusPane::Menu;
+                    self.message = "background jobs remain tracked in footer".to_string();
+                }
+            }
+            KeyCode::Char('a') => {
+                if self.current_store_action_kind().is_some() {
+                    self.begin_store_actions(tx);
+                } else if !self.begin_runtime_actions(tx) {
+                    self.message = "actions are available for store, server, and training sections"
+                        .to_string();
+                }
+            }
+            KeyCode::Char('A') => {
+                if !self.begin_runtime_actions(tx) {
+                    self.message =
+                        "runtime shortcuts are available for Models and Datasets".to_string();
+                }
+            }
             KeyCode::Char('/') => self.begin_filter_edit(),
             KeyCode::Char('l') => self.request_current_tail(tx),
             KeyCode::Char('m') => self.request_session_messages(tx),
@@ -2164,6 +3380,10 @@ impl TuiApp {
             let entries = self.settings_entries();
             self.selected_setting = move_index(self.selected_setting, entries.len(), delta);
         } else if self.focus == FocusPane::Detail
+            && self.selected_menu_entry().item == MenuItem::Jobs
+        {
+            self.jobs.move_selection(delta);
+        } else if self.focus == FocusPane::Detail
             && self.selected_menu_entry().item == MenuItem::Chat
         {
             self.chat.move_selection(delta);
@@ -2208,6 +3428,10 @@ impl TuiApp {
             MenuItem::Chat => {
                 self.focus = FocusPane::Detail;
                 self.ensure_chat_loaded(tx);
+            }
+            MenuItem::Jobs => {
+                self.focus = FocusPane::Detail;
+                self.request_jobs(tx, "loading background jobs");
             }
             MenuItem::Resources => {
                 self.focus = FocusPane::Detail;
@@ -2745,7 +3969,11 @@ impl TuiApp {
             .min(self.settings_entries().len().saturating_sub(1));
         if !matches!(
             self.selected_menu_entry().item,
-            MenuItem::ProviderAuth | MenuItem::Settings | MenuItem::Resources | MenuItem::Chat
+            MenuItem::ProviderAuth
+                | MenuItem::Settings
+                | MenuItem::Jobs
+                | MenuItem::Resources
+                | MenuItem::Chat
         ) && self.current_navigator_kind().is_none()
         {
             self.focus = FocusPane::Menu;
@@ -2766,10 +3994,16 @@ impl TuiApp {
         self.tail_in_flight = None;
         self.resource_in_flight = None;
         self.chat_in_flight = None;
+        self.jobs_in_flight = None;
+        if let Some(handle) = self.action_task.take() {
+            handle.abort();
+        }
         if let Some(handle) = self.chat_task.take() {
             handle.abort();
         }
         self.daemon_action = DaemonActionState::Idle;
+        self.store_action = ActionState::Idle;
+        self.runtime_action = RuntimeActionState::Idle;
     }
 }
 
@@ -2890,6 +4124,18 @@ fn chat_conflict_guidance(kind: ChatConflictKind, message: &str) -> String {
     }
 }
 
+fn running_action_from_job(job: &TuiJobItem) -> StoreActionKind {
+    match job.kind.as_str() {
+        "model_import" => StoreActionKind::ModelImport,
+        "adapter_pull" => StoreActionKind::AdapterPull,
+        "adapter_import" => StoreActionKind::AdapterImport,
+        "dataset_import" => StoreActionKind::DatasetImport,
+        "dataset_synth" => StoreActionKind::DatasetSynthBrief,
+        "dataset_eval" => StoreActionKind::DatasetEvalSelected,
+        _ => StoreActionKind::ModelPull,
+    }
+}
+
 fn timestamp_label() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2903,6 +4149,10 @@ pub(super) async fn run_tui(command: TuiCommand) -> miette::Result<()> {
     let mut terminal = TerminalSession::enter()?;
     let (tx, mut rx): (TuiEventSender, TuiEventReceiver) = mpsc::unbounded_channel();
     let mut last_refresh = Instant::now();
+    let mut last_jobs_refresh = Instant::now()
+        .checked_sub(JOB_POLL_INTERVAL)
+        .unwrap_or_else(Instant::now);
+    let mut last_train_refresh = Instant::now();
     app.request_refresh(&tx, "checking daemon");
 
     loop {
@@ -2923,6 +4173,25 @@ pub(super) async fn run_tui(command: TuiCommand) -> miette::Result<()> {
         if last_refresh.elapsed() >= AUTO_REFRESH_INTERVAL {
             app.request_refresh(&tx, "auto refresh");
             last_refresh = Instant::now();
+        }
+        if app.mode == AppMode::Operator
+            && app.jobs_in_flight.is_none()
+            && (app.selected_menu_entry().item == MenuItem::Jobs
+                || !app.jobs.active_jobs().is_empty())
+            && last_jobs_refresh.elapsed() >= JOB_POLL_INTERVAL
+        {
+            app.request_jobs(&tx, "refreshing background jobs");
+            last_jobs_refresh = Instant::now();
+        }
+        if app.mode == AppMode::Operator
+            && app.navigator_in_flight.is_none()
+            && app.selected_menu_entry().item == MenuItem::Training
+            && app.navigator.training_tab.list_kind() == NavigatorListKind::TrainRuns
+            && app.has_active_train_runs()
+            && last_train_refresh.elapsed() >= TRAIN_RUN_POLL_INTERVAL
+        {
+            app.request_navigator_list(NavigatorListKind::TrainRuns, &tx, "polling train runs");
+            last_train_refresh = Instant::now();
         }
     }
 
@@ -3345,6 +4614,9 @@ impl TuiApp {
             navigator: NavigatorState::default(),
             resources: ResourceState::default(),
             chat: ChatState::default(),
+            jobs: JobState::default(),
+            store_action: ActionState::Idle,
+            runtime_action: RuntimeActionState::Idle,
             dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
@@ -3363,7 +4635,9 @@ impl TuiApp {
             tail_in_flight: None,
             resource_in_flight: None,
             chat_in_flight: None,
+            jobs_in_flight: None,
             chat_task: None,
+            action_task: None,
             generation: 0,
             request_counter: 0,
             flag_daemon_url: Some("http://127.0.0.1:18791".to_string()),
@@ -3390,6 +4664,7 @@ fn stopped_inspection(home: &Path) -> DaemonInspection {
 
 #[cfg(test)]
 mod tests {
+    use super::super::chat::{ChatContextMode, ChatFocus};
     use super::*;
 
     #[test]
@@ -3515,6 +4790,10 @@ mod tests {
             .menu_entries()
             .iter()
             .any(|entry| entry.item == MenuItem::Chat));
+        assert!(!app
+            .menu_entries()
+            .iter()
+            .any(|entry| entry.item == MenuItem::Jobs));
 
         app.daemon = DaemonSnapshot {
             state: DaemonConnectionState::Ready,
@@ -3532,6 +4811,10 @@ mod tests {
             .menu_entries()
             .iter()
             .any(|entry| entry.item == MenuItem::Chat));
+        assert!(app
+            .menu_entries()
+            .iter()
+            .any(|entry| entry.item == MenuItem::Jobs));
         let chat_index = app
             .menu_entries()
             .iter()
@@ -3543,6 +4826,214 @@ mod tests {
             .position(|entry| entry.item == MenuItem::Dashboard)
             .expect("dashboard menu");
         assert_eq!(chat_index, dashboard_index + 1);
+    }
+
+    #[tokio::test]
+    async fn store_actions_menu_is_operator_only_for_store_sections() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-actions-menu"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        app.begin_store_actions(&tx);
+        assert!(matches!(app.store_action, ActionState::Idle));
+        assert!(app.message.contains("Operator mode"));
+
+        app.daemon = DaemonSnapshot {
+            state: DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.update_mode();
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Models)
+            .expect("models menu");
+        app.begin_store_actions(&tx);
+
+        assert!(matches!(
+            app.store_action,
+            ActionState::SelectingAction {
+                kind: NavigatorListKind::Models,
+                ..
+            }
+        ));
+
+        app.store_action = ActionState::Idle;
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Servers)
+            .expect("servers menu");
+        app.begin_store_actions(&tx);
+        assert!(matches!(app.store_action, ActionState::Idle));
+        assert!(app.message.contains("Models, Adapters, and Datasets"));
+    }
+
+    #[tokio::test]
+    async fn runtime_actions_menu_is_operator_only_for_server_and_training_sections() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-runtime-actions"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        assert!(app.begin_runtime_actions(&tx));
+        assert!(matches!(app.runtime_action, RuntimeActionState::Idle));
+        assert!(app.message.contains("Operator mode"));
+
+        app.daemon = DaemonSnapshot {
+            state: DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.update_mode();
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Servers)
+            .expect("servers menu");
+        assert!(app.begin_runtime_actions(&tx));
+        assert!(matches!(
+            app.runtime_action,
+            RuntimeActionState::SelectingAction {
+                kind: NavigatorListKind::Servers,
+                ..
+            }
+        ));
+
+        app.runtime_action = RuntimeActionState::Idle;
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Training)
+            .expect("training menu");
+        assert!(app.begin_runtime_actions(&tx));
+        assert!(matches!(
+            app.runtime_action,
+            RuntimeActionState::SelectingAction {
+                kind: NavigatorListKind::TrainPlans,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn stop_or_remove_marks_matching_chat_server_stale() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-stale-server"));
+        app.chat.selected_server_ref = Some("server-full".to_string());
+        app.chat.phase = ChatPhase::Workspace;
+
+        app.mark_chat_server_stale("server-full");
+
+        assert_eq!(app.chat.selected_server_ref, None);
+        assert_eq!(app.chat.phase, ChatPhase::ChooseServer);
+        assert!(matches!(
+            app.chat.load_state,
+            ChatLoadState::StaleSelection { .. }
+        ));
+    }
+
+    #[test]
+    fn stale_store_action_result_is_ignored() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-action-stale"));
+        app.generation = 2;
+        let request = build_action_request(
+            StoreActionKind::ModelPull,
+            None,
+            &[("repo_id", "org/model".to_string())],
+        )
+        .expect("request");
+        app.store_action = ActionState::Running {
+            request_id: 17,
+            generation: 2,
+            request,
+            started_at: Instant::now(),
+        };
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        app.handle_tui_event(
+            TuiEvent::StoreActionFinished {
+                request_id: 17,
+                generation: 1,
+                result: Err(StoreActionError::BadRequest("old error".to_string())),
+            },
+            &tx,
+        )
+        .expect("event handled");
+
+        assert!(matches!(app.store_action, ActionState::Running { .. }));
+    }
+
+    #[test]
+    fn bad_request_store_action_returns_to_form_with_values() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-action-400"));
+        let request = build_action_request(
+            StoreActionKind::ModelPull,
+            None,
+            &[
+                ("repo_id", "org/model".to_string()),
+                ("revision", "main".to_string()),
+            ],
+        )
+        .expect("request");
+        app.store_action = ActionState::Running {
+            request_id: 22,
+            generation: 0,
+            request,
+            started_at: Instant::now(),
+        };
+
+        app.apply_store_action_error(StoreActionError::BadRequest(
+            "revision is invalid".to_string(),
+        ));
+
+        let ActionState::EditingForm { form, error, .. } = &app.store_action else {
+            panic!("expected form state");
+        };
+        assert_eq!(error.as_deref(), Some("revision is invalid"));
+        assert!(form
+            .fields
+            .iter()
+            .any(|field| field.spec.name == "repo_id" && field.value == "org/model"));
+        assert!(form
+            .fields
+            .iter()
+            .any(|field| field.spec.name == "revision" && field.value == "main"));
+    }
+
+    #[test]
+    fn not_found_store_action_marks_selected_item_stale_without_auth_transition() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-action-404"));
+        app.daemon = DaemonSnapshot {
+            state: DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.update_mode();
+        let selected = NavigatorRow {
+            item_ref: "model/ref".to_string(),
+            short_ref: "model".to_string(),
+            columns: Vec::new(),
+            search_text: String::new(),
+            summary: Vec::new(),
+            raw: serde_json::Value::Null,
+        };
+        let request = build_action_request(StoreActionKind::ModelRemove, Some(&selected), &[])
+            .expect("request");
+        app.store_action = ActionState::Running {
+            request_id: 23,
+            generation: 0,
+            request,
+            started_at: Instant::now(),
+        };
+
+        app.apply_store_action_error(StoreActionError::NotFound("missing model".to_string()));
+
+        assert_eq!(app.mode, AppMode::Operator);
+        assert!(matches!(
+            app.navigator.state(NavigatorListKind::Models).load_state,
+            NavigatorLoadState::StaleItem { .. }
+        ));
     }
 
     #[test]

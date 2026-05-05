@@ -114,8 +114,20 @@ TUI の Operator mode には `Chat` workspace があり、既存の daemon
 session/chat route で running server を選び、session を作成または再開して
 streaming 応答を表示できます。デフォルトでは直近 2 件の persisted
 session messages だけを context として送り、composer 以外に focus がある時は
-`h` で `none` / `last 2` / `last 10` / `last 50` を切り替えます。server/model
-lifecycle や delete/cleanup 系の mutation は後続 slices に残します。
+`h` で `none` / `last 2` / `last 10` / `last 50` を切り替えます。
+`Models`、`Adapters`、`Datasets` では `a` で guarded store/dataset actions を
+開き、既存の daemon HTTP routes で pull/import/bind/validate/template/export/
+diff/synth/eval/remove を実行できます。remove は selected short ref または full
+ref の入力確認が必要です。`Servers` と `Training` でも guarded runtime
+actions を使い、既存 daemon routes で server spec の
+create/start/stop/remove、LoRA plan の preview/create/remove、LoRA run の
+start と bounded metrics/log tail monitoring ができます。server start は
+background job ではなく、training runs も Jobs registry へ mirror しません。
+TUI は fake cancel を表示しません。session delete/compact、cleanup 系の
+mutation は後続 slices に残します。
+長時間の pull/import/synth/eval は daemon-side background jobs として動き、
+footer、Dashboard、`Jobs` 画面に進捗を表示します。既存の同期 HTTP routes は
+従来の response shape を維持します。Slice 4.1 では cancel route はありません。
 
 完整な daemon API、endpoints、response shapes、auth、error mapping は [docs/contracts/http-daemon.md](../../../docs/contracts/http-daemon.md) を参照してください。
 

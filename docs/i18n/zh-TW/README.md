@@ -114,7 +114,17 @@ TUI 的 Operator mode 現在包含 `Chat` workspace，可透過既有 daemon
 session/chat route 選擇 running server、建立或續接 session，並串流回覆；
 預設只送出最近 2 則 persisted session messages 作為 context，composer
 沒有 focus 時可按 `h` 在 `none` / `last 2` / `last 10` / `last 50` 間切換。
-server/model lifecycle 與刪除/cleanup 類 mutation 仍保留在後續 slices。
+`Models`、`Adapters`、`Datasets` 畫面可按 `a` 開啟受保護的 store/dataset
+actions，走既有 daemon HTTP routes 做 pull/import/bind/validate/template/export/
+diff/synth/eval/remove；remove 需要輸入 selected short ref 或 full ref 確認。
+長時間的 pull/import/synth/eval 會走 daemon-side background jobs，並在
+footer、Dashboard 與 `Jobs` 畫面顯示進度；既有同步 HTTP routes 保持原本
+response shape。Slice 4.1 尚未提供 cancel route。
+`Servers` 與 `Training` 畫面現在也有受保護的 runtime actions：可透過既有
+daemon routes 建立/start/stop/remove server spec、preview/create/remove LoRA
+plan、start LoRA run 並用 bounded metrics/log tails 監控。server start 不是
+background job，training runs 也不會鏡射到 Jobs registry；TUI 不提供假的
+cancel。session delete/compact 與 cleanup 類 mutation 仍保留在後續 slices。
 
 完整 daemon API、endpoint、response shape、auth 與 error mapping 請看 [docs/contracts/http-daemon.md](../../../docs/contracts/http-daemon.md)。
 

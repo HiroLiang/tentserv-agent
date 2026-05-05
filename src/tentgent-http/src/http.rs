@@ -183,7 +183,7 @@ fn split_target(target: &str) -> (String, Vec<(String, String)>) {
     (path.to_string(), query_params)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct HttpRequest {
     pub(crate) method: String,
     pub(crate) path: String,
@@ -194,7 +194,7 @@ pub(crate) struct HttpRequest {
     pub(crate) parse_error: Option<HttpParseError>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct HttpParseError {
     pub(crate) status_code: u16,
     pub(crate) message: String,

@@ -5,6 +5,7 @@ pub(crate) mod dataset_cloud;
 pub(crate) mod dataset_tools;
 pub(crate) mod diagnostics;
 pub(crate) mod doctor;
+pub(crate) mod jobs;
 pub(crate) mod lifecycle;
 pub(crate) mod openai;
 pub(crate) mod session;
@@ -72,6 +73,7 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
         "/v1/models" => store::list_models_response(state),
         "/v1/adapters" => store::list_adapters_response(state),
         "/v1/datasets" => store::list_datasets_response(state),
+        "/v1/jobs" => jobs::list_jobs_response(state),
         "/v1/servers" => store::list_servers_response(state),
         "/v1/sessions" => session::list_sessions_response(state),
         "/v1/train/lora/plans" => train::list_train_plans_response(state),
@@ -126,6 +128,11 @@ async fn route_get(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespon
             auth::auth_provider_response(provider)
         }
         path if path.starts_with("/v1/auth/") => not_found_response(&request.path),
+        path if job_ref_path(path).is_some() => {
+            let job_id = job_ref_path(path).expect("checked path");
+            jobs::inspect_job_response(state, job_id)
+        }
+        path if path.starts_with("/v1/jobs/") => not_found_response(&request.path),
         path if dataset_tool_path(path) => method_not_allowed(request),
         path if store_mutation_path(path) => method_not_allowed(request),
         path if session::session_compact_path(path).is_some() => method_not_allowed(request),
@@ -221,14 +228,21 @@ async fn route_post(request: &HttpRequest, state: &DaemonHttpState) -> HttpRespo
         "/v1/sessions" => session::create_session_response(state, request),
         "/v1/train/lora/plans/preview" => train::preview_train_plan_response(state, request),
         "/v1/train/lora/plans" => train::create_train_plan_response(state, request),
+        "/v1/models/import/jobs" => store_mutation::import_model_job_response(state, request),
+        "/v1/models/pull/jobs" => store_mutation::pull_model_job_response(state, request),
         "/v1/models/import" => store_mutation::import_model_response(state, request).await,
         "/v1/models/pull" => store_mutation::pull_model_response(state, request).await,
+        "/v1/adapters/import/jobs" => store_mutation::import_adapter_job_response(state, request),
+        "/v1/adapters/pull/jobs" => store_mutation::pull_adapter_job_response(state, request),
         "/v1/adapters/import" => store_mutation::import_adapter_response(state, request).await,
         "/v1/adapters/pull" => store_mutation::pull_adapter_response(state, request).await,
+        "/v1/datasets/import/jobs" => store_mutation::import_dataset_job_response(state, request),
         "/v1/datasets/import" => store_mutation::import_dataset_response(state, request).await,
         "/v1/datasets/validate" => dataset_tools::validate_dataset_response(state, request).await,
         "/v1/datasets/template" => dataset_tools::dataset_template_response(request),
+        "/v1/datasets/synth/jobs" => dataset_cloud::synth_dataset_job_response(state, request),
         "/v1/datasets/synth" => dataset_cloud::synth_dataset_response(state, request).await,
+        "/v1/datasets/eval/jobs" => dataset_cloud::eval_dataset_job_response(state, request),
         "/v1/datasets/eval" => dataset_cloud::eval_dataset_response(state, request).await,
         path if adapter_bind_path(path).is_some() => {
             let reference = adapter_bind_path(path).expect("checked path");
@@ -304,6 +318,15 @@ fn auth_provider_path(path: &str) -> Option<&str> {
         None
     } else {
         Some(provider)
+    }
+}
+
+fn job_ref_path(path: &str) -> Option<&str> {
+    let job_id = path.strip_prefix("/v1/jobs/")?;
+    if job_id.is_empty() || job_id.contains('/') {
+        None
+    } else {
+        Some(job_id)
     }
 }
 
@@ -430,7 +453,9 @@ fn dataset_tool_path(path: &str) -> bool {
         path,
         "/v1/datasets/validate"
             | "/v1/datasets/template"
+            | "/v1/datasets/synth/jobs"
             | "/v1/datasets/synth"
+            | "/v1/datasets/eval/jobs"
             | "/v1/datasets/eval"
     ) || dataset_export_path(path).is_some()
         || dataset_diff_path(path).is_some()
@@ -440,9 +465,14 @@ fn store_mutation_path(path: &str) -> bool {
     matches!(
         path,
         "/v1/models/import"
+            | "/v1/models/import/jobs"
             | "/v1/models/pull"
+            | "/v1/models/pull/jobs"
             | "/v1/adapters/import"
+            | "/v1/adapters/import/jobs"
             | "/v1/adapters/pull"
+            | "/v1/adapters/pull/jobs"
+            | "/v1/datasets/import/jobs"
             | "/v1/datasets/import"
     ) || adapter_bind_path(path).is_some()
 }

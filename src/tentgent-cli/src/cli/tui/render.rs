@@ -14,8 +14,11 @@ use super::{
     },
     chat_render::render_chat,
     daemon_client::{token_source_label, url_source_label},
+    jobs::{job_progress_label, sanitize_job_summary, JobLoadState, TuiJobItem},
     navigator::{DashboardCard, NavigatorListKind, NavigatorLoadState},
     resource_render::{render_resources, resource_summary_lines},
+    runtime_action_render::render_runtime_action,
+    store_action_render::render_store_action,
 };
 
 pub(super) fn render(frame: &mut Frame<'_>, app: &TuiApp) {
@@ -25,7 +28,7 @@ pub(super) fn render(frame: &mut Frame<'_>, app: &TuiApp) {
         .constraints([
             Constraint::Length(4),
             Constraint::Min(10),
-            Constraint::Length(3),
+            Constraint::Length(5),
         ])
         .split(area);
 
@@ -130,6 +133,7 @@ fn render_detail(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         MenuItem::Settings => render_settings_detail(frame, area, app),
         MenuItem::Dashboard => render_dashboard(frame, area, app),
         MenuItem::Chat => render_chat(frame, area, app),
+        MenuItem::Jobs => render_jobs(frame, area, app),
         MenuItem::Models
         | MenuItem::Adapters
         | MenuItem::Datasets
@@ -363,6 +367,8 @@ fn render_dashboard(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     lines.push(Line::from(""));
     lines.extend(doctor_summary_lines(app.daemon.doctor.as_ref()));
     lines.push(Line::from(""));
+    lines.extend(job_summary_lines(app));
+    lines.push(Line::from(""));
     lines.extend(dashboard_count_lines(app));
     lines.push(Line::from(""));
     lines.extend(resource_summary_lines(app));
@@ -379,10 +385,122 @@ fn render_dashboard(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     );
 }
 
+fn render_jobs(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(8), Constraint::Length(8)])
+        .split(area);
+    let compact = area.width < 110;
+    let rows = app.jobs.jobs.iter().enumerate().map(|(index, job)| {
+        let selected = index == app.jobs.selected && app.focus == FocusPane::Detail;
+        let marker = if index == app.jobs.selected {
+            if selected {
+                "●"
+            } else {
+                ">"
+            }
+        } else {
+            "○"
+        };
+        let style = if selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        if compact {
+            Row::new(vec![
+                Cell::from(marker),
+                Cell::from(job.status.clone()),
+                Cell::from(job.label.clone()),
+                Cell::from(job_progress_label(job)),
+            ])
+            .style(style)
+        } else {
+            Row::new(vec![
+                Cell::from(marker),
+                Cell::from(job.status.clone()),
+                Cell::from(job.kind.clone()),
+                Cell::from(job.label.clone()),
+                Cell::from(job.stage.clone()),
+                Cell::from(job_progress_label(job)),
+                Cell::from(job.updated_at.clone()),
+            ])
+            .style(style)
+        }
+    });
+    let (headers, widths) = if compact {
+        (
+            vec!["", "Status", "Label", "Progress"],
+            vec![
+                Constraint::Length(2),
+                Constraint::Length(12),
+                Constraint::Min(24),
+                Constraint::Length(18),
+            ],
+        )
+    } else {
+        (
+            vec![
+                "", "Status", "Kind", "Label", "Stage", "Progress", "Updated",
+            ],
+            vec![
+                Constraint::Length(2),
+                Constraint::Length(12),
+                Constraint::Length(16),
+                Constraint::Min(22),
+                Constraint::Length(22),
+                Constraint::Length(18),
+                Constraint::Length(24),
+            ],
+        )
+    };
+    let title = format!(
+        "Jobs · {} total · {} active · {}",
+        app.jobs.jobs.len(),
+        app.jobs.active_jobs().len(),
+        job_load_label(&app.jobs.load_state)
+    );
+    frame.render_widget(
+        Table::new(rows, widths)
+            .header(Row::new(headers).style(Style::default().add_modifier(Modifier::BOLD)))
+            .block(Block::default().title(title).borders(Borders::ALL)),
+        chunks[0],
+    );
+
+    let mut lines = Vec::new();
+    if let Some(job) = app.jobs.jobs.get(app.jobs.selected) {
+        lines.extend(job_detail_lines(job));
+    } else {
+        lines.push(Line::from(
+            "No background jobs yet. Long pull/import/synth/eval actions appear here.",
+        ));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(
+        "r refresh | b background | Esc menu | no cancel in Slice 4.1",
+    ));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title("Job Detail").borders(Borders::ALL))
+            .wrap(Wrap { trim: false }),
+        chunks[1],
+    );
+}
+
 fn render_navigator(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     let Some(kind) = app.current_navigator_kind() else {
         return;
     };
+    if app.store_action.is_active() {
+        render_store_action(frame, area, &app.store_action);
+        return;
+    }
+    if app.runtime_action.is_active() {
+        render_runtime_action(frame, area, &app.runtime_action);
+        return;
+    }
     let state = app.navigator.state(kind);
     if let Some(tail) = &state.active_tail {
         let mut lines = vec![
@@ -567,9 +685,33 @@ fn render_navigator_detail(
 }
 
 fn navigator_action_lines(kind: NavigatorListKind, app: &TuiApp) -> Vec<Line<'static>> {
-    let mut actions = vec![Line::from(
-        "Enter inspect | / filter | r refresh | Esc menu | no mutations in Slice 2",
-    )];
+    let mut actions = if matches!(
+        kind,
+        NavigatorListKind::Models | NavigatorListKind::Adapters | NavigatorListKind::Datasets
+    ) {
+        let shortcut = if matches!(
+            kind,
+            NavigatorListKind::Models | NavigatorListKind::Datasets
+        ) {
+            " | A runtime shortcut"
+        } else {
+            ""
+        };
+        vec![Line::from(format!(
+            "a actions{shortcut} | Enter inspect | / filter | r refresh | Esc menu"
+        ))]
+    } else if matches!(
+        kind,
+        NavigatorListKind::Servers | NavigatorListKind::TrainPlans
+    ) {
+        vec![Line::from(
+            "a runtime actions | Enter inspect | / filter | r refresh | Esc menu",
+        )]
+    } else {
+        vec![Line::from(
+            "Enter inspect | / filter | r refresh | Esc menu | read-only",
+        )]
+    };
     match kind {
         NavigatorListKind::Servers => actions.push(Line::from(format!(
             "l load {} log | o toggle stdout/stderr",
@@ -593,8 +735,19 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         lines.push(render_input_line(input));
     } else {
         lines.push(Line::from(
-        "↑/↓ move | Enter select/inspect | / filter | Tab detail/subtab | r refresh/scan | h context | l logs | m messages | p metrics | Esc back | q quit",
+        "↑/↓ move | Enter select/inspect | a actions | A shortcut | / filter | Tab detail/subtab | r refresh/scan | h context | l logs | m messages | p metrics | Esc back | q quit",
         ));
+    }
+    if let Some(job) = app.jobs.active_jobs().first() {
+        lines.push(Line::from(vec![
+            Span::styled("job: ", Style::default().fg(Color::Yellow)),
+            Span::raw(format!(
+                "{} · {} · {}",
+                job.label,
+                job.status,
+                job_progress_label(job)
+            )),
+        ]));
     }
     if !app.message.is_empty() {
         lines.push(Line::from(app.message.clone()));
@@ -684,6 +837,62 @@ fn dashboard_count_lines(app: &TuiApp) -> Vec<Line<'static>> {
         lines.push(dashboard_card_line(app.dashboard.card(kind)));
     }
     lines
+}
+
+fn job_summary_lines(app: &TuiApp) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(Span::styled(
+        "Jobs",
+        Style::default().add_modifier(Modifier::BOLD),
+    ))];
+    let active = app.jobs.active_jobs();
+    if active.is_empty() {
+        lines.push(Line::from(format!(
+            "active: 0; recent: {}; {}",
+            app.jobs.jobs.len(),
+            job_load_label(&app.jobs.load_state)
+        )));
+    } else {
+        for job in active.into_iter().take(3) {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("{}: ", job.label),
+                    Style::default().fg(Color::Yellow),
+                ),
+                Span::raw(format!("{} · {}", job.status, job_progress_label(job))),
+            ]));
+        }
+    }
+    lines
+}
+
+fn job_detail_lines(job: &TuiJobItem) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        line_kv("job_id", &job.job_id),
+        line_kv("kind", &job.kind),
+        line_kv("status", &job.status),
+        line_kv("stage", &job.stage),
+        line_kv("progress", job_progress_label(job)),
+        line_kv("updated_at", &job.updated_at),
+        line_kv("cancellable", job.cancellable.to_string()),
+    ];
+    if let Some(ref_value) = &job.target_ref {
+        lines.push(line_kv("target_ref", ref_value));
+    }
+    if let Some(path) = &job.artifact_path {
+        lines.push(line_kv("artifact_path", path));
+    }
+    lines.push(line_kv("summary", sanitize_job_summary(job)));
+    lines
+}
+
+fn job_load_label(state: &JobLoadState) -> &'static str {
+    match state {
+        JobLoadState::Idle => "idle",
+        JobLoadState::Loading { .. } => "loading",
+        JobLoadState::Ready => "ready",
+        JobLoadState::Error { stale, .. } if *stale => "stale error",
+        JobLoadState::Error { .. } => "error",
+    }
 }
 
 fn dashboard_card_line(card: DashboardCard) -> Line<'static> {
@@ -794,5 +1003,68 @@ mod tests {
         terminal
             .draw(|frame| render(frame, &app))
             .expect("compact chat render");
+    }
+
+    #[test]
+    fn compact_store_action_layout_renders_without_panic() {
+        let home = std::env::temp_dir().join("tentgent-tui-render-action");
+        let mut app = TuiApp::test_app(home);
+        app.daemon = crate::cli::tui::daemon_client::DaemonSnapshot {
+            state: crate::cli::tui::daemon_client::DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.mode = AppMode::Operator;
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Models)
+            .expect("models menu");
+        app.focus = FocusPane::Detail;
+        app.store_action = crate::cli::tui::store_action::ActionState::SelectingAction {
+            kind: NavigatorListKind::Models,
+            actions: crate::cli::tui::store_action::actions_for(NavigatorListKind::Models),
+            selected: 0,
+        };
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+
+        terminal
+            .draw(|frame| render(frame, &app))
+            .expect("compact action render");
+    }
+
+    #[test]
+    fn compact_runtime_action_layout_renders_without_panic() {
+        let home = std::env::temp_dir().join("tentgent-tui-render-runtime-action");
+        let mut app = TuiApp::test_app(home);
+        app.daemon = crate::cli::tui::daemon_client::DaemonSnapshot {
+            state: crate::cli::tui::daemon_client::DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.mode = AppMode::Operator;
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Servers)
+            .expect("servers menu");
+        app.focus = FocusPane::Detail;
+        app.runtime_action = crate::cli::tui::runtime_action::RuntimeActionState::SelectingAction {
+            kind: NavigatorListKind::Servers,
+            actions: crate::cli::tui::runtime_action::runtime_actions_for(
+                NavigatorListKind::Servers,
+                NavigatorListKind::TrainPlans,
+            ),
+            selected: 0,
+        };
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+
+        terminal
+            .draw(|frame| render(frame, &app))
+            .expect("compact runtime action render");
     }
 }

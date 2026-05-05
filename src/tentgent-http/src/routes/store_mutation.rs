@@ -15,6 +15,7 @@ use crate::{
         StoreMutationItem, StorePullRequest,
     },
     http::{HttpRequest, HttpResponse},
+    jobs::{JobProgressUpdate, JobResponse},
     response::{bad_request_response, json_response, parse_json_body},
 };
 
@@ -94,6 +95,126 @@ pub(crate) async fn pull_model_response(
         Ok(Err(error)) => model_mutation_error_response(error),
         Err(error) => blocking_join_error_response(error),
     }
+}
+
+pub(crate) fn import_model_job_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+) -> HttpResponse {
+    let body = match parse_json_body::<StoreImportRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let path = match canonical_import_path(&body.path) {
+        Ok(path) => path,
+        Err(response) => return response,
+    };
+    let home = state.home_dir().to_path_buf();
+    let registry = state.jobs().clone();
+    let job = registry.create(
+        "model_import",
+        format!("import {}", path.display()),
+        "models",
+        ["models".to_string()],
+    );
+    let job_id = job.job_id.clone();
+
+    tokio::spawn(async move {
+        registry.start(&job_id, "importing model");
+        let blocking_registry = registry.clone();
+        let blocking_job_id = job_id.clone();
+        let result = task::spawn_blocking(move || {
+            let manager = ModelManager::new_with_home(Some(&home))?;
+            let outcome = manager.add_path(&path)?;
+            let inspection = manager.inspect(&outcome.metadata.model_ref)?;
+            blocking_registry.update_progress(
+                &blocking_job_id,
+                JobProgressUpdate {
+                    stage: Some("finalized model import".to_string()),
+                    ..JobProgressUpdate::default()
+                },
+            );
+            Ok::<_, ModelError>((outcome, inspection))
+        })
+        .await;
+        match result {
+            Ok(Ok((outcome, inspection))) => registry.succeed(
+                &job_id,
+                Some(outcome.metadata.model_ref.clone()),
+                Some(outcome.metadata.model_ref),
+                Some(path_string(&outcome.store_path)),
+                format!("imported model {}", inspection.metadata.short_ref),
+            ),
+            Ok(Err(error)) => registry.fail(&job_id, error.to_string()),
+            Err(error) => registry.fail(&job_id, format!("model import task failed: {error}")),
+        }
+    });
+
+    json_response(202, JobResponse { job })
+}
+
+pub(crate) fn pull_model_job_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+) -> HttpResponse {
+    let body = match parse_json_body::<StorePullRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let repo_id = match normalize_repo_id(&body.repo_id) {
+        Ok(repo_id) => repo_id,
+        Err(response) => return response,
+    };
+    let revision = match normalize_revision(body.revision) {
+        Ok(revision) => revision,
+        Err(response) => return response,
+    };
+    let home = state.home_dir().to_path_buf();
+    let registry = state.jobs().clone();
+    let label = revision
+        .as_deref()
+        .map(|revision| format!("{repo_id}@{revision}"))
+        .unwrap_or_else(|| repo_id.clone());
+    let job = registry.create("model_pull", label, "models", ["models".to_string()]);
+    let job_id = job.job_id.clone();
+
+    tokio::spawn(async move {
+        registry.start(&job_id, "starting Hugging Face pull");
+        let blocking_registry = registry.clone();
+        let blocking_job_id = job_id.clone();
+        let result = task::spawn_blocking(move || {
+            let manager = ModelManager::new_with_home(Some(&home))?;
+            let outcome =
+                manager.pull_hf_with_progress(&repo_id, revision.as_deref(), |progress| {
+                    blocking_registry.update_progress(
+                        &blocking_job_id,
+                        hf_progress_update(
+                            progress.description,
+                            progress.position,
+                            progress.total,
+                            &progress.unit,
+                            progress.finished,
+                        ),
+                    );
+                })?;
+            let inspection = manager.inspect(&outcome.metadata.model_ref)?;
+            Ok::<_, ModelError>((outcome, inspection))
+        })
+        .await;
+        match result {
+            Ok(Ok((outcome, inspection))) => registry.succeed(
+                &job_id,
+                Some(outcome.metadata.model_ref.clone()),
+                Some(outcome.metadata.model_ref),
+                Some(path_string(&outcome.store_path)),
+                format!("pulled model {}", inspection.metadata.short_ref),
+            ),
+            Ok(Err(error)) => registry.fail(&job_id, error.to_string()),
+            Err(error) => registry.fail(&job_id, format!("model pull task failed: {error}")),
+        }
+    });
+
+    json_response(202, JobResponse { job })
 }
 
 pub(crate) async fn import_adapter_response(
@@ -178,6 +299,129 @@ pub(crate) async fn pull_adapter_response(
     }
 }
 
+pub(crate) fn import_adapter_job_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+) -> HttpResponse {
+    let body = match parse_json_body::<AdapterImportRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let path = match canonical_import_path(&body.path) {
+        Ok(path) => path,
+        Err(response) => return response,
+    };
+    let base_model_ref = match normalize_optional_ref(body.base_model_ref, "base_model_ref") {
+        Ok(reference) => reference,
+        Err(response) => return response,
+    };
+    let home = state.home_dir().to_path_buf();
+    let registry = state.jobs().clone();
+    let job = registry.create(
+        "adapter_import",
+        format!("import {}", path.display()),
+        "adapters",
+        ["adapters".to_string()],
+    );
+    let job_id = job.job_id.clone();
+
+    tokio::spawn(async move {
+        registry.start(&job_id, "importing adapter");
+        let result = task::spawn_blocking(move || {
+            let manager = AdapterManager::new_with_home(Some(&home))?;
+            let outcome = manager.add_path(&path, base_model_ref.as_deref())?;
+            let inspection = manager.inspect(&outcome.metadata.adapter_ref)?;
+            Ok::<_, AdapterError>((outcome, inspection))
+        })
+        .await;
+        match result {
+            Ok(Ok((outcome, inspection))) => registry.succeed(
+                &job_id,
+                Some(outcome.metadata.adapter_ref.clone()),
+                Some(outcome.metadata.adapter_ref),
+                Some(path_string(&outcome.store_path)),
+                format!("imported adapter {}", inspection.metadata.short_ref),
+            ),
+            Ok(Err(error)) => registry.fail(&job_id, error.to_string()),
+            Err(error) => registry.fail(&job_id, format!("adapter import task failed: {error}")),
+        }
+    });
+
+    json_response(202, JobResponse { job })
+}
+
+pub(crate) fn pull_adapter_job_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+) -> HttpResponse {
+    let body = match parse_json_body::<AdapterPullRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let repo_id = match normalize_repo_id(&body.repo_id) {
+        Ok(repo_id) => repo_id,
+        Err(response) => return response,
+    };
+    let revision = match normalize_revision(body.revision) {
+        Ok(revision) => revision,
+        Err(response) => return response,
+    };
+    let base_model_ref = match normalize_optional_ref(body.base_model_ref, "base_model_ref") {
+        Ok(reference) => reference,
+        Err(response) => return response,
+    };
+    let home = state.home_dir().to_path_buf();
+    let registry = state.jobs().clone();
+    let label = revision
+        .as_deref()
+        .map(|revision| format!("{repo_id}@{revision}"))
+        .unwrap_or_else(|| repo_id.clone());
+    let job = registry.create("adapter_pull", label, "adapters", ["adapters".to_string()]);
+    let job_id = job.job_id.clone();
+
+    tokio::spawn(async move {
+        registry.start(&job_id, "starting Hugging Face pull");
+        let blocking_registry = registry.clone();
+        let blocking_job_id = job_id.clone();
+        let result = task::spawn_blocking(move || {
+            let manager = AdapterManager::new_with_home(Some(&home))?;
+            let outcome = manager.pull_hf_with_progress(
+                &repo_id,
+                revision.as_deref(),
+                base_model_ref.as_deref(),
+                |progress| {
+                    blocking_registry.update_progress(
+                        &blocking_job_id,
+                        hf_progress_update(
+                            progress.description,
+                            progress.position,
+                            progress.total,
+                            &progress.unit,
+                            progress.finished,
+                        ),
+                    );
+                },
+            )?;
+            let inspection = manager.inspect(&outcome.metadata.adapter_ref)?;
+            Ok::<_, AdapterError>((outcome, inspection))
+        })
+        .await;
+        match result {
+            Ok(Ok((outcome, inspection))) => registry.succeed(
+                &job_id,
+                Some(outcome.metadata.adapter_ref.clone()),
+                Some(outcome.metadata.adapter_ref),
+                Some(path_string(&outcome.store_path)),
+                format!("pulled adapter {}", inspection.metadata.short_ref),
+            ),
+            Ok(Err(error)) => registry.fail(&job_id, error.to_string()),
+            Err(error) => registry.fail(&job_id, format!("adapter pull task failed: {error}")),
+        }
+    });
+
+    json_response(202, JobResponse { job })
+}
+
 pub(crate) async fn bind_adapter_response(
     state: &DaemonHttpState,
     request: &HttpRequest,
@@ -248,6 +492,53 @@ pub(crate) async fn import_dataset_response(
         Ok(Err(error)) => dataset_mutation_error_response(error),
         Err(error) => blocking_join_error_response(error),
     }
+}
+
+pub(crate) fn import_dataset_job_response(
+    state: &DaemonHttpState,
+    request: &HttpRequest,
+) -> HttpResponse {
+    let body = match parse_json_body::<StoreImportRequest>(request) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let path = match canonical_import_path(&body.path) {
+        Ok(path) => path,
+        Err(response) => return response,
+    };
+    let home = state.home_dir().to_path_buf();
+    let registry = state.jobs().clone();
+    let job = registry.create(
+        "dataset_import",
+        format!("import {}", path.display()),
+        "datasets",
+        ["datasets".to_string()],
+    );
+    let job_id = job.job_id.clone();
+
+    tokio::spawn(async move {
+        registry.start(&job_id, "importing dataset");
+        let result = task::spawn_blocking(move || {
+            let manager = DatasetManager::new_with_home(Some(&home))?;
+            let outcome = manager.add_path(&path)?;
+            let inspection = manager.inspect(&outcome.metadata.dataset_ref)?;
+            Ok::<_, DatasetError>((outcome, inspection))
+        })
+        .await;
+        match result {
+            Ok(Ok((outcome, inspection))) => registry.succeed(
+                &job_id,
+                Some(outcome.metadata.dataset_ref.clone()),
+                Some(outcome.metadata.dataset_ref),
+                Some(path_string(&outcome.store_path)),
+                format!("imported dataset {}", inspection.metadata.short_ref),
+            ),
+            Ok(Err(error)) => registry.fail(&job_id, error.to_string()),
+            Err(error) => registry.fail(&job_id, format!("dataset import task failed: {error}")),
+        }
+    });
+
+    json_response(202, JobResponse { job })
 }
 
 fn model_mutation_item(kind: &'static str, outcome: ImportOutcome) -> StoreMutationItem {
@@ -580,4 +871,32 @@ fn blocking_join_error_response(error: task::JoinError) -> HttpResponse {
             message: format!("store mutation task failed: {error}"),
         },
     )
+}
+
+fn hf_progress_update(
+    description: String,
+    position: u64,
+    total: Option<u64>,
+    unit: &str,
+    finished: bool,
+) -> JobProgressUpdate {
+    let stage = if description.trim().is_empty() {
+        if finished {
+            "download complete".to_string()
+        } else {
+            "downloading".to_string()
+        }
+    } else {
+        description
+    };
+    let unit = unit.to_ascii_lowercase();
+    let is_bytes = matches!(unit.as_str(), "b" | "byte" | "bytes");
+    JobProgressUpdate {
+        stage: Some(stage),
+        bytes_done: is_bytes.then_some(position),
+        bytes_total: is_bytes.then_some(total).flatten(),
+        files_done: (!is_bytes).then_some(position),
+        files_total: (!is_bytes).then_some(total).flatten(),
+        warning_summary: None,
+    }
 }

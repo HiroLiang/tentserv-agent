@@ -17,6 +17,7 @@ use tokio::{
 
 use crate::{
     http::{read_request, write_response, HttpAfterWriteAction},
+    jobs::JobRegistry,
     routes::route_request,
     security::DaemonSecurityConfig,
 };
@@ -76,6 +77,7 @@ impl DaemonHttpServer {
 pub struct DaemonHttpState {
     inspection: DaemonInspection,
     http_client: reqwest::Client,
+    jobs: JobRegistry,
     security: DaemonSecurityConfig,
     shutdown: Arc<Notify>,
     shutdown_requested: Arc<AtomicBool>,
@@ -88,6 +90,7 @@ impl DaemonHttpState {
 
     pub fn with_security(inspection: DaemonInspection, security: DaemonSecurityConfig) -> Self {
         Self {
+            jobs: JobRegistry::new(&inspection.runtime_dir),
             inspection,
             http_client: reqwest::Client::new(),
             security,
@@ -106,6 +109,10 @@ impl DaemonHttpState {
 
     pub(crate) fn http_client(&self) -> &reqwest::Client {
         &self.http_client
+    }
+
+    pub(crate) fn jobs(&self) -> &JobRegistry {
+        &self.jobs
     }
 
     pub(crate) fn security(&self) -> &DaemonSecurityConfig {
