@@ -1,6 +1,10 @@
 use std::{
+    fs::{File, OpenOptions},
+    io::{Read, Seek, SeekFrom},
+    net::{TcpListener, ToSocketAddrs},
     path::{Path, PathBuf},
     process::Stdio,
+    time::Duration,
 };
 
 use crate::{
@@ -12,8 +16,13 @@ use crate::{
     },
 };
 use tokio::process::Command;
+use tokio::time::{sleep, Instant};
 
 const DAEMON_TOKEN_ENV_VAR: &str = "TENTGENT_DAEMON_TOKEN";
+const BACKGROUND_HEALTH_STABLE: Duration = Duration::from_secs(2);
+const BACKGROUND_START_OBSERVATION: Duration = Duration::from_secs(10);
+const BACKGROUND_START_POLL: Duration = Duration::from_millis(100);
+const BACKGROUND_STDERR_TAIL_BYTES: u64 = 4096;
 
 #[derive(Clone)]
 pub struct CloudRuntimeAuth {
@@ -158,49 +167,42 @@ pub async fn launch_background_server_runtime(
     inspection: &ServerInspection,
     cloud_auth: Option<&CloudRuntimeAuth>,
 ) -> Result<ServerInspection, ServerRuntimeError> {
+    ensure_bind_available(&inspection.spec.host, inspection.spec.port)?;
     let python_runtime = resolve_python_runtime()?;
     let python_interpreter =
         require_python_interpreter(&python_runtime, "python server interpreter")?;
-    let mut process = Command::new("sh");
-    process
-        .current_dir(python_runtime.project_dir())
-        .env("TENTGENT_STDOUT_LOG", &inspection.stdout_log_path)
-        .env("TENTGENT_STDERR_LOG", &inspection.stderr_log_path)
-        .arg("-c")
-        .arg(
-            "nohup \"$@\" >>\"$TENTGENT_STDOUT_LOG\" 2>>\"$TENTGENT_STDERR_LOG\" < /dev/null & echo $!",
-        )
-        .arg("sh")
-        .arg(python_interpreter)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(false);
-
-    append_server_runtime_args(
-        &mut process,
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&inspection.stdout_log_path)
+        .map_err(ServerRuntimeError::Spawn)?;
+    let stderr = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&inspection.stderr_log_path)
+        .map_err(ServerRuntimeError::Spawn)?;
+    let mut process = server_process_command(
+        &python_runtime,
+        &python_interpreter,
         &inspection.spec,
         &inspection.home_dir,
         cloud_auth,
     )?;
-
-    let output = process.output().await.map_err(ServerRuntimeError::Wait)?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let detail = if stderr.is_empty() {
-            format!("status {}", output.status)
-        } else {
-            stderr
-        };
-        return Err(ServerRuntimeError::BackgroundLaunch { detail });
+    process
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr))
+        .kill_on_drop(false);
+    #[cfg(unix)]
+    {
+        process.process_group(0);
     }
 
-    let pid = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse::<u32>()?;
+    let child = process.spawn().map_err(ServerRuntimeError::Spawn)?;
+    let pid = child.id().ok_or(ServerRuntimeError::MissingPid)?;
     let inspection =
         manager.record_process_start(&inspection.spec.server_ref, pid, LaunchMode::Background)?;
-    Ok(inspection)
+    verify_background_launch(manager, &inspection, pid).await
 }
 
 fn server_process_command(
@@ -231,6 +233,172 @@ fn append_server_runtime_args(
     }
     process.args(parts.args);
     Ok(())
+}
+
+fn read_stderr_tail(path: &Path) -> std::io::Result<String> {
+    let mut file = File::open(path)?;
+    let len = file.metadata()?.len();
+    let read_from = len.saturating_sub(BACKGROUND_STDERR_TAIL_BYTES);
+    file.seek(SeekFrom::Start(read_from))?;
+    let mut buffer = String::new();
+    file.read_to_string(&mut buffer)?;
+    Ok(buffer)
+}
+
+fn ensure_bind_available(host: &str, port: u16) -> Result<(), ServerRuntimeError> {
+    let target = socket_addr_text(host, port);
+    let mut last_error = None;
+    let mut resolved_any = false;
+    for addr in target
+        .to_socket_addrs()
+        .map_err(|error| ServerRuntimeError::BackgroundLaunch {
+            detail: format!("failed to resolve server bind address {target}: {error}"),
+        })?
+    {
+        resolved_any = true;
+        match TcpListener::bind(addr) {
+            Ok(listener) => {
+                drop(listener);
+                return Ok(());
+            }
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    let detail = if resolved_any {
+        format!(
+            "server bind address {target} is not available: {}",
+            last_error
+                .map(|error| error.to_string())
+                .unwrap_or_else(|| "unknown bind error".to_string())
+        )
+    } else {
+        format!("server bind address {target} did not resolve to any socket address")
+    };
+    Err(ServerRuntimeError::BackgroundLaunch { detail })
+}
+
+fn socket_addr_text(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+async fn verify_background_launch(
+    manager: &ServerManager,
+    inspection: &ServerInspection,
+    pid: u32,
+) -> Result<ServerInspection, ServerRuntimeError> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(250))
+        .build()
+        .map_err(|error| ServerRuntimeError::BackgroundLaunch {
+            detail: format!("failed to build health probe client: {error}"),
+        })?;
+    let started = Instant::now();
+
+    loop {
+        let checked = manager.inspect(&inspection.spec.server_ref)?;
+        if !checked.running {
+            manager.clear_process_if_matches(&inspection.spec.server_ref, Some(pid))?;
+            return Err(background_exit_error(inspection, pid));
+        }
+
+        match background_health_status(&client, &checked).await {
+            BackgroundHealthStatus::Matches if started.elapsed() >= BACKGROUND_HEALTH_STABLE => {
+                return Ok(checked);
+            }
+            BackgroundHealthStatus::DifferentServer(detail) => {
+                manager.clear_process_if_matches(&inspection.spec.server_ref, Some(pid))?;
+                return Err(ServerRuntimeError::BackgroundLaunch { detail });
+            }
+            BackgroundHealthStatus::Matches | BackgroundHealthStatus::Unavailable => {}
+        }
+        if started.elapsed() >= BACKGROUND_START_OBSERVATION {
+            return Ok(checked);
+        }
+
+        sleep(BACKGROUND_START_POLL).await;
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BackgroundHealthStatus {
+    Matches,
+    DifferentServer(String),
+    Unavailable,
+}
+
+async fn background_health_status(
+    client: &reqwest::Client,
+    inspection: &ServerInspection,
+) -> BackgroundHealthStatus {
+    let url = format!(
+        "http://{}:{}/healthz",
+        host_for_url(&inspection.spec.host),
+        inspection.spec.port
+    );
+    let Ok(response) = client.get(url).send().await else {
+        return BackgroundHealthStatus::Unavailable;
+    };
+    if !response.status().is_success() {
+        return BackgroundHealthStatus::Unavailable;
+    }
+    let Ok(payload) = response.json::<serde_json::Value>().await else {
+        return BackgroundHealthStatus::Unavailable;
+    };
+    let server_ref_matches = payload
+        .get("server_ref")
+        .and_then(|value| value.as_str())
+        .is_some_and(|server_ref| server_ref == inspection.spec.server_ref);
+    let runtime_home_matches = payload
+        .get("runtime_home")
+        .and_then(|value| value.as_str())
+        .is_some_and(|home| home == inspection.home_dir.display().to_string());
+
+    if server_ref_matches && runtime_home_matches {
+        return BackgroundHealthStatus::Matches;
+    }
+
+    let existing_server = payload
+        .get("server_ref")
+        .and_then(|value| value.as_str())
+        .unwrap_or("(unknown)");
+    let existing_home = payload
+        .get("runtime_home")
+        .and_then(|value| value.as_str())
+        .unwrap_or("(unknown)");
+    BackgroundHealthStatus::DifferentServer(format!(
+        "port {} on {} is already serving Tentgent server {} from runtime home {}; requested server {} from {}",
+        inspection.spec.port,
+        inspection.spec.host,
+        existing_server,
+        existing_home,
+        inspection.spec.server_ref,
+        inspection.home_dir.display()
+    ))
+}
+
+fn background_exit_error(inspection: &ServerInspection, pid: u32) -> ServerRuntimeError {
+    let stderr_tail = read_stderr_tail(&inspection.stderr_log_path)
+        .map(|tail| tail.trim().to_string())
+        .unwrap_or_default();
+    let detail = if stderr_tail.is_empty() {
+        format!("runtime process pid {pid} exited shortly after launch")
+    } else {
+        format!("runtime process pid {pid} exited shortly after launch: {stderr_tail}")
+    };
+    ServerRuntimeError::BackgroundLaunch { detail }
+}
+
+fn host_for_url(host: &str) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host.to_string()
+    }
 }
 
 fn server_runtime_command_parts(

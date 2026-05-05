@@ -181,6 +181,10 @@ Interaction controls should preserve the visual style in the design draft:
   sets.
 - Use explicit selection state and keyboard hints for `↑`/`↓`, Enter, Escape,
   refresh, and destructive confirmations.
+- Dense table columns should prefer short refs for managed resources such as
+  sessions, servers, adapters, models, datasets, plans, and runs. Full refs
+  belong in detail panes, review pages, exact-confirm prompts, and copyable
+  commands so long identifiers do not break table layout.
 - Resize events should recompute layout. Wide terminals may show menu plus
   dashboard table; compact terminals should collapse detail panels and hide
   nonessential columns before wrapping text.
@@ -548,9 +552,10 @@ Review target:
   small training run without adding new backend semantics, while preserving
   Chat stale-server handling and bounded log/metrics reads.
 
-### Slice 5.1: Picker-Based Runtime Forms
+### Slice 5.1: Picker-Based Runtime Forms + Review Pages
 
-Replace ref-heavy runtime action forms with chooser-first workflows.
+Replace ref-heavy runtime action forms with chooser-first workflows and
+persistent review/preview pages.
 
 Reason:
 
@@ -569,12 +574,42 @@ Goals:
 - add backend and boolean option pickers where choices are finite, such as
   `backend`, `lazy_load`, `mask_prompt`, `mlx_grad_checkpoint`,
   `peft_load_in_4bit`, and `peft_load_in_8bit`
+- replace the create LoRA plan flat form with a step-by-step wizard:
+  model picker, dataset picker, backend/default profile choice, optional naming,
+  advanced override review, and final confirmation
+- make `Esc` in wizard steps return to the previous step; only `Esc` from the
+  first step exits the flow
+- ask whether to use defaults or customize advanced settings. If defaults are
+  chosen, still show them on the final review page and allow drilling into any
+  individual field to modify it
+- keep model and dataset fields picker-backed even when editing from the final
+  review page, so users do not fall back to raw ref text unless they explicitly
+  choose manual/cloud ref entry
 - collapse advanced LoRA overrides behind an explicit advanced section so the
-  default plan form starts with only model, dataset, optional name, and backend
+  default path starts with only model, dataset, optional name, backend/profile,
+  and a review page
 - keep manual text entry as an advanced fallback for cloud refs, pasted refs,
   and values that do not have a finite local list
 - show selected row metadata beside picker choices, such as model format,
   source, dataset splits, tuning readiness, and plan blockers
+- keep a TUI-local wizard draft with the current flow, step, picker state,
+  preview state, validation errors, and `dirty_since_preview`; this draft is not
+  persisted and is not a second runtime/training state model
+- make server creation a three-step flow: model/runtime picker, server bind
+  configuration, and review. It creates only a server spec and does not start it
+- make LoRA plan creation preview-first. Preview and Create use the same
+  request builder; any field change after preview marks the preview stale and
+  requires re-preview before Create
+- disable Create when preview returns blockers. Warnings stay visible on the
+  review page and can proceed only if existing daemon semantics allow it
+- support picker loading, empty, error, and stale states. `r` refreshes picker
+  data; `/` filters locally; selection is preserved by resource ref where
+  possible
+- keep review pages open until explicit cancel, submit, or dismiss. Selecting a
+  review row jumps back to the matching picker/form step and preserves draft
+  values
+- collapse picker metadata/detail panes on compact terminals so review pages
+  remain usable without horizontal scrolling
 
 Boundaries:
 
@@ -590,6 +625,73 @@ Review target:
 - a user can create a local server and a LoRA plan from managed local resources
   without manually typing or copying a model/dataset ref, while cloud/runtime
   text entry remains available as an advanced path.
+
+### Slice 5.2: Session Actions + Compact Ref Display
+
+Add guarded session cleanup and fix key/display friction discovered while using
+Chat and Sessions after Slice 5.1.
+
+Reason:
+
+- chat sessions are real persisted artifacts, so users need a TUI path to delete
+  stale test sessions without returning to shell commands
+- the Chat workspace already uses `a` for adapter selection, so global action
+  hints should not imply `a` opens actions while Chat is focused
+- session tables can contain full server and adapter refs; showing those in
+  dense columns causes broken wrapping and unreadable layouts
+
+Goals:
+
+- verify that `DELETE /v1/sessions/{session_ref}` exists before wiring the TUI;
+  do not add daemon routes or schemas in this slice
+- add a guarded `Sessions` action layer for deleting managed sessions through
+  the existing session delete daemon route only
+- expose session delete from the `Sessions` navigator action menu and from the
+  Chat `ChooseSession` screen for the selected existing session
+- require exact short/full session ref confirmation before delete. If the short
+  ref is ambiguous in the current list, require the full ref
+- keep `New session` rows and non-managed entries non-deletable
+- send an empty DELETE body and URL-encode the `{session_ref}` path segment
+- disable delete while the selected/current session has an in-flight Chat
+  send/stream in this TUI process
+- after successful delete, refresh Sessions, dashboard counts, and Chat session
+  overview
+- if the deleted session is the current Chat session, clear the Chat session
+  selection, transcript/message tail cache, pending stream buffer, retry state,
+  and session-scoped errors, then return Chat to `ChooseSession`; do not
+  auto-select another session
+- deleting a non-current session must not interrupt an active Chat Workspace for
+  another session
+- clean up key hints so Chat shows Chat-specific actions (`a` adapter,
+  `n` new session/topic, optional `x` delete selected session) and does not show
+  misleading global `a actions` / `A shortcut` labels
+- ensure uppercase/shift key handling cannot accidentally trigger the lowercase
+  Chat adapter action
+- generate footer hints from the focused screen/mode; Chat phase-specific hints
+  override global navigator hints
+- use short refs in Sessions table columns for `default_server`, `adapter`, and
+  other managed refs; keep full refs available in detail panes and destructive
+  confirmations
+- use shared display-only short-ref helpers. Short refs must never be used for
+  daemon route construction
+- keep compact table rendering stable when session titles, tags, server refs, or
+  adapter refs are long
+
+Boundaries:
+
+- use only existing daemon session routes; do not add backend routes or schemas
+- do not add session compact, fork, export, rewrite, archive, or transcript edit
+  behavior in this slice
+- do not delete server, adapter, model, dataset, or training artifacts as part of
+  session delete
+- do not read Keychain, call `/v1/auth`, or mutate Chat transcript files
+- do not make session delete available in Bootstrap mode
+
+Review target:
+
+- a user can remove old local chat sessions from the TUI, Chat key hints match
+  what the focused screen actually does, and Sessions tables remain readable by
+  showing short server/adapter refs in dense columns.
 
 ## Open Questions
 

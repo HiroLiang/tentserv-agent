@@ -274,8 +274,8 @@ fn render_session_list(sessions: &[SessionSummary]) {
             Cell::new(display_option(metadata.title.as_deref())),
             Cell::new(metadata.message_count),
             Cell::new(&metadata.updated_at),
-            Cell::new(display_option(metadata.default_server_ref.as_deref())),
-            Cell::new(display_option(metadata.adapter_ref.as_deref())),
+            Cell::new(display_short_option(metadata.default_server_ref.as_deref())),
+            Cell::new(display_short_option(metadata.adapter_ref.as_deref())),
             Cell::new(tags),
         ]);
     }
@@ -459,10 +459,30 @@ fn display_option(value: Option<&str>) -> &str {
     value.filter(|value| !value.is_empty()).unwrap_or("-")
 }
 
+fn display_short_option(value: Option<&str>) -> String {
+    value
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(12).collect())
+        .unwrap_or_else(|| "-".to_string())
+}
+
 fn base_table() -> Table {
     let mut table = Table::new();
     table
         .load_preset(UTF8_FULL_CONDENSED)
         .apply_modifier(UTF8_ROUND_CORNERS);
     table
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_list_shortens_default_server_and_adapter_refs() {
+        let long_ref = "5ab47943b50d1716340db7e1a80f4feac0febd26fbd08b3552f26f3128707626";
+
+        assert_eq!(display_short_option(Some(long_ref)), "5ab47943b50d");
+        assert_eq!(display_short_option(None), "-");
+    }
 }

@@ -580,13 +580,21 @@ fn read_env_path(name: &str) -> Option<PathBuf> {
 }
 
 fn is_process_running(pid: u32) -> Result<bool, ServerError> {
-    let status = Command::new("kill")
+    let output = Command::new("kill")
         .arg("-0")
         .arg(pid.to_string())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-    Ok(status.success())
+        .output()?;
+    if output.status.success() {
+        return Ok(true);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    if stderr.contains("operation not permitted") || stderr.contains("not permitted") {
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 fn terminate_process(pid: u32) -> Result<(), ServerError> {

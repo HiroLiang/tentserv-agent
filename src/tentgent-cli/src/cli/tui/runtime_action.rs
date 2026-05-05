@@ -9,6 +9,7 @@ use serde_json::{Map, Value};
 use super::{
     daemon_client::TuiTokenSource,
     navigator::{percent_encode_path_segment, NavigatorListKind, NavigatorRow},
+    runtime_wizard::RuntimeWizardState,
 };
 
 const RUNTIME_ACTION_CONNECT_TIMEOUT: Duration = Duration::from_millis(700);
@@ -280,6 +281,14 @@ pub(super) enum RuntimeActionState {
         form: RuntimeActionForm,
         error: Option<String>,
     },
+    Wizard(RuntimeWizardState),
+    WizardPreviewRunning {
+        request_id: u64,
+        generation: u64,
+        wizard: RuntimeWizardState,
+        request: RuntimeActionRequest,
+        started_at: Instant,
+    },
     Confirming {
         request: RuntimeActionRequest,
         typed: String,
@@ -313,7 +322,9 @@ impl RuntimeActionState {
 
     pub(super) fn in_flight(&self) -> Option<u64> {
         match self {
-            Self::Running { request_id, .. } => Some(*request_id),
+            Self::Running { request_id, .. } | Self::WizardPreviewRunning { request_id, .. } => {
+                Some(*request_id)
+            }
             _ => None,
         }
     }
@@ -974,6 +985,10 @@ fn truncate(value: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::runtime_wizard::{
+        RuntimePickerMode, RuntimePreviewStatus, RuntimeWizardAdvancedChoice, RuntimeWizardBackend,
+        RuntimeWizardFlow, RuntimeWizardReviewRow, RuntimeWizardState, RuntimeWizardStep,
+    };
     use super::*;
     use serde_json::json;
 
@@ -1077,6 +1092,71 @@ mod tests {
         assert_eq!(body["dataset_ref"], "dataset1");
         assert_eq!(body["overrides"]["max_seq_length"], 1024);
         assert!(body["overrides"].get("rank").is_none());
+    }
+
+    #[test]
+    fn server_create_wizard_starts_with_model_picker_and_manual_fallback_exists() {
+        let wizard =
+            RuntimeWizardState::new(RuntimeActionKind::ServerCreate, None).expect("wizard");
+        assert_eq!(wizard.flow, RuntimeWizardFlow::CreateServer);
+        assert_eq!(wizard.step, RuntimeWizardStep::PickModel);
+        let picker = wizard.picker.expect("picker");
+        assert_eq!(picker.kind, NavigatorListKind::Models);
+        assert_eq!(picker.mode, RuntimePickerMode::Local);
+    }
+
+    #[test]
+    fn lora_wizard_review_uses_shared_preview_and_create_values() {
+        let mut wizard =
+            RuntimeWizardState::new(RuntimeActionKind::TrainPlanCreate, None).expect("wizard");
+        wizard.draft.model_ref = "model1".to_string();
+        wizard.draft.dataset_ref = "dataset1".to_string();
+        wizard.draft.backend = RuntimeWizardBackend::Mlx;
+        wizard.draft.advanced_choice = RuntimeWizardAdvancedChoice::Customize;
+        wizard.draft.rank = "8".to_string();
+
+        let preview = build_runtime_action_request(
+            RuntimeActionKind::TrainPlanPreview,
+            None,
+            &wizard.preview_values(),
+        )
+        .expect("preview");
+        let create = build_runtime_action_request(
+            RuntimeActionKind::TrainPlanCreate,
+            None,
+            &wizard.create_values(),
+        )
+        .expect("create");
+
+        assert_eq!(preview.body, create.body);
+        let body = create.body.unwrap();
+        assert_eq!(body["model_ref"], "model1");
+        assert_eq!(body["dataset_ref"], "dataset1");
+        assert_eq!(body["backend"], "mlx");
+        assert_eq!(body["overrides"]["rank"], 8);
+    }
+
+    #[test]
+    fn lora_preview_stale_when_draft_changes_after_ready_preview() {
+        let mut wizard =
+            RuntimeWizardState::new(RuntimeActionKind::TrainPlanCreate, None).expect("wizard");
+        wizard.preview.status = RuntimePreviewStatus::Ready;
+        wizard.dirty_since_preview = false;
+        wizard.mark_dirty();
+        assert_eq!(wizard.preview.status, RuntimePreviewStatus::Stale);
+        assert!(wizard.dirty_since_preview);
+    }
+
+    #[test]
+    fn review_field_edit_jumps_to_picker_backed_steps() {
+        assert_eq!(
+            RuntimeWizardState::new(RuntimeActionKind::TrainPlanCreate, None)
+                .unwrap()
+                .review_rows()
+                .first()
+                .cloned(),
+            Some(RuntimeWizardReviewRow::Field("model_ref", String::new()))
+        );
     }
 
     #[test]

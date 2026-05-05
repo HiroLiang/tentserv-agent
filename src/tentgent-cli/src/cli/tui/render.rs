@@ -18,6 +18,7 @@ use super::{
     navigator::{DashboardCard, NavigatorListKind, NavigatorLoadState},
     resource_render::{render_resources, resource_summary_lines},
     runtime_action_render::render_runtime_action,
+    session_action::SessionActionState,
     store_action_render::render_store_action,
 };
 
@@ -127,6 +128,10 @@ fn render_menu(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
 }
 
 fn render_detail(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
+    if app.session_action.is_active() {
+        render_session_action(frame, area, &app.session_action);
+        return;
+    }
     match app.selected_menu_entry().item {
         MenuItem::StartDaemon => render_start_detail(frame, area, app),
         MenuItem::ProviderAuth => render_provider_detail(frame, area, app),
@@ -489,6 +494,116 @@ fn render_jobs(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     );
 }
 
+fn render_session_action(frame: &mut Frame<'_>, area: Rect, state: &SessionActionState) {
+    let lines = match state {
+        SessionActionState::Idle => vec![Line::from("No session action active.")],
+        SessionActionState::ConfirmingDelete {
+            target,
+            typed,
+            message,
+            ..
+        } => {
+            let mut lines = vec![
+                Line::from(Span::styled(
+                    "Delete session",
+                    Style::default().add_modifier(Modifier::BOLD),
+                )),
+                Line::from(message.clone()),
+                Line::from(""),
+                line_kv("short_ref", &target.short_ref),
+                line_kv("full_ref", &target.session_ref),
+                line_kv("title", &target.title),
+            ];
+            if target.require_full_ref {
+                lines.push(line_kv(
+                    "warning",
+                    "short ref is ambiguous; full ref is required",
+                ));
+            }
+            lines.push(line_kv(
+                "typed",
+                if typed.is_empty() {
+                    "(empty)".to_string()
+                } else {
+                    typed.clone()
+                },
+            ));
+            lines.push(Line::from(""));
+            lines.push(Line::from(
+                "Enter confirms when text matches; Esc cancels and preserves selection.",
+            ));
+            lines
+        }
+        SessionActionState::Running {
+            request,
+            started_at,
+            ..
+        } => {
+            let elapsed = started_at.elapsed().as_secs();
+            vec![
+                line_kv("action", "Delete session"),
+                line_kv("state", "waiting for daemon response"),
+                line_kv("short_ref", &request.target.short_ref),
+                line_kv("full_ref", &request.target.session_ref),
+                line_kv("elapsed", format!("{elapsed}s")),
+                Line::from(""),
+                Line::from(
+                    "Esc aborts only the local TUI wait; daemon-side delete may have happened.",
+                ),
+            ]
+        }
+        SessionActionState::Result(result) => {
+            let mut lines = vec![
+                Line::from(Span::styled(
+                    "Session deleted",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                line_kv("status", result.status.to_string()),
+            ];
+            for (key, value) in &result.lines {
+                lines.push(line_kv(key, value));
+            }
+            lines.push(line_kv("summary", &result.raw_summary));
+            lines.push(Line::from(""));
+            lines.push(Line::from("Enter/Esc returns to the previous view."));
+            lines
+        }
+        SessionActionState::Error {
+            target,
+            message,
+            recoverable,
+        } => {
+            let mut lines = vec![
+                Line::from(Span::styled(
+                    "Session action error",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                )),
+                line_kv("error", message),
+                line_kv("recoverable", recoverable.to_string()),
+            ];
+            if let Some(target) = target {
+                lines.push(line_kv("short_ref", &target.short_ref));
+                lines.push(line_kv("full_ref", &target.session_ref));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::from("Enter/Esc returns to the previous view."));
+            lines
+        }
+    };
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title("Session Action")
+                    .borders(Borders::ALL),
+            )
+            .wrap(Wrap { trim: false }),
+        area,
+    );
+}
+
 fn render_navigator(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     let Some(kind) = app.current_navigator_kind() else {
         return;
@@ -498,7 +613,7 @@ fn render_navigator(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         return;
     }
     if app.runtime_action.is_active() {
-        render_runtime_action(frame, area, &app.runtime_action);
+        render_runtime_action(frame, area, &app.runtime_action, &app.navigator);
         return;
     }
     let state = app.navigator.state(kind);
@@ -734,9 +849,7 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     if let Some(input) = app.active_input_line() {
         lines.push(render_input_line(input));
     } else {
-        lines.push(Line::from(
-        "↑/↓ move | Enter select/inspect | a actions | A shortcut | / filter | Tab detail/subtab | r refresh/scan | h context | l logs | m messages | p metrics | Esc back | q quit",
-        ));
+        lines.push(Line::from(command_hint_text(app)));
     }
     if let Some(job) = app.jobs.active_jobs().first() {
         lines.push(Line::from(vec![
@@ -758,6 +871,42 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
             .wrap(Wrap { trim: true }),
         area,
     );
+}
+
+fn command_hint_text(app: &TuiApp) -> String {
+    match app.selected_menu_entry().item {
+        MenuItem::Chat => {
+            if app.chat.phase == super::chat::ChatPhase::ChooseSession
+                && app.can_delete_selected_chat_session()
+            {
+                "↑/↓ session | Enter select | n new | s server | a adapter | x delete session | h context | r refresh | Esc back | q quit".to_string()
+            } else {
+                "↑/↓ move | Enter select/send | n new | s server | a adapter | h context | r refresh | Esc back | q quit".to_string()
+            }
+        }
+        MenuItem::Sessions => {
+            "↑/↓ move | Enter inspect | x delete session | a actions | c chat | m messages | / filter | r refresh | Esc back | q quit".to_string()
+        }
+        MenuItem::Models | MenuItem::Datasets => {
+            "↑/↓ move | Enter inspect | a actions | A shortcut | / filter | r refresh | Esc back | q quit".to_string()
+        }
+        MenuItem::Adapters => {
+            "↑/↓ move | Enter inspect | a actions | / filter | r refresh | Esc back | q quit".to_string()
+        }
+        MenuItem::Servers | MenuItem::Training => {
+            "↑/↓ move | Enter inspect | a actions | / filter | r refresh | l logs | p metrics | Esc back | q quit".to_string()
+        }
+        MenuItem::Jobs => "↑/↓ move | r refresh | b background | Esc back | q quit".to_string(),
+        MenuItem::Resources => {
+            "↑/↓ move | Tab resource tab | r scan | / filter | Esc back | q quit".to_string()
+        }
+        MenuItem::Settings => "↑/↓ move | Enter edit | Esc back | q quit".to_string(),
+        MenuItem::ProviderAuth => {
+            "↑/↓ move | Enter/check | k set key | x remove key | Esc back | q quit".to_string()
+        }
+        MenuItem::Dashboard => "↑/↓ move | r refresh | q quit".to_string(),
+        MenuItem::StartDaemon => "s start daemon | r refresh | Esc back | q quit".to_string(),
+    }
 }
 
 fn render_input_line(input: InputLine) -> Line<'static> {
@@ -1066,5 +1215,86 @@ mod tests {
         terminal
             .draw(|frame| render(frame, &app))
             .expect("compact runtime action render");
+    }
+
+    #[test]
+    fn compact_session_action_layout_renders_without_panic() {
+        let home = std::env::temp_dir().join("tentgent-tui-render-session-action");
+        let mut app = TuiApp::test_app(home);
+        app.mode = AppMode::Operator;
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Sessions)
+            .expect("sessions menu");
+        app.focus = FocusPane::Detail;
+        let target = crate::cli::tui::session_action::make_delete_target(
+            "session-full-ref",
+            "session-full",
+            "test",
+            crate::cli::tui::session_action::SessionActionOrigin::Navigator,
+            vec!["session-full".to_string()],
+        );
+        app.session_action =
+            crate::cli::tui::session_action::SessionActionState::ConfirmingDelete {
+                message: target.confirmation_hint(),
+                target,
+                typed: String::new(),
+                cursor: 0,
+            };
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+
+        terminal
+            .draw(|frame| render(frame, &app))
+            .expect("compact session action render");
+    }
+
+    #[test]
+    fn footer_hints_are_focus_specific_for_chat_and_sessions() {
+        let home = std::env::temp_dir().join("tentgent-tui-render-footer");
+        let mut app = TuiApp::test_app(home);
+        app.daemon = crate::cli::tui::daemon_client::DaemonSnapshot {
+            state: crate::cli::tui::daemon_client::DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.mode = AppMode::Operator;
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Chat)
+            .expect("chat menu");
+        app.focus = FocusPane::Detail;
+        app.chat.phase = crate::cli::tui::chat::ChatPhase::ChooseSession;
+        app.chat.focus = crate::cli::tui::chat::ChatFocus::Chooser;
+        app.chat.selected_session = 1;
+        app.chat.sessions = vec![crate::cli::tui::chat::ChatSessionRow {
+            session_ref: "session-full-ref".to_string(),
+            short_ref: "session-full".to_string(),
+            title: "test".to_string(),
+            message_count: Some(1),
+            updated_at: None,
+            default_server_ref: None,
+            adapter_ref: None,
+            raw: serde_json::Value::Null,
+        }];
+
+        let chat_hint = command_hint_text(&app);
+        assert!(chat_hint.contains("a adapter"));
+        assert!(chat_hint.contains("x delete session"));
+        assert!(!chat_hint.contains("a actions"));
+
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == MenuItem::Sessions)
+            .expect("sessions menu");
+
+        let sessions_hint = command_hint_text(&app);
+        assert!(sessions_hint.contains("a actions"));
+        assert!(sessions_hint.contains("x delete session"));
+        assert!(!sessions_hint.contains("a adapter"));
     }
 }

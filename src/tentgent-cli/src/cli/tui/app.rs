@@ -46,6 +46,15 @@ use super::{
         RuntimeActionForm, RuntimeActionKind, RuntimeActionRequest, RuntimeActionResult,
         RuntimeActionState,
     },
+    runtime_wizard::{
+        is_runtime_wizard_action, RuntimePickerMode, RuntimePickerState, RuntimePreviewState,
+        RuntimePreviewStatus, RuntimeWizardAdvancedChoice, RuntimeWizardBackend, RuntimeWizardFlow,
+        RuntimeWizardReviewRow, RuntimeWizardState, RuntimeWizardStep,
+    },
+    session_action::{
+        build_session_delete_request, make_delete_target, SessionActionClient, SessionActionError,
+        SessionActionOrigin, SessionActionResult, SessionActionState, SessionDeleteTarget,
+    },
     store_action::{
         actions_for, build_action_request, ActionState, StoreActionClient, StoreActionError,
         StoreActionForm, StoreActionKind, StoreActionRequest, StoreActionResult,
@@ -160,6 +169,11 @@ enum TuiEvent {
         request_id: u64,
         generation: u64,
         result: Result<RuntimeActionResult, RuntimeActionError>,
+    },
+    SessionActionFinished {
+        request_id: u64,
+        generation: u64,
+        result: Result<SessionActionResult, SessionActionError>,
     },
 }
 
@@ -403,6 +417,7 @@ pub(super) struct TuiApp {
     pub(super) jobs: JobState,
     pub(super) store_action: ActionState,
     pub(super) runtime_action: RuntimeActionState,
+    pub(super) session_action: SessionActionState,
     pub(super) dashboard: DashboardState,
     pub(super) mode: AppMode,
     pub(super) focus: FocusPane,
@@ -466,6 +481,7 @@ impl TuiApp {
             jobs: JobState::default(),
             store_action: ActionState::Idle,
             runtime_action: RuntimeActionState::Idle,
+            session_action: SessionActionState::Idle,
             dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
@@ -1204,12 +1220,340 @@ impl TuiApp {
         )
     }
 
+    fn session_action_client(&self) -> miette::Result<SessionActionClient> {
+        SessionActionClient::new(
+            self.daemon_url.url.clone(),
+            self.daemon_token.token.clone(),
+            self.daemon_token.source,
+        )
+    }
+
     fn job_client(&self) -> miette::Result<JobClient> {
         JobClient::new(
             self.daemon_url.url.clone(),
             self.daemon_token.token.clone(),
             self.daemon_token.source,
         )
+    }
+
+    pub(super) fn can_delete_selected_chat_session(&self) -> bool {
+        self.selected_menu_entry().item == MenuItem::Chat
+            && self.chat.phase == ChatPhase::ChooseSession
+            && self.chat.focus == super::chat::ChatFocus::Chooser
+            && self.chat.selected_session > 0
+            && !self.chat.send_state.is_in_flight()
+    }
+
+    fn begin_session_actions(&mut self, tx: &TuiEventSender) {
+        if self.mode != AppMode::Operator {
+            self.message = "session actions are available only in Operator mode".to_string();
+            return;
+        }
+        if self.current_navigator_kind() != Some(NavigatorListKind::Sessions) {
+            self.message = "session actions are available only in Sessions".to_string();
+            return;
+        }
+        self.ensure_current_navigator_loaded(tx);
+        let Some(target) = self.session_delete_target_from_navigator() else {
+            self.message = "select a session before deleting".to_string();
+            return;
+        };
+        if let Some(message) = self.session_delete_blocker(&target.session_ref) {
+            self.message = message;
+            return;
+        }
+        self.session_action = SessionActionState::ConfirmingDelete {
+            message: target.confirmation_hint(),
+            target,
+            typed: String::new(),
+            cursor: 0,
+        };
+        self.message = "session delete confirmation required".to_string();
+    }
+
+    fn begin_chat_session_delete(&mut self) {
+        let Some(target) = self.session_delete_target_from_chat() else {
+            self.message = "select an existing session before deleting".to_string();
+            return;
+        };
+        if let Some(message) = self.session_delete_blocker(&target.session_ref) {
+            self.message = message;
+            return;
+        }
+        self.session_action = SessionActionState::ConfirmingDelete {
+            message: target.confirmation_hint(),
+            target,
+            typed: String::new(),
+            cursor: 0,
+        };
+        self.message = "session delete confirmation required".to_string();
+    }
+
+    fn session_delete_target_from_navigator(&self) -> Option<SessionDeleteTarget> {
+        let state = self.navigator.state(NavigatorListKind::Sessions);
+        let row = state.selected_row()?;
+        Some(make_delete_target(
+            row.item_ref.clone(),
+            row.short_ref.clone(),
+            string_field(&row.raw, "title")
+                .unwrap_or("(untitled)")
+                .to_string(),
+            SessionActionOrigin::Navigator,
+            state
+                .rows
+                .iter()
+                .map(|row| row.short_ref.clone())
+                .collect::<Vec<_>>(),
+        ))
+    }
+
+    fn session_delete_target_from_chat(&self) -> Option<SessionDeleteTarget> {
+        if self.chat.phase != ChatPhase::ChooseSession
+            || self.chat.focus != super::chat::ChatFocus::Chooser
+            || self.chat.selected_session == 0
+        {
+            return None;
+        }
+        let row = self.chat.sessions.get(self.chat.selected_session - 1)?;
+        Some(make_delete_target(
+            row.session_ref.clone(),
+            row.short_ref.clone(),
+            row.title.clone(),
+            SessionActionOrigin::ChatChooseSession,
+            self.chat
+                .sessions
+                .iter()
+                .map(|row| row.short_ref.clone())
+                .collect::<Vec<_>>(),
+        ))
+    }
+
+    fn session_delete_blocker(&self, session_ref: &str) -> Option<String> {
+        if self.chat.send_state.is_in_flight()
+            && self.chat.selected_session_ref.as_deref() == Some(session_ref)
+        {
+            return Some(
+                "finish or cancel the in-flight Chat send before deleting this session".to_string(),
+            );
+        }
+        None
+    }
+
+    fn begin_session_action_request(&mut self, target: SessionDeleteTarget, tx: &TuiEventSender) {
+        let client = match self.session_action_client() {
+            Ok(client) => client,
+            Err(error) => {
+                self.session_action = SessionActionState::Error {
+                    target: Some(target),
+                    message: error.to_string(),
+                    recoverable: true,
+                };
+                self.message = "failed to create session action client".to_string();
+                return;
+            }
+        };
+        let request = build_session_delete_request(target);
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        self.message = "deleting session through daemon".to_string();
+        self.session_action = SessionActionState::Running {
+            request_id,
+            generation,
+            request: request.clone(),
+            started_at: Instant::now(),
+        };
+        let tx = tx.clone();
+        self.action_task = Some(tokio::spawn(async move {
+            let result = client.execute(request).await;
+            let _ = tx.send(TuiEvent::SessionActionFinished {
+                request_id,
+                generation,
+                result,
+            });
+        }));
+    }
+
+    fn handle_session_action_key(
+        &mut self,
+        key: KeyEvent,
+        tx: &TuiEventSender,
+    ) -> miette::Result<bool> {
+        if !self.session_action.is_active() {
+            return Ok(false);
+        }
+        let state = std::mem::replace(&mut self.session_action, SessionActionState::Idle);
+        match state {
+            SessionActionState::ConfirmingDelete {
+                target,
+                mut typed,
+                mut cursor,
+                message,
+            } => match key.code {
+                KeyCode::Enter => {
+                    if target.confirmation_matches(&typed) {
+                        self.begin_session_action_request(target, tx);
+                    } else {
+                        self.message = "confirmation text does not match".to_string();
+                        self.session_action = SessionActionState::ConfirmingDelete {
+                            target,
+                            typed,
+                            cursor,
+                            message,
+                        };
+                    }
+                }
+                KeyCode::Esc => {
+                    self.message = "session delete canceled".to_string();
+                }
+                _ => {
+                    edit_text_value(&mut typed, &mut cursor, key.code);
+                    self.session_action = SessionActionState::ConfirmingDelete {
+                        target,
+                        typed,
+                        cursor,
+                        message,
+                    };
+                }
+            },
+            SessionActionState::Running {
+                request_id,
+                generation,
+                request,
+                started_at,
+            } => match key.code {
+                KeyCode::Esc => {
+                    if let Some(handle) = self.action_task.take() {
+                        handle.abort();
+                    }
+                    self.generation = self.generation.saturating_add(1);
+                    self.session_action = SessionActionState::Error {
+                        target: Some(request.target),
+                        message: "local TUI delete request aborted; daemon may have received it"
+                            .to_string(),
+                        recoverable: true,
+                    };
+                    self.message = "aborted local session delete request".to_string();
+                }
+                _ => {
+                    self.session_action = SessionActionState::Running {
+                        request_id,
+                        generation,
+                        request,
+                        started_at,
+                    };
+                }
+            },
+            SessionActionState::Result(_) | SessionActionState::Error { .. } => match key.code {
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.message = "returned to previous view".to_string();
+                }
+                _ => self.session_action = state,
+            },
+            SessionActionState::Idle => {}
+        }
+        Ok(true)
+    }
+
+    fn apply_session_action_result(
+        &mut self,
+        result: Result<SessionActionResult, SessionActionError>,
+        tx: &TuiEventSender,
+    ) {
+        self.action_task = None;
+        match result {
+            Ok(result) => {
+                let deleted_ref = result.target.session_ref.clone();
+                self.clear_deleted_chat_session(&deleted_ref);
+                let refresh_targets = result.refresh_targets.clone();
+                self.session_action = SessionActionState::Result(result);
+                for kind in refresh_targets {
+                    self.request_navigator_list(kind, tx, format!("refreshing {}", kind.label()));
+                }
+                self.request_chat_overview(tx, "refreshing chat sessions");
+                self.message = "session deleted".to_string();
+            }
+            Err(error) => self.apply_session_action_error(error),
+        }
+    }
+
+    fn apply_session_action_error(&mut self, error: SessionActionError) {
+        let running_target = match &self.session_action {
+            SessionActionState::Running { request, .. } => Some(request.target.clone()),
+            _ => None,
+        };
+        if let SessionActionError::AuthRequired(message) = &error {
+            self.daemon = DaemonSnapshot {
+                state: DaemonConnectionState::AuthRequired,
+                detail: message.clone(),
+                status: self.daemon.status.clone(),
+                doctor: self.daemon.doctor.clone(),
+            };
+            self.update_mode();
+            self.session_action = SessionActionState::Error {
+                target: running_target,
+                message: message.clone(),
+                recoverable: true,
+            };
+            self.message = "daemon auth required for session delete".to_string();
+            return;
+        }
+        if let SessionActionError::NotFound(message) = &error {
+            self.navigator
+                .state_mut(NavigatorListKind::Sessions)
+                .load_state = NavigatorLoadState::StaleItem {
+                message: format!("{message}; refresh the list"),
+            };
+            self.session_action = SessionActionState::Error {
+                target: running_target,
+                message: message.clone(),
+                recoverable: true,
+            };
+            self.message = "selected session is stale; refresh and reselect".to_string();
+            return;
+        }
+        self.session_action = SessionActionState::Error {
+            target: running_target,
+            message: error.to_string(),
+            recoverable: true,
+        };
+        self.message = format!("session delete failed: {error}");
+    }
+
+    fn clear_deleted_chat_session(&mut self, deleted_ref: &str) {
+        self.chat
+            .sessions
+            .retain(|row| row.session_ref != deleted_ref);
+        if self.chat.selected_session_ref.as_deref() == Some(deleted_ref) {
+            self.chat.selected_session_ref = None;
+            self.chat.selected_session = 0;
+            self.chat.phase = ChatPhase::ChooseSession;
+            self.chat.focus = super::chat::ChatFocus::Chooser;
+            self.chat.transcript.clear();
+            self.chat.total_messages = None;
+            self.chat.transcript_truncated = false;
+            self.chat.pending_user = None;
+            self.chat.pending_assistant = None;
+            self.chat.pending_interrupted = false;
+            self.chat.retry_non_stream = None;
+            self.chat.last_error = None;
+            self.chat.send_state = ChatSendState::Idle;
+            self.chat.load_state = ChatLoadState::StaleSelection {
+                message: "deleted current session; choose or create another session".to_string(),
+            };
+        } else {
+            self.chat.selected_session = self
+                .chat
+                .selected_session_ref
+                .as_deref()
+                .and_then(|selected| {
+                    self.chat
+                        .sessions
+                        .iter()
+                        .position(|row| row.session_ref == selected)
+                        .map(|index| index + 1)
+                })
+                .unwrap_or_else(|| self.chat.selected_session.min(self.chat.sessions.len()));
+        }
     }
 
     fn current_store_action_kind(&self) -> Option<NavigatorListKind> {
@@ -1720,6 +2064,21 @@ impl TuiApp {
             self.message = "select a row before running this action".to_string();
             return;
         }
+        if is_runtime_wizard_action(action) {
+            if let Some(mut wizard) = RuntimeWizardState::new(action, selected.as_ref()) {
+                if let Some(picker) = &mut wizard.picker {
+                    self.sync_runtime_picker_selection(picker);
+                    self.request_navigator_list(
+                        picker.kind,
+                        tx,
+                        format!("loading {} picker rows", picker.kind.label()),
+                    );
+                }
+                self.runtime_action = RuntimeActionState::Wizard(wizard);
+                self.message = "opened picker-based runtime wizard".to_string();
+                return;
+            }
+        }
         let form = RuntimeActionForm::new(action, selected.as_ref());
         self.runtime_action = RuntimeActionState::EditingForm {
             kind,
@@ -1739,6 +2098,40 @@ impl TuiApp {
         }
     }
 
+    fn submit_runtime_action_request(
+        &mut self,
+        request: RuntimeActionRequest,
+        tx: &TuiEventSender,
+    ) {
+        if request.confirmation_token.is_some()
+            || request.resource_confirmation
+            || request.warning.is_some()
+        {
+            let message = if request.resource_confirmation {
+                "Type RUN to confirm local training resource use".to_string()
+            } else if let Some(warning) = &request.warning {
+                format!("{warning}; type CONFIRM to continue")
+            } else {
+                format!(
+                    "Type {} or full ref to confirm destructive remove",
+                    request
+                        .confirmation_token
+                        .as_deref()
+                        .unwrap_or("(selected ref)")
+                )
+            };
+            self.runtime_action = RuntimeActionState::Confirming {
+                request,
+                typed: String::new(),
+                cursor: 0,
+                message,
+            };
+            self.message = "runtime confirmation required before submit".to_string();
+        } else {
+            self.begin_runtime_action_request(request, tx);
+        }
+    }
+
     fn submit_runtime_action_form(&mut self, tx: &TuiEventSender) {
         let state = std::mem::replace(&mut self.runtime_action, RuntimeActionState::Idle);
         let RuntimeActionState::EditingForm {
@@ -1753,35 +2146,7 @@ impl TuiApp {
         };
         let values = form.values();
         match build_runtime_action_request(form.action, selected.as_ref(), &values) {
-            Ok(request) => {
-                if request.confirmation_token.is_some()
-                    || request.resource_confirmation
-                    || request.warning.is_some()
-                {
-                    let message = if request.resource_confirmation {
-                        "Type RUN to confirm local training resource use".to_string()
-                    } else if let Some(warning) = &request.warning {
-                        format!("{warning}; type CONFIRM to continue")
-                    } else {
-                        format!(
-                            "Type {} or full ref to confirm destructive remove",
-                            request
-                                .confirmation_token
-                                .as_deref()
-                                .unwrap_or("(selected ref)")
-                        )
-                    };
-                    self.runtime_action = RuntimeActionState::Confirming {
-                        request,
-                        typed: String::new(),
-                        cursor: 0,
-                        message,
-                    };
-                    self.message = "runtime confirmation required before submit".to_string();
-                } else {
-                    self.begin_runtime_action_request(request, tx);
-                }
-            }
+            Ok(request) => self.submit_runtime_action_request(request, tx),
             Err(error) => {
                 self.runtime_action = RuntimeActionState::EditingForm {
                     kind,
@@ -1790,6 +2155,129 @@ impl TuiApp {
                     error: Some(error.clone()),
                 };
                 self.message = format!("runtime action form needs correction: {error}");
+            }
+        }
+    }
+
+    fn sync_runtime_picker_selection(&self, picker: &mut RuntimePickerState) {
+        if picker.mode == RuntimePickerMode::Manual {
+            return;
+        }
+        let rows = self.runtime_picker_visible_rows(picker.kind, &picker.filter);
+        picker.selected_index = picker
+            .selected_ref
+            .as_deref()
+            .and_then(|selected| rows.iter().position(|row| row.item_ref == selected))
+            .unwrap_or_else(|| picker.selected_index.min(rows.len().saturating_sub(1)));
+        picker.selected_ref = rows
+            .get(picker.selected_index)
+            .map(|row| row.item_ref.clone());
+    }
+
+    fn runtime_picker_visible_rows(
+        &self,
+        kind: NavigatorListKind,
+        filter: &str,
+    ) -> Vec<&NavigatorRow> {
+        let state = self.navigator.state(kind);
+        let filter = filter.trim().to_ascii_lowercase();
+        if filter.is_empty() {
+            return state.rows.iter().collect();
+        }
+        state
+            .rows
+            .iter()
+            .filter(|row| row.search_text.to_ascii_lowercase().contains(&filter))
+            .collect()
+    }
+
+    fn selected_runtime_picker_ref(&self, picker: &RuntimePickerState) -> Option<String> {
+        if picker.mode == RuntimePickerMode::Manual {
+            let value = picker.manual_value.trim();
+            return (!value.is_empty()).then(|| value.to_string());
+        }
+        self.runtime_picker_visible_rows(picker.kind, &picker.filter)
+            .get(picker.selected_index)
+            .map(|row| row.item_ref.clone())
+    }
+
+    fn begin_runtime_wizard_preview(
+        &mut self,
+        mut wizard: RuntimeWizardState,
+        tx: &TuiEventSender,
+    ) {
+        let values = wizard.preview_values();
+        let request = match build_runtime_action_request(
+            RuntimeActionKind::TrainPlanPreview,
+            None,
+            &values,
+        ) {
+            Ok(request) => request,
+            Err(error) => {
+                wizard.validation_errors = vec![error.clone()];
+                self.runtime_action = RuntimeActionState::Wizard(wizard);
+                self.message = format!("preview needs correction: {error}");
+                return;
+            }
+        };
+        let client = match self.runtime_action_client() {
+            Ok(client) => client,
+            Err(error) => {
+                wizard.preview = RuntimePreviewState {
+                    status: RuntimePreviewStatus::Error,
+                    lines: Vec::new(),
+                    message: Some(error.to_string()),
+                };
+                self.runtime_action = RuntimeActionState::Wizard(wizard);
+                self.message = "failed to create daemon preview client".to_string();
+                return;
+            }
+        };
+        let request_id = self.next_request_id();
+        let generation = self.generation;
+        wizard.preview.status = RuntimePreviewStatus::Running;
+        wizard.preview.message = Some("preview request in flight".to_string());
+        self.runtime_action = RuntimeActionState::WizardPreviewRunning {
+            request_id,
+            generation,
+            wizard,
+            request: request.clone(),
+            started_at: Instant::now(),
+        };
+        let tx = tx.clone();
+        self.action_task = Some(tokio::spawn(async move {
+            let result = client.execute(request).await;
+            let _ = tx.send(TuiEvent::RuntimeActionFinished {
+                request_id,
+                generation,
+                result,
+            });
+        }));
+    }
+
+    fn submit_runtime_wizard_create(
+        &mut self,
+        mut wizard: RuntimeWizardState,
+        tx: &TuiEventSender,
+    ) {
+        if matches!(wizard.flow, RuntimeWizardFlow::CreateLoraPlan)
+            && (wizard.dirty_since_preview
+                || !matches!(wizard.preview.status, RuntimePreviewStatus::Ready))
+        {
+            wizard.validation_errors =
+                vec!["run Preview before creating the LoRA plan".to_string()];
+            self.runtime_action = RuntimeActionState::Wizard(wizard);
+            self.message = "LoRA plan create requires a fresh preview".to_string();
+            return;
+        }
+        let action = wizard.flow.create_action();
+        let values = wizard.create_values();
+        match build_runtime_action_request(action, None, &values) {
+            Ok(request) => self.submit_runtime_action_request(request, tx),
+            Err(error) => {
+                wizard.validation_errors = vec![error.clone()];
+                self.runtime_action = RuntimeActionState::Wizard(wizard);
+                self.message = format!("wizard needs correction: {error}");
             }
         }
     }
@@ -1924,6 +2412,38 @@ impl TuiApp {
                     };
                 }
             },
+            RuntimeActionState::Wizard(wizard) => {
+                self.handle_runtime_wizard_key(wizard, key, tx);
+            }
+            RuntimeActionState::WizardPreviewRunning {
+                request_id,
+                generation,
+                wizard,
+                request,
+                started_at,
+            } => match key.code {
+                KeyCode::Esc => {
+                    if let Some(handle) = self.action_task.take() {
+                        handle.abort();
+                    }
+                    self.generation = self.generation.saturating_add(1);
+                    let mut wizard = wizard;
+                    wizard.preview.status = RuntimePreviewStatus::Error;
+                    wizard.preview.message =
+                        Some("local preview wait aborted; daemon may have received it".to_string());
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                    self.message = "preview wait aborted locally".to_string();
+                }
+                _ => {
+                    self.runtime_action = RuntimeActionState::WizardPreviewRunning {
+                        request_id,
+                        generation,
+                        wizard,
+                        request,
+                        started_at,
+                    };
+                }
+            },
             RuntimeActionState::Confirming {
                 request,
                 mut typed,
@@ -2000,12 +2520,432 @@ impl TuiApp {
         Ok(true)
     }
 
+    fn handle_runtime_wizard_key(
+        &mut self,
+        mut wizard: RuntimeWizardState,
+        key: KeyEvent,
+        tx: &TuiEventSender,
+    ) {
+        wizard.validation_errors.clear();
+        match wizard.step {
+            RuntimeWizardStep::PickModel | RuntimeWizardStep::PickDataset => {
+                self.handle_runtime_wizard_picker_key(wizard, key, tx);
+            }
+            RuntimeWizardStep::ServerConfig => match key.code {
+                KeyCode::Up => {
+                    wizard.selected_field = move_index(wizard.selected_field, 4, -1);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Down => {
+                    wizard.selected_field = move_index(wizard.selected_field, 4, 1);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Char(' ') if wizard.selected_field == 2 => {
+                    wizard.draft.lazy_load = !wizard.draft.lazy_load;
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Enter => {
+                    wizard.set_step(RuntimeWizardStep::Review);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Esc => {
+                    self.runtime_wizard_back(wizard, tx);
+                }
+                _ => {
+                    edit_server_config_field(&mut wizard, key.code);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+            },
+            RuntimeWizardStep::PickBackend => match key.code {
+                KeyCode::Up => {
+                    wizard.selected_field =
+                        move_index(wizard.selected_field, RuntimeWizardBackend::ALL.len(), -1);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Down => {
+                    wizard.selected_field =
+                        move_index(wizard.selected_field, RuntimeWizardBackend::ALL.len(), 1);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Enter => {
+                    wizard.draft.backend = RuntimeWizardBackend::ALL[wizard.selected_field];
+                    wizard.mark_dirty();
+                    if wizard.draft.backend == RuntimeWizardBackend::Manual
+                        && wizard.draft.manual_backend.trim().is_empty()
+                    {
+                        wizard.validation_errors =
+                            vec!["manual backend requires a value".to_string()];
+                    } else {
+                        wizard.set_step(RuntimeWizardStep::PlanBasics);
+                    }
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Esc => self.runtime_wizard_back(wizard, tx),
+                _ => {
+                    if RuntimeWizardBackend::ALL[wizard.selected_field]
+                        == RuntimeWizardBackend::Manual
+                    {
+                        let mut cursor = wizard.draft.manual_backend.chars().count();
+                        edit_text_value(&mut wizard.draft.manual_backend, &mut cursor, key.code);
+                        wizard.draft.backend = RuntimeWizardBackend::Manual;
+                        wizard.mark_dirty();
+                    }
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+            },
+            RuntimeWizardStep::PlanBasics => match key.code {
+                KeyCode::Enter => {
+                    wizard.set_step(RuntimeWizardStep::AdvancedChoice);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Esc => self.runtime_wizard_back(wizard, tx),
+                _ => {
+                    let mut cursor = wizard.draft.name.chars().count();
+                    edit_text_value(&mut wizard.draft.name, &mut cursor, key.code);
+                    wizard.mark_dirty();
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+            },
+            RuntimeWizardStep::AdvancedChoice => match key.code {
+                KeyCode::Up | KeyCode::Down => {
+                    wizard.selected_field = move_index(
+                        wizard.selected_field,
+                        2,
+                        if key.code == KeyCode::Up { -1 } else { 1 },
+                    );
+                    wizard.draft.advanced_choice = if wizard.selected_field == 0 {
+                        RuntimeWizardAdvancedChoice::Defaults
+                    } else {
+                        RuntimeWizardAdvancedChoice::Customize
+                    };
+                    wizard.mark_dirty();
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Enter => {
+                    let next =
+                        if wizard.draft.advanced_choice == RuntimeWizardAdvancedChoice::Customize {
+                            RuntimeWizardStep::AdvancedFields
+                        } else {
+                            RuntimeWizardStep::Review
+                        };
+                    wizard.set_step(next);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Esc => self.runtime_wizard_back(wizard, tx),
+                _ => {
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+            },
+            RuntimeWizardStep::AdvancedFields => match key.code {
+                KeyCode::Up => {
+                    wizard.selected_field = move_index(wizard.selected_field, 12, -1);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Down => {
+                    wizard.selected_field = move_index(wizard.selected_field, 12, 1);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Char(' ') => {
+                    toggle_advanced_bool(&mut wizard);
+                    wizard.mark_dirty();
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Enter => {
+                    wizard.set_step(RuntimeWizardStep::Review);
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+                KeyCode::Esc => self.runtime_wizard_back(wizard, tx),
+                _ => {
+                    edit_advanced_field(&mut wizard, key.code);
+                    wizard.mark_dirty();
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                }
+            },
+            RuntimeWizardStep::Review => self.handle_runtime_wizard_review_key(wizard, key, tx),
+        }
+    }
+
+    fn handle_runtime_wizard_picker_key(
+        &mut self,
+        mut wizard: RuntimeWizardState,
+        key: KeyEvent,
+        tx: &TuiEventSender,
+    ) {
+        let Some(mut picker) = wizard.picker.take() else {
+            self.runtime_action = RuntimeActionState::Wizard(wizard);
+            return;
+        };
+        let mut restore_picker = true;
+        match key.code {
+            KeyCode::Up if picker.mode == RuntimePickerMode::Local => {
+                let len = self
+                    .runtime_picker_visible_rows(picker.kind, &picker.filter)
+                    .len();
+                picker.selected_index = move_index(picker.selected_index, len, -1);
+                picker.selected_ref = self
+                    .runtime_picker_visible_rows(picker.kind, &picker.filter)
+                    .get(picker.selected_index)
+                    .map(|row| row.item_ref.clone());
+            }
+            KeyCode::Down if picker.mode == RuntimePickerMode::Local => {
+                let len = self
+                    .runtime_picker_visible_rows(picker.kind, &picker.filter)
+                    .len();
+                picker.selected_index = move_index(picker.selected_index, len, 1);
+                picker.selected_ref = self
+                    .runtime_picker_visible_rows(picker.kind, &picker.filter)
+                    .get(picker.selected_index)
+                    .map(|row| row.item_ref.clone());
+            }
+            KeyCode::Char('m') if picker.mode == RuntimePickerMode::Local => {
+                picker.mode.toggle();
+            }
+            KeyCode::Char('M') => {
+                picker.mode.toggle();
+            }
+            KeyCode::Char('r') => {
+                self.request_navigator_list(
+                    picker.kind,
+                    tx,
+                    format!("refreshing {} picker", picker.kind.label()),
+                );
+            }
+            KeyCode::Enter => {
+                let selected_ref = self.selected_runtime_picker_ref(&picker);
+                match (wizard.step, selected_ref) {
+                    (RuntimeWizardStep::PickModel, Some(item_ref)) => {
+                        match wizard.flow {
+                            RuntimeWizardFlow::CreateServer => wizard.draft.runtime_ref = item_ref,
+                            RuntimeWizardFlow::CreateLoraPlan => wizard.draft.model_ref = item_ref,
+                        }
+                        wizard.mark_dirty();
+                        let next = match wizard.flow {
+                            RuntimeWizardFlow::CreateServer => RuntimeWizardStep::ServerConfig,
+                            RuntimeWizardFlow::CreateLoraPlan
+                                if wizard.draft.dataset_ref.trim().is_empty() =>
+                            {
+                                RuntimeWizardStep::PickDataset
+                            }
+                            RuntimeWizardFlow::CreateLoraPlan => RuntimeWizardStep::PickBackend,
+                        };
+                        wizard.set_step(next);
+                        if let Some(next_picker) = &mut wizard.picker {
+                            self.sync_runtime_picker_selection(next_picker);
+                            self.request_navigator_list(
+                                next_picker.kind,
+                                tx,
+                                format!("loading {} picker rows", next_picker.kind.label()),
+                            );
+                        }
+                        restore_picker = false;
+                    }
+                    (RuntimeWizardStep::PickDataset, Some(item_ref)) => {
+                        wizard.draft.dataset_ref = item_ref;
+                        wizard.mark_dirty();
+                        wizard.set_step(RuntimeWizardStep::PickBackend);
+                        restore_picker = false;
+                    }
+                    (_, None) => {
+                        wizard.validation_errors =
+                            vec!["select a local row or enter an advanced manual ref".to_string()];
+                        wizard.picker = Some(picker);
+                        self.runtime_action = RuntimeActionState::Wizard(wizard);
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+            KeyCode::Esc => {
+                wizard.picker = Some(picker);
+                self.runtime_wizard_back(wizard, tx);
+                return;
+            }
+            KeyCode::Char('/') if picker.mode == RuntimePickerMode::Local => {
+                picker.filter.clear();
+                picker.selected_index = 0;
+                picker.selected_ref = self
+                    .runtime_picker_visible_rows(picker.kind, &picker.filter)
+                    .first()
+                    .map(|row| row.item_ref.clone());
+            }
+            _ if picker.mode == RuntimePickerMode::Manual => {
+                edit_text_value(
+                    &mut picker.manual_value,
+                    &mut picker.manual_cursor,
+                    key.code,
+                );
+            }
+            _ if picker.mode == RuntimePickerMode::Local => {
+                let mut cursor = picker.filter.chars().count();
+                edit_text_value(&mut picker.filter, &mut cursor, key.code);
+                picker.selected_index = 0;
+                picker.selected_ref = self
+                    .runtime_picker_visible_rows(picker.kind, &picker.filter)
+                    .first()
+                    .map(|row| row.item_ref.clone());
+            }
+            _ => {}
+        }
+        if restore_picker && !matches!(wizard.step, RuntimeWizardStep::Review) {
+            wizard.picker = Some(picker);
+        }
+        self.runtime_action = RuntimeActionState::Wizard(wizard);
+    }
+
+    fn handle_runtime_wizard_review_key(
+        &mut self,
+        mut wizard: RuntimeWizardState,
+        key: KeyEvent,
+        tx: &TuiEventSender,
+    ) {
+        let rows = wizard.review_rows();
+        match key.code {
+            KeyCode::Up => {
+                wizard.selected_review_row = move_index(wizard.selected_review_row, rows.len(), -1);
+                self.runtime_action = RuntimeActionState::Wizard(wizard);
+            }
+            KeyCode::Down => {
+                wizard.selected_review_row = move_index(wizard.selected_review_row, rows.len(), 1);
+                self.runtime_action = RuntimeActionState::Wizard(wizard);
+            }
+            KeyCode::Char('r') if wizard.flow == RuntimeWizardFlow::CreateLoraPlan => {
+                self.begin_runtime_wizard_preview(wizard, tx);
+            }
+            KeyCode::Enter => {
+                let row = rows.get(wizard.selected_review_row).cloned();
+                match row {
+                    Some(RuntimeWizardReviewRow::Field(name, _)) => {
+                        let step = review_field_step(wizard.flow, name);
+                        wizard.set_step(step);
+                        self.runtime_action = RuntimeActionState::Wizard(wizard);
+                    }
+                    Some(RuntimeWizardReviewRow::Preview) => {
+                        self.begin_runtime_wizard_preview(wizard, tx);
+                    }
+                    Some(RuntimeWizardReviewRow::Submit) => {
+                        self.submit_runtime_wizard_create(wizard, tx);
+                    }
+                    None => {
+                        self.runtime_action = RuntimeActionState::Wizard(wizard);
+                    }
+                }
+            }
+            KeyCode::Esc => self.runtime_wizard_back(wizard, tx),
+            _ => {
+                self.runtime_action = RuntimeActionState::Wizard(wizard);
+            }
+        }
+    }
+
+    fn runtime_wizard_back(&mut self, mut wizard: RuntimeWizardState, tx: &TuiEventSender) {
+        let previous = match (wizard.flow, wizard.step) {
+            (_, RuntimeWizardStep::PickModel) => None,
+            (RuntimeWizardFlow::CreateServer, RuntimeWizardStep::ServerConfig) => {
+                Some(RuntimeWizardStep::PickModel)
+            }
+            (RuntimeWizardFlow::CreateServer, RuntimeWizardStep::Review) => {
+                Some(RuntimeWizardStep::ServerConfig)
+            }
+            (RuntimeWizardFlow::CreateLoraPlan, RuntimeWizardStep::PickDataset) => {
+                Some(RuntimeWizardStep::PickModel)
+            }
+            (RuntimeWizardFlow::CreateLoraPlan, RuntimeWizardStep::PickBackend) => {
+                Some(RuntimeWizardStep::PickDataset)
+            }
+            (RuntimeWizardFlow::CreateLoraPlan, RuntimeWizardStep::PlanBasics) => {
+                Some(RuntimeWizardStep::PickBackend)
+            }
+            (RuntimeWizardFlow::CreateLoraPlan, RuntimeWizardStep::AdvancedChoice) => {
+                Some(RuntimeWizardStep::PlanBasics)
+            }
+            (RuntimeWizardFlow::CreateLoraPlan, RuntimeWizardStep::AdvancedFields) => {
+                Some(RuntimeWizardStep::AdvancedChoice)
+            }
+            (RuntimeWizardFlow::CreateLoraPlan, RuntimeWizardStep::Review)
+                if wizard.draft.advanced_choice == RuntimeWizardAdvancedChoice::Customize =>
+            {
+                Some(RuntimeWizardStep::AdvancedFields)
+            }
+            (RuntimeWizardFlow::CreateLoraPlan, RuntimeWizardStep::Review) => {
+                Some(RuntimeWizardStep::AdvancedChoice)
+            }
+            _ => None,
+        };
+        if let Some(step) = previous {
+            wizard.set_step(step);
+            if let Some(picker) = &wizard.picker {
+                self.request_navigator_list(
+                    picker.kind,
+                    tx,
+                    format!("loading {} picker rows", picker.kind.label()),
+                );
+            }
+            self.runtime_action = RuntimeActionState::Wizard(wizard);
+        } else {
+            self.runtime_action = RuntimeActionState::Idle;
+            self.message = "runtime wizard canceled".to_string();
+        }
+    }
+
     fn apply_runtime_action_result(
         &mut self,
         result: Result<RuntimeActionResult, RuntimeActionError>,
         tx: &TuiEventSender,
     ) {
         self.action_task = None;
+        if matches!(
+            self.runtime_action,
+            RuntimeActionState::WizardPreviewRunning { .. }
+        ) {
+            let state = std::mem::replace(&mut self.runtime_action, RuntimeActionState::Idle);
+            let RuntimeActionState::WizardPreviewRunning { mut wizard, .. } = state else {
+                unreachable!("checked wizard preview state");
+            };
+            match result {
+                Ok(result) => {
+                    let blocked = result.lines.iter().any(|(key, value)| {
+                        key == "plan.blockers"
+                            && !matches!(value.as_str(), "null" | "[]" | "array(0)" | "(empty)")
+                    });
+                    wizard.preview = RuntimePreviewState {
+                        status: if blocked {
+                            RuntimePreviewStatus::Blocked
+                        } else {
+                            RuntimePreviewStatus::Ready
+                        },
+                        lines: result.lines,
+                        message: Some(if blocked {
+                            "preview returned blockers; create is disabled".to_string()
+                        } else {
+                            "preview ready; create can use this request".to_string()
+                        }),
+                    };
+                    wizard.dirty_since_preview = false;
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                    self.message = "LoRA preview refreshed".to_string();
+                }
+                Err(error) => {
+                    if let RuntimeActionError::AuthRequired(message) = &error {
+                        self.daemon = DaemonSnapshot {
+                            state: DaemonConnectionState::AuthRequired,
+                            detail: message.clone(),
+                            status: self.daemon.status.clone(),
+                            doctor: self.daemon.doctor.clone(),
+                        };
+                        self.update_mode();
+                    }
+                    wizard.preview = RuntimePreviewState {
+                        status: RuntimePreviewStatus::Error,
+                        lines: Vec::new(),
+                        message: Some(error.to_string()),
+                    };
+                    wizard.dirty_since_preview = true;
+                    self.runtime_action = RuntimeActionState::Wizard(wizard);
+                    self.message = format!("LoRA preview failed: {error}");
+                }
+            }
+            return;
+        }
         match result {
             Ok(result) => {
                 let refresh_targets = result.refresh_targets.clone();
@@ -2899,6 +3839,18 @@ impl TuiApp {
                 }
                 self.apply_runtime_action_result(result, tx);
             }
+            TuiEvent::SessionActionFinished {
+                request_id,
+                generation,
+                result,
+            } => {
+                if self.session_action.in_flight() != Some(request_id)
+                    || self.generation != generation
+                {
+                    return Ok(());
+                }
+                self.apply_session_action_result(result, tx);
+            }
         }
         self.clamp_selection();
         Ok(())
@@ -2907,6 +3859,10 @@ impl TuiApp {
     fn handle_key(&mut self, key: KeyEvent, tx: &TuiEventSender) -> miette::Result<()> {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             self.should_quit = true;
+            return Ok(());
+        }
+
+        if self.session_action.is_active() && self.handle_session_action_key(key, tx)? {
             return Ok(());
         }
 
@@ -3107,19 +4063,31 @@ impl TuiApp {
                     self.message = "background jobs remain tracked in footer".to_string();
                 }
             }
-            KeyCode::Char('a') => {
+            KeyCode::Char('a') if key.modifiers.is_empty() => {
                 if self.current_store_action_kind().is_some() {
                     self.begin_store_actions(tx);
+                } else if self.current_navigator_kind() == Some(NavigatorListKind::Sessions) {
+                    self.begin_session_actions(tx);
                 } else if !self.begin_runtime_actions(tx) {
-                    self.message = "actions are available for store, server, and training sections"
-                        .to_string();
+                    self.message =
+                        "actions are available for store, session, server, and training sections"
+                            .to_string();
                 }
             }
-            KeyCode::Char('A') => {
+            KeyCode::Char('A') | KeyCode::Char('a')
+                if key.code == KeyCode::Char('A')
+                    || key.modifiers.contains(KeyModifiers::SHIFT) =>
+            {
                 if !self.begin_runtime_actions(tx) {
                     self.message =
                         "runtime shortcuts are available for Models and Datasets".to_string();
                 }
+            }
+            KeyCode::Char('x')
+                if key.modifiers.is_empty()
+                    && self.current_navigator_kind() == Some(NavigatorListKind::Sessions) =>
+            {
+                self.begin_session_actions(tx);
             }
             KeyCode::Char('/') => self.begin_filter_edit(),
             KeyCode::Char('l') => self.request_current_tail(tx),
@@ -3232,7 +4200,7 @@ impl TuiApp {
                 self.message = "choose a running server".to_string();
                 Ok(true)
             }
-            KeyCode::Char('a') => {
+            KeyCode::Char('a') if key.modifiers.is_empty() => {
                 self.chat.select_adapter_next();
                 self.message = self
                     .chat
@@ -3244,6 +4212,16 @@ impl TuiApp {
                         )
                     })
                     .unwrap_or_else(|| "adapter selection cleared".to_string());
+                Ok(true)
+            }
+            KeyCode::Char('x') if key.modifiers.is_empty() => {
+                if self.session_delete_target_from_chat().is_some() {
+                    self.begin_chat_session_delete();
+                } else {
+                    self.message =
+                        "select an existing session in the Chat session list before deleting"
+                            .to_string();
+                }
                 Ok(true)
             }
             KeyCode::Char('r') => {
@@ -4004,6 +4982,7 @@ impl TuiApp {
         self.daemon_action = DaemonActionState::Idle;
         self.store_action = ActionState::Idle;
         self.runtime_action = RuntimeActionState::Idle;
+        self.session_action = SessionActionState::Idle;
     }
 }
 
@@ -4447,6 +5426,77 @@ fn move_index(current: usize, len: usize, delta: isize) -> usize {
     }
 }
 
+fn edit_server_config_field(wizard: &mut RuntimeWizardState, code: KeyCode) {
+    match wizard.selected_field {
+        0 => {
+            let mut cursor = wizard.draft.host.chars().count();
+            edit_text_value(&mut wizard.draft.host, &mut cursor, code);
+        }
+        1 => {
+            let mut cursor = wizard.draft.port.chars().count();
+            edit_text_value(&mut wizard.draft.port, &mut cursor, code);
+        }
+        2 => {
+            if matches!(code, KeyCode::Char('t') | KeyCode::Char('f')) {
+                wizard.draft.lazy_load = matches!(code, KeyCode::Char('t'));
+            }
+        }
+        3 => {
+            let mut cursor = wizard.draft.idle_seconds.chars().count();
+            edit_text_value(&mut wizard.draft.idle_seconds, &mut cursor, code);
+        }
+        _ => {}
+    }
+}
+
+fn edit_advanced_field(wizard: &mut RuntimeWizardState, code: KeyCode) {
+    let text = match wizard.selected_field {
+        0 => Some(&mut wizard.draft.max_seq_length),
+        1 => Some(&mut wizard.draft.rank),
+        2 => Some(&mut wizard.draft.learning_rate),
+        3 => Some(&mut wizard.draft.batch_size),
+        4 => Some(&mut wizard.draft.gradient_accumulation_steps),
+        5 => Some(&mut wizard.draft.max_steps),
+        6 => Some(&mut wizard.draft.seed),
+        8 => Some(&mut wizard.draft.mlx_num_layers),
+        _ => None,
+    };
+    if let Some(value) = text {
+        let mut cursor = value.chars().count();
+        edit_text_value(value, &mut cursor, code);
+    }
+}
+
+fn toggle_advanced_bool(wizard: &mut RuntimeWizardState) {
+    let value = match wizard.selected_field {
+        7 => Some(&mut wizard.draft.mask_prompt),
+        9 => Some(&mut wizard.draft.mlx_grad_checkpoint),
+        10 => Some(&mut wizard.draft.peft_load_in_4bit),
+        11 => Some(&mut wizard.draft.peft_load_in_8bit),
+        _ => None,
+    };
+    if let Some(value) = value {
+        *value = match value {
+            None => Some(true),
+            Some(true) => Some(false),
+            Some(false) => None,
+        };
+    }
+}
+
+fn review_field_step(flow: RuntimeWizardFlow, name: &str) -> RuntimeWizardStep {
+    match (flow, name) {
+        (RuntimeWizardFlow::CreateServer, "runtime_ref") => RuntimeWizardStep::PickModel,
+        (RuntimeWizardFlow::CreateServer, _) => RuntimeWizardStep::ServerConfig,
+        (RuntimeWizardFlow::CreateLoraPlan, "model_ref") => RuntimeWizardStep::PickModel,
+        (RuntimeWizardFlow::CreateLoraPlan, "dataset_ref") => RuntimeWizardStep::PickDataset,
+        (RuntimeWizardFlow::CreateLoraPlan, "backend") => RuntimeWizardStep::PickBackend,
+        (RuntimeWizardFlow::CreateLoraPlan, "name") => RuntimeWizardStep::PlanBasics,
+        (RuntimeWizardFlow::CreateLoraPlan, "advanced_fields") => RuntimeWizardStep::AdvancedFields,
+        (RuntimeWizardFlow::CreateLoraPlan, _) => RuntimeWizardStep::AdvancedChoice,
+    }
+}
+
 fn edit_text_value(value: &mut String, cursor: &mut usize, code: KeyCode) {
     *cursor = (*cursor).min(value.chars().count());
     match code {
@@ -4489,6 +5539,10 @@ fn env_string(name: &str) -> Option<String> {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn string_field<'a>(value: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    value.get(key).and_then(serde_json::Value::as_str)
 }
 
 fn clean(value: Option<&str>) -> Option<&str> {
@@ -4617,6 +5671,7 @@ impl TuiApp {
             jobs: JobState::default(),
             store_action: ActionState::Idle,
             runtime_action: RuntimeActionState::Idle,
+            session_action: SessionActionState::Idle,
             dashboard: DashboardState::default(),
             mode: AppMode::Bootstrap(BootstrapReason::DaemonDown),
             focus: FocusPane::Menu,
@@ -4664,7 +5719,10 @@ fn stopped_inspection(home: &Path) -> DaemonInspection {
 
 #[cfg(test)]
 mod tests {
-    use super::super::chat::{ChatContextMode, ChatFocus};
+    use super::super::chat::{
+        ChatAdapterRow, ChatContextMode, ChatFocus, ChatMessageRow, ChatSendRequest, ChatSendState,
+        ChatSessionRow,
+    };
     use super::*;
 
     #[test]
@@ -4871,6 +5929,199 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn session_action_delete_opens_only_in_operator_sessions() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-session-actions"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        app.begin_session_actions(&tx);
+        assert!(matches!(app.session_action, SessionActionState::Idle));
+        assert!(app.message.contains("Operator mode"));
+
+        make_operator(&mut app);
+        select_menu(&mut app, MenuItem::Sessions);
+        app.focus = FocusPane::Detail;
+        app.navigator
+            .state_mut(NavigatorListKind::Sessions)
+            .apply_rows(vec![session_nav_row("abcdabcdabcd1111", "abcdabcdabcd")]);
+
+        app.begin_session_actions(&tx);
+
+        assert!(matches!(
+            app.session_action,
+            SessionActionState::ConfirmingDelete { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn sessions_x_opens_delete_confirmation() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-session-x"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        make_operator(&mut app);
+        select_menu(&mut app, MenuItem::Sessions);
+        app.focus = FocusPane::Detail;
+        app.navigator
+            .state_mut(NavigatorListKind::Sessions)
+            .apply_rows(vec![session_nav_row("abcdabcdabcd1111", "abcdabcdabcd")]);
+
+        app.handle_key(
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::empty()),
+            &tx,
+        )
+        .expect("handle x");
+        assert!(matches!(
+            app.session_action,
+            SessionActionState::ConfirmingDelete { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn chat_x_deletes_only_existing_session_in_chooser() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-delete"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        make_operator(&mut app);
+        select_menu(&mut app, MenuItem::Chat);
+        app.focus = FocusPane::Detail;
+        app.chat.phase = ChatPhase::ChooseSession;
+        app.chat.focus = ChatFocus::Chooser;
+        app.chat.sessions = vec![chat_session_row("abcdabcdabcd1111", "abcdabcdabcd")];
+
+        app.chat.selected_session = 0;
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE), &tx)
+            .expect("handle key");
+        assert!(matches!(app.session_action, SessionActionState::Idle));
+
+        app.chat.selected_session = 1;
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE), &tx)
+            .expect("handle key");
+        assert!(matches!(
+            app.session_action,
+            SessionActionState::ConfirmingDelete { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn chat_delete_is_disabled_while_current_session_is_streaming() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-delete-streaming"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        make_operator(&mut app);
+        select_menu(&mut app, MenuItem::Chat);
+        app.focus = FocusPane::Detail;
+        app.chat.phase = ChatPhase::ChooseSession;
+        app.chat.focus = ChatFocus::Chooser;
+        app.chat.sessions = vec![chat_session_row("abcdabcdabcd1111", "abcdabcdabcd")];
+        app.chat.selected_session = 1;
+        app.chat.selected_session_ref = Some("abcdabcdabcd1111".to_string());
+        app.chat.send_state = ChatSendState::Streaming { request_id: 7 };
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE), &tx)
+            .expect("handle key");
+
+        assert!(matches!(app.session_action, SessionActionState::Idle));
+        assert!(app.message.contains("in-flight Chat send"));
+    }
+
+    #[test]
+    fn deleting_current_chat_session_clears_session_scoped_state() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-delete-current"));
+        app.chat.phase = ChatPhase::Workspace;
+        app.chat.focus = ChatFocus::Composer;
+        app.chat.selected_session_ref = Some("session-current".to_string());
+        app.chat.selected_session = 1;
+        app.chat.sessions = vec![chat_session_row("session-current", "session-cur")];
+        app.chat.transcript = vec![ChatMessageRow {
+            index: Some(0),
+            role: "user".to_string(),
+            content: "hello".to_string(),
+            created_at: None,
+            server_ref: None,
+            adapter_ref: None,
+        }];
+        app.chat.pending_user = Some("pending".to_string());
+        app.chat.pending_assistant = Some("partial".to_string());
+        app.chat.retry_non_stream = Some(ChatSendRequest {
+            request_id: 1,
+            server_ref: "server".to_string(),
+            session_ref: "session-current".to_string(),
+            adapter_ref: None,
+            prompt: "retry".to_string(),
+            context_mode: ChatContextMode::Last2,
+            max_session_messages: 2,
+            stream: false,
+        });
+        app.chat.send_state = ChatSendState::Streaming { request_id: 1 };
+
+        app.clear_deleted_chat_session("session-current");
+
+        assert_eq!(app.chat.phase, ChatPhase::ChooseSession);
+        assert_eq!(app.chat.focus, ChatFocus::Chooser);
+        assert!(app.chat.selected_session_ref.is_none());
+        assert!(app.chat.transcript.is_empty());
+        assert!(app.chat.pending_user.is_none());
+        assert!(app.chat.pending_assistant.is_none());
+        assert!(app.chat.retry_non_stream.is_none());
+        assert!(matches!(app.chat.send_state, ChatSendState::Idle));
+    }
+
+    #[test]
+    fn deleting_non_current_session_does_not_interrupt_workspace() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-delete-non-current"));
+        app.chat.phase = ChatPhase::Workspace;
+        app.chat.focus = ChatFocus::Composer;
+        app.chat.selected_session_ref = Some("session-current".to_string());
+        app.chat.sessions = vec![
+            chat_session_row("session-current", "session-cur"),
+            chat_session_row("session-stale", "session-sta"),
+        ];
+        app.chat.transcript = vec![ChatMessageRow {
+            index: Some(0),
+            role: "user".to_string(),
+            content: "still here".to_string(),
+            created_at: None,
+            server_ref: None,
+            adapter_ref: None,
+        }];
+
+        app.clear_deleted_chat_session("session-stale");
+
+        assert_eq!(app.chat.phase, ChatPhase::Workspace);
+        assert_eq!(
+            app.chat.selected_session_ref.as_deref(),
+            Some("session-current")
+        );
+        assert_eq!(app.chat.transcript.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn chat_lowercase_a_selects_adapter_but_shift_a_does_not() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-a"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        make_operator(&mut app);
+        select_menu(&mut app, MenuItem::Chat);
+        app.focus = FocusPane::Detail;
+        app.chat.phase = ChatPhase::ChooseSession;
+        app.chat.focus = ChatFocus::Chooser;
+        app.chat.adapters = vec![ChatAdapterRow {
+            adapter_ref: "adapter-full".to_string(),
+            short_ref: "adapter-shrt".to_string(),
+            label: "adapter".to_string(),
+            raw: serde_json::Value::Null,
+        }];
+
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE), &tx)
+            .expect("lowercase a");
+        assert_eq!(
+            app.chat.selected_adapter_ref.as_deref(),
+            Some("adapter-full")
+        );
+
+        app.chat.selected_adapter = None;
+        app.chat.selected_adapter_ref = None;
+        app.handle_normal_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::SHIFT), &tx)
+            .expect("shift a");
+        assert!(app.chat.selected_adapter_ref.is_none());
+    }
+
+    #[tokio::test]
     async fn runtime_actions_menu_is_operator_only_for_server_and_training_sections() {
         let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-runtime-actions"));
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -4914,6 +6165,142 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[tokio::test]
+    async fn server_create_wizard_selects_local_model_before_config() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-server-wizard"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        app.navigator
+            .state_mut(NavigatorListKind::Models)
+            .apply_rows(vec![NavigatorRow {
+                item_ref: "model-full".to_string(),
+                short_ref: "model".to_string(),
+                columns: vec!["mlx".to_string(), "hf".to_string()],
+                search_text: "model mlx hf".to_string(),
+                summary: vec![("format".to_string(), "mlx".to_string())],
+                raw: serde_json::Value::Null,
+            }]);
+
+        app.open_runtime_action_form(
+            NavigatorListKind::Servers,
+            RuntimeActionKind::ServerCreate,
+            &tx,
+        );
+        assert!(matches!(
+            app.runtime_action,
+            RuntimeActionState::Wizard(RuntimeWizardState {
+                flow: RuntimeWizardFlow::CreateServer,
+                step: RuntimeWizardStep::PickModel,
+                ..
+            })
+        ));
+
+        app.handle_runtime_action_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx)
+            .expect("key");
+
+        let RuntimeActionState::Wizard(wizard) = &app.runtime_action else {
+            panic!("expected wizard");
+        };
+        assert_eq!(wizard.step, RuntimeWizardStep::ServerConfig);
+        assert_eq!(wizard.draft.runtime_ref, "model-full");
+    }
+
+    #[tokio::test]
+    async fn lora_wizard_review_requires_fresh_preview_before_create() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-lora-wizard"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut wizard =
+            RuntimeWizardState::new(RuntimeActionKind::TrainPlanCreate, None).expect("wizard");
+        wizard.draft.model_ref = "model-full".to_string();
+        wizard.draft.dataset_ref = "dataset-full".to_string();
+        wizard.set_step(RuntimeWizardStep::Review);
+        wizard.selected_review_row = wizard.review_rows().len() - 1;
+        app.runtime_action = RuntimeActionState::Wizard(wizard);
+
+        app.handle_runtime_action_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx)
+            .expect("key");
+
+        let RuntimeActionState::Wizard(wizard) = &app.runtime_action else {
+            panic!("expected wizard");
+        };
+        assert!(wizard
+            .validation_errors
+            .iter()
+            .any(|error| error.contains("Preview")));
+    }
+
+    #[tokio::test]
+    async fn lora_wizard_switches_from_model_picker_to_dataset_picker() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-lora-picker-switch"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        app.navigator
+            .state_mut(NavigatorListKind::Models)
+            .apply_rows(vec![NavigatorRow {
+                item_ref: "model-full".to_string(),
+                short_ref: "model".to_string(),
+                columns: vec!["mlx".to_string()],
+                search_text: "model mlx".to_string(),
+                summary: Vec::new(),
+                raw: serde_json::Value::Null,
+            }]);
+        app.navigator
+            .state_mut(NavigatorListKind::Datasets)
+            .apply_rows(vec![NavigatorRow {
+                item_ref: "dataset-full".to_string(),
+                short_ref: "dataset".to_string(),
+                columns: vec!["jsonl".to_string()],
+                search_text: "dataset jsonl".to_string(),
+                summary: Vec::new(),
+                raw: serde_json::Value::Null,
+            }]);
+        app.open_runtime_action_form(
+            NavigatorListKind::TrainPlans,
+            RuntimeActionKind::TrainPlanCreate,
+            &tx,
+        );
+
+        app.handle_runtime_action_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx)
+            .expect("model enter");
+        let RuntimeActionState::Wizard(wizard) = &app.runtime_action else {
+            panic!("expected wizard");
+        };
+        assert_eq!(wizard.step, RuntimeWizardStep::PickDataset);
+        assert_eq!(
+            wizard.picker.as_ref().map(|picker| picker.kind),
+            Some(NavigatorListKind::Datasets)
+        );
+
+        app.handle_runtime_action_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &tx)
+            .expect("dataset enter");
+        let RuntimeActionState::Wizard(wizard) = &app.runtime_action else {
+            panic!("expected wizard");
+        };
+        assert_eq!(wizard.step, RuntimeWizardStep::PickBackend);
+        assert_eq!(wizard.draft.model_ref, "model-full");
+        assert_eq!(wizard.draft.dataset_ref, "dataset-full");
+    }
+
+    #[tokio::test]
+    async fn advanced_choice_moves_selection_and_updates_draft() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-advanced-choice"));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut wizard =
+            RuntimeWizardState::new(RuntimeActionKind::TrainPlanCreate, None).expect("wizard");
+        wizard.set_step(RuntimeWizardStep::AdvancedChoice);
+        app.runtime_action = RuntimeActionState::Wizard(wizard);
+
+        app.handle_runtime_action_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE), &tx)
+            .expect("down");
+
+        let RuntimeActionState::Wizard(wizard) = &app.runtime_action else {
+            panic!("expected wizard");
+        };
+        assert_eq!(wizard.selected_field, 1);
+        assert_eq!(
+            wizard.draft.advanced_choice,
+            RuntimeWizardAdvancedChoice::Customize
+        );
     }
 
     #[test]
@@ -5435,6 +6822,52 @@ mod tests {
         edit_text_value(&mut value, &mut cursor, KeyCode::Delete);
         assert_eq!(value, "aXd");
         assert_eq!(cursor, 2);
+    }
+
+    fn make_operator(app: &mut TuiApp) {
+        app.daemon = DaemonSnapshot {
+            state: DaemonConnectionState::Ready,
+            detail: "ready".to_string(),
+            status: None,
+            doctor: None,
+        };
+        app.update_mode();
+    }
+
+    fn select_menu(app: &mut TuiApp, item: MenuItem) {
+        app.selected_menu = app
+            .menu_entries()
+            .iter()
+            .position(|entry| entry.item == item)
+            .expect("menu item");
+    }
+
+    fn session_nav_row(session_ref: &str, short_ref: &str) -> NavigatorRow {
+        NavigatorRow {
+            item_ref: session_ref.to_string(),
+            short_ref: short_ref.to_string(),
+            columns: vec![short_ref.to_string()],
+            search_text: short_ref.to_string(),
+            summary: Vec::new(),
+            raw: serde_json::json!({
+                "session_ref": session_ref,
+                "short_ref": short_ref,
+                "title": "test session",
+            }),
+        }
+    }
+
+    fn chat_session_row(session_ref: &str, short_ref: &str) -> ChatSessionRow {
+        ChatSessionRow {
+            session_ref: session_ref.to_string(),
+            short_ref: short_ref.to_string(),
+            title: "TUI chat".to_string(),
+            message_count: Some(2),
+            updated_at: None,
+            default_server_ref: None,
+            adapter_ref: None,
+            raw: serde_json::Value::Null,
+        }
     }
 
     fn unique_home(label: &str) -> PathBuf {

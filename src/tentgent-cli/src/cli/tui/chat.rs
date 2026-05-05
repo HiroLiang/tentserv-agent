@@ -5,7 +5,9 @@ use serde_json::{json, Value};
 
 use super::{
     daemon_client::TuiTokenSource,
-    navigator::{percent_encode_path_segment, NavigatorRow, SESSION_MESSAGES_TAIL},
+    navigator::{
+        display_short_ref, percent_encode_path_segment, NavigatorRow, SESSION_MESSAGES_TAIL,
+    },
 };
 
 pub(super) const CHAT_MESSAGES_TAIL: usize = SESSION_MESSAGES_TAIL;
@@ -865,7 +867,7 @@ pub(super) fn parse_servers(value: Value) -> Result<Vec<ChatServerRow>, ChatErro
             running.then(|| ChatServerRow {
                 short_ref: string_field(server, "short_ref")
                     .map(ToOwned::to_owned)
-                    .unwrap_or_else(|| short_ref(&server_ref)),
+                    .unwrap_or_else(|| display_short_ref(&server_ref)),
                 label: first_nonempty(&[
                     string_field(server, "provider_model"),
                     string_field(server, "model_ref"),
@@ -947,7 +949,7 @@ fn session_row(value: &Value) -> Option<ChatSessionRow> {
     Some(ChatSessionRow {
         short_ref: string_field(value, "short_ref")
             .map(ToOwned::to_owned)
-            .unwrap_or_else(|| short_ref(&session_ref)),
+            .unwrap_or_else(|| display_short_ref(&session_ref)),
         title: string_field(value, "title")
             .filter(|value| !value.trim().is_empty())
             .unwrap_or("(untitled)")
@@ -1153,10 +1155,6 @@ fn first_nonempty<'a>(values: &[Option<&'a str>]) -> Option<&'a str> {
 
 fn string_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value.get(key).and_then(Value::as_str)
-}
-
-fn short_ref(value: &str) -> String {
-    value.chars().take(12).collect()
 }
 
 fn clamp_to_len(index: usize, len: usize) -> usize {

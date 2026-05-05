@@ -9,6 +9,7 @@ use ratatui::{
 use super::{
     app::TuiApp,
     chat::{ChatFocus, ChatPhase, ChatSendState, CHAT_MESSAGES_TAIL},
+    navigator::display_short_ref,
 };
 
 pub(super) fn render_chat(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
@@ -55,14 +56,14 @@ fn render_chat_header(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         ]),
         Line::from(vec![
             Span::styled("server: ", Style::default().fg(Color::Yellow)),
-            Span::raw(app.chat.selected_server_ref.as_deref().unwrap_or("(none)")),
+            Span::raw(short_or_none(app.chat.selected_server_ref.as_deref())),
         ]),
         Line::from(vec![
             Span::styled("session: ", Style::default().fg(Color::Yellow)),
-            Span::raw(app.chat.selected_session_ref.as_deref().unwrap_or("(none)")),
+            Span::raw(short_or_none(app.chat.selected_session_ref.as_deref())),
             Span::raw("  "),
             Span::styled("adapter: ", Style::default().fg(Color::Yellow)),
-            Span::raw(app.chat.selected_adapter_ref.as_deref().unwrap_or("(none)")),
+            Span::raw(short_or_none(app.chat.selected_adapter_ref.as_deref())),
         ]),
         Line::from(vec![
             Span::styled("context: ", Style::default().fg(Color::Yellow)),
@@ -245,12 +246,12 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
                         message
                             .server_ref
                             .as_deref()
-                            .map(|value| format!("server {value} "))
+                            .map(|value| format!("server {} ", display_short_ref(value)))
                             .unwrap_or_default(),
                         message
                             .adapter_ref
                             .as_deref()
-                            .map(|value| format!("adapter {value}"))
+                            .map(|value| format!("adapter {}", display_short_ref(value)))
                             .unwrap_or_default(),
                     ),
                     Style::default().fg(Color::DarkGray),
@@ -413,6 +414,10 @@ fn render_chat_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     let mut lines = Vec::new();
     if app.chat.phase == ChatPhase::Workspace {
         lines.push(composer_line(app));
+    } else if app.can_delete_selected_chat_session() {
+        lines.push(Line::from(
+            "Enter select | n new session | s server | a adapter | x delete session | r refresh | Esc menu",
+        ));
     } else {
         lines.push(Line::from(
             "Enter select | n new session | s server | a adapter | r refresh | Esc menu",
@@ -512,4 +517,10 @@ fn truncate(value: &str, max: usize) -> String {
     } else {
         head
     }
+}
+
+fn short_or_none(value: Option<&str>) -> String {
+    value
+        .map(display_short_ref)
+        .unwrap_or_else(|| "(none)".to_string())
 }

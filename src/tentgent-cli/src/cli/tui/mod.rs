@@ -9,6 +9,8 @@ mod resource;
 mod resource_render;
 mod runtime_action;
 mod runtime_action_render;
+mod runtime_wizard;
+mod session_action;
 mod store_action;
 mod store_action_render;
 mod terminal;

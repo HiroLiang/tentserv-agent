@@ -115,7 +115,7 @@ impl NavigatorListKind {
             Self::Adapters => ["ref", "type", "base", "format", "path"],
             Self::Datasets => ["ref", "format", "ready", "splits", "path"],
             Self::Servers => ["ref", "state", "kind", "target", "port"],
-            Self::Sessions => ["ref", "title", "messages", "updated", "server"],
+            Self::Sessions => ["ref", "title", "messages", "updated", "server/adapter"],
             Self::TrainPlans => ["ref", "status", "model", "dataset", "runs"],
             Self::TrainRuns => ["ref", "status", "phase", "pid", "plan"],
         }
@@ -778,7 +778,12 @@ fn columns_for(kind: NavigatorListKind, item: &Value, short_ref: &str) -> Vec<St
                 .map(|count| count.to_string())
                 .unwrap_or_else(|| "-".to_string()),
             str_or_dash(item, "updated_at"),
-            str_or_dash(item, "default_server_ref"),
+            compact_pair_label(
+                "srv",
+                string_field(item, "default_server_ref"),
+                "adp",
+                string_field(item, "adapter_ref"),
+            ),
         ],
         NavigatorListKind::TrainPlans => vec![
             short_ref.to_string(),
@@ -1035,8 +1040,43 @@ fn truncate(value: &str, max: usize) -> String {
     }
 }
 
+pub(super) fn display_short_ref(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        "(empty)".to_string()
+    } else if trimmed.chars().count() > 12 {
+        trimmed.chars().take(12).collect()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+pub(super) fn display_optional_short_ref(value: Option<&str>) -> String {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .map(display_short_ref)
+        .unwrap_or_else(|| "-".to_string())
+}
+
 fn short_ref(value: &str) -> String {
-    value.chars().take(12).collect()
+    display_short_ref(value)
+}
+
+fn compact_pair_label(
+    left_label: &str,
+    left: Option<&str>,
+    right_label: &str,
+    right: Option<&str>,
+) -> String {
+    match (
+        display_optional_short_ref(left),
+        display_optional_short_ref(right),
+    ) {
+        (left, right) if left == "-" && right == "-" => "-".to_string(),
+        (left, right) if right == "-" => format!("{left_label}:{left}"),
+        (left, right) if left == "-" => format!("{right_label}:{right}"),
+        (left, right) => format!("{left_label}:{left} {right_label}:{right}"),
+    }
 }
 
 fn bytes_label(bytes: Option<u64>) -> String {
@@ -1165,6 +1205,36 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].item_ref, "srv_local");
         assert!(rows[0].search_text.contains("model_a"));
+    }
+
+    #[test]
+    fn sessions_table_columns_use_short_server_and_adapter_refs() {
+        let server_ref = "5ab47943b50d1716340db7e1a80f4feac0febd26fbd08b3552f26f3128707626";
+        let adapter_ref = "4c9fadc6cd715764b319ff1d6584e79bfb2cf5a2dc6ee9fac595fdc3a2186dc7";
+        let value = serde_json::json!({
+            "sessions": [
+                {
+                    "session_ref": "b00fc44d389a91f7df49afb6",
+                    "short_ref": "b00fc44d389a",
+                    "title": "TUI chat",
+                    "message_count": 8,
+                    "updated_at": "2026-05-05T05:54:10Z",
+                    "default_server_ref": server_ref,
+                    "adapter_ref": adapter_ref,
+                    "tags": [],
+                    "store_path": "/tmp/session"
+                }
+            ]
+        });
+
+        let rows = parse_list(NavigatorListKind::Sessions, value).expect("sessions");
+
+        assert_eq!(rows[0].columns[4], "srv:5ab47943b50d adp:4c9fadc6cd71");
+        assert!(!rows[0].columns[4].contains("1716340db7e1"));
+        assert_eq!(
+            NavigatorListKind::Sessions.column_headers()[4],
+            "server/adapter"
+        );
     }
 
     #[test]
