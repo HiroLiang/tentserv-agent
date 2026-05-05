@@ -2045,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "tentgent-cli"
-version = "0.2.0"
+version = "0.3.0-alpha.1"
 dependencies = [
  "clap",
  "comfy-table",
@@ -2069,7 +2069,7 @@ dependencies = [
 
 [[package]]
 name = "tentgent-core"
-version = "0.2.0"
+version = "0.3.0-alpha.1"
 dependencies = [
  "directories",
  "dotenvy",
@@ -2090,7 +2090,7 @@ dependencies = [
 
 [[package]]
 name = "tentgent-http"
-version = "0.2.0"
+version = "0.3.0-alpha.1"
 dependencies = [
  "clap",
  "miette",

@@ -2,6 +2,36 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.3.0-alpha.1
+
+`v0.3.0-alpha.1` is a TUI preview release. It makes the terminal UI useful as a
+local operator console, but it is still an alpha while the interaction model is
+being refined.
+
+Added:
+
+- `tentgent tui` operator workflows for chat, sessions, jobs, resources, stores,
+  servers, and LoRA training surfaces.
+- Background daemon job records and TUI progress surfaces for long-running
+  store/dataset actions without changing existing synchronous API behavior.
+- Picker-first server and LoRA plan creation flows with review/preview pages.
+- Guarded TUI actions for model, adapter, dataset, server, training, and session
+  management through existing daemon routes.
+- Compact session/server/adapter ref display in dense TUI and CLI session lists.
+- More reliable detached local server startup, including bind preflight and
+  early health/process observation.
+
+Known limits:
+
+- This is an alpha release. The TUI is usable for workflow testing, but layout,
+  key bindings, picker flows, and action review screens may still change before
+  a stable release.
+- `latest` installers may still be managed separately from prerelease adoption;
+  use the explicit `v0.3.0-alpha.1` release URL when testing this preview.
+- Server, training, store, and session mutations remain guarded, but the TUI UX
+  is still being tightened after real smoke tests.
+- macOS signing and notarization are still deferred.
+
 ## v0.2.0
 
 `v0.2.0` expands the local HTTP daemon from a chat surface into a programmatic

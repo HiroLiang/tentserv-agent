@@ -40,11 +40,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 Install a pinned version when you want a reproducible setup:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.2.0/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.2.0/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.ps1 | iex
 ```
 
 Then make sure the default install location is on `PATH` and verify the runtime:
@@ -184,6 +184,7 @@ runtime-home rules, Python runtime resolution, and Keychain prompt notes.
 
 ## Versions
 
+- `v0.3.0-alpha.1`: TUI preview release with operator console workflows for chat, jobs, resources, store actions, server/training actions, picker-based create flows, session delete, and compact ref display. This is an alpha while the TUI interaction model is still being refined.
 - `v0.2.0`: local HTTP daemon parity expansion with store, dataset, server, chat, training, diagnostics, bounded session APIs, and a first TUI setup surface.
 - `v0.1.4`: HTTP chat streaming release with Server-Sent Events for local models, local adapters, and OpenAI/Anthropic cloud servers.
 - `v0.1.3`: dataset synthesis stability release with multi-split generation, per-split retry, and stronger provider output normalization.
@@ -202,8 +203,8 @@ Included:
 - dataset validation, prompt templates, multi-split provider synthesis, and provider evaluation
 - one-shot local chat for MLX, PEFT safetensors, and llama-cpp GGUF paths
 - local HTTP daemon API for store, dataset, server, chat, training, diagnostics, and bounded session workflows
-- terminal UI status/settings surface for daemon discovery, explicit daemon
-  start, non-secret config, and guarded local Keychain setup
+- terminal UI operator console for daemon discovery, chat, jobs, resources,
+  store/server/training actions, session cleanup, and guarded local setup
 - managed LoRA train plans, durable run records, metrics/log inspection, and runnable MLX / PEFT training loops
 - local sessions with bounded transcript compaction for short-term working context
 - installer-managed Python runtime bootstrap for normal installs

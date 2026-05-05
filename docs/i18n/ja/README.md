@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 再現可能なセットアップにしたい場合は、version を固定して install します:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.2.0/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.2.0/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.ps1 | iex
 ```
 
 その後、デフォルトのインストール先を `PATH` に追加し、runtime を確認します:
@@ -173,6 +173,8 @@ runtime home、Python runtime、Keychain prompt の詳細は [docs/user/runtime.
 
 ## 現在のバージョン
 
+`v0.3.0-alpha.1` は TUI preview release です。chat、jobs、resources、store actions、server/training actions、picker-based create flows、session delete、compact ref display を追加します。TUI interaction model はまだ調整中の alpha です。
+
 `v0.2.0` はローカル HTTP daemon を拡張し、store、dataset、server、chat、training、diagnostics、bounded session workflow を API から利用できるようにし、最初の TUI setup surface も追加します。
 
 `v0.1.4` は `/v1/chat` の Server-Sent Events streaming を追加し、local model、compatible local adapter、OpenAI / Anthropic cloud provider server に対応します。
@@ -185,7 +187,7 @@ runtime home、Python runtime、Keychain prompt の詳細は [docs/user/runtime.
 - dataset validation、prompt templates、multi-split provider synthesis、provider evaluation
 - MLX、PEFT safetensors、llama-cpp GGUF path の one-shot local chat
 - store、dataset、server、chat、training、diagnostics、bounded session workflow を扱う local HTTP daemon API
-- daemon discovery、明示的な daemon 起動、non-secret config、guarded local Keychain setup のための terminal UI status/settings surface
+- daemon discovery、chat、jobs、resources、store/server/training actions、session cleanup、guarded local setup のための terminal UI operator console
 - managed LoRA train plans、durable run records、metrics/log inspection、実行可能な MLX / PEFT training loops
 - bounded transcript compaction を備えた local sessions
 - 通常 install 用の installer-managed Python runtime bootstrap
