@@ -155,6 +155,20 @@ async fn handle_session_chat_command(command: ChatCommand) -> miette::Result<()>
     };
     turn.apply_clear_compaction_if_needed()
         .map_err(|err| miette!("failed to compact session transcript: {err}"))?;
+    if let Ok(Some(input)) = turn.rolling_context_input() {
+        if let Ok(summary) = summarize_with_cli_model(
+            &python_entrypoint,
+            python_runtime.project_dir(),
+            &runtime_home,
+            &command.model_ref,
+            effective_adapter_ref.as_deref(),
+            &input.prompt_messages,
+        )
+        .await
+        {
+            let _ = turn.apply_rolling_context_summary(summary);
+        }
+    }
     if let Some(input) = turn
         .persisted_compaction_input()
         .map_err(|err| miette!("failed to prepare session compaction: {err}"))?

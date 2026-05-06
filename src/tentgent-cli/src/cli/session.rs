@@ -366,18 +366,36 @@ fn render_session_messages(messages: &SessionMessages) {
         println!("{} No messages found.\n", style("empty").yellow().bold());
         return;
     }
-    let mut table = base_table();
-    table.set_header(vec!["index", "role", "created_at", "content"]);
     for message in &messages.messages {
-        table.add_row(vec![
-            Cell::new(message.index),
-            Cell::new(&message.role),
-            Cell::new(&message.created_at),
-            Cell::new(&message.content),
-        ]);
+        println!(
+            "{}",
+            style(format!("--- message {} ---", message.index)).bold()
+        );
+        println!("role: {}", message.role);
+        println!("created_at: {}", message.created_at);
+        if let Some(server_ref) = message.server_ref.as_deref() {
+            println!("server_ref: {server_ref}");
+        }
+        if let Some(adapter_ref) = message.adapter_ref.as_deref() {
+            println!("adapter_ref: {adapter_ref}");
+        }
+        if should_render_metadata(&message.metadata) {
+            let metadata = serde_json::to_string(&message.metadata)
+                .unwrap_or_else(|_| message.metadata.to_string());
+            println!("metadata: {metadata}");
+        }
+        println!("content:");
+        println!("{}", message.content);
+        println!();
     }
-    println!("{table}");
     println!();
+}
+
+fn should_render_metadata(metadata: &Value) -> bool {
+    !metadata
+        .as_object()
+        .map(|object| object.is_empty())
+        .unwrap_or(false)
 }
 
 fn render_append_outcome(outcome: &SessionAppendOutcome) {

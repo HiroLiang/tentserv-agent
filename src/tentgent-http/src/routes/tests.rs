@@ -2788,6 +2788,173 @@ async fn native_chat_session_uses_request_scoped_summary_context() {
 }
 
 #[tokio::test]
+async fn native_chat_session_applies_rolling_context_before_final_chat() {
+    let (port, received_bodies) = spawn_mock_chat_server_sequence(vec![
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"native rolling summary"}"#,
+            include_content_length: true,
+        },
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"session hello","stream":false}"#,
+            include_content_length: true,
+        },
+    ])
+    .await;
+    let home = unique_home("native-chat-session-rolling");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture_with_refs(
+        &home,
+        "971197119711000000000000",
+        "Chat",
+        Some(&server_ref),
+        None,
+        21,
+        Some(&session_messages_n(21)),
+    );
+    let request = post(
+        "/v1/chat",
+        br#"{"session_ref":"971197119711","max_session_messages":12,"messages":[{"role":"user","content":"new"}],"stream":false}"#,
+    );
+    let state = state_for(home.clone());
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let received_bodies = received_bodies.await.expect("mock bodies");
+    let rolling_body: Value = serde_json::from_slice(&received_bodies[0]).expect("rolling json");
+    let proxied_body: Value = serde_json::from_slice(&received_bodies[1]).expect("proxied json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["text"], "session hello");
+    assert!(rolling_body["messages"][0]["content"]
+        .as_str()
+        .expect("rolling system")
+        .contains("rolling session context"));
+    assert!(rolling_body["messages"][1]["content"]
+        .as_str()
+        .expect("rolling user")
+        .contains("message 0"));
+    assert_eq!(
+        proxied_body["messages"]
+            .as_array()
+            .expect("messages")
+            .iter()
+            .map(|message| message["content"].as_str().expect("content"))
+            .collect::<Vec<_>>(),
+        [
+            vec!["native rolling summary".to_string()],
+            (11..21)
+                .map(|index| format!("message {index}"))
+                .collect::<Vec<_>>(),
+            vec!["new".to_string()],
+        ]
+        .concat()
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+    );
+    assert!(proxied_body.get("session_ref").is_none());
+    assert!(proxied_body.get("max_session_messages").is_none());
+    assert!(proxied_body.get("server_ref").is_none());
+
+    let messages = route_request(&get("/v1/sessions/971197119711/messages?tail=20"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 13);
+    assert_eq!(
+        messages_body["messages"][0]["content"],
+        "native rolling summary"
+    );
+    assert_eq!(
+        messages_body["messages"][0]["metadata"]["summary_scope"],
+        "rolling_context"
+    );
+    assert_eq!(messages_body["messages"][11]["content"], "new");
+    assert_eq!(messages_body["messages"][12]["content"], "session hello");
+}
+
+#[tokio::test]
+async fn native_chat_session_combines_rolling_and_request_summary() {
+    let (port, received_bodies) = spawn_mock_chat_server_sequence(vec![
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"native rolling summary"}"#,
+            include_content_length: true,
+        },
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"native request summary"}"#,
+            include_content_length: true,
+        },
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"session hello","stream":false}"#,
+            include_content_length: true,
+        },
+    ])
+    .await;
+    let home = unique_home("native-chat-session-rolling-request-summary");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture_with_refs(
+        &home,
+        "971297129712000000000000",
+        "Chat",
+        Some(&server_ref),
+        None,
+        21,
+        Some(&session_messages_n(21)),
+    );
+    let request = post(
+        "/v1/chat",
+        br#"{"session_ref":"971297129712","max_session_messages":2,"messages":[{"role":"user","content":"new"}],"stream":false}"#,
+    );
+    let state = state_for(home.clone());
+    let response = route_request(&request, &state).await;
+    let received_bodies = received_bodies.await.expect("mock bodies");
+    let rolling_body: Value = serde_json::from_slice(&received_bodies[0]).expect("rolling json");
+    let request_summary_body: Value =
+        serde_json::from_slice(&received_bodies[1]).expect("request summary json");
+    let proxied_body: Value = serde_json::from_slice(&received_bodies[2]).expect("proxied json");
+
+    assert_eq!(response.status_code, 200);
+    assert!(rolling_body["messages"][0]["content"]
+        .as_str()
+        .expect("rolling system")
+        .contains("rolling session context"));
+    assert!(request_summary_body["messages"][0]["content"]
+        .as_str()
+        .expect("request summary system")
+        .contains("request-scoped"));
+    assert_eq!(
+        proxied_body["messages"]
+            .as_array()
+            .expect("messages")
+            .iter()
+            .map(|message| message["content"].as_str().expect("content"))
+            .collect::<Vec<_>>(),
+        vec!["native request summary", "message 20", "new"]
+    );
+
+    let messages = route_request(&get("/v1/sessions/971297129712/messages?tail=20"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 13);
+    assert!(messages_body["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .any(|message| message["content"] == "native rolling summary"));
+    assert!(!messages_body["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .any(|message| message["content"] == "native request summary"));
+}
+
+#[tokio::test]
 async fn native_chat_session_stream_appends_before_done() {
     let sse = b"event: delta\ndata: {\"delta\":\"hi\"}\n\nevent: done\ndata: {\"finish_reason\":\"stop\"}\n\n";
     let (port, _received_body) =
@@ -2884,6 +3051,66 @@ async fn native_chat_session_stream_uses_request_summary_without_persisting_it()
         .expect("messages")
         .iter()
         .any(|message| message["content"] == "stream request summary"));
+}
+
+#[tokio::test]
+async fn native_chat_session_stream_applies_rolling_before_headers() {
+    let sse = b"event: delta\ndata: {\"delta\":\"hi\"}\n\nevent: done\ndata: {\"finish_reason\":\"stop\"}\n\n";
+    let (port, received_bodies) = spawn_mock_chat_server_sequence(vec![
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"stream rolling summary"}"#,
+            include_content_length: true,
+        },
+        MockChatResponse {
+            status: 200,
+            content_type: "text/event-stream; charset=utf-8",
+            response_body: sse,
+            include_content_length: false,
+        },
+    ])
+    .await;
+    let home = unique_home("native-chat-session-stream-rolling");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture_with_refs(
+        &home,
+        "971397139713000000000000",
+        "Chat",
+        Some(&server_ref),
+        None,
+        21,
+        Some(&session_messages_n(21)),
+    );
+    let request = post(
+        "/v1/chat",
+        br#"{"session_ref":"971397139713","max_session_messages":12,"messages":[{"role":"user","content":"new"}],"stream":true}"#,
+    );
+    let state = state_for(home.clone());
+    let response = route_request(&request, &state).await;
+    let content_type = response.content_type.clone();
+    let body = String::from_utf8(collect_response_body(response).await).expect("utf8");
+    let received_bodies = received_bodies.await.expect("mock bodies");
+    let proxied_body: Value = serde_json::from_slice(&received_bodies[1]).expect("proxied json");
+
+    assert_eq!(content_type, "text/event-stream; charset=utf-8");
+    assert!(body.contains(r#"event: delta"#));
+    assert!(body.contains(r#"event: done"#));
+    assert_eq!(
+        proxied_body["messages"][0]["content"],
+        "stream rolling summary"
+    );
+    assert!(proxied_body.get("session_ref").is_none());
+    assert!(proxied_body.get("max_session_messages").is_none());
+
+    let messages = route_request(&get("/v1/sessions/971397139713/messages"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 13);
+    assert_eq!(
+        messages_body["messages"][0]["content"],
+        "stream rolling summary"
+    );
+    assert_eq!(messages_body["messages"][12]["content"], "hi");
 }
 
 #[tokio::test]
@@ -3213,6 +3440,80 @@ async fn openai_chat_completions_session_uses_request_scoped_summary_context() {
 }
 
 #[tokio::test]
+async fn openai_chat_completions_session_applies_rolling_context() {
+    let (port, received_bodies) = spawn_mock_chat_server_sequence(vec![
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"openai rolling summary"}"#,
+            include_content_length: true,
+        },
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"openai session hello","stream":false}"#,
+            include_content_length: true,
+        },
+    ])
+    .await;
+    let home = unique_home("openai-chat-session-rolling");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture(
+        &home,
+        "971497149714000000000000",
+        "Chat",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        21,
+        Some(&session_messages_n(21)),
+    );
+    let state = state_for(home.clone());
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","session_ref":"971497149714","max_session_messages":12,"messages":[{{"role":"user","content":"new"}}],"stream":false,"max_tokens":16}}"#,
+            server_ref
+        )
+        .as_bytes(),
+    );
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let received_bodies = received_bodies.await.expect("mock bodies");
+    let rolling_body: Value = serde_json::from_slice(&received_bodies[0]).expect("rolling json");
+    let proxied_body: Value = serde_json::from_slice(&received_bodies[1]).expect("proxied json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(
+        body["choices"][0]["message"]["content"],
+        "openai session hello"
+    );
+    assert!(rolling_body["messages"][0]["content"]
+        .as_str()
+        .expect("rolling system")
+        .contains("rolling session context"));
+    assert_eq!(
+        proxied_body["messages"][0]["content"],
+        "openai rolling summary"
+    );
+    assert_eq!(proxied_body["max_tokens"], 16);
+    assert!(proxied_body.get("model").is_none());
+    assert!(proxied_body.get("session_ref").is_none());
+    assert!(proxied_body.get("max_session_messages").is_none());
+
+    let messages = route_request(&get("/v1/sessions/971497149714/messages"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 13);
+    assert_eq!(
+        messages_body["messages"][0]["content"],
+        "openai rolling summary"
+    );
+    assert_eq!(
+        messages_body["messages"][0]["metadata"]["summary_scope"],
+        "rolling_context"
+    );
+}
+
+#[tokio::test]
 async fn openai_chat_completions_preserves_target_error_json() {
     let (port, _received_body) = spawn_mock_chat_server(
         501,
@@ -3290,6 +3591,72 @@ async fn openai_chat_completions_maps_tentgent_sse_to_openai_chunks() {
     assert!(body.contains(r#""content":"hi""#));
     assert!(body.contains(r#""finish_reason":"stop""#));
     assert!(body.ends_with("data: [DONE]\n\n"));
+}
+
+#[tokio::test]
+async fn openai_chat_completions_session_stream_applies_rolling_context() {
+    let sse = b"event: delta\ndata: {\"delta\":\"hi\"}\n\nevent: done\ndata: {\"finish_reason\":\"stop\"}\n\n";
+    let (port, received_bodies) = spawn_mock_chat_server_sequence(vec![
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"openai stream rolling summary"}"#,
+            include_content_length: true,
+        },
+        MockChatResponse {
+            status: 200,
+            content_type: "text/event-stream; charset=utf-8",
+            response_body: sse,
+            include_content_length: false,
+        },
+    ])
+    .await;
+    let home = unique_home("openai-chat-session-stream-rolling");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture(
+        &home,
+        "971597159715000000000000",
+        "Chat",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        21,
+        Some(&session_messages_n(21)),
+    );
+    let state = state_for(home.clone());
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","session_ref":"971597159715","max_session_messages":12,"messages":[{{"role":"user","content":"new"}}],"stream":true}}"#,
+            server_ref
+        )
+        .as_bytes(),
+    );
+    let response = route_request(&request, &state).await;
+    let content_type = response.content_type.clone();
+    let body = String::from_utf8(collect_response_body(response).await).expect("utf8");
+    let received_bodies = received_bodies.await.expect("mock bodies");
+    let proxied_body: Value = serde_json::from_slice(&received_bodies[1]).expect("proxied json");
+
+    assert_eq!(content_type, "text/event-stream; charset=utf-8");
+    assert!(body.contains(r#""object":"chat.completion.chunk""#));
+    assert!(body.contains(r#""content":"hi""#));
+    assert!(body.ends_with("data: [DONE]\n\n"));
+    assert_eq!(
+        proxied_body["messages"][0]["content"],
+        "openai stream rolling summary"
+    );
+    assert!(proxied_body.get("model").is_none());
+    assert!(proxied_body.get("session_ref").is_none());
+    assert!(proxied_body.get("max_session_messages").is_none());
+
+    let messages = route_request(&get("/v1/sessions/971597159715/messages"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 13);
+    assert_eq!(
+        messages_body["messages"][0]["content"],
+        "openai stream rolling summary"
+    );
+    assert_eq!(messages_body["messages"][12]["content"], "hi");
 }
 
 #[tokio::test]

@@ -93,6 +93,13 @@ pub(crate) async fn chat_completions_response(
         if let Err(error) = turn.apply_clear_compaction_if_needed() {
             return crate::response::session_write_error_response(error);
         }
+        if let Ok(Some(input)) = turn.rolling_context_input() {
+            if let Ok(summary) =
+                super::session::summarize_rolling_context_with_server(state, &server, &input).await
+            {
+                let _ = turn.apply_rolling_context_summary(summary);
+            }
+        }
         if let Some(input) = match turn.persisted_compaction_input() {
             Ok(input) => input,
             Err(error) => return crate::response::session_write_error_response(error),

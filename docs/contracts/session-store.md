@@ -135,6 +135,33 @@ the compaction prompt and response are not recorded as ordinary session turns.
 If summary generation or atomic rewrite fails, the original transcript should be
 preserved whenever possible.
 
+Session-aware chat also uses a rolling persisted context cache before the hard
+cap is reached. When a pre-existing transcript exceeds 20 messages or 128 KiB of
+message content, Tentgent may rewrite older history into one durable `system`
+summary plus recent raw messages. This rolling rewrite is a best-effort cost and
+quality optimization; if it fails while the hard 50-message cap is not at risk,
+chat can continue with request-scoped context summarization.
+
+Rolling compaction uses high-water / low-water behavior:
+
+```text
+trigger: more than 20 messages or more than 128 KiB content
+rewrite to: one rolling summary + recent raw messages
+recent raw low-water: at most 10 messages and about 64 KiB content
+rolling summary max: 32 KiB
+```
+
+Rolling summaries are identified by metadata, not by `role = "system"` alone:
+
+```json
+{"kind":"session_summary","summary_scope":"rolling_context","summary_version":1}
+```
+
+Existing machine summaries with `kind = "session_summary"` are folded into the
+next rolling summary input and replaced by the refreshed summary. User-authored
+`system` messages remain ordinary transcript messages unless they carry the
+summary metadata.
+
 ## Session-Aware Chat
 
 Chat remains stateless unless the caller provides a session ref. Session-aware
@@ -176,7 +203,9 @@ turn. This happens before the first SSE chunk for streaming chat. If compaction
 fails, the chat request fails before contacting the target model-bound server.
 Persisted compaction is the only session-aware chat path that rewrites
 `messages.jsonl`; request-context summaries are rebuilt dynamically for the
-current request only.
+current request only. Rolling persisted context compaction can run before
+request-context planning; the request-scoped summary, if still needed, is then
+built from the updated transcript.
 
 ## Read Semantics
 

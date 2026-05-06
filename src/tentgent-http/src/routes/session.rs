@@ -343,6 +343,20 @@ pub(crate) async fn summarize_request_context_with_server(
     .await
 }
 
+pub(crate) async fn summarize_rolling_context_with_server(
+    state: &DaemonHttpState,
+    server: &ServerInspection,
+    input: &SessionCompactionInput,
+) -> Result<SessionCompactionSummary, HttpResponse> {
+    summarize_prompt_with_server(
+        state,
+        server,
+        &input.prompt_messages,
+        "rolling context summary",
+    )
+    .await
+}
+
 async fn summarize_prompt_with_server(
     state: &DaemonHttpState,
     server: &ServerInspection,

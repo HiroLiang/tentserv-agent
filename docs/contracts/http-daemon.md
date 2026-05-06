@@ -1411,6 +1411,20 @@ append failures are not partially recorded. If append fails after streaming
 headers were sent, the daemon emits a terminal SSE error instead of a successful
 final marker.
 
+Before request-context planning, daemon-managed session chat may perform a
+best-effort rolling persisted context rewrite. If the pre-existing transcript is
+over 20 messages or over 128 KiB of message content, older history can be
+rewritten into one persisted `system` summary plus recent raw messages. The
+rolling summary is capped at 32 KiB and is identified by metadata:
+
+```json
+{"kind":"session_summary","summary_scope":"rolling_context","summary_version":1}
+```
+
+This rolling rewrite is skipped on summary failure when the hard storage cap is
+not at risk. Request-scoped summaries remain non-persisted and are generated
+after any successful rolling rewrite.
+
 Persisted session transcripts are capped at 50 messages. Before session-aware
 chat contacts the target server, the daemon dynamically compacts older persisted
 messages when the successful current turn would exceed the cap:
