@@ -108,6 +108,39 @@ class ServerHttpTests(unittest.TestCase):
         self.assertEqual(status, HTTPStatus.NOT_IMPLEMENTED)
         self.assertEqual(payload["error"], "stream_not_implemented")
 
+    def test_direct_chat_rejects_daemon_session_fields(self) -> None:
+        for field in ("session_ref", "max_session_messages"):
+            with self.subTest(field=field):
+                body = {
+                    "messages": [{"role": "user", "content": "hi"}],
+                    field: "session" if field == "session_ref" else 2,
+                }
+
+                status, payload = handle_chat_request(
+                    json.dumps(body).encode("utf-8"),
+                    session=object(),  # type: ignore[arg-type]
+                )
+
+                self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+                self.assertEqual(payload["error"], "session_context_unsupported")
+                self.assertIn("daemon-only session chat fields", payload["message"])
+
+    def test_stream_chat_rejects_daemon_session_fields_before_sse(self) -> None:
+        body = (
+            b'{"messages":[{"role":"user","content":"hi"}],'
+            b'"session_ref":"session","stream":true}'
+        )
+        session = StreamingSession(["ok"])
+        handler = JsonWriter(body, session=session)
+
+        handler._handle_chat()
+
+        self.assertEqual(handler.status, HTTPStatus.BAD_REQUEST)
+        self.assertEqual(handler.headers["Content-Type"], "application/json; charset=utf-8")
+        self.assertEqual(session.requests, [])
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["error"], "session_context_unsupported")
+
     def test_stream_chat_writes_delta_and_done_events(self) -> None:
         body = (
             b'{"messages":[{"role":"user","content":"hi"}],'

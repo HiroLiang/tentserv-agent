@@ -167,6 +167,10 @@ curl -s http://127.0.0.1:8780/v1/chat \
   }'
 ```
 
+Direct model-server chat is stateless. Do not send `session_ref` or
+`max_session_messages` to a server port such as `8780`; those daemon-only fields
+belong on daemon `POST /v1/chat` requests, usually port `8790`.
+
 Stream a local base-model response with Server-Sent Events:
 
 ```bash
@@ -359,8 +363,10 @@ and successful assistant replies are appended to the transcript. Session
 transcripts are bounded to 50 persisted messages; older messages may be
 destructively summarized before chat continues.
 The daemon-only `server_ref` selector belongs on daemon `POST /v1/chat` requests;
-do not send it when calling the model-bound server port directly. Log diagnostics
-endpoints expose fixed daemon/server stdout and stderr paths for local debugging.
+do not send it when calling the model-bound server port directly. Direct
+model-server ports also reject `session_ref` and `max_session_messages`; use the
+daemon URL for session-aware chat. Log diagnostics endpoints expose fixed
+daemon/server stdout and stderr paths for local debugging.
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the
 explicit `--allow-unsafe-bind` flag.
 Detached daemon children inherit daemon configuration environment variables,

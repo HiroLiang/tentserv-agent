@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from .chat_api import (
+    SessionContextUnsupportedError,
     decode_chat_request,
     handle_parsed_chat_request,
     stream_preflight_error_response,
@@ -94,6 +95,12 @@ class TentgentRequestHandler(BaseHTTPRequestHandler):
             self._write_json(
                 HTTPStatus.BAD_REQUEST,
                 {"error": "invalid_json", "message": str(exc)},
+            )
+            return
+        except SessionContextUnsupportedError as exc:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "session_context_unsupported", "message": str(exc)},
             )
             return
         except ValueError as exc:

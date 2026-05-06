@@ -21,6 +21,10 @@ from tentgent_daemon.runtime.chat import Message
 from .session import ChatRequestPayload, RuntimeSession
 
 
+class SessionContextUnsupportedError(ValueError):
+    """Raised when daemon-only session fields reach a direct model server."""
+
+
 def handle_chat_request(raw_body: bytes, session: RuntimeSession) -> tuple[HTTPStatus, dict[str, Any]]:
     try:
         request = decode_chat_request(raw_body)
@@ -28,6 +32,11 @@ def handle_chat_request(raw_body: bytes, session: RuntimeSession) -> tuple[HTTPS
         return (
             HTTPStatus.BAD_REQUEST,
             {"error": "invalid_json", "message": str(exc)},
+        )
+    except SessionContextUnsupportedError as exc:
+        return (
+            HTTPStatus.BAD_REQUEST,
+            {"error": "session_context_unsupported", "message": str(exc)},
         )
     except ValueError as exc:
         return (
@@ -153,6 +162,16 @@ def stream_not_implemented_response(
 
 
 def parse_chat_request(payload: dict[str, Any]) -> ChatRequestPayload:
+    unsupported_session_fields = [
+        field for field in ("session_ref", "max_session_messages") if field in payload
+    ]
+    if unsupported_session_fields:
+        fields = ", ".join(f"`{field}`" for field in unsupported_session_fields)
+        raise SessionContextUnsupportedError(
+            f"{fields} are daemon-only session chat fields; send session-aware chat "
+            "to the Tentgent daemon /v1/chat endpoint, not a direct model-server port"
+        )
+
     messages_raw = payload.get("messages")
     if not isinstance(messages_raw, list) or not messages_raw:
         raise ValueError("`messages` must be a non-empty array")
