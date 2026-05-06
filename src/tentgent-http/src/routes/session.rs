@@ -6,7 +6,8 @@ use tentgent_core::{
         SessionCompactionSummary, SessionCompactionTurn,
         SessionCreateRequest as CoreSessionCreateRequest, SessionInspection, SessionManager,
         SessionMessage, SessionMessageInput, SessionMessages, SessionOptionalStringPatch,
-        SessionRemovalOutcome, SessionSummary, SessionUpdateRequest, SessionWarning,
+        SessionRemovalOutcome, SessionRequestContextSummaryInput, SessionSummary,
+        SessionUpdateRequest, SessionWarning,
     },
 };
 
@@ -325,9 +326,31 @@ pub(crate) async fn summarize_with_server(
     server: &ServerInspection,
     input: &SessionCompactionInput,
 ) -> Result<SessionCompactionSummary, HttpResponse> {
+    summarize_prompt_with_server(state, server, &input.prompt_messages, "compaction").await
+}
+
+pub(crate) async fn summarize_request_context_with_server(
+    state: &DaemonHttpState,
+    server: &ServerInspection,
+    input: &SessionRequestContextSummaryInput,
+) -> Result<SessionCompactionSummary, HttpResponse> {
+    summarize_prompt_with_server(
+        state,
+        server,
+        &input.prompt_messages,
+        "request context summary",
+    )
+    .await
+}
+
+async fn summarize_prompt_with_server(
+    state: &DaemonHttpState,
+    server: &ServerInspection,
+    prompt_messages: &[tentgent_core::session::SessionChatContextMessage],
+    label: &str,
+) -> Result<SessionCompactionSummary, HttpResponse> {
     let body = json!({
-        "messages": input
-            .prompt_messages
+        "messages": prompt_messages
             .iter()
             .map(chat_context_message_value)
             .collect::<Vec<_>>(),
@@ -341,14 +364,14 @@ pub(crate) async fn summarize_with_server(
         return Err(proxy_upstream_response(upstream).await);
     }
     if upstream_is_event_stream(&upstream) {
-        return Err(session_compaction_failed_response(
-            "compaction target returned SSE but non-stream JSON was required",
-        ));
+        return Err(session_compaction_failed_response(format!(
+            "{label} target returned SSE but non-stream JSON was required"
+        )));
     }
     let payload = match upstream.bytes().await {
         Ok(bytes) => serde_json::from_slice::<Value>(&bytes).map_err(|error| {
             session_compaction_failed_response(format!(
-                "compaction target response was not valid JSON: {error}"
+                "{label} target response was not valid JSON: {error}"
             ))
         })?,
         Err(error) => {
@@ -362,14 +385,14 @@ pub(crate) async fn summarize_with_server(
         }
     };
     let Some(text) = payload.get("text").and_then(Value::as_str) else {
-        return Err(session_compaction_failed_response(
-            "compaction target response did not contain string `text`",
-        ));
+        return Err(session_compaction_failed_response(format!(
+            "{label} target response did not contain string `text`"
+        )));
     };
     if text.trim().is_empty() {
-        return Err(session_compaction_failed_response(
-            "compaction target returned an empty summary",
-        ));
+        return Err(session_compaction_failed_response(format!(
+            "{label} target returned an empty summary"
+        )));
     }
 
     Ok(SessionCompactionSummary {

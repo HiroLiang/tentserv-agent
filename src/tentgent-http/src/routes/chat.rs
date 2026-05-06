@@ -135,7 +135,7 @@ async fn proxy_session_chat_response(
     if let Err(error) = turn.apply_clear_compaction_if_needed() {
         return session_write_error_response(error);
     }
-    if let Some(input) = match turn.compaction_input() {
+    if let Some(input) = match turn.persisted_compaction_input() {
         Ok(input) => input,
         Err(error) => return session_write_error_response(error),
     } {
@@ -143,7 +143,22 @@ async fn proxy_session_chat_response(
             Ok(summary) => summary,
             Err(response) => return response,
         };
-        if let Err(error) = turn.apply_compaction_summary(summary) {
+        if let Err(error) = turn.apply_persisted_compaction_summary(summary) {
+            return session_write_error_response(error);
+        }
+    }
+    if let Some(input) = match turn.request_context_summary_input() {
+        Ok(input) => input,
+        Err(error) => return session_write_error_response(error),
+    } {
+        let summary =
+            match super::session::summarize_request_context_with_server(state, &server, &input)
+                .await
+            {
+                Ok(summary) => summary,
+                Err(response) => return response,
+            };
+        if let Err(error) = turn.apply_request_context_summary(summary) {
             return session_write_error_response(error);
         }
     }

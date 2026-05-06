@@ -138,18 +138,27 @@ preserved whenever possible.
 ## Session-Aware Chat
 
 Chat remains stateless unless the caller provides a session ref. Session-aware
-chat treats request messages as a new turn, prepends recent transcript messages
-as context, and appends the new request messages plus assistant reply only after
-a successful assistant response.
+chat treats request messages as a new turn, prepends bounded prior transcript
+context, and appends the new request messages plus assistant reply only after a
+successful assistant response.
 
 Context selection is bounded:
 
+- `max_session_messages` is a prior-context budget; current request messages
+  are not counted and are always forwarded in full
 - default `max_session_messages` is 50
 - hard maximum is 1000
 - `max_session_messages = 0` sends no prior transcript context but still records
   the successful turn
+- if prior message count is at or below the budget, prior messages are forwarded
+  raw in original order
+- if prior message count exceeds the budget, Tentgent asks the selected chat
+  model for a request-scoped summary of omitted prior messages, then forwards
+  `summary + recent raw prior messages + current request messages`
+- the request-scoped summary is a `system` context message and is not written to
+  `messages.jsonl`
 - selected historical content is capped at 1 MiB
-- selected `tool` messages are not supported by chat in this slice
+- selected raw `tool` messages are not supported by chat in this slice
 
 Session-aware chat holds the per-session lock while reading context, waiting for
 the model response, and appending the final turn. This serializes chat turns and
@@ -165,6 +174,9 @@ Before a session-aware chat target request starts, Tentgent compacts older
 persisted messages when needed to reserve enough space for the protected current
 turn. This happens before the first SSE chunk for streaming chat. If compaction
 fails, the chat request fails before contacting the target model-bound server.
+Persisted compaction is the only session-aware chat path that rewrites
+`messages.jsonl`; request-context summaries are rebuilt dynamically for the
+current request only.
 
 ## Read Semantics
 

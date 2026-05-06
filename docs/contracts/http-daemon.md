@@ -1387,7 +1387,7 @@ Daemon-owned chat selection and proxy errors are JSON:
 - target connection or transport failures return `502 server_proxy_failed`
   with a hint to inspect `GET /v1/servers/{server_ref}/health`
 - invalid session refs return `404 not_found` or `409 ambiguous_ref`
-- selected session history with `tool` messages returns
+- selected raw session history with `tool` messages returns
   `409 session_context_unsupported`
 - oversized selected session history returns `409 session_context_too_large`
 - session lock timeout returns `409 session_busy`
@@ -1397,8 +1397,13 @@ If the selected server returns its own chat error, the daemon passes through tha
 status, body, and content type unchanged.
 
 Session-aware chat treats request `messages` as the new turn, not as a full
-transcript replay. It prepends the last `max_session_messages` historical
-messages, default `50`, min `0`, max `1000`, and caps selected history at 1 MiB.
+transcript replay. `max_session_messages` is a prior-context budget, default
+`50`, min `0`, max `1000`; current request messages are not counted and are
+forwarded in full. If prior history is within budget, it is forwarded raw in
+original order. If prior history exceeds budget, the daemon generates a
+request-scoped `system` summary for omitted prior messages, then forwards
+`summary + recent raw prior messages + current request messages`. The summary
+is not written to `messages.jsonl`. Selected history is capped at 1 MiB.
 The session lock is held while context is read, the model-bound request runs,
 and the final successful turn is appended. Failed target calls, target errors,
 transport failures, malformed upstream responses, interrupted streams, and
@@ -1418,7 +1423,9 @@ Current request messages and the assistant reply are protected and are never
 summarized by the same operation, but they count toward the cap. If the protected
 turn alone exceeds the cap, the daemon returns `400 session_turn_too_large`. If
 compaction fails, chat fails before target contact; for streaming, this is before
-the first SSE chunk is emitted.
+the first SSE chunk is emitted. Persisted compaction is the only chat-time path
+that rewrites `messages.jsonl`; request-scoped summaries only rebuild the
+proxied request context.
 
 ## OpenAI-Style Chat Completions
 

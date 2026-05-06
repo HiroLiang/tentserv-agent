@@ -2702,6 +2702,92 @@ async fn native_chat_session_uses_context_default_server_and_appends() {
 }
 
 #[tokio::test]
+async fn native_chat_session_uses_request_scoped_summary_context() {
+    let (port, received_bodies) = spawn_mock_chat_server_sequence(vec![
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"native request summary"}"#,
+            include_content_length: true,
+        },
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"session hello","stream":false}"#,
+            include_content_length: true,
+        },
+    ])
+    .await;
+    let home = unique_home("native-chat-session-request-summary");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture_with_refs(
+        &home,
+        "949494949494000000000000",
+        "Chat",
+        Some(&server_ref),
+        None,
+        4,
+        Some(&[
+            session_message("user", "old fact"),
+            session_message("assistant", "old answer"),
+            session_message("user", "recent question"),
+            session_message("assistant", "recent answer"),
+        ]),
+    );
+    let request = post(
+        "/v1/chat",
+        br#"{"session_ref":"949494949494","max_session_messages":2,"messages":[{"role":"user","content":"new"}],"stream":false}"#,
+    );
+    let state = state_for(home.clone());
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let received_bodies = received_bodies.await.expect("mock bodies");
+    let summary_body: Value = serde_json::from_slice(&received_bodies[0]).expect("summary json");
+    let proxied_body: Value = serde_json::from_slice(&received_bodies[1]).expect("proxied json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["text"], "session hello");
+    assert!(summary_body["messages"][0]["content"]
+        .as_str()
+        .expect("summary system")
+        .contains("request-scoped"));
+    assert!(summary_body["messages"][1]["content"]
+        .as_str()
+        .expect("summary user")
+        .contains("[current 0] user: new"));
+    assert_eq!(
+        proxied_body["messages"]
+            .as_array()
+            .expect("messages")
+            .iter()
+            .map(|message| {
+                (
+                    message["role"].as_str().expect("role"),
+                    message["content"].as_str().expect("content"),
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            ("system", "native request summary"),
+            ("assistant", "recent answer"),
+            ("user", "new"),
+        ]
+    );
+    assert!(proxied_body.get("session_ref").is_none());
+    assert!(proxied_body.get("max_session_messages").is_none());
+    assert!(proxied_body.get("server_ref").is_none());
+
+    let messages = route_request(&get("/v1/sessions/949494949494/messages?tail=10"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 6);
+    assert!(!messages_body["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .any(|message| message["content"] == "native request summary"));
+}
+
+#[tokio::test]
 async fn native_chat_session_stream_appends_before_done() {
     let sse = b"event: delta\ndata: {\"delta\":\"hi\"}\n\nevent: done\ndata: {\"finish_reason\":\"stop\"}\n\n";
     let (port, _received_body) =
@@ -2731,6 +2817,73 @@ async fn native_chat_session_stream_appends_before_done() {
     let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
     assert_eq!(messages_body["total_messages"], 2);
     assert_eq!(messages_body["messages"][1]["content"], "hi");
+}
+
+#[tokio::test]
+async fn native_chat_session_stream_uses_request_summary_without_persisting_it() {
+    let sse = b"event: delta\ndata: {\"delta\":\"hi\"}\n\nevent: done\ndata: {\"finish_reason\":\"stop\"}\n\n";
+    let (port, received_bodies) = spawn_mock_chat_server_sequence(vec![
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"stream request summary"}"#,
+            include_content_length: true,
+        },
+        MockChatResponse {
+            status: 200,
+            content_type: "text/event-stream; charset=utf-8",
+            response_body: sse,
+            include_content_length: false,
+        },
+    ])
+    .await;
+    let home = unique_home("native-chat-session-stream-summary");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture_with_refs(
+        &home,
+        "959595959595000000000000",
+        "Chat",
+        Some(&server_ref),
+        None,
+        2,
+        Some(&[
+            session_message("user", "old fact"),
+            session_message("assistant", "old answer"),
+        ]),
+    );
+    let request = post(
+        "/v1/chat",
+        br#"{"session_ref":"959595959595","max_session_messages":1,"messages":[{"role":"user","content":"new"}],"stream":true}"#,
+    );
+    let state = state_for(home.clone());
+    let response = route_request(&request, &state).await;
+    let body = String::from_utf8(collect_response_body(response).await).expect("utf8");
+    let received_bodies = received_bodies.await.expect("mock bodies");
+    let proxied_body: Value = serde_json::from_slice(&received_bodies[1]).expect("proxied json");
+
+    assert!(body.contains(r#"event: delta"#));
+    assert!(body.contains(r#"event: done"#));
+    assert_eq!(
+        proxied_body["messages"]
+            .as_array()
+            .expect("messages")
+            .iter()
+            .map(|message| message["content"].as_str().expect("content"))
+            .collect::<Vec<_>>(),
+        vec!["stream request summary", "new"]
+    );
+    assert!(proxied_body.get("session_ref").is_none());
+    assert!(proxied_body.get("max_session_messages").is_none());
+
+    let messages = route_request(&get("/v1/sessions/959595959595/messages"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 4);
+    assert_eq!(messages_body["messages"][3]["content"], "hi");
+    assert!(!messages_body["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .any(|message| message["content"] == "stream request summary"));
 }
 
 #[tokio::test]
@@ -2967,6 +3120,96 @@ async fn openai_chat_completions_session_appends_and_keeps_model_required() {
         messages_body["messages"][2]["metadata"]["route"],
         "openai_compat"
     );
+}
+
+#[tokio::test]
+async fn openai_chat_completions_session_uses_request_scoped_summary_context() {
+    let (port, received_bodies) = spawn_mock_chat_server_sequence(vec![
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"openai request summary"}"#,
+            include_content_length: true,
+        },
+        MockChatResponse {
+            status: 200,
+            content_type: "application/json; charset=utf-8",
+            response_body: br#"{"text":"openai session hello","stream":false}"#,
+            include_content_length: true,
+        },
+    ])
+    .await;
+    let home = unique_home("openai-chat-session-request-summary");
+    let server_ref = create_running_cloud_server(&home, port);
+    write_session_fixture(
+        &home,
+        "969696969696000000000000",
+        "Chat",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        4,
+        Some(&[
+            session_message("user", "old fact"),
+            session_message("assistant", "old answer"),
+            session_message("user", "recent question"),
+            session_message("assistant", "recent answer"),
+        ]),
+    );
+    let state = state_for(home.clone());
+    let request = post(
+        "/v1/chat/completions",
+        format!(
+            r#"{{"model":"{}","session_ref":"969696969696","max_session_messages":2,"messages":[{{"role":"user","content":"new"}}],"stream":false,"max_tokens":16}}"#,
+            server_ref
+        )
+        .as_bytes(),
+    );
+    let response = route_request(&request, &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+    let received_bodies = received_bodies.await.expect("mock bodies");
+    let summary_body: Value = serde_json::from_slice(&received_bodies[0]).expect("summary json");
+    let proxied_body: Value = serde_json::from_slice(&received_bodies[1]).expect("proxied json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(
+        body["choices"][0]["message"]["content"],
+        "openai session hello"
+    );
+    assert!(summary_body["messages"][1]["content"]
+        .as_str()
+        .expect("summary user")
+        .contains("[current 0] user: new"));
+    assert_eq!(
+        proxied_body["messages"]
+            .as_array()
+            .expect("messages")
+            .iter()
+            .map(|message| {
+                (
+                    message["role"].as_str().expect("role"),
+                    message["content"].as_str().expect("content"),
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            ("system", "openai request summary"),
+            ("assistant", "recent answer"),
+            ("user", "new"),
+        ]
+    );
+    assert_eq!(proxied_body["max_tokens"], 16);
+    assert!(proxied_body.get("model").is_none());
+    assert!(proxied_body.get("session_ref").is_none());
+    assert!(proxied_body.get("max_session_messages").is_none());
+
+    let messages = route_request(&get("/v1/sessions/969696969696/messages"), &state).await;
+    let messages_body: Value = serde_json::from_slice(response_buffer(&messages)).expect("json");
+    assert_eq!(messages_body["total_messages"], 6);
+    assert!(!messages_body["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .any(|message| message["content"] == "openai request summary"));
 }
 
 #[tokio::test]
@@ -3648,6 +3891,108 @@ async fn spawn_mock_chat_server(
     });
 
     (port, receiver)
+}
+
+struct MockChatResponse {
+    status: u16,
+    content_type: &'static str,
+    response_body: &'static [u8],
+    include_content_length: bool,
+}
+
+async fn spawn_mock_chat_server_sequence(
+    responses: Vec<MockChatResponse>,
+) -> (u16, oneshot::Receiver<Vec<Vec<u8>>>) {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("listener");
+    let port = listener.local_addr().expect("local addr").port();
+    let (sender, receiver) = oneshot::channel();
+    tokio::spawn(async move {
+        let mut bodies = Vec::new();
+        for response_config in responses {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let body = read_mock_request_body(&mut stream).await;
+            bodies.push(body);
+            write_mock_response(&mut stream, response_config).await;
+        }
+        let _ = sender.send(bodies);
+    });
+
+    (port, receiver)
+}
+
+async fn read_mock_request_body(stream: &mut tokio::net::TcpStream) -> Vec<u8> {
+    let mut buffer = Vec::new();
+    let mut chunk = [0_u8; 1024];
+    loop {
+        let read = stream.read(&mut chunk).await.expect("read");
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        if buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+            break;
+        }
+    }
+    let header_end = find_header_end(&buffer).expect("headers");
+    let headers = String::from_utf8_lossy(&buffer[..header_end]);
+    let content_length = headers
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().expect("content length"))
+        })
+        .unwrap_or(0);
+    let body_start = header_end + 4;
+    let mut body = buffer[body_start..].to_vec();
+    while body.len() < content_length {
+        let read = stream.read(&mut chunk).await.expect("read body");
+        if read == 0 {
+            break;
+        }
+        body.extend_from_slice(&chunk[..read]);
+    }
+    body.truncate(content_length);
+    body
+}
+
+async fn write_mock_response(
+    stream: &mut tokio::net::TcpStream,
+    response_config: MockChatResponse,
+) {
+    let length_header = if response_config.include_content_length {
+        format!(
+            "Content-Length: {}\r\n",
+            response_config.response_body.len()
+        )
+    } else {
+        String::new()
+    };
+    let cache_header = if response_config
+        .content_type
+        .starts_with("text/event-stream")
+    {
+        "Cache-Control: no-cache\r\n"
+    } else {
+        ""
+    };
+    let response = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\n{}{}Connection: close\r\n\r\n",
+        response_config.status,
+        reason_phrase(response_config.status),
+        response_config.content_type,
+        cache_header,
+        length_header
+    );
+    stream
+        .write_all(response.as_bytes())
+        .await
+        .expect("write headers");
+    stream
+        .write_all(response_config.response_body)
+        .await
+        .expect("write body");
+    stream.shutdown().await.expect("shutdown");
 }
 
 fn state_for(home: PathBuf) -> DaemonHttpState {

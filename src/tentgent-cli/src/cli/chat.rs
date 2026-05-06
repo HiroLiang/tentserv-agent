@@ -11,9 +11,8 @@ use tentgent_core::{
     model::ModelManager,
     runtime_assets::resolve_runtime_home,
     session::{
-        SessionChatContextMessage, SessionCompactionInput, SessionCompactionSummary,
-        SessionManager, SessionMessageInput, DEFAULT_SESSION_CONTEXT_MESSAGES,
-        MAX_SESSION_CONTEXT_MESSAGES,
+        SessionChatContextMessage, SessionCompactionSummary, SessionManager, SessionMessageInput,
+        DEFAULT_SESSION_CONTEXT_MESSAGES, MAX_SESSION_CONTEXT_MESSAGES,
     },
 };
 use tokio::io::AsyncReadExt;
@@ -157,7 +156,7 @@ async fn handle_session_chat_command(command: ChatCommand) -> miette::Result<()>
     turn.apply_clear_compaction_if_needed()
         .map_err(|err| miette!("failed to compact session transcript: {err}"))?;
     if let Some(input) = turn
-        .compaction_input()
+        .persisted_compaction_input()
         .map_err(|err| miette!("failed to prepare session compaction: {err}"))?
     {
         let summary = summarize_with_cli_model(
@@ -166,11 +165,27 @@ async fn handle_session_chat_command(command: ChatCommand) -> miette::Result<()>
             &runtime_home,
             &command.model_ref,
             effective_adapter_ref.as_deref(),
-            &input,
+            &input.prompt_messages,
         )
         .await?;
-        turn.apply_compaction_summary(summary)
+        turn.apply_persisted_compaction_summary(summary)
             .map_err(|err| miette!("failed to compact session transcript: {err}"))?;
+    }
+    if let Some(input) = turn
+        .request_context_summary_input()
+        .map_err(|err| miette!("failed to prepare session context summary: {err}"))?
+    {
+        let summary = summarize_with_cli_model(
+            &python_entrypoint,
+            python_runtime.project_dir(),
+            &runtime_home,
+            &command.model_ref,
+            effective_adapter_ref.as_deref(),
+            &input.prompt_messages,
+        )
+        .await?;
+        turn.apply_request_context_summary(summary)
+            .map_err(|err| miette!("failed to apply session context summary: {err}"))?;
     }
 
     let mut process = Command::new(&python_entrypoint);
@@ -345,7 +360,7 @@ async fn summarize_with_cli_model(
     runtime_home: &str,
     model_ref: &str,
     adapter_ref: Option<&str>,
-    input: &SessionCompactionInput,
+    prompt_messages: &[SessionChatContextMessage],
 ) -> miette::Result<SessionCompactionSummary> {
     let mut process = Command::new(python_entrypoint);
     process
@@ -362,7 +377,7 @@ async fn summarize_with_cli_model(
     if let Some(adapter_ref) = adapter_ref {
         process.arg("--adapter-ref").arg(adapter_ref);
     }
-    for message in &input.prompt_messages {
+    for message in prompt_messages {
         process.arg("--message").arg(format_cli_message(message));
     }
 
