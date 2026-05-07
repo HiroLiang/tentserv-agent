@@ -10,7 +10,7 @@ Tentgent は Rust を主体としたローカル operator CLI で、Python daemo
 - 繁體中文: [docs/i18n/zh-TW/README.md](../zh-TW/README.md)
 - 日本語: [docs/i18n/ja/README.md](./README.md)
 
-## インストール
+## ツールをインストール
 
 macOS ユーザー向けの推奨インストールは、最新 GitHub Release から行います:
 
@@ -47,21 +47,21 @@ tentgent --version
 
 upgrade は installer を再実行します。`TENTGENT_HOME` 配下の user runtime data は保持されます。
 
-install、upgrade、pinned version、local package smoke test は [docs/user/install.md](../../../docs/user/install.md) を参照してください。
+install、upgrade、pinned version、local package smoke test、uninstall notes は [docs/user/install.md](../../../docs/user/install.md) を参照してください。
 
-## インストール後の最初のコマンド
+## Key を設定
 
-ローカル runtime を確認:
+ローカル runtime と provider key state を確認:
 
 ```bash
 tentgent doctor
 tentgent status
+tentgent auth status
 ```
 
 provider key を system Keychain に保存:
 
 ```bash
-tentgent auth status
 tentgent auth hf set
 tentgent auth openai set
 tentgent auth anthropic set
@@ -77,25 +77,67 @@ ANTHROPIC_API_KEY=...
 EOF
 ```
 
-小さな model を取得して単発 chat を実行:
+provider secret resolution と Keychain boundaries は [docs/contracts/auth-secrets.md](../../../docs/contracts/auth-secrets.md) を参照してください。
+
+## Model を import / pull / remove
+
+managed model を管理:
 
 ```bash
 tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
+tentgent model ls
+tentgent model inspect <model-ref>
+tentgent model add /absolute/path/to/model
+tentgent model rm <model-ref>
+```
+
+model、adapter、dataset、chat の完整な examples は [docs/user/commands.md](../../../docs/user/commands.md#models-and-chat) を参照してください。
+
+## 単発 Chat
+
+server を起動せず、1 回だけ local request を実行:
+
+```bash
 tentgent chat <model-ref> --message "user:Hello there"
 ```
 
-単発 chat の message format は [docs/user/commands.md](../../../docs/user/commands.md#chat) を参照してください。
+単発 chat の message format と adapter examples は [docs/user/commands.md](../../../docs/user/commands.md#models-and-chat) を参照してください。
 
-model-bound server を起動:
+## Server を起動・停止して Chat
+
+model-bound local server を起動:
 
 ```bash
 tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 curl -sS http://127.0.0.1:8780/healthz
 ```
 
-model-bound server chat request と adapter rules は [docs/contracts/server-chat.md](../../../docs/contracts/server-chat.md) を参照してください。
+cloud provider server を起動:
 
-daemon control plane を起動:
+```bash
+tentgent server run openai:gpt-4.1-mini --host 127.0.0.1 --port 8780
+tentgent server run claude:claude-3-5-haiku-latest --host 127.0.0.1 --port 8781
+```
+
+server に直接 chat:
+
+```bash
+curl -sS http://127.0.0.1:8780/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Hello"}],"stream":false}'
+```
+
+detached servers を管理:
+
+```bash
+tentgent server ls
+tentgent server ps
+tentgent server stop <server-ref>
+```
+
+Direct model-server chat は stateless です。session-aware chat には daemon を使ってください。server chat request と adapter rules は [docs/contracts/server-chat.md](../../../docs/contracts/server-chat.md) を参照してください。
+
+## Daemon を起動・停止
 
 ```bash
 tentgent daemon start --host 127.0.0.1 --port 8790
@@ -104,32 +146,56 @@ curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
 ```
 
-terminal UI operator console を開く:
+session-aware routing が必要な場合は、daemon から selected server に proxy します:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"server_ref":"<server-ref>","messages":[{"role":"user","content":"Hello"}],"stream":false}'
+```
+
+daemon を停止:
+
+```bash
+tentgent daemon stop
+```
+
+完整な daemon API、endpoints、response shapes、auth、error mapping は [docs/contracts/http-daemon.md](../../../docs/contracts/http-daemon.md) を参照してください。
+
+## TUI に入る
 
 ```bash
 tentgent tui
 ```
 
-TUI の Operator mode には `Chat` workspace があり、既存の daemon
-session/chat route で running server を選び、session を作成または再開して
-streaming 応答を表示できます。デフォルトでは直近 2 件の persisted
-session messages だけを context として送り、composer 以外に focus がある時は
-`h` で `none` / `last 2` / `last 10` / `last 50` を切り替えます。
-`Models`、`Adapters`、`Datasets` では `a` で guarded store/dataset actions を
-開き、既存の daemon HTTP routes で pull/import/bind/validate/template/export/
-diff/synth/eval/remove を実行できます。remove は selected short ref または full
-ref の入力確認が必要です。`Servers` と `Training` でも guarded runtime
-actions を使い、既存 daemon routes で server spec の
-create/start/stop/remove、LoRA plan の preview/create/remove、LoRA run の
-start と bounded metrics/log tail monitoring ができます。server start は
-background job ではなく、training runs も Jobs registry へ mirror しません。
-TUI は fake cancel を表示しません。session delete/compact、cleanup 系の
-mutation は後続 slices に残します。
-長時間の pull/import/synth/eval は daemon-side background jobs として動き、
-footer、Dashboard、`Jobs` 画面に進捗を表示します。既存の同期 HTTP routes は
-従来の response shape を維持します。Slice 4.1 では cancel route はありません。
+TUI は daemon discovery、chat、jobs、resources、store、server、training、guarded setup flows のための operator console です。
 
-完整な daemon API、endpoints、response shapes、auth、error mapping は [docs/contracts/http-daemon.md](../../../docs/contracts/http-daemon.md) を参照してください。
+## ツールを削除
+
+installed binary と support files だけを削除し、user runtime data は残します:
+
+```bash
+rm -f "$HOME/.local/bin/tentgent"
+rm -rf "$HOME/.local/share/tentgent"
+```
+
+safe-to-recreate bootstrap cache は必要に応じて削除できます:
+
+```bash
+rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
+```
+
+models、adapters、datasets、sessions、servers、train records、その他 local runtime data を消したい場合以外、`TENTGENT_HOME` は削除しないでください。uninstall と runtime-home の詳細は [docs/user/install.md](../../../docs/user/install.md) と [docs/user/runtime.md](../../../docs/user/runtime.md) を参照してください。
+
+## Version Notes
+
+`v0.3.0-alpha.2` は TUI alpha bugfix preview release です。session context、rolling persisted summary、daemon/server chat boundary、stale daemon diagnostics、prerelease workflow、human-facing size display、runtime footprint visibility を修正します。
+
+version feature list と known limits は [docs/user/version.md](../../../docs/user/version.md) を参照してください。
+
+## 完整な CLI コマンド
+
+README は最短ルートだけを載せます。完整な CLI command reference は [docs/user/commands.md](../../../docs/user/commands.md) を参照してください。TUI、auth、models、adapters、datasets、chat、servers、daemon、sessions、LoRA training を含みます。
 
 ## API と Contracts
 
@@ -171,17 +237,7 @@ Tentgent は `.env` / env を先に読み、なければ system Keychain に fal
 
 runtime home、Python runtime、Keychain prompt の詳細は [docs/user/runtime.md](../../../docs/user/runtime.md) を参照してください。
 
-## 現在のバージョン
-
-`v0.3.0-alpha.2` は TUI alpha bugfix preview release です。session context、rolling persisted summary、daemon/server chat boundary、stale daemon diagnostics、prerelease workflow、human-facing size display、runtime footprint visibility を修正します。TUI interaction model はまだ調整中の alpha です。
-
-`v0.3.0-alpha.1` は TUI preview release です。chat、jobs、resources、store actions、server/training actions、picker-based create flows、session delete、compact ref display を追加します。
-
-`v0.2.0` はローカル HTTP daemon を拡張し、store、dataset、server、chat、training、diagnostics、bounded session workflow を API から利用できるようにし、最初の TUI setup surface も追加します。
-
-`v0.1.4` は `/v1/chat` の Server-Sent Events streaming を追加し、local model、compatible local adapter、OpenAI / Anthropic cloud provider server に対応します。
-
-含まれる機能:
+## 現在の機能
 
 - Hugging Face、OpenAI、Anthropic の provider auth key 管理
 - content-addressed model、adapter、dataset stores

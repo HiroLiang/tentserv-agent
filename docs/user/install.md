@@ -117,6 +117,34 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 
 Do not remove `runtime/python-env` unless you are intentionally repairing or reinstalling the managed Python runtime.
 
+## Uninstall
+
+Remove installed binaries and support files without deleting user runtime data:
+
+```bash
+rm -f "$HOME/.local/bin/tentgent"
+rm -rf "$HOME/.local/share/tentgent"
+```
+
+```powershell
+Remove-Item "$env:LOCALAPPDATA\Programs\tentgent" -Recurse -Force
+```
+
+This leaves `TENTGENT_HOME` intact. Keeping runtime home preserves models,
+adapters, datasets, sessions, server records, train records, logs, and managed
+Python runtime state. To reclaim only safe-to-recreate bootstrap package cache,
+remove `runtime/bootstrap/uv-cache` while no Tentgent installer or Python
+bootstrap process is running:
+
+```bash
+rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
+```
+
+Full runtime-home deletion is destructive. Do it only when you intentionally
+want to remove local models, adapters, datasets, sessions, servers, train
+records, and other local runtime data. Provider secrets stored in the system
+Keychain may need to be removed separately.
+
 ## Local Package Smoke Test
 
 From a source checkout, create a release-like artifact:

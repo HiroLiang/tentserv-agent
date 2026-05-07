@@ -23,7 +23,7 @@ keychain.
 - Traditional Chinese: [docs/i18n/zh-TW/README.md](./docs/i18n/zh-TW/README.md)
 - Japanese: [docs/i18n/ja/README.md](./docs/i18n/ja/README.md)
 
-## Install
+## Install The Tool
 
 Recommended macOS install from the latest GitHub Release:
 
@@ -40,11 +40,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 Install a pinned version when you want a reproducible setup:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.ps1 | iex
 ```
 
 Then make sure the default install location is on `PATH` and verify the runtime:
@@ -60,21 +60,21 @@ tentgent --version
 
 Upgrade by running the installer again. User runtime data under `TENTGENT_HOME` is preserved.
 
-See [docs/user/install.md](./docs/user/install.md) for install, upgrade, pinned versions, and local package smoke tests.
+See [docs/user/install.md](./docs/user/install.md) for install, upgrade, pinned versions, local package smoke tests, and uninstall notes.
 
-## First Commands
+## Configure Keys
 
-Check the local runtime:
+Check the local runtime and provider key state:
 
 ```bash
 tentgent doctor
 tentgent status
+tentgent auth status
 ```
 
 Configure provider keys through the system keychain:
 
 ```bash
-tentgent auth status
 tentgent auth hf set
 tentgent auth openai set
 tentgent auth anthropic set
@@ -90,27 +90,67 @@ ANTHROPIC_API_KEY=...
 EOF
 ```
 
-Pull a small model and chat once:
+See [docs/contracts/auth-secrets.md](./docs/contracts/auth-secrets.md) for provider secret resolution and Keychain boundaries.
+
+## Import, Pull, And Remove Models
+
+Pull, inspect, import, and remove managed models:
 
 ```bash
 tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
+tentgent model ls
+tentgent model inspect <model-ref>
+tentgent model add /absolute/path/to/model
+tentgent model rm <model-ref>
+```
+
+See [docs/user/commands.md](./docs/user/commands.md#models-and-chat) for full model, adapter, dataset, and chat command examples.
+
+## One-Shot Chat
+
+Run one local request without starting a server:
+
+```bash
 tentgent chat <model-ref> --message "user:Hello there"
 ```
 
-For the one-shot chat message format, see
-[docs/user/commands.md](./docs/user/commands.md#chat).
+For one-shot chat message format and adapter examples, see [docs/user/commands.md](./docs/user/commands.md#models-and-chat).
 
-Run a model-bound server:
+## Start, Stop, And Chat With Servers
+
+Run a model-bound local server:
 
 ```bash
 tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 curl -sS http://127.0.0.1:8780/healthz
 ```
 
-For model-bound server chat request and adapter rules, see
-[docs/contracts/server-chat.md](./docs/contracts/server-chat.md).
+Run a cloud provider server through the same local server surface:
 
-Run the daemon control plane:
+```bash
+tentgent server run openai:gpt-4.1-mini --host 127.0.0.1 --port 8780
+tentgent server run claude:claude-3-5-haiku-latest --host 127.0.0.1 --port 8781
+```
+
+Chat with a server directly:
+
+```bash
+curl -sS http://127.0.0.1:8780/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Hello"}],"stream":false}'
+```
+
+Manage detached servers:
+
+```bash
+tentgent server ls
+tentgent server ps
+tentgent server stop <server-ref>
+```
+
+Direct model-server chat is stateless. Use the daemon in the next section for session-aware chat. For server chat request and adapter rules, see [docs/contracts/server-chat.md](./docs/contracts/server-chat.md).
+
+## Start And Stop The Daemon
 
 ```bash
 tentgent daemon start --host 127.0.0.1 --port 8790
@@ -119,17 +159,58 @@ curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
 ```
 
-Open the terminal UI operator console:
+Use daemon chat when you want session-aware routing through a selected server:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"server_ref":"<server-ref>","messages":[{"role":"user","content":"Hello"}],"stream":false}'
+```
+
+Stop the daemon:
+
+```bash
+tentgent daemon stop
+```
+
+For the full daemon API, endpoint list, response shapes, auth behavior, and error mapping, see [docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md).
+
+## Enter The TUI
 
 ```bash
 tentgent tui
 ```
 
-For the full daemon API, endpoint list, response shapes, auth behavior, and
-error mapping, see [docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md).
+The TUI is an operator console for daemon discovery, chat, jobs, resources, stores, servers, training, and guarded setup flows.
 
-See [docs/user/commands.md](./docs/user/commands.md) for model, adapter,
-dataset, server, session, and LoRA training examples.
+## Remove The Tool
+
+Remove installed binaries and support files without deleting user runtime data:
+
+```bash
+rm -f "$HOME/.local/bin/tentgent"
+rm -rf "$HOME/.local/share/tentgent"
+```
+
+Optional safe-to-recreate bootstrap cache cleanup:
+
+```bash
+rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
+```
+
+Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, adapters, datasets, sessions, servers, train records, and other local runtime data. See [docs/user/install.md](./docs/user/install.md) and [docs/user/runtime.md](./docs/user/runtime.md) for uninstall and runtime-home details.
+
+## Version Notes
+
+- `v0.3.0-alpha.2`: bugfix preview for session context, rolling summaries, daemon/server boundaries, prerelease safety, size display, and runtime footprint visibility.
+- `v0.3.0-alpha.1`: TUI preview release with operator console workflows for chat, jobs, resources, store actions, server/training actions, picker-based create flows, session delete, and compact ref display.
+- `v0.2.0`: local HTTP daemon parity expansion with store, dataset, server, chat, training, diagnostics, bounded session APIs, and a first TUI setup surface.
+
+See [docs/user/version.md](./docs/user/version.md) for version notes, feature lists, and known limits.
+
+## Full CLI Command Reference
+
+The README intentionally shows the shortest path. See [docs/user/commands.md](./docs/user/commands.md) for the complete CLI command reference covering TUI, auth, models, adapters, datasets, chat, servers, daemon, sessions, and LoRA training.
 
 ## API And Contracts
 
@@ -181,17 +262,6 @@ from the directory containing the file or export variables in your shell.
 
 See [docs/user/runtime.md](./docs/user/runtime.md) for platform defaults,
 runtime-home rules, Python runtime resolution, and Keychain prompt notes.
-
-## Versions
-
-- `v0.3.0-alpha.1`: TUI preview release with operator console workflows for chat, jobs, resources, store actions, server/training actions, picker-based create flows, session delete, and compact ref display. This is an alpha while the TUI interaction model is still being refined.
-- `v0.2.0`: local HTTP daemon parity expansion with store, dataset, server, chat, training, diagnostics, bounded session APIs, and a first TUI setup surface.
-- `v0.1.4`: HTTP chat streaming release with Server-Sent Events for local models, local adapters, and OpenAI/Anthropic cloud servers.
-- `v0.1.3`: dataset synthesis stability release with multi-split generation, per-split retry, and stronger provider output normalization.
-- `v0.1.2`: cloud provider server routing and provider-assisted dataset workflows.
-- `v0.1.1`: first installable MVP with macOS and Windows release artifacts.
-
-See [docs/user/version.md](./docs/user/version.md) for version notes, feature lists, and known limits.
 
 ## Current Capabilities
 
