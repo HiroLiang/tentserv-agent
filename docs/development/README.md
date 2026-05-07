@@ -151,6 +151,11 @@ curl -sS http://127.0.0.1:8790/v1/status \
 cargo run -- daemon stop
 ```
 
+`daemon status` resolves daemon paths in read-only mode before any stale-metadata
+cleanup, so checking a deleted or moved runtime home should not recreate it. If
+status reports `runtime_home_missing`, `runtime_dir_missing`, or stale metadata
+warnings, confirm the listener or pid manually before terminating any process.
+
 Detached daemon logs are written under the resolved runtime home:
 
 ```text

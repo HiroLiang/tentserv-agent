@@ -1,6 +1,6 @@
 use std::{
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
     time::Duration,
@@ -43,6 +43,14 @@ pub struct DaemonInspection {
     pub stderr_log_path: std::path::PathBuf,
     pub running: bool,
     pub process: Option<DaemonProcessMetadata>,
+    pub warnings: Vec<DaemonWarning>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DaemonWarning {
+    pub code: String,
+    pub message: String,
+    pub path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +63,11 @@ impl DaemonManager {
     pub fn new(home_override: Option<&Path>) -> Result<Self, DaemonError> {
         let paths = DaemonStorePaths::resolve(home_override)?;
         paths.ensure_layout()?;
+        Ok(Self { paths })
+    }
+
+    pub fn open_readonly(home_override: Option<&Path>) -> Result<Self, DaemonError> {
+        let paths = DaemonStorePaths::resolve_without_create(home_override)?;
         Ok(Self { paths })
     }
 
@@ -74,7 +87,15 @@ impl DaemonManager {
     }
 
     pub fn status(&self) -> Result<DaemonInspection, DaemonError> {
+        self.status_with_cleanup()
+    }
+
+    pub fn status_with_cleanup(&self) -> Result<DaemonInspection, DaemonError> {
         self.inspect(true)
+    }
+
+    pub fn status_observational(&self) -> Result<DaemonInspection, DaemonError> {
+        self.inspect(false)
     }
 
     pub fn record_process_start(
@@ -137,7 +158,7 @@ impl DaemonManager {
     }
 
     fn inspect(&self, cleanup_stale: bool) -> Result<DaemonInspection, DaemonError> {
-        let (process, running) = self.runtime_state(cleanup_stale)?;
+        let state = self.runtime_state(cleanup_stale)?;
         Ok(DaemonInspection {
             home_dir: self.paths.home_dir.clone(),
             runtime_dir: self.paths.runtime_dir.clone(),
@@ -146,33 +167,141 @@ impl DaemonManager {
             pid_path: self.paths.pid_path.clone(),
             stdout_log_path: self.paths.stdout_log_path.clone(),
             stderr_log_path: self.paths.stderr_log_path.clone(),
-            running,
-            process,
+            running: state.running,
+            process: state.process,
+            warnings: state.warnings,
         })
     }
 
-    fn runtime_state(
-        &self,
-        cleanup_stale: bool,
-    ) -> Result<(Option<DaemonProcessMetadata>, bool), DaemonError> {
+    fn runtime_state(&self, cleanup_stale: bool) -> Result<DaemonRuntimeState, DaemonError> {
+        if !self.paths.home_dir.exists() {
+            return Ok(DaemonRuntimeState::stopped(vec![daemon_warning(
+                "runtime_home_missing",
+                format!("runtime home is missing: {}", self.paths.home_dir.display()),
+                Some(self.paths.home_dir.clone()),
+            )]));
+        }
+
+        if !self.paths.runtime_dir.exists() {
+            return Ok(DaemonRuntimeState::stopped(vec![daemon_warning(
+                "runtime_dir_missing",
+                format!(
+                    "daemon runtime directory is missing: {}",
+                    self.paths.runtime_dir.display()
+                ),
+                Some(self.paths.runtime_dir.clone()),
+            )]));
+        }
+
         if !self.paths.process_path.exists() {
-            let _ = fs::remove_file(&self.paths.pid_path);
-            return Ok((None, false));
+            let warning = if self.paths.pid_path.exists() {
+                daemon_warning(
+                    "pid_path_stale",
+                    format!(
+                        "daemon pid file exists without process metadata: {}",
+                        self.paths.pid_path.display()
+                    ),
+                    Some(self.paths.pid_path.clone()),
+                )
+            } else {
+                daemon_warning(
+                    "process_path_missing",
+                    format!(
+                        "daemon process metadata is missing: {}",
+                        self.paths.process_path.display()
+                    ),
+                    Some(self.paths.process_path.clone()),
+                )
+            };
+            return Ok(DaemonRuntimeState::stopped(vec![warning]));
         }
 
         let process = read_process_metadata(&self.paths.process_path)?;
         let running = is_process_running(process.pid)?;
         if running {
-            return Ok((Some(process), true));
+            let warnings = self.pid_file_warnings(&process);
+            return Ok(DaemonRuntimeState {
+                process: Some(process),
+                running: true,
+                warnings,
+            });
         }
 
+        let warning = daemon_warning(
+            "process_metadata_stale",
+            format!(
+                "daemon metadata references pid {}, but that process is not running",
+                process.pid
+            ),
+            Some(self.paths.process_path.clone()),
+        );
         if cleanup_stale {
             let _ = fs::remove_file(&self.paths.process_path);
             let _ = fs::remove_file(&self.paths.pid_path);
-            return Ok((None, false));
+            return Ok(DaemonRuntimeState::stopped(vec![warning]));
         }
 
-        Ok((Some(process), false))
+        Ok(DaemonRuntimeState {
+            process: Some(process),
+            running: false,
+            warnings: vec![warning],
+        })
+    }
+
+    fn pid_file_warnings(&self, process: &DaemonProcessMetadata) -> Vec<DaemonWarning> {
+        let Ok(pid_text) = fs::read_to_string(&self.paths.pid_path) else {
+            return Vec::new();
+        };
+        let Ok(pid) = pid_text.trim().parse::<u32>() else {
+            return vec![daemon_warning(
+                "pid_path_stale",
+                format!(
+                    "daemon pid file is not a valid pid: {}",
+                    self.paths.pid_path.display()
+                ),
+                Some(self.paths.pid_path.clone()),
+            )];
+        };
+        if pid != process.pid {
+            return vec![daemon_warning(
+                "pid_path_stale",
+                format!(
+                    "daemon pid file records pid {pid}, but metadata records pid {}",
+                    process.pid
+                ),
+                Some(self.paths.pid_path.clone()),
+            )];
+        }
+        Vec::new()
+    }
+}
+
+#[derive(Debug)]
+struct DaemonRuntimeState {
+    process: Option<DaemonProcessMetadata>,
+    running: bool,
+    warnings: Vec<DaemonWarning>,
+}
+
+impl DaemonRuntimeState {
+    fn stopped(warnings: Vec<DaemonWarning>) -> Self {
+        Self {
+            process: None,
+            running: false,
+            warnings,
+        }
+    }
+}
+
+fn daemon_warning(
+    code: impl Into<String>,
+    message: impl Into<String>,
+    path: Option<PathBuf>,
+) -> DaemonWarning {
+    DaemonWarning {
+        code: code.into(),
+        message: message.into(),
+        path,
     }
 }
 
@@ -285,6 +414,106 @@ mod tests {
             .expect_err("empty host should fail");
 
         assert!(matches!(error, DaemonError::EmptyHost));
+    }
+
+    #[test]
+    fn readonly_manager_does_not_create_missing_runtime_home() {
+        let home = unique_home("readonly-missing-home");
+        let manager = DaemonManager::open_readonly(Some(&home)).expect("manager");
+
+        let inspection = manager.status_observational().expect("status");
+
+        assert!(!home.exists());
+        assert_eq!(warning_codes(&inspection), vec!["runtime_home_missing"]);
+    }
+
+    #[test]
+    fn status_warns_when_runtime_dir_is_missing_under_existing_home() {
+        let home = unique_home("missing-runtime-dir");
+        std::fs::create_dir_all(&home).expect("home");
+        let manager = DaemonManager::open_readonly(Some(&home)).expect("manager");
+
+        let inspection = manager.status_observational().expect("status");
+
+        assert!(home.exists());
+        assert!(!home.join("runtime").exists());
+        assert_eq!(warning_codes(&inspection), vec!["runtime_dir_missing"]);
+    }
+
+    #[test]
+    fn status_warns_when_process_metadata_is_missing_under_runtime_dir() {
+        let home = unique_home("missing-process-path");
+        std::fs::create_dir_all(home.join("runtime")).expect("runtime");
+        let manager = DaemonManager::open_readonly(Some(&home)).expect("manager");
+
+        let inspection = manager.status_observational().expect("status");
+
+        assert_eq!(warning_codes(&inspection), vec!["process_path_missing"]);
+    }
+
+    #[test]
+    fn status_warns_when_pid_file_exists_without_process_metadata() {
+        let home = unique_home("pid-without-metadata");
+        let runtime_dir = home.join("runtime");
+        std::fs::create_dir_all(&runtime_dir).expect("runtime");
+        std::fs::write(runtime_dir.join("tentgent.pid"), "12345\n").expect("pid");
+        let manager = DaemonManager::open_readonly(Some(&home)).expect("manager");
+
+        let inspection = manager.status_observational().expect("status");
+
+        assert_eq!(warning_codes(&inspection), vec!["pid_path_stale"]);
+        assert!(runtime_dir.join("tentgent.pid").exists());
+    }
+
+    #[test]
+    fn observational_status_preserves_dead_process_metadata() {
+        let home = unique_home("dead-observational");
+        write_dead_process_metadata(&home);
+        let manager = DaemonManager::open_readonly(Some(&home)).expect("manager");
+
+        let inspection = manager.status_observational().expect("status");
+
+        assert!(!inspection.running);
+        assert!(inspection.process.is_some());
+        assert_eq!(warning_codes(&inspection), vec!["process_metadata_stale"]);
+        assert!(inspection.process_path.exists());
+        assert!(inspection.pid_path.exists());
+    }
+
+    #[test]
+    fn cleanup_status_removes_dead_process_metadata() {
+        let home = unique_home("dead-cleanup");
+        write_dead_process_metadata(&home);
+        let manager = DaemonManager::open_readonly(Some(&home)).expect("manager");
+
+        let inspection = manager.status_with_cleanup().expect("status");
+
+        assert!(!inspection.running);
+        assert!(inspection.process.is_none());
+        assert_eq!(warning_codes(&inspection), vec!["process_metadata_stale"]);
+        assert!(!inspection.process_path.exists());
+        assert!(!inspection.pid_path.exists());
+    }
+
+    fn write_dead_process_metadata(home: &Path) {
+        let runtime_dir = home.join("runtime");
+        std::fs::create_dir_all(&runtime_dir).expect("runtime");
+        let metadata = DaemonProcessMetadata {
+            pid: 999_999_999,
+            host: "127.0.0.1".to_string(),
+            port: 8790,
+            started_at: created_at_now().expect("created_at"),
+        };
+        write_process_metadata(&runtime_dir.join("daemon.toml"), &metadata).expect("metadata");
+        write_pid_file(&runtime_dir.join("tentgent.pid"), metadata.pid).expect("pid");
+    }
+
+    fn warning_codes(inspection: &DaemonInspection) -> Vec<&str> {
+        inspection
+            .warnings
+            .iter()
+            .map(|warning| warning.code.as_str())
+            .collect()
     }
 
     fn unique_home(label: &str) -> std::path::PathBuf {

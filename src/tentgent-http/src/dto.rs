@@ -25,11 +25,19 @@ pub(crate) struct StatusResponse {
     pub(crate) log_dir: String,
     pub(crate) process_path: String,
     pub(crate) pid_path: String,
+    pub(crate) warnings: Vec<StatusWarningItem>,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StatusAuthItem {
     pub(crate) token_enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct StatusWarningItem {
+    pub(crate) code: String,
+    pub(crate) message: String,
+    pub(crate) path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

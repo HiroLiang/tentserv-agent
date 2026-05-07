@@ -203,6 +203,7 @@ fn test_inspection(home: &Path) -> DaemonInspection {
         stderr_log_path: home.join("logs/daemon.stderr.log"),
         running: false,
         process: None,
+        warnings: Vec::new(),
     }
 }
 

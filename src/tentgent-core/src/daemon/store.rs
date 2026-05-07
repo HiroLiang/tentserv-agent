@@ -37,6 +37,10 @@ pub struct DaemonStorePaths {
 
 impl DaemonStorePaths {
     pub fn resolve(home_override: Option<&Path>) -> Result<Self, DaemonError> {
+        Self::resolve_without_create(home_override)
+    }
+
+    pub fn resolve_without_create(home_override: Option<&Path>) -> Result<Self, DaemonError> {
         let home_dir = home_override
             .map(Path::to_path_buf)
             .or_else(|| read_env_path(HOME_ENV))

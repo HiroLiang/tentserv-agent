@@ -46,7 +46,14 @@ async fn healthz_returns_ok_payload() {
 #[tokio::test]
 async fn status_returns_daemon_metadata() {
     let request = get("/v1/status");
-    let state = state_for(unique_home("status"));
+    let home = unique_home("status");
+    let mut inspection = inspection(home.clone());
+    let pid = std::process::id();
+    if let Some(process) = inspection.process.as_mut() {
+        process.pid = pid;
+    }
+    write_daemon_metadata_for_inspection(&inspection);
+    let state = DaemonHttpState::new(inspection);
     let response = route_request(&request, &state).await;
     let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
 
@@ -54,8 +61,25 @@ async fn status_returns_daemon_metadata() {
     assert_eq!(body["status"], "running");
     assert_eq!(body["host"], "127.0.0.1");
     assert_eq!(body["port"], 8790);
-    assert_eq!(body["pid"], 1234);
+    assert_eq!(body["pid"], pid);
     assert_eq!(body["auth"]["token_enabled"], false);
+    assert!(body["warnings"].as_array().expect("warnings").is_empty());
+}
+
+#[tokio::test]
+async fn status_serializes_daemon_warnings() {
+    let home = unique_home("status-warnings");
+    let state = DaemonHttpState::new(inspection(home.clone()));
+    let response = route_request(&get("/v1/status"), &state).await;
+    let body: Value = serde_json::from_slice(response_buffer(&response)).expect("json");
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(body["warnings"][0]["code"], "runtime_home_missing");
+    assert!(body["warnings"][0]["message"]
+        .as_str()
+        .expect("message")
+        .contains("runtime home is missing"));
+    assert_eq!(body["warnings"][0]["path"], path_string(&home));
 }
 
 #[tokio::test]
@@ -147,6 +171,21 @@ async fn doctor_route_returns_observational_report() {
         .contains(&home.display().to_string()));
 
     restore_env("ANTHROPIC_API_KEY", previous);
+}
+
+#[tokio::test]
+async fn doctor_route_does_not_create_missing_runtime_home() {
+    let home = unique_home("doctor-missing-home");
+    let state = state_with_token(home.clone(), "secret");
+
+    let response = route_request(
+        &get_with_header("/v1/doctor", "Authorization", "Bearer secret"),
+        &state,
+    )
+    .await;
+
+    assert_eq!(response.status_code, 200);
+    assert!(!home.exists());
 }
 
 #[tokio::test]
@@ -4389,7 +4428,22 @@ fn inspection(home: PathBuf) -> DaemonInspection {
             port: 8790,
             started_at: "2026-05-01T00:00:00Z".to_string(),
         }),
+        warnings: Vec::new(),
     }
+}
+
+fn write_daemon_metadata_for_inspection(inspection: &DaemonInspection) {
+    let process = inspection.process.as_ref().expect("process");
+    fs::create_dir_all(&inspection.runtime_dir).expect("runtime");
+    fs::write(
+        &inspection.process_path,
+        format!(
+            "pid = {}\nhost = \"{}\"\nport = {}\nstarted_at = \"{}\"\n",
+            process.pid, process.host, process.port, process.started_at
+        ),
+    )
+    .expect("process metadata");
+    fs::write(&inspection.pid_path, format!("{}\n", process.pid)).expect("pid file");
 }
 
 fn unique_home(label: &str) -> PathBuf {

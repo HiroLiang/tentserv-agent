@@ -161,9 +161,15 @@ auth state:
   "runtime_dir": "/path/to/tentgent-home/runtime",
   "log_dir": "/path/to/tentgent-home/logs",
   "process_path": "/path/to/tentgent-home/runtime/daemon/process.toml",
-  "pid_path": "/path/to/tentgent-home/runtime/daemon/daemon.pid"
+  "pid_path": "/path/to/tentgent-home/runtime/daemon/daemon.pid",
+  "warnings": []
 }
 ```
+
+`warnings` contains stable daemon diagnostic records with `code`, `message`, and
+optional `path`. Missing runtime-home states use warning codes such as
+`runtime_home_missing`, `runtime_dir_missing`, `process_path_missing`,
+`pid_path_stale`, or `process_metadata_stale`.
 
 ## Auth Status, Doctor, And Shutdown
 

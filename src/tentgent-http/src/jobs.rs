@@ -280,6 +280,9 @@ impl JobRegistry {
 
     fn persist_all_best_effort(&self) {
         let jobs = self.list();
+        if jobs.is_empty() && !self.inner.jobs_dir.exists() {
+            return;
+        }
         if let Err(_error) = fs::create_dir_all(&self.inner.jobs_dir) {
             return;
         }

@@ -15,7 +15,7 @@ use miette::{miette, IntoDiagnostic};
 use reqwest::StatusCode;
 use tentgent_core::daemon::{
     DaemonError, DaemonInspection, DaemonManager, DaemonRunRequest, DaemonRunSpec,
-    DaemonStopOutcome, DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT,
+    DaemonStopOutcome, DaemonWarning, DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT,
 };
 use tentgent_http::{
     security::{check_bind_safety, BindSafetyReport, DaemonSecurityConfig, DAEMON_TOKEN_ENV_VAR},
@@ -40,8 +40,8 @@ pub async fn handle_daemon_command(action: DaemonCommands) -> miette::Result<()>
             start_daemon(DetachedDaemonOptions::from_start(command)).await?
         }
         DaemonCommands::Status { home } => {
-            let manager = DaemonManager::new(home.as_deref()).into_diagnostic()?;
-            let inspection = manager.status().into_diagnostic()?;
+            let manager = DaemonManager::open_readonly(home.as_deref()).into_diagnostic()?;
+            let inspection = manager.status_with_cleanup().into_diagnostic()?;
             render_daemon_inspection("Daemon status", &inspection);
             render_daemon_guidance(&inspection);
         }
@@ -541,6 +541,7 @@ fn render_daemon_stop(outcome: &DaemonStopOutcome) {
 fn render_daemon_inspection(title: &str, inspection: &DaemonInspection) {
     println!("{} {}", style("==>").cyan().bold(), style(title).bold());
     println!("{}", render_daemon_table(inspection));
+    render_daemon_warnings(&inspection.warnings);
 }
 
 fn render_daemon_guidance(inspection: &DaemonInspection) {
@@ -555,7 +556,26 @@ fn daemon_guidance_lines(inspection: &DaemonInspection) -> Vec<String> {
         return vec![format!("{} {}", style("http").green().bold(), daemon_url)];
     }
 
-    vec![
+    let mut lines = Vec::new();
+    if has_metadata_warning(inspection) {
+        lines.push(format!(
+            "{} daemon metadata is missing or stale for this resolved home.",
+            style("warning").yellow().bold()
+        ));
+        if inspection.process.is_some() {
+            lines.push(format!(
+                "cleanup: {}",
+                daemon_stop_command(&inspection.home_dir)
+            ));
+        } else {
+            lines.push(
+                "cleanup: metadata is unavailable; manually confirm any listener or pid before terminating it".to_string(),
+            );
+            lines.push("check: lsof -nP -iTCP:<port> -sTCP:LISTEN".to_string());
+        }
+    }
+
+    lines.extend([
         format!(
             "{} daemon is not running for this resolved home.",
             style("note").yellow().bold()
@@ -563,7 +583,38 @@ fn daemon_guidance_lines(inspection: &DaemonInspection) -> Vec<String> {
         format!("home: {}", inspection.home_dir.display()),
         format!("daemon_url: {daemon_url}"),
         format!("start: {}", daemon_start_command(&inspection.home_dir)),
-    ]
+    ]);
+    lines
+}
+
+fn has_metadata_warning(inspection: &DaemonInspection) -> bool {
+    inspection.warnings.iter().any(|warning| {
+        matches!(
+            warning.code.as_str(),
+            "runtime_home_missing"
+                | "runtime_dir_missing"
+                | "process_path_missing"
+                | "pid_path_stale"
+                | "process_metadata_stale"
+        )
+    })
+}
+
+fn render_daemon_warnings(warnings: &[DaemonWarning]) {
+    if warnings.is_empty() {
+        return;
+    }
+    println!("{} Daemon warnings", style("warning").yellow().bold());
+    for warning in warnings {
+        println!(
+            "{} {}",
+            style(&warning.code).yellow().bold(),
+            warning.message
+        );
+        if let Some(path) = &warning.path {
+            println!("path: {}", path.display());
+        }
+    }
 }
 
 fn daemon_start_command(home_dir: &Path) -> String {
@@ -763,6 +814,27 @@ mod tests {
         }));
     }
 
+    #[test]
+    fn daemon_warning_guidance_uses_manual_cleanup_when_metadata_is_missing() {
+        let mut inspection = stopped_inspection("/tmp/tentgent-missing-home");
+        inspection.warnings.push(DaemonWarning {
+            code: "runtime_home_missing".to_string(),
+            message: "runtime home is missing".to_string(),
+            path: Some(PathBuf::from("/tmp/tentgent-missing-home")),
+        });
+        let lines = daemon_guidance_lines(&inspection);
+
+        assert!(lines.iter().any(|line| {
+            line.contains("daemon metadata is missing or stale for this resolved home")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.contains("manually confirm any listener or pid before terminating it")
+        }));
+        assert!(!lines
+            .iter()
+            .any(|line| line.starts_with("cleanup: tentgent daemon stop")));
+    }
+
     fn daemon_run_spec(home: &str, host: &str, port: u16) -> DaemonRunSpec {
         DaemonRunSpec {
             host: host.to_string(),
@@ -787,6 +859,7 @@ mod tests {
             stderr_log_path: home.join("logs/daemon.stderr.log"),
             running,
             process: None,
+            warnings: Vec::new(),
         }
     }
 }

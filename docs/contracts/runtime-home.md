@@ -58,6 +58,14 @@ Reserved runtime files:
 - `runtime/bootstrap/`
 - `config.toml`
 
+Daemon status and doctor-style diagnostics may inspect these paths in read-only
+mode. Read-only inspection must not create missing runtime directories, remove
+metadata, or terminate processes. Cleanup-capable daemon status may remove stale
+pid/process metadata only after confirming the recorded pid is not running.
+Missing runtime-home states should be reported with stable warning codes such as
+`runtime_home_missing`, `runtime_dir_missing`, `process_path_missing`,
+`pid_path_stale`, or `process_metadata_stale`.
+
 ## Shared Config
 
 `config.toml` stores non-secret local preferences shared by the CLI and TUI.

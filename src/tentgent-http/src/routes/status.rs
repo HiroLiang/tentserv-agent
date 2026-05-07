@@ -1,8 +1,8 @@
-use tentgent_core::VERSION;
+use tentgent_core::{daemon::DaemonManager, VERSION};
 
 use crate::{
     app::DaemonHttpState,
-    dto::{HealthResponse, StatusAuthItem, StatusResponse},
+    dto::{HealthResponse, StatusAuthItem, StatusResponse, StatusWarningItem},
     http::HttpResponse,
     response::json_response,
     routes::store::path_string,
@@ -28,6 +28,10 @@ pub(crate) fn status_response(state: &DaemonHttpState) -> HttpResponse {
 fn status_item(state: &DaemonHttpState) -> StatusResponse {
     let inspection = state.inspection();
     let process = inspection.process.as_ref();
+    let warnings = DaemonManager::open_readonly(Some(&inspection.home_dir))
+        .and_then(|manager| manager.status_observational())
+        .map(|dynamic| dynamic.warnings)
+        .unwrap_or_else(|_| inspection.warnings.clone());
     StatusResponse {
         service: SERVICE_NAME,
         version: VERSION,
@@ -48,5 +52,13 @@ fn status_item(state: &DaemonHttpState) -> StatusResponse {
         log_dir: path_string(&inspection.log_dir),
         process_path: path_string(&inspection.process_path),
         pid_path: path_string(&inspection.pid_path),
+        warnings: warnings
+            .iter()
+            .map(|warning| StatusWarningItem {
+                code: warning.code.clone(),
+                message: warning.message.clone(),
+                path: warning.path.as_ref().map(|path| path_string(path)),
+            })
+            .collect(),
     }
 }
