@@ -3,6 +3,7 @@ use std::time::Duration;
 use reqwest::StatusCode;
 use serde::Deserialize;
 
+use super::super::display::format_bytes;
 use super::{daemon_client::TuiTokenSource, navigator::NavigatorListKind};
 
 const JOB_CONNECT_TIMEOUT: Duration = Duration::from_millis(700);
@@ -192,12 +193,12 @@ pub(super) struct JobResponse {
 
 pub(super) fn job_progress_label(job: &TuiJobItem) -> String {
     if let Some(percent) = job.percent {
-        let done = format_units(job.bytes_done, job.bytes_total, "B")
+        let done = format_byte_progress(job.bytes_done, job.bytes_total)
             .or_else(|| format_units(job.files_done, job.files_total, "files"))
             .unwrap_or_default();
         format!("{percent:.0}% {done}")
     } else if let Some(done) = job.bytes_done {
-        format!("{}B", done)
+        format_bytes(done)
     } else if let Some(done) = job.files_done {
         format!("{done} files")
     } else {
@@ -255,6 +256,16 @@ fn format_units(done: Option<u64>, total: Option<u64>, unit: &str) -> Option<Str
     }
 }
 
+fn format_byte_progress(done: Option<u64>, total: Option<u64>) -> Option<String> {
+    match (done, total) {
+        (Some(done), Some(total)) => {
+            Some(format!("{}/{}", format_bytes(done), format_bytes(total)))
+        }
+        (Some(done), None) => Some(format_bytes(done)),
+        _ => None,
+    }
+}
+
 fn move_index(current: usize, len: usize, delta: isize) -> usize {
     if len == 0 {
         return 0;
@@ -299,7 +310,38 @@ mod tests {
             result_summary: None,
             error_summary: None,
         };
-        assert_eq!(job_progress_label(&job), "42B");
+        assert_eq!(job_progress_label(&job), "42 B");
         assert!(!job_progress_label(&job).contains('%'));
+    }
+
+    #[test]
+    fn percent_progress_formats_byte_totals() {
+        let job = TuiJobItem {
+            job_id: "job".to_string(),
+            kind: "model_pull".to_string(),
+            label: "org/model".to_string(),
+            target_section: "models".to_string(),
+            target_ref: None,
+            status: "running".to_string(),
+            stage: "downloading".to_string(),
+            cancellable: false,
+            refresh_targets: vec!["models".to_string()],
+            bytes_done: Some(1024 * 1024),
+            bytes_total: Some(2 * 1024 * 1024),
+            files_done: None,
+            files_total: None,
+            percent: Some(50.0),
+            speed_bytes_per_sec: None,
+            eta_seconds: None,
+            started_at: "2026-05-04T00:00:00Z".to_string(),
+            updated_at: "2026-05-04T00:00:00Z".to_string(),
+            finished_at: None,
+            artifact_ref: None,
+            artifact_path: None,
+            warning_summary: None,
+            result_summary: None,
+            error_summary: None,
+        };
+        assert_eq!(job_progress_label(&job), "50% 1.0 MiB/2.0 MiB");
     }
 }

@@ -5,6 +5,8 @@ use tentgent_core::adapter::{
     AdapterRemovalOutcome,
 };
 
+use super::display::format_bytes;
+
 pub(super) fn render_import_outcome(title: &str, outcome: &AdapterImportOutcome) {
     let status = if outcome.deduplicated {
         style("reused").yellow().bold()
@@ -215,8 +217,8 @@ fn add_adapter_metadata_rows(table: &mut Table, metadata: &AdapterMetadata) {
         Cell::new(metadata.file_count),
     ]);
     table.add_row(vec![
-        Cell::new("total_bytes"),
-        Cell::new(metadata.total_bytes),
+        Cell::new("size"),
+        Cell::new(format_bytes(metadata.total_bytes)),
     ]);
     table.add_row(vec![
         Cell::new("imported_at"),

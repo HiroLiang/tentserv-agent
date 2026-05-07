@@ -11,6 +11,7 @@ use tentgent_core::platform::model_format_capability;
 
 use super::app::Cli;
 use super::commands::ModelCommands;
+use super::display::format_bytes;
 
 pub fn handle_model_command(action: ModelCommands) -> miette::Result<()> {
     let manager = ModelManager::new().into_diagnostic()?;
@@ -168,7 +169,7 @@ fn render_model_list(models: &[ModelSummary]) {
             "source_kind",
             "source",
             "files",
-            "bytes",
+            "size",
         ]);
 
     for model in models {
@@ -178,7 +179,7 @@ fn render_model_list(models: &[ModelSummary]) {
             Cell::new(model.metadata.source_kind.as_str()),
             Cell::new(model.metadata.source_summary()),
             Cell::new(model.metadata.file_count),
-            Cell::new(model.metadata.total_bytes),
+            Cell::new(format_bytes(model.metadata.total_bytes)),
         ]);
     }
 
@@ -365,8 +366,8 @@ fn add_model_metadata_rows(table: &mut Table, metadata: &tentgent_core::model::M
         Cell::new(metadata.file_count),
     ]);
     table.add_row(vec![
-        Cell::new("total_bytes"),
-        Cell::new(metadata.total_bytes),
+        Cell::new("size"),
+        Cell::new(format_bytes(metadata.total_bytes)),
     ]);
     table.add_row(vec![
         Cell::new("imported_at"),

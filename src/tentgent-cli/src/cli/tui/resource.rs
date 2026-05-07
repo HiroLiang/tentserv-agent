@@ -15,6 +15,7 @@ use tentgent_core::{
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use walkdir::WalkDir;
 
+use super::super::display::format_bytes;
 use super::navigator::{NavigatorListKind, NavigatorRow, NavigatorState};
 
 pub(super) const MAX_RESOURCE_SCAN_ENTRIES: usize = 25_000;
@@ -170,7 +171,7 @@ impl StorageRow {
             "{} {} {} {}",
             self.category,
             self.path.display(),
-            bytes_label(self.total_bytes),
+            format_bytes(self.total_bytes),
             self.largest_file
                 .as_ref()
                 .map(|file| file.path.display().to_string())
@@ -838,8 +839,8 @@ fn build_warnings(
             message: "runtime filesystem is low on free space".to_string(),
             detail: format!(
                 "available {} of {}",
-                bytes_label(disk.available_bytes.unwrap_or(0)),
-                bytes_label(disk.total_bytes.unwrap_or(0))
+                format_bytes(disk.available_bytes.unwrap_or(0)),
+                format_bytes(disk.total_bytes.unwrap_or(0))
             ),
         });
     } else if disk.state == DiskState::Unknown {
@@ -857,7 +858,11 @@ fn build_warnings(
                 level: WarningLevel::Warn,
                 source: row.category.clone(),
                 message: "storage category exceeds 10 GiB".to_string(),
-                detail: format!("{} at {}", bytes_label(row.total_bytes), row.path.display()),
+                detail: format!(
+                    "{} at {}",
+                    format_bytes(row.total_bytes),
+                    row.path.display()
+                ),
             });
         }
         if row.category == "logs" {
@@ -867,7 +872,7 @@ fn build_warnings(
                         level: WarningLevel::Warn,
                         source: "logs".to_string(),
                         message: "large log file exceeds 100 MiB".to_string(),
-                        detail: format!("{} {}", bytes_label(file.bytes), file.path.display()),
+                        detail: format!("{} {}", format_bytes(file.bytes), file.path.display()),
                     });
                 }
             }
@@ -931,22 +936,6 @@ fn age_seconds(timestamp: &str) -> Option<i64> {
     let then = OffsetDateTime::parse(timestamp, &Rfc3339).ok()?;
     let now = OffsetDateTime::now_utc();
     Some((now - then).whole_seconds())
-}
-
-pub(super) fn bytes_label(bytes: u64) -> String {
-    const KIB: f64 = 1024.0;
-    const MIB: f64 = KIB * 1024.0;
-    const GIB: f64 = MIB * 1024.0;
-    let bytes = bytes as f64;
-    if bytes >= GIB {
-        format!("{:.1} GiB", bytes / GIB)
-    } else if bytes >= MIB {
-        format!("{:.1} MiB", bytes / MIB)
-    } else if bytes >= KIB {
-        format!("{:.1} KiB", bytes / KIB)
-    } else {
-        format!("{bytes:.0} B")
-    }
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {

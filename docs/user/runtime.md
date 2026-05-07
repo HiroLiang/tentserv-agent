@@ -46,6 +46,30 @@ Supported path overrides:
 
 Environment variables are read when a process starts. Tentgent does not rewrite or persist shell environment settings.
 
+## Runtime Footprint
+
+Use `tentgent status` or `tentgent doctor` to inspect human-readable size information for the runtime home, managed Python environment, and bootstrap caches.
+
+The managed install default for the Python environment is:
+
+```text
+TENTGENT_HOME/runtime/python-env
+```
+
+The actual path shown by `status` or `doctor` may differ when `TENTGENT_PYTHON_ENV_DIR` is set. Treat this environment as required runtime state. Do not remove it unless you are intentionally repairing or reinstalling the managed Python runtime.
+
+Bootstrap data lives under:
+
+```text
+TENTGENT_HOME/runtime/bootstrap
+```
+
+Within that directory, `uv/` stores pinned installer bootstrap tooling and should usually be preserved. `uv-cache/` stores package/cache data used while creating or syncing the Python environment; it is safe to recreate. To reclaim that cache manually, only when no Tentgent installer or Python bootstrap process is running:
+
+```bash
+rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
+```
+
 ## Backend Status
 
 - `tentgent doctor` runs installation and runtime health checks.

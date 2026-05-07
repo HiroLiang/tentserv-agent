@@ -7,6 +7,8 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::Value;
 
+use super::super::display::{format_bytes, format_optional_bytes};
+
 pub(super) const SESSION_MESSAGES_TAIL: usize = 50;
 pub(super) const TRAIN_METRICS_TAIL: usize = 100;
 pub(super) const LOG_TAIL_BYTES: u64 = 65_536;
@@ -653,10 +655,8 @@ pub(super) fn parse_tail(source: TailSource, value: Value) -> Result<TailPane, S
                         .unwrap_or_else(|| "-".to_string())
                 ),
                 format!(
-                    "total_bytes: {}",
-                    u64_field(log, "total_bytes")
-                        .map(|value| value.to_string())
-                        .unwrap_or_else(|| "-".to_string())
+                    "size: {}",
+                    format_optional_bytes(u64_field(log, "total_bytes"))
                 ),
                 format!(
                     "modified_at: {}",
@@ -735,7 +735,7 @@ fn columns_for(kind: NavigatorListKind, item: &Value, short_ref: &str) -> Vec<St
             short_ref.to_string(),
             str_or_dash(item, "format"),
             str_or_dash(item, "source_kind"),
-            bytes_label(u64_field(item, "total_bytes")),
+            format_optional_bytes(u64_field(item, "total_bytes")),
             str_or_dash(item, "store_path"),
         ],
         NavigatorListKind::Adapters => vec![
@@ -913,11 +913,21 @@ fn detail_lines(kind: NavigatorListKind, item: &Value) -> Vec<(String, String)> 
         ],
     };
     keys.iter()
-        .filter_map(|key| {
-            item.get(*key)
-                .map(|value| ((*key).to_string(), scalar(value)))
-        })
+        .filter_map(|key| item.get(*key).map(|value| detail_line_value(key, value)))
         .collect()
+}
+
+fn detail_line_value(key: &str, value: &Value) -> (String, String) {
+    match key {
+        "total_bytes" | "size_bytes" => (
+            "size".to_string(),
+            value
+                .as_u64()
+                .map(format_bytes)
+                .unwrap_or_else(|| scalar(value)),
+        ),
+        _ => (key.to_string(), scalar(value)),
+    }
 }
 
 fn item_ref(kind: NavigatorListKind, item: &Value) -> Option<String> {
@@ -1079,25 +1089,6 @@ fn compact_pair_label(
     }
 }
 
-fn bytes_label(bytes: Option<u64>) -> String {
-    let Some(bytes) = bytes else {
-        return "-".to_string();
-    };
-    const KIB: f64 = 1024.0;
-    const MIB: f64 = KIB * 1024.0;
-    const GIB: f64 = MIB * 1024.0;
-    let bytes = bytes as f64;
-    if bytes >= GIB {
-        format!("{:.1} GiB", bytes / GIB)
-    } else if bytes >= MIB {
-        format!("{:.1} MiB", bytes / MIB)
-    } else if bytes >= KIB {
-        format!("{:.1} KiB", bytes / KIB)
-    } else {
-        format!("{bytes:.0} B")
-    }
-}
-
 fn split_label(value: Option<&Value>) -> String {
     let Some(value) = value else {
         return "-".to_string();
@@ -1205,6 +1196,45 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].item_ref, "srv_local");
         assert!(rows[0].search_text.contains("model_a"));
+    }
+
+    #[test]
+    fn model_rows_format_total_bytes_as_size() {
+        let value = serde_json::json!({
+            "models": [
+                {
+                    "model_ref": "model_1",
+                    "short_ref": "model",
+                    "format": "mlx",
+                    "detected_formats": ["mlx"],
+                    "source_kind": "local",
+                    "source_repo": null,
+                    "source_revision": null,
+                    "store_path": "/tmp/model",
+                    "manifest_path": "/tmp/model/manifest.json",
+                    "total_bytes": 1536,
+                    "file_count": 2,
+                    "imported_at": "2026-05-07T00:00:00Z"
+                }
+            ]
+        });
+
+        let rows = parse_list(NavigatorListKind::Models, value).expect("models");
+
+        assert_eq!(rows[0].columns[3], "1.5 KiB");
+        assert!(rows[0]
+            .summary
+            .iter()
+            .any(|(key, value)| key == "size" && value == "1.5 KiB"));
+        assert!(!rows[0].summary.iter().any(|(key, _)| key == "total_bytes"));
+    }
+
+    #[test]
+    fn detail_line_value_formats_size_bytes() {
+        assert_eq!(
+            detail_line_value("size_bytes", &serde_json::json!(2048)),
+            ("size".to_string(), "2.0 KiB".to_string())
+        );
     }
 
     #[test]

@@ -180,6 +180,7 @@ TENTGENT_HOME/runtime/python-env/
 
 After this step, normal runtime commands should use the generated entry points under `runtime/python-env/bin/` and should not invoke `uv`.
 The bootstrap helper also keeps `uv` package/cache data under `runtime/bootstrap/uv-cache/` unless `TENTGENT_BOOTSTRAP_UV_CACHE_DIR` is explicitly set.
+`runtime/bootstrap/uv-cache/` is safe-to-recreate cache data and may be removed manually when no installer/bootstrap process is running. `runtime/python-env/` is managed runtime state and should not be removed unless intentionally repairing or reinstalling the Python runtime.
 
 ## Persistence Rules
 

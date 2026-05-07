@@ -7,6 +7,8 @@ use tentgent_core::{
     VERSION,
 };
 
+use super::runtime_footprint::collect_runtime_footprint;
+
 pub fn handle_status_command() -> Result<()> {
     let runtime_home = resolve_runtime_home()
         .map_err(|err| miette!("failed to resolve Tentgent runtime home: {err}"))?;
@@ -56,6 +58,12 @@ pub fn handle_status_command() -> Result<()> {
         Cell::new("hf_snapshot_entrypoint"),
         Cell::new(path_status(&python.script_bin("tentgent-hf-snapshot"), "")),
     ]);
+    for entry in collect_runtime_footprint(&runtime_home, Some(&python)) {
+        table.add_row(vec![
+            Cell::new(entry.field),
+            Cell::new(entry.render_value()),
+        ]);
+    }
     for capability in current_backend_capabilities() {
         table.add_row(vec![
             Cell::new(format!("backend_{}", capability.backend.as_str())),

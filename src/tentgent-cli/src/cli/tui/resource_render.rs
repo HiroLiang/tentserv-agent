@@ -6,9 +6,10 @@ use ratatui::{
     Frame,
 };
 
+use super::super::display::format_bytes;
 use super::{
     app::TuiApp,
-    resource::{bytes_label, DiskState, ResourceLoadState, ResourceTab},
+    resource::{DiskState, ResourceLoadState, ResourceTab},
 };
 
 pub(super) fn render_resources(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
@@ -46,7 +47,7 @@ pub(super) fn resource_summary_lines(app: &TuiApp) -> Vec<Line<'static>> {
         "storage",
         format!(
             "{} across {} categories",
-            bytes_label(snapshot.storage_total_bytes()),
+            format_bytes(snapshot.storage_total_bytes()),
             snapshot.storage_rows.len()
         ),
     ));
@@ -55,7 +56,7 @@ pub(super) fn resource_summary_lines(app: &TuiApp) -> Vec<Line<'static>> {
         snapshot
             .disk
             .available_bytes
-            .map(bytes_label)
+            .map(format_bytes)
             .unwrap_or_else(|| "unknown".to_string()),
     ));
     lines.push(line_kv(
@@ -99,7 +100,7 @@ fn render_resource_header(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
                 snapshot
                     .disk
                     .available_bytes
-                    .map(bytes_label)
+                    .map(format_bytes)
                     .unwrap_or_else(|| "unknown".to_string()),
             ),
             Span::raw("  "),
@@ -145,12 +146,12 @@ fn render_resource_storage(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         let largest = row
             .largest_file
             .as_ref()
-            .map(|file| format!("{} {}", bytes_label(file.bytes), file.path.display()))
+            .map(|file| format!("{} {}", format_bytes(file.bytes), file.path.display()))
             .unwrap_or_else(|| "-".to_string());
         if compact {
             Row::new(vec![
                 Cell::from(row.category.clone()),
-                Cell::from(bytes_label(row.total_bytes)),
+                Cell::from(format_bytes(row.total_bytes)),
                 Cell::from(row.file_count.to_string()),
                 Cell::from(if row.partial { "partial" } else { "ok" }),
             ])
@@ -158,7 +159,7 @@ fn render_resource_storage(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
             Row::new(vec![
                 Cell::from(row.category.clone()),
                 Cell::from(row.path.display().to_string()),
-                Cell::from(bytes_label(row.total_bytes)),
+                Cell::from(format_bytes(row.total_bytes)),
                 Cell::from(row.file_count.to_string()),
                 Cell::from(largest),
                 Cell::from(format!(
@@ -171,7 +172,7 @@ fn render_resource_storage(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     });
     let (headers, widths) = if compact {
         (
-            vec!["category", "bytes", "files", "status"],
+            vec!["category", "size", "files", "status"],
             vec![
                 Constraint::Length(14),
                 Constraint::Length(12),
@@ -181,7 +182,7 @@ fn render_resource_storage(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         )
     } else {
         (
-            vec!["category", "path", "bytes", "files", "largest", "status"],
+            vec!["category", "path", "size", "files", "largest", "status"],
             vec![
                 Constraint::Length(14),
                 Constraint::Min(28),
@@ -214,7 +215,7 @@ fn render_resource_processes(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
             .unwrap_or_else(|| "-".to_string());
         let rss = row
             .rss_kib
-            .map(|kib| bytes_label(kib.saturating_mul(1024)))
+            .map(|kib| format_bytes(kib.saturating_mul(1024)))
             .unwrap_or_else(|| "-".to_string());
         let cpu = row
             .cpu_percent

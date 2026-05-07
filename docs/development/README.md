@@ -163,6 +163,19 @@ logs/daemon.stdout.log
 logs/daemon.stderr.log
 ```
 
+Runtime footprint smoke:
+
+```bash
+cargo run -- status
+cargo run -- doctor
+```
+
+These commands report bounded, human-readable size estimates for the managed
+Python environment and bootstrap caches. `runtime/bootstrap/uv-cache` is
+safe-to-recreate package/cache data; remove it manually only when no installer
+or Python bootstrap process is running. Do not remove `runtime/python-env`
+unless intentionally repairing or reinstalling the managed Python runtime.
+
 ## Auth Commands
 
 ```bash

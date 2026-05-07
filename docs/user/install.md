@@ -105,6 +105,17 @@ Default install locations:
 - bootstrap cache: `TENTGENT_HOME/runtime/bootstrap`
 
 Users do not need to preinstall `uv`. The installer downloads pinned bootstrap tools into Tentgent-owned runtime cache.
+The managed Python runtime path may differ when `TENTGENT_PYTHON_ENV_DIR` is set.
+The bootstrap cache is split by purpose:
+
+- `runtime/bootstrap/uv` contains the pinned installer bootstrap tool cache and should usually be preserved.
+- `runtime/bootstrap/uv-cache` contains `uv` package/cache data. It is safe to recreate and may be removed manually when no Tentgent installer or Python bootstrap process is running:
+
+```bash
+rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
+```
+
+Do not remove `runtime/python-env` unless you are intentionally repairing or reinstalling the managed Python runtime.
 
 ## Local Package Smoke Test
 

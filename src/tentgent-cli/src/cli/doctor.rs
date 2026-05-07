@@ -10,7 +10,10 @@ use tentgent_core::{
     runtime_assets::PythonRuntime,
 };
 
-use super::commands::DoctorCommand;
+use super::{
+    commands::DoctorCommand,
+    runtime_footprint::{collect_runtime_footprint_best_effort, FootprintEntry},
+};
 
 pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
     if command.fix {
@@ -90,6 +93,7 @@ fn render_checks(checks: &[DoctorCheck]) {
         );
     }
     render_details(checks);
+    render_runtime_footprint(&collect_runtime_footprint_best_effort());
 
     let failures = checks
         .iter()
@@ -129,6 +133,28 @@ fn render_details(checks: &[DoctorCheck]) {
             style(&check.name).bold(),
             check.detail
         );
+    }
+}
+
+fn render_runtime_footprint(entries: &[FootprintEntry]) {
+    if entries.is_empty() {
+        return;
+    }
+
+    println!();
+    println!("{}", style("Runtime footprint").bold());
+    for entry in entries {
+        println!(
+            "{} {:<34} {}",
+            style("info").cyan().bold(),
+            entry.title,
+            entry.render_value()
+        );
+        if entry.field == "bootstrap_uv_cache_size" {
+            if let Some(guidance) = entry.guidance() {
+                println!("   {:<34} {guidance}", "note");
+            }
+        }
     }
 }
 

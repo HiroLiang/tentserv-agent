@@ -4,6 +4,8 @@ use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, C
 use console::style;
 use tentgent_core::adapter::{AdapterMetadata, AdapterSourceKind, AdapterSummary};
 
+use super::display::format_bytes;
+
 pub fn render_adapter_list(adapters: &[AdapterSummary]) {
     println!(
         "{} {}",
@@ -30,7 +32,7 @@ pub fn render_adapter_list(adapters: &[AdapterSummary]) {
             "source_kind",
             "source",
             "files",
-            "bytes",
+            "size",
         ]);
 
     for adapter in adapters {
@@ -41,7 +43,7 @@ pub fn render_adapter_list(adapters: &[AdapterSummary]) {
             Cell::new(adapter.metadata.source_kind.as_str()),
             Cell::new(source_summary(&adapter.metadata)),
             Cell::new(adapter.metadata.file_count),
-            Cell::new(adapter.metadata.total_bytes),
+            Cell::new(format_bytes(adapter.metadata.total_bytes)),
         ]);
     }
 

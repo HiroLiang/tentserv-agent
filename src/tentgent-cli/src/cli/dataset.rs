@@ -25,6 +25,7 @@ use tentgent_core::{
 
 use super::app::Cli;
 use super::commands::DatasetCommands;
+use super::display::{format_bytes, format_size_transition};
 
 pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
     match action {
@@ -649,10 +650,11 @@ fn render_diff_outcome(outcome: &DatasetDiffOutcome) {
     table.add_row(vec![Cell::new("modified"), Cell::new(summary.modified)]);
     table.add_row(vec![Cell::new("unchanged"), Cell::new(summary.unchanged)]);
     table.add_row(vec![
-        Cell::new("bytes"),
+        Cell::new("size"),
         Cell::new(format!(
             "{} -> {}",
-            summary.left_total_bytes, summary.right_total_bytes
+            format_bytes(summary.left_total_bytes),
+            format_bytes(summary.right_total_bytes)
         )),
     ]);
     table.add_row(vec![
@@ -693,13 +695,16 @@ fn render_diff_outcome(outcome: &DatasetDiffOutcome) {
     files
         .load_preset(UTF8_FULL_CONDENSED)
         .apply_modifier(UTF8_ROUND_CORNERS)
-        .set_header(vec!["status", "path", "bytes"]);
+        .set_header(vec!["status", "path", "size"]);
 
     for file in changed_files {
         files.add_row(vec![
             Cell::new(file.status.as_str()),
             Cell::new(&file.relative_path),
-            Cell::new(size_transition(file.left_size_bytes, file.right_size_bytes)),
+            Cell::new(format_size_transition(
+                file.left_size_bytes,
+                file.right_size_bytes,
+            )),
         ]);
     }
 
@@ -733,7 +738,7 @@ fn render_dataset_list(datasets: &[DatasetSummary]) {
             "splits",
             "source",
             "files",
-            "bytes",
+            "size",
         ]);
 
     for dataset in datasets {
@@ -744,7 +749,7 @@ fn render_dataset_list(datasets: &[DatasetSummary]) {
             Cell::new(split_summary(&dataset.metadata)),
             Cell::new(dataset.metadata.source_summary()),
             Cell::new(dataset.metadata.file_count),
-            Cell::new(dataset.metadata.total_bytes),
+            Cell::new(format_bytes(dataset.metadata.total_bytes)),
         ]);
     }
 
@@ -847,8 +852,8 @@ fn add_dataset_metadata_rows(table: &mut Table, metadata: &DatasetMetadata) {
         Cell::new(metadata.file_count),
     ]);
     table.add_row(vec![
-        Cell::new("total_bytes"),
-        Cell::new(metadata.total_bytes),
+        Cell::new("size"),
+        Cell::new(format_bytes(metadata.total_bytes)),
     ]);
     table.add_row(vec![
         Cell::new("imported_at"),
@@ -890,15 +895,6 @@ fn yes_no(value: bool) -> &'static str {
         "yes"
     } else {
         "no"
-    }
-}
-
-fn size_transition(left: Option<u64>, right: Option<u64>) -> String {
-    match (left, right) {
-        (Some(left), Some(right)) => format!("{left} -> {right}"),
-        (Some(left), None) => format!("{left} -> -"),
-        (None, Some(right)) => format!("- -> {right}"),
-        (None, None) => "-".to_string(),
     }
 }
 
