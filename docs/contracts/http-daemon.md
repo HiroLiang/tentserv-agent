@@ -138,7 +138,7 @@ contract.
 {
   "status": "ok",
   "service": "tentgent-daemon",
-  "version": "0.3.0-alpha.1"
+  "version": "0.3.0-alpha.2"
 }
 ```
 
@@ -148,7 +148,7 @@ auth state:
 ```json
 {
   "service": "tentgent-daemon",
-  "version": "0.3.0-alpha.1",
+  "version": "0.3.0-alpha.2",
   "status": "running",
   "auth": {
     "token_enabled": true

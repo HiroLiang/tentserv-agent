@@ -9,7 +9,7 @@ work may reuse working code and tests while replacing the shell, navigation, and
 forms.
 
 This is not the post-alpha bug bucket. Correctness bugs found during smoke tests
-should be recorded first in [0.3-bugfix-rollup.md](./0.3-bugfix-rollup.md), then
+should be checked against [0.3-bugfix-rollup.md](./archive/0.3-bugfix-rollup.md), then
 fixed in batches. This plan starts after the bugfix rollup has clarified the
 core session and daemon/server behavior.
 
@@ -112,7 +112,7 @@ a permanent top-level row.
 Do not begin broad TUI V2 implementation until the bugfix rollup fixes the
 session context semantics and daemon/direct-server chat boundary:
 
-- [0.3-bugfix-rollup.md](./0.3-bugfix-rollup.md)
+- [0.3-bugfix-rollup.md](./archive/0.3-bugfix-rollup.md)
 
 ## Non-Goals
 

@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 再現可能なセットアップにしたい場合は、version を固定して install します:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.ps1 | iex
 ```
 
 その後、デフォルトのインストール先を `PATH` に追加し、runtime を確認します:
@@ -173,7 +173,9 @@ runtime home、Python runtime、Keychain prompt の詳細は [docs/user/runtime.
 
 ## 現在のバージョン
 
-`v0.3.0-alpha.1` は TUI preview release です。chat、jobs、resources、store actions、server/training actions、picker-based create flows、session delete、compact ref display を追加します。TUI interaction model はまだ調整中の alpha です。
+`v0.3.0-alpha.2` は TUI alpha bugfix preview release です。session context、rolling persisted summary、daemon/server chat boundary、stale daemon diagnostics、prerelease workflow、human-facing size display、runtime footprint visibility を修正します。TUI interaction model はまだ調整中の alpha です。
+
+`v0.3.0-alpha.1` は TUI preview release です。chat、jobs、resources、store actions、server/training actions、picker-based create flows、session delete、compact ref display を追加します。
 
 `v0.2.0` はローカル HTTP daemon を拡張し、store、dataset、server、chat、training、diagnostics、bounded session workflow を API から利用できるようにし、最初の TUI setup surface も追加します。
 

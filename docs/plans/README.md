@@ -19,9 +19,6 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Active Plan Index
 
-- [0.3-bugfix-rollup.md](./0.3-bugfix-rollup.md)
-  Bug intake and implementation queue after the `v0.3.0-alpha.1` preview.
-  Add new smoke-test bugs here first, then fix them in focused batches.
 - [tui-v2-optimization.md](./tui-v2-optimization.md)
   Deferred TUI interaction redesign plan. The `v0.3.0-alpha.1` TUI is treated
   as an archived baseline, not a UX contract.
@@ -33,15 +30,9 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Recommended Order
 
-1. Add new smoke-test bugs to the bugfix rollup.
-2. Fix session context compaction semantics so context budget means
-   `summary + recent history`, not raw tail-only selection.
-3. Add rolling persisted session context so old raw transcript content is
-   periodically rewritten to `system summary + recent raw` using high-water /
-   low-water thresholds.
-4. Clarify daemon-managed session chat versus direct stateless model-server
-   chat.
-5. Redesign the TUI shell using `v0.3.0-alpha.1` as an archived baseline.
+1. Use the archived bugfix rollup when reviewing the `v0.3.0-alpha.2`
+   correctness fixes.
+2. Redesign the TUI shell using `v0.3.0-alpha.1` as an archived baseline.
 
 ## Deferred Plans
 

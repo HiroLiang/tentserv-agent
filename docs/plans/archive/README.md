@@ -18,6 +18,10 @@ Use this directory for completed plans that are no longer the active execution t
 
 ## Archived Plans
 
+- [0.3-bugfix-rollup.md](./0.3-bugfix-rollup.md)
+  Completed post-`v0.3.0-alpha.1` correctness rollup for session context,
+  daemon/server boundaries, stale daemon diagnostics, prerelease safeguards,
+  human-facing size display, and runtime footprint visibility.
 - [http-daemon-mvp.md](./http-daemon-mvp.md)
   Completed service-entry track for making the local HTTP daemon a
   programmatic peer of the main CLI workflows.

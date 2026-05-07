@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 若你想要可重現的固定版本安裝，請指定版本：
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.1/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.ps1 | iex
 ```
 
 接著確認預設安裝位置在 `PATH` 中，並檢查 runtime：
@@ -170,7 +170,9 @@ Tentgent 會先讀 `.env` / env，再 fallback 到系統 Keychain。若要讓 `.
 
 ## 目前版本
 
-`v0.3.0-alpha.1` 是 TUI preview release，加入 chat、jobs、resources、store actions、server/training actions、picker-based create flows、session delete 與 compact ref display。這仍是 alpha，TUI 互動會繼續調整。
+`v0.3.0-alpha.2` 是 TUI alpha bugfix preview release，修正 session context、rolling persisted summary、daemon/server chat 邊界、stale daemon diagnostics、prerelease workflow、human-facing size display 與 runtime footprint visibility。這仍是 alpha，TUI 互動會繼續調整。
+
+`v0.3.0-alpha.1` 是 TUI preview release，加入 chat、jobs、resources、store actions、server/training actions、picker-based create flows、session delete 與 compact ref display。
 
 `v0.2.0` 擴充本地 HTTP daemon，讓 store、dataset、server、chat、training、diagnostics 與 bounded session workflow 都能透過 API 使用，並加入第一版 TUI setup surface。
 

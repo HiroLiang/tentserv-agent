@@ -2,6 +2,36 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.3.0-alpha.2
+
+`v0.3.0-alpha.2` is a bugfix preview release for the TUI alpha line. It keeps
+the alpha interaction model but fixes correctness and release issues found
+during smoke testing.
+
+Added:
+
+- Request-scoped session context summaries so `max_session_messages` is a prior
+  context budget instead of a raw-tail-only selector.
+- Rolling persisted session summaries so long sessions periodically preserve
+  old context as one durable summary plus recent raw messages.
+- Clear daemon-managed session chat boundaries; direct model-server chat is
+  stateless and rejects session-only fields.
+- Stale daemon runtime-home diagnostics that do not recreate missing runtime
+  directories during observational checks.
+- Release workflow safeguards so prerelease tags publish as GitHub prereleases
+  and do not become latest stable releases.
+- Human-facing size display in CLI/TUI tables and runtime footprint visibility
+  for the managed Python environment and bootstrap caches.
+
+Known limits:
+
+- This is still an alpha release. The TUI is usable for workflow testing, but
+  layout, key bindings, picker flows, and action review screens may still
+  change before a stable release.
+- `latest` installers may still be managed separately from prerelease adoption;
+  use the explicit `v0.3.0-alpha.2` release URL when testing this preview.
+- macOS signing and notarization are still deferred.
+
 ## v0.3.0-alpha.1
 
 `v0.3.0-alpha.1` is a TUI preview release. It makes the terminal UI useful as a
