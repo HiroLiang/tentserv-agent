@@ -129,7 +129,7 @@ Run a cloud provider server through the same local server surface:
 
 ```bash
 tentgent server run openai:gpt-4.1-mini --host 127.0.0.1 --port 8780
-tentgent server run claude:claude-3-5-haiku-latest --host 127.0.0.1 --port 8781
+tentgent server run claude:claude-sonnet-4-20250514 --host 127.0.0.1 --port 8781
 ```
 
 Chat with a server directly:

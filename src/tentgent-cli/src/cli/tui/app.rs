@@ -4178,6 +4178,54 @@ impl TuiApp {
                 self.message = format!("Chat focus: {}", self.chat.focus.label());
                 Ok(true)
             }
+            KeyCode::Up
+                if self.chat.phase == ChatPhase::Workspace
+                    && self.chat.focus == super::chat::ChatFocus::Transcript =>
+            {
+                self.chat.scroll_transcript(1);
+                self.message = "transcript scrolled up".to_string();
+                Ok(true)
+            }
+            KeyCode::Down
+                if self.chat.phase == ChatPhase::Workspace
+                    && self.chat.focus == super::chat::ChatFocus::Transcript =>
+            {
+                self.chat.scroll_transcript(-1);
+                self.message = "transcript scrolled down".to_string();
+                Ok(true)
+            }
+            KeyCode::PageUp
+                if self.chat.phase == ChatPhase::Workspace
+                    && self.chat.focus == super::chat::ChatFocus::Transcript =>
+            {
+                self.chat.scroll_transcript(8);
+                self.message = "transcript scrolled up one page".to_string();
+                Ok(true)
+            }
+            KeyCode::PageDown
+                if self.chat.phase == ChatPhase::Workspace
+                    && self.chat.focus == super::chat::ChatFocus::Transcript =>
+            {
+                self.chat.scroll_transcript(-8);
+                self.message = "transcript scrolled down one page".to_string();
+                Ok(true)
+            }
+            KeyCode::Home
+                if self.chat.phase == ChatPhase::Workspace
+                    && self.chat.focus == super::chat::ChatFocus::Transcript =>
+            {
+                self.chat.scroll_transcript_to_top();
+                self.message = "transcript scrolled to top".to_string();
+                Ok(true)
+            }
+            KeyCode::End
+                if self.chat.phase == ChatPhase::Workspace
+                    && self.chat.focus == super::chat::ChatFocus::Transcript =>
+            {
+                self.chat.scroll_transcript_to_bottom();
+                self.message = "transcript scrolled to bottom".to_string();
+                Ok(true)
+            }
             KeyCode::Up => {
                 self.chat.move_selection(-1);
                 Ok(true)
@@ -6571,6 +6619,32 @@ mod tests {
 
         assert_eq!(app.chat.context_mode, ChatContextMode::Last2);
         assert_eq!(app.chat.composer, "h");
+    }
+
+    #[test]
+    fn chat_transcript_focus_scrolls_without_moving_selection() {
+        let mut app = TuiApp::test_app(PathBuf::from("/tmp/tentgent-tui-chat-scroll"));
+        app.chat.phase = ChatPhase::Workspace;
+        app.chat.focus = ChatFocus::Transcript;
+        app.chat.selected_session = 3;
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        app.handle_chat_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), &tx)
+            .expect("handled");
+        assert_eq!(app.chat.transcript_scroll_offset, 1);
+        assert_eq!(app.chat.selected_session, 3);
+
+        app.handle_chat_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE), &tx)
+            .expect("handled");
+        assert_eq!(app.chat.transcript_scroll_offset, 9);
+
+        app.handle_chat_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE), &tx)
+            .expect("handled");
+        assert_eq!(app.chat.transcript_scroll_offset, 8);
+
+        app.handle_chat_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE), &tx)
+            .expect("handled");
+        assert_eq!(app.chat.transcript_scroll_offset, 0);
     }
 
     #[test]

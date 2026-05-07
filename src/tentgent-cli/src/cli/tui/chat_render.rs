@@ -5,6 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Wrap},
     Frame,
 };
+use unicode_width::UnicodeWidthChar;
 
 use super::{
     app::TuiApp,
@@ -213,57 +214,61 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
 fn render_transcript(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
     let mut lines = Vec::new();
     let take = area.height.saturating_sub(2) as usize;
+    let content_width = area.width.saturating_sub(2) as usize;
     let mut rendered = Vec::new();
     for message in &app.chat.transcript {
         let index = message
             .index
             .map(|value| format!("#{value} "))
             .unwrap_or_default();
-        rendered.push(Line::from(vec![
-            Span::styled(
-                format!("{index}{}: ", message.role),
-                role_style(&message.role),
-            ),
-            Span::raw(truncate(
-                &message.content,
-                area.width.saturating_sub(16) as usize,
-            )),
-        ]));
+        push_wrapped_labeled_lines(
+            &mut rendered,
+            format!("{index}{}: ", message.role),
+            role_style(&message.role),
+            &message.content,
+            Style::default(),
+            content_width,
+        );
         if message.created_at.is_some()
             || message.server_ref.is_some()
             || message.adapter_ref.is_some()
         {
-            rendered.push(Line::from(vec![
-                Span::styled("  meta: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(
-                    format!(
-                        "{}{}{}",
-                        message
-                            .created_at
-                            .as_deref()
-                            .map(|value| format!("at {value} "))
-                            .unwrap_or_default(),
-                        message
-                            .server_ref
-                            .as_deref()
-                            .map(|value| format!("server {} ", display_short_ref(value)))
-                            .unwrap_or_default(),
-                        message
-                            .adapter_ref
-                            .as_deref()
-                            .map(|value| format!("adapter {}", display_short_ref(value)))
-                            .unwrap_or_default(),
-                    ),
-                    Style::default().fg(Color::DarkGray),
+            push_wrapped_labeled_lines(
+                &mut rendered,
+                "  meta: ".to_string(),
+                Style::default().fg(Color::DarkGray),
+                &format!(
+                    "{}{}{}",
+                    message
+                        .created_at
+                        .as_deref()
+                        .map(|value| format!("at {value} "))
+                        .unwrap_or_default(),
+                    message
+                        .server_ref
+                        .as_deref()
+                        .map(|value| format!("server {} ", display_short_ref(value)))
+                        .unwrap_or_default(),
+                    message
+                        .adapter_ref
+                        .as_deref()
+                        .map(|value| format!("adapter {}", display_short_ref(value)))
+                        .unwrap_or_default(),
                 ),
-            ]));
+                Style::default().fg(Color::DarkGray),
+                content_width,
+            );
         }
     }
     if let Some(user) = &app.chat.pending_user {
-        rendered.push(Line::from(vec![
-            Span::styled("pending user: ", Style::default().fg(Color::Yellow)),
-            Span::raw(truncate(user, area.width.saturating_sub(18) as usize)),
-        ]));
+        push_wrapped_labeled_lines(
+            &mut rendered,
+            "pending user: ".to_string(),
+            Style::default().fg(Color::Yellow),
+            user,
+            Style::default(),
+            content_width,
+        );
     }
     if let Some(assistant) = &app.chat.pending_assistant {
         let label = if app.chat.pending_interrupted {
@@ -271,20 +276,24 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         } else {
             "assistant: "
         };
-        rendered.push(Line::from(vec![
-            Span::styled(label, Style::default().fg(Color::Cyan)),
-            Span::raw(truncate(assistant, area.width.saturating_sub(24) as usize)),
-        ]));
+        push_wrapped_labeled_lines(
+            &mut rendered,
+            label.to_string(),
+            Style::default().fg(Color::Cyan),
+            assistant,
+            Style::default(),
+            content_width,
+        );
     }
-    let skip = rendered.len().saturating_sub(take);
-    lines.extend(rendered.into_iter().skip(skip));
+    let skip = transcript_line_skip(rendered.len(), take, app.chat.transcript_scroll_offset);
+    lines.extend(rendered.into_iter().skip(skip).take(take));
     if lines.is_empty() {
         lines.push(Line::from(
             "Transcript is empty. Type in the composer and press Enter.",
         ));
     }
     let title = format!(
-        "Transcript · {} total{}",
+        "Transcript · {} total{}{}",
         app.chat
             .total_messages
             .map(|count| count.to_string())
@@ -293,14 +302,104 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
             " · tail"
         } else {
             ""
-        }
+        },
+        if app.chat.transcript_scroll_offset > 0 {
+            " · scrolled"
+        } else {
+            ""
+        },
     );
     frame.render_widget(
-        Paragraph::new(lines)
-            .block(Block::default().title(title).borders(Borders::ALL))
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(lines).block(Block::default().title(title).borders(Borders::ALL)),
         area,
     );
+}
+
+fn transcript_line_skip(rendered_len: usize, visible_len: usize, scroll_offset: usize) -> usize {
+    let bottom_skip = rendered_len.saturating_sub(visible_len);
+    bottom_skip.saturating_sub(scroll_offset.min(bottom_skip))
+}
+
+fn push_wrapped_labeled_lines(
+    lines: &mut Vec<Line<'static>>,
+    label: String,
+    label_style: Style,
+    content: &str,
+    content_style: Style,
+    width: usize,
+) {
+    let width = width.max(1);
+    let label_width = display_width(&label);
+    let first_width = width.saturating_sub(label_width).max(1);
+    let continuation_indent_width = label_width.min(width.saturating_sub(1));
+    let continuation_indent = " ".repeat(continuation_indent_width);
+    let continuation_width = width.saturating_sub(continuation_indent_width).max(1);
+    let wrapped = wrap_display_width(content, first_width, continuation_width);
+
+    if wrapped.is_empty() {
+        lines.push(Line::from(Span::styled(label, label_style)));
+        return;
+    }
+
+    for (index, segment) in wrapped.into_iter().enumerate() {
+        if index == 0 {
+            lines.push(Line::from(vec![
+                Span::styled(label.clone(), label_style),
+                Span::styled(segment, content_style),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::raw(continuation_indent.clone()),
+                Span::styled(segment, content_style),
+            ]));
+        }
+    }
+}
+
+fn wrap_display_width(value: &str, first_width: usize, continuation_width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    let mut line_width = 0usize;
+    let mut limit = first_width.max(1);
+
+    for physical_line in value.split('\n') {
+        if !line.is_empty() {
+            lines.push(std::mem::take(&mut line));
+            line_width = 0;
+            limit = continuation_width.max(1);
+        }
+        if physical_line.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        for ch in physical_line.chars() {
+            let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+            if line_width > 0 && line_width + ch_width > limit {
+                lines.push(std::mem::take(&mut line));
+                line_width = 0;
+                limit = continuation_width.max(1);
+            }
+            line.push(ch);
+            line_width += ch_width;
+            if line_width >= limit {
+                lines.push(std::mem::take(&mut line));
+                line_width = 0;
+                limit = continuation_width.max(1);
+            }
+        }
+    }
+
+    if !line.is_empty() || value.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
+fn display_width(value: &str) -> usize {
+    value
+        .chars()
+        .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
+        .sum()
 }
 
 fn render_side_pane(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
@@ -429,7 +528,7 @@ fn render_chat_footer(frame: &mut Frame<'_>, area: Rect, app: &TuiApp) {
         ));
     } else {
         lines.push(Line::from(format!(
-            "context next send: {} · transcript tail: {} · h cycles context outside composer",
+            "context next send: {} · transcript tail: {} · h context · transcript: ↑/↓ PgUp/PgDn Home/End",
             app.chat.context_mode.label(),
             CHAT_MESSAGES_TAIL
         )));
@@ -508,19 +607,67 @@ fn kv_line(label: &str, value: impl ToString) -> Line<'static> {
     ])
 }
 
-fn truncate(value: &str, max: usize) -> String {
-    let max = max.max(16);
-    let mut chars = value.chars();
-    let head: String = chars.by_ref().take(max).collect();
-    if chars.next().is_some() {
-        format!("{head}...")
-    } else {
-        head
-    }
-}
-
 fn short_or_none(value: Option<&str>) -> String {
     value
         .map(display_short_ref)
         .unwrap_or_else(|| "(none)".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(values: Vec<&str>) -> Vec<String> {
+        values.into_iter().map(ToOwned::to_owned).collect()
+    }
+
+    #[test]
+    fn wrap_display_width_wraps_without_ellipsis() {
+        let wrapped = wrap_display_width("abcdefghij", 4, 6);
+
+        assert_eq!(wrapped, strings(vec!["abcd", "efghij"]));
+        assert_eq!(wrapped.join(""), "abcdefghij");
+        assert!(!wrapped.iter().any(|line| line.contains("...")));
+    }
+
+    #[test]
+    fn wrap_display_width_counts_cjk_cells() {
+        assert_eq!(
+            wrap_display_width("明天要吃什麼", 6, 6),
+            strings(vec!["明天要", "吃什麼"])
+        );
+    }
+
+    #[test]
+    fn wrap_display_width_preserves_explicit_blank_lines() {
+        assert_eq!(
+            wrap_display_width("first\n\nsecond", 20, 20),
+            strings(vec!["first", "", "second"])
+        );
+    }
+
+    #[test]
+    fn labeled_wrapped_lines_fit_target_width() {
+        let mut lines = Vec::new();
+
+        push_wrapped_labeled_lines(
+            &mut lines,
+            "#1 assistant: ".to_string(),
+            Style::default(),
+            "abcdefghijklmnopqrstuvwxyz",
+            Style::default(),
+            18,
+        );
+
+        assert!(lines.len() > 1);
+        assert!(lines.iter().all(|line| line.width() <= 18));
+    }
+
+    #[test]
+    fn transcript_line_skip_uses_scroll_offset_from_bottom() {
+        assert_eq!(transcript_line_skip(20, 5, 0), 15);
+        assert_eq!(transcript_line_skip(20, 5, 3), 12);
+        assert_eq!(transcript_line_skip(20, 5, usize::MAX), 0);
+        assert_eq!(transcript_line_skip(3, 5, 10), 0);
+    }
 }

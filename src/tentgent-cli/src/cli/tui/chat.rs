@@ -193,6 +193,7 @@ pub(super) struct ChatState {
     pub(super) selected_adapter_ref: Option<String>,
     pub(super) context_mode: ChatContextMode,
     pub(super) transcript: Vec<ChatMessageRow>,
+    pub(super) transcript_scroll_offset: usize,
     pub(super) total_messages: Option<usize>,
     pub(super) transcript_truncated: bool,
     pub(super) composer: String,
@@ -219,6 +220,7 @@ impl ChatState {
         self.selected_session_ref = None;
         self.selected_adapter_ref = None;
         self.transcript.clear();
+        self.transcript_scroll_offset = 0;
         self.total_messages = None;
         self.transcript_truncated = false;
         self.pending_user = None;
@@ -410,8 +412,32 @@ impl ChatState {
         }
     }
 
+    pub(super) fn scroll_transcript(&mut self, delta: isize) {
+        if delta < 0 {
+            self.transcript_scroll_offset = self.transcript_scroll_offset.saturating_sub(
+                delta
+                    .checked_abs()
+                    .and_then(|value| usize::try_from(value).ok())
+                    .unwrap_or(usize::MAX),
+            );
+        } else {
+            self.transcript_scroll_offset = self
+                .transcript_scroll_offset
+                .saturating_add(usize::try_from(delta).unwrap_or(usize::MAX));
+        }
+    }
+
+    pub(super) fn scroll_transcript_to_top(&mut self) {
+        self.transcript_scroll_offset = usize::MAX;
+    }
+
+    pub(super) fn scroll_transcript_to_bottom(&mut self) {
+        self.transcript_scroll_offset = 0;
+    }
+
     pub(super) fn apply_messages(&mut self, messages: ChatMessages) {
         self.transcript = messages.messages;
+        self.transcript_scroll_offset = 0;
         self.total_messages = Some(messages.total_messages);
         self.transcript_truncated = messages.truncated;
         self.pending_user = None;
@@ -426,6 +452,7 @@ impl ChatState {
         self.pending_user = Some(prompt);
         self.pending_assistant = Some(String::new());
         self.pending_interrupted = false;
+        self.transcript_scroll_offset = 0;
         self.send_state = ChatSendState::Streaming { request_id };
         self.last_error = None;
         self.retry_non_stream = None;
