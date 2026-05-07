@@ -19,17 +19,29 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Active Plan Index
 
+- [0.3-bugfix-rollup.md](./0.3-bugfix-rollup.md)
+  Bug intake and implementation queue after the `v0.3.0-alpha.1` preview.
+  Add new smoke-test bugs here first, then fix them in focused batches.
+- [tui-v2-optimization.md](./tui-v2-optimization.md)
+  Deferred TUI interaction redesign plan. The `v0.3.0-alpha.1` TUI is treated
+  as an archived baseline, not a UX contract.
 - [tui-session-mvp.md](./tui-session-mvp.md)
-  Future daemon-first terminal UI plan for local status, store, server,
-  session, dataset, and training workflows. Visual draft:
+  Historical daemon-first terminal UI MVP plan for local status, store, server,
+  session, dataset, and training workflows. It remains as the detailed alpha
+  implementation record and routing document. Visual draft:
   [tui/design/README.md](./tui/design/README.md).
 
 ## Recommended Order
 
-1. Add daemon detach/start UX so the TUI does not require a second foreground
-   terminal.
-2. Build the daemon-first TUI skeleton and read-only navigator.
-3. Add a read-only local resource monitor before chat and mutation workflows.
+1. Add new smoke-test bugs to the bugfix rollup.
+2. Fix session context compaction semantics so context budget means
+   `summary + recent history`, not raw tail-only selection.
+3. Add rolling persisted session context so old raw transcript content is
+   periodically rewritten to `system summary + recent raw` using high-water /
+   low-water thresholds.
+4. Clarify daemon-managed session chat versus direct stateless model-server
+   chat.
+5. Redesign the TUI shell using `v0.3.0-alpha.1` as an archived baseline.
 
 ## Deferred Plans
 

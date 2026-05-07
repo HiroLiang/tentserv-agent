@@ -4,6 +4,14 @@ This plan defines the next terminal UI track after the HTTP daemon parity work.
 The TUI should be a local operator console over the existing daemon, stores, and
 session APIs, not a second implementation of runtime state.
 
+Status: archived alpha baseline after `v0.3.0-alpha.1`.
+
+The implemented TUI preview is useful as a regression and comparison point, but
+it is not the continuing UX contract. Follow
+[0.3-bugfix-rollup.md](./0.3-bugfix-rollup.md) for the active bugfix queue and
+[tui-v2-optimization.md](./tui-v2-optimization.md) for the deferred interaction
+redesign plan.
+
 ## Current Baseline
 
 The daemon and CLI now own the main workflow surfaces:
