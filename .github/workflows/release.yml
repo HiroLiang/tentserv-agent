@@ -32,8 +32,8 @@ jobs:
             runner: windows-latest
             archive_ext: zip
     steps:
-      - name: Resolve release metadata
-        id: release
+      - name: Resolve release tag
+        id: release_tag
         shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -41,20 +41,31 @@ jobs:
           else
             tag="${{ github.ref_name }}"
           fi
-          version="${tag#v}"
-          if [[ "${version}" == *-* ]]; then
-            is_prerelease="true"
-          else
-            is_prerelease="false"
+
+          case "${tag}" in
+            refs/*)
+              echo "release tag must be a bare tag, not a ref: ${tag}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "malformed release tag: ${tag}" >&2
+            exit 1
           fi
+
           echo "tag=${tag}" >>"${GITHUB_OUTPUT}"
-          echo "version=${version}" >>"${GITHUB_OUTPUT}"
-          echo "is_prerelease=${is_prerelease}" >>"${GITHUB_OUTPUT}"
 
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ steps.release.outputs.tag }}
+          ref: ${{ steps.release_tag.outputs.tag }}
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          bash scripts/release-metadata.sh --github-output "${{ steps.release_tag.outputs.tag }}"
 
       - name: Verify native target
         shell: bash
@@ -92,8 +103,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Resolve release metadata
-        id: release
+      - name: Resolve release tag
+        id: release_tag
         shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -101,24 +112,36 @@ jobs:
           else
             tag="${{ github.ref_name }}"
           fi
-          version="${tag#v}"
-          if [[ "${version}" == *-* ]]; then
-            is_prerelease="true"
-          else
-            is_prerelease="false"
+
+          case "${tag}" in
+            refs/*)
+              echo "release tag must be a bare tag, not a ref: ${tag}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "malformed release tag: ${tag}" >&2
+            exit 1
           fi
+
           echo "tag=${tag}" >>"${GITHUB_OUTPUT}"
-          echo "version=${version}" >>"${GITHUB_OUTPUT}"
-          echo "is_prerelease=${is_prerelease}" >>"${GITHUB_OUTPUT}"
 
       - name: Checkout installer
         uses: actions/checkout@v6
         with:
-          ref: ${{ steps.release.outputs.tag }}
+          ref: ${{ steps.release_tag.outputs.tag }}
           sparse-checkout: |
+            scripts/release-metadata.sh
             scripts/install.sh
             scripts/install.ps1
           sparse-checkout-cone-mode: false
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          bash scripts/release-metadata.sh --github-output "${{ steps.release_tag.outputs.tag }}"
 
       - name: Download package artifacts
         uses: actions/download-artifact@v8
@@ -211,20 +234,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
+          source scripts/release-metadata.sh
+
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" dist-release/*.tar.gz dist-release/*.zip dist-release/checksums.txt dist-release/install.sh dist-release/install.ps1 --clobber
-            if [[ "${{ steps.release.outputs.is_prerelease }}" == "true" ]]; then
-              gh release edit "${TAG}" --draft=false --prerelease --title "Tentgent ${TAG}" --notes-file release-notes.md
-            else
-              gh release edit "${TAG}" --draft=false --latest --title "Tentgent ${TAG}" --notes-file release-notes.md
-            fi
+            release_flags=()
+            while IFS= read -r flag; do
+              release_flags+=("${flag}")
+            done < <(release_edit_flags "${{ steps.release.outputs.is_prerelease }}")
+            gh release edit "${TAG}" "${release_flags[@]}" --title "Tentgent ${TAG}" --notes-file release-notes.md
           else
             release_flags=()
-            if [[ "${{ steps.release.outputs.is_prerelease }}" == "true" ]]; then
-              release_flags+=(--prerelease)
-            else
-              release_flags+=(--latest)
-            fi
+            while IFS= read -r flag; do
+              release_flags+=("${flag}")
+            done < <(release_create_flags "${{ steps.release.outputs.is_prerelease }}")
             gh release create "${TAG}" \
               dist-release/*.tar.gz \
               dist-release/*.zip \
@@ -232,6 +255,37 @@ jobs:
               dist-release/install.sh \
               dist-release/install.ps1 \
               "${release_flags[@]}" \
+              --verify-tag \
               --title "Tentgent ${TAG}" \
               --notes-file release-notes.md
+          fi
+
+      - name: Verify release state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          EXPECTED_PRERELEASE: ${{ steps.release.outputs.is_prerelease }}
+        run: |
+          actual_prerelease="$(gh release view "${TAG}" --json isPrerelease --jq '.isPrerelease')"
+          if [[ "${actual_prerelease}" != "${EXPECTED_PRERELEASE}" ]]; then
+            echo "release ${TAG} prerelease state is ${actual_prerelease}, expected ${EXPECTED_PRERELEASE}" >&2
+            exit 1
+          fi
+
+          actual_latest="$(gh release list --limit 100 --json tagName,isLatest,isPrerelease --jq ".[] | select(.tagName == \"${TAG}\") | .isLatest")"
+          if [[ -z "${actual_latest}" ]]; then
+            echo "release ${TAG} was not found in gh release list output" >&2
+            exit 1
+          fi
+
+          if [[ "${EXPECTED_PRERELEASE}" == "true" && "${actual_latest}" == "true" ]]; then
+            echo "release ${TAG} is a prerelease but is still marked latest" >&2
+            echo "Manually clear the latest marker or publish a stable latest release before rerunning this workflow." >&2
+            exit 1
+          fi
+
+          if [[ "${EXPECTED_PRERELEASE}" == "false" && "${actual_latest}" != "true" ]]; then
+            echo "release ${TAG} is stable but is not marked latest" >&2
+            exit 1
           fi

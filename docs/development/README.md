@@ -48,6 +48,14 @@ make check
 make run-cli ARGS='--help'
 ```
 
+Check release tag parsing and prerelease flag helpers:
+
+```bash
+bash scripts/test-release-metadata.sh
+bash -n scripts/release-metadata.sh
+bash -n scripts/test-release-metadata.sh
+```
+
 ## CLI Help
 
 Inspect layered help:
