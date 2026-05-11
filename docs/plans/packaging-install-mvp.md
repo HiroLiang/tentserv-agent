@@ -489,21 +489,27 @@ Review target:
 
 ### H4: Install, Upgrade, And Uninstall Smoke
 
-- Status: planned.
-- test install from the tap:
+- Status: implemented and validated against the public GitHub tap on 2026-05-11.
+- tested install from the tap:
   - `brew tap hiroliang/tap`
   - `brew install hiroliang/tap/tentgent`
-  - `tentgent --version`
-  - run the release-safe runtime bootstrap command from H2.5
-  - `tentgent doctor`
-- test reinstall/upgrade:
-  - `brew reinstall tentgent`
-  - `brew upgrade tentgent`
-- test uninstall:
-  - `brew uninstall tentgent`
-  - verify `tentgent` is no longer on `PATH`
-- verify uninstall removes installed binaries/support files but does not remove
-  `TENTGENT_HOME`
+  - `/opt/homebrew/opt/tentgent/bin/tentgent -V`
+  - `TENTGENT_HOME=<tmp> /opt/homebrew/opt/tentgent/bin/tentgent runtime bootstrap`
+  - `TENTGENT_HOME=<tmp> /opt/homebrew/opt/tentgent/bin/tentgent doctor`
+- tested reinstall/upgrade:
+  - `brew reinstall hiroliang/tap/tentgent`
+  - `brew upgrade hiroliang/tap/tentgent`
+- tested uninstall:
+  - `brew uninstall hiroliang/tap/tentgent`
+  - verified `/opt/homebrew/opt/tentgent` was removed
+  - verified the temporary `TENTGENT_HOME` managed Python runtime remained
+- verified result:
+  - formula installs and restores `tentgent 0.3.2`
+  - full runtime bootstrap succeeds in an isolated temporary `TENTGENT_HOME`
+  - `tentgent doctor` reports ready with backend dependency-gated warnings only
+  - reinstall and uninstall do not delete runtime-home data
+  - local `~/.local/bin/tentgent` PATH shadowing is machine state, not a formula
+    defect
 
 Review target:
 
