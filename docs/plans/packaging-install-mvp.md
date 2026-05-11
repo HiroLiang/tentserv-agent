@@ -360,17 +360,183 @@ Review target:
 - a Windows x86_64 GitHub Actions runner can produce a zip artifact and draft release asset
 - a Windows user can install with `install.ps1` and run `tentgent doctor`
 
-### Slice 6: Homebrew Tap Formula
+## 0.3.x Homebrew Tap Distribution Track
 
-- Status: planned.
-- create or document `homebrew-tap`
-- add `Formula/tentgent.rb`
-- use the same release artifact and checksum
-- add formula test
+This track takes the implemented release/install pipeline from a GitHub Release
+installer flow to a project-owned Homebrew tap. It does not submit to
+`homebrew/core`; the first goal is a reliable `brew tap tentserv/tap` install
+that can install, upgrade, and uninstall without touching user runtime data.
+
+### H0: 0.3.x Release Readiness
+
+- Status: implemented in the active workspace.
+- promote the user-facing baseline from `v0.3.0-alpha.2` to a stable `v0.3.0`
+  release target
+- update workspace version, installer defaults, pinned install examples, and
+  version notes
+- keep historical alpha notes intact for release history
+- ensure README onboarding still routes through install, key setup, model
+  lifecycle, one-shot chat, server chat, daemon chat, TUI, uninstall, version
+  notes, and full CLI docs
+- run release-readiness checks before tagging:
+  - `cargo test --workspace`
+  - `cargo fmt --check`
+  - `git diff --check`
 
 Review target:
 
-- `brew install tentgent` works from the tap
+- the repository is ready for a stable `v0.3.0` tag without changing runtime
+  data contracts or public HTTP schemas
+
+### H1: Stable Tag And Release Assets
+
+- Status: planned.
+- create a stable `v0.3.x` tag
+- verify the release workflow marks stable tags as latest and not prerelease
+- confirm stable asset names for:
+  - `tentgent-<version>-aarch64-apple-darwin.tar.gz`
+  - `tentgent-<version>-x86_64-apple-darwin.tar.gz`
+  - `tentgent-<version>-x86_64-pc-windows-msvc.zip`
+  - `checksums.txt`
+  - `install.sh`
+  - `install.ps1`
+- smoke-test direct asset downloads and checksum verification
+
+Review target:
+
+- a stable tag has GitHub Release assets that a Homebrew formula can reference
+  by versioned URL and `sha256`
+
+### H2: Create Project-Owned Homebrew Tap
+
+- Status: planned.
+- create or document the `tentserv/homebrew-tap` repository
+- add `Formula/tentgent.rb`
+- add tap README install, upgrade, and uninstall examples:
+  - `brew tap tentserv/tap`
+  - `brew install tentgent`
+  - `brew uninstall tentgent`
+- keep `homebrew/core` submission explicitly out of scope
+
+Review target:
+
+- a user can add the project-owned tap and see the intended install command
+
+### H2.5: Homebrew Runtime Bootstrap Entry Point
+
+- Status: planned.
+- keep the existing release installers as the full bootstrap path:
+  - `install.sh` copies support files, runs packaged `bootstrap-python-env.sh`,
+    downloads pinned `uv` into Tentgent runtime cache, syncs the managed Python
+    environment, and runs `tentgent doctor`
+  - `install.ps1` does the equivalent Windows bootstrap
+- do not make the Homebrew formula run Python bootstrap, download pinned `uv`,
+  download managed Python, or mutate `TENTGENT_HOME` during `brew install`
+- add or confirm a release-safe CLI bootstrap command for package-manager
+  installs, using the packaged bootstrap scripts and pinned `uv` cache instead
+  of requiring a user-installed `uv`
+- keep the existing developer-only `doctor --fix` path separate unless it is
+  refactored to use the same packaged pinned-bootstrap mechanism
+- expose dry-run or plan output so users and tests can see the resolved Python
+  project, managed env, pinned `uv` path, and cache paths before mutation
+- update formula caveats and docs to send Homebrew users through the
+  release-safe bootstrap command before `tentgent doctor`
+
+Review target:
+
+- after `brew install`, a user can bootstrap Tentgent's managed Python runtime
+  without preinstalling `uv`, while `brew install` itself remains lightweight
+  and side-effect-limited
+
+### H3: Formula MVP
+
+- Status: planned.
+- use versioned GitHub Release macOS tarballs and exact `sha256` values
+- install `bin/tentgent`
+- install support files under the Homebrew prefix/pkgshare if needed by the
+  release artifact shape
+- do not run Python bootstrap, download `uv`, download models, start daemons, or
+  mutate `TENTGENT_HOME` during `brew install`
+- add a small `test do` block, preferably `tentgent --version`
+- use `caveats` for next steps:
+  - release-safe runtime bootstrap command from H2.5
+  - `tentgent doctor`
+  - `tentgent tui`
+
+Review target:
+
+- `brew install tentserv/tap/tentgent` installs the CLI without heavyweight
+  runtime side effects
+
+### H4: Install, Upgrade, And Uninstall Smoke
+
+- Status: planned.
+- test install from the tap:
+  - `brew tap tentserv/tap`
+  - `brew install tentgent`
+  - `tentgent --version`
+  - run the release-safe runtime bootstrap command from H2.5
+  - `tentgent doctor`
+- test reinstall/upgrade:
+  - `brew reinstall tentgent`
+  - `brew upgrade tentgent`
+- test uninstall:
+  - `brew uninstall tentgent`
+  - verify `tentgent` is no longer on `PATH`
+- verify uninstall removes installed binaries/support files but does not remove
+  `TENTGENT_HOME`
+
+Review target:
+
+- Homebrew install and uninstall behavior is predictable and does not delete
+  models, adapters, datasets, sessions, servers, train records, logs, provider
+  secrets, or managed runtime caches
+
+### H5: User Docs And README Rewrite
+
+- Status: planned.
+- make Homebrew the preferred macOS package-manager path once the tap works
+- keep `install.sh` and pinned release installers documented as reproducible
+  fallback paths
+- add Homebrew install, upgrade, and uninstall examples to:
+  - `README.md`
+  - `docs/user/install.md`
+  - localized README files
+- keep full CLI docs linked from README rather than duplicating command
+  reference content
+- document destructive runtime-home deletion separately from normal uninstall
+
+Review target:
+
+- a new user can install through Homebrew, configure keys, run chat/server/daemon
+  flows, enter the TUI, and uninstall without reading development docs
+
+### H6: Tap Update Automation
+
+- Status: planned.
+- add or document a helper that reads GitHub Release assets and `checksums.txt`
+- update formula version, URLs, and `sha256` values without hand-copy mistakes
+- run tap-local checks:
+  - `brew audit --formula Formula/tentgent.rb`
+  - `brew install --formula Formula/tentgent.rb`
+  - `brew test tentgent`
+
+Review target:
+
+- future `v0.3.x` patch tags can update the tap with a small, repeatable
+  workflow
+
+### H7: Evaluate `homebrew/core`
+
+- Status: deferred.
+- do not submit to `homebrew/core` until stable release usage, source-build
+  expectations, notability, and Python runtime bootstrap policy are clearer
+- continue using the project-owned tap for binary artifact distribution
+
+Review target:
+
+- a later maintainership decision can compare project-owned tap stability
+  against `homebrew/core` requirements without blocking 0.3.x distribution
 
 ### Slice 7: Signing And Notarization
 

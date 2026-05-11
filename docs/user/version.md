@@ -2,6 +2,39 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.3.0
+
+`v0.3.0` is the stable 0.3.x baseline for the TUI alpha line and the first
+release candidate for Homebrew tap distribution. It keeps the existing local
+workflow surface while consolidating the post-alpha correctness, packaging, and
+diagnostic fixes.
+
+Added:
+
+- Request-scoped session context summaries so `max_session_messages` is a prior
+  context budget instead of a raw-tail-only selector.
+- Rolling persisted session summaries so long sessions periodically preserve
+  old context as one durable summary plus recent raw messages.
+- Clear daemon-managed session chat boundaries; direct model-server chat is
+  stateless and rejects session-only fields.
+- Stale daemon runtime-home diagnostics that do not recreate missing runtime
+  directories during observational checks.
+- Release workflow safeguards so prerelease tags publish as GitHub prereleases
+  and do not become latest stable releases.
+- Human-facing size display in CLI/TUI tables and runtime footprint visibility
+  for the managed Python environment and bootstrap caches.
+- TUI chat transcript rendering with natural wrapping and transcript scrolling.
+- Stable install examples for `v0.3.0` ahead of the Homebrew tap formula slice.
+
+Known limits:
+
+- The TUI remains an alpha-line operator console. It is usable for workflow
+  testing and local operation, but the V2 shell/navigation redesign is still a
+  later track.
+- Homebrew tap distribution is planned next; `v0.3.0` prepares the stable tag
+  and release assets that the formula will point at.
+- macOS signing and notarization are still deferred.
+
 ## v0.3.0-alpha.2
 
 `v0.3.0-alpha.2` is a bugfix preview release for the TUI alpha line. It keeps

@@ -47,16 +47,16 @@ The installer does not edit the user's PowerShell profile automatically.
 Use a fixed version when you want reproducible installation:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0/install.ps1 | iex
 ```
 
 The pinned installer is tied to that release's artifact URL and version.
-`v0.3.0-alpha.2` is a bugfix preview release for the TUI alpha line; use
-`v0.2.0` if you want the previous non-alpha baseline.
+`v0.3.0` is the stable 0.3.x baseline; use `v0.2.0` if you want the previous
+daemon-parity baseline.
 
 ## Upgrade
 
@@ -157,7 +157,7 @@ Smoke-test install layout without downloading heavy Python ML dependencies:
 
 ```bash
 scripts/install.sh \
-  --archive dist/tentgent-0.3.0-alpha.2-aarch64-apple-darwin.tar.gz \
+  --archive dist/tentgent-0.3.0-aarch64-apple-darwin.tar.gz \
   --checksums dist/checksums.txt \
   --prefix /tmp/tentgent-install-smoke \
   --skip-python-bootstrap \

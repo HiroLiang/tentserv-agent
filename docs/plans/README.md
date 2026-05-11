@@ -19,6 +19,11 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Active Plan Index
 
+- [packaging-install-mvp.md](./packaging-install-mvp.md)
+  Active release/install track. The current execution track is the 0.3.x
+  project-owned Homebrew tap distribution path: stable release readiness, tag
+  assets, tap formula, install/upgrade/uninstall smoke, docs, and tap update
+  automation.
 - [tui-v2-optimization.md](./tui-v2-optimization.md)
   Deferred TUI interaction redesign plan. The `v0.3.0-alpha.1` TUI is treated
   as an archived baseline, not a UX contract.
@@ -30,16 +35,15 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Recommended Order
 
-1. Use the archived bugfix rollup when reviewing the `v0.3.0-alpha.2`
-   correctness fixes.
+1. Finish the packaging Homebrew track: H0 release readiness, then H1 stable tag
+   and release assets, then the project-owned tap formula.
 2. Redesign the TUI shell using `v0.3.0-alpha.1` as an archived baseline.
 
 ## Deferred Plans
 
-- [packaging-install-mvp.md](./packaging-install-mvp.md)
-  Mostly implemented release/install track; Homebrew tap and the macOS
-  Developer ID signing/notarization slice remain deferred until the TUI and
-  installer surfaces are ready to ship.
+- macOS Developer ID signing and notarization remain deferred inside
+  [packaging-install-mvp.md](./packaging-install-mvp.md) until the unsigned
+  project-owned tap flow is stable.
 
 ## Archived Plans
 

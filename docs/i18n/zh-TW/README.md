@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 若你想要可重現的固定版本安裝，請指定版本：
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0-alpha.2/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0/install.ps1 | iex
 ```
 
 接著確認預設安裝位置在 `PATH` 中，並檢查 runtime：
@@ -189,7 +189,7 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 
 ## 版本說明
 
-`v0.3.0-alpha.2` 是 TUI alpha bugfix preview release，修正 session context、rolling persisted summary、daemon/server chat 邊界、stale daemon diagnostics、prerelease workflow、human-facing size display 與 runtime footprint visibility。
+`v0.3.0` 是 0.3.x stable baseline，整理 TUI alpha line、session context 修正、daemon/server chat 邊界、release safety、human-facing size display、runtime footprint visibility 與 transcript rendering 改善。
 
 版本功能與限制請看 [docs/user/version.md](../../../docs/user/version.md)。
 
