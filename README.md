@@ -25,10 +25,14 @@ keychain.
 
 ## Install The Tool
 
-Recommended macOS install from the latest GitHub Release:
+Recommended macOS install through the project Homebrew tap:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | sh
+brew tap hiroliang/tap
+brew install hiroliang/tap/tentgent
+tentgent runtime bootstrap
+tentgent doctor
+tentgent --version
 ```
 
 Recommended Windows PowerShell install from the latest GitHub Release:
@@ -37,7 +41,8 @@ Recommended Windows PowerShell install from the latest GitHub Release:
 irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
 ```
 
-Install a pinned version when you want a reproducible setup:
+Use GitHub Release installers when you want a pinned or reproducible
+script-based setup:
 
 ```bash
 curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.sh | sh
@@ -47,27 +52,15 @@ curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/
 irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.ps1 | iex
 ```
 
-Then make sure the default install location is on `PATH` and verify the runtime:
+If you previously installed with `install.sh`, `~/.local/bin/tentgent` may
+shadow the Homebrew binary. Check the Homebrew build directly with:
 
 ```bash
-case ":$PATH:" in
-  *":$HOME/.local/bin:"*) ;;
-  *) export PATH="$HOME/.local/bin:$PATH" ;;
-esac
-tentgent doctor
-tentgent --version
+/opt/homebrew/opt/tentgent/bin/tentgent -V
 ```
 
-Package-manager installs such as Homebrew install the CLI and support files
-only. Prepare the managed Python runtime explicitly before first local runtime
-use:
-
-```bash
-tentgent runtime bootstrap
-tentgent doctor
-```
-
-Upgrade by running the installer again. User runtime data under `TENTGENT_HOME` is preserved.
+Upgrade Homebrew installs with `brew upgrade hiroliang/tap/tentgent`. User
+runtime data under `TENTGENT_HOME` is preserved.
 
 See [docs/user/install.md](./docs/user/install.md) for install, upgrade, pinned versions, local package smoke tests, and uninstall notes.
 
@@ -195,6 +188,12 @@ The TUI is an operator console for daemon discovery, chat, jobs, resources, stor
 ## Remove The Tool
 
 Remove installed binaries and support files without deleting user runtime data:
+
+```bash
+brew uninstall hiroliang/tap/tentgent
+```
+
+For direct `install.sh` installs, remove the installed files:
 
 ```bash
 rm -f "$HOME/.local/bin/tentgent"

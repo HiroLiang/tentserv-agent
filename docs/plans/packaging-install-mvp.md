@@ -138,8 +138,8 @@ The installer must:
 Desired user command:
 
 ```text
-brew tap tentserv/tap
-brew install tentgent
+brew tap hiroliang/tap
+brew install hiroliang/tap/tentgent
 ```
 
 Use a project-owned tap first, not `homebrew/core`, because Tentgent may ship binary artifacts and should prove packaging stability before a public tap submission.
@@ -364,7 +364,7 @@ Review target:
 
 This track takes the implemented release/install pipeline from a GitHub Release
 installer flow to a project-owned Homebrew tap. It does not submit to
-`homebrew/core`; the first goal is a reliable `brew tap tentserv/tap` install
+`homebrew/core`; the first goal is a reliable `brew tap hiroliang/tap` install
 that can install, upgrade, and uninstall without touching user runtime data.
 
 ### H0: 0.3.x Release Readiness
@@ -416,7 +416,7 @@ Review target:
 - add tap README install, upgrade, and uninstall examples:
   - `brew tap hiroliang/tap`
   - `brew install hiroliang/tap/tentgent`
-  - `brew uninstall tentgent`
+  - `brew uninstall hiroliang/tap/tentgent`
 - keep `homebrew/core` submission explicitly out of scope
 
 Review target:
@@ -519,17 +519,19 @@ Review target:
 
 ### H5: User Docs And README Rewrite
 
-- Status: planned.
-- make Homebrew the preferred macOS package-manager path once the tap works
+- Status: implemented.
+- make Homebrew the preferred macOS package-manager path now that the tap works
 - keep `install.sh` and pinned release installers documented as reproducible
   fallback paths
-- add Homebrew install, upgrade, and uninstall examples to:
+- added Homebrew install, upgrade, and uninstall examples to:
   - `README.md`
   - `docs/user/install.md`
   - localized README files
 - keep full CLI docs linked from README rather than duplicating command
   reference content
 - document destructive runtime-home deletion separately from normal uninstall
+- document `~/.local/bin/tentgent` PATH shadowing as local machine state when
+  users previously installed with `install.sh`
 
 Review target:
 

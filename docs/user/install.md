@@ -4,24 +4,34 @@ Use this document for user-facing install and upgrade flows.
 
 ## Latest Install On macOS
 
-Install the latest GitHub Release:
+Install through the project Homebrew tap:
+
+```bash
+brew tap hiroliang/tap
+brew install hiroliang/tap/tentgent
+tentgent runtime bootstrap
+tentgent doctor
+tentgent --version
+```
+
+Homebrew installs the CLI and support files only. `tentgent runtime bootstrap`
+creates or syncs the managed Python runtime under `TENTGENT_HOME`.
+
+If you previously installed with `install.sh`, the old
+`~/.local/bin/tentgent` may shadow the Homebrew binary on `PATH`. Check the
+Homebrew build directly with:
+
+```bash
+/opt/homebrew/opt/tentgent/bin/tentgent -V
+```
+
+## Direct GitHub Release Installer On macOS
+
+Use the direct installer when you want a script-based install or pinned release
+artifact. The direct installer runs Python bootstrap by default:
 
 ```bash
 curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | sh
-```
-
-Then ensure the default install location is on `PATH`:
-
-```bash
-case ":$PATH:" in
-  *":$HOME/.local/bin:"*) ;;
-  *) export PATH="$HOME/.local/bin:$PATH" ;;
-esac
-```
-
-Verify the runtime:
-
-```bash
 tentgent doctor
 ```
 
@@ -44,7 +54,7 @@ The installer does not edit the user's PowerShell profile automatically.
 
 ## Pinned Install
 
-Use a fixed version when you want reproducible installation:
+Use a fixed direct-installer version when you want reproducible installation:
 
 ```bash
 curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.sh | sh
@@ -60,7 +70,17 @@ daemon-parity baseline.
 
 ## Upgrade
 
-Upgrade by running the installer again:
+Upgrade Homebrew installs with:
+
+```bash
+brew update
+brew upgrade hiroliang/tap/tentgent
+tentgent runtime bootstrap
+tentgent doctor
+tentgent --version
+```
+
+Upgrade direct installer installs by running the installer again:
 
 ```bash
 curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | sh
@@ -74,14 +94,20 @@ tentgent doctor
 tentgent --version
 ```
 
-The installer updates:
+The Homebrew formula updates:
+
+- `/opt/homebrew/Cellar/tentgent/<version>/bin/tentgent`
+- `/opt/homebrew/Cellar/tentgent/<version>/share/tentgent/python`
+- `/opt/homebrew/Cellar/tentgent/<version>/share/tentgent/scripts`
+
+The direct installer updates:
 
 - `~/.local/bin/tentgent`
 - `~/.local/share/tentgent/python`
 - `~/.local/share/tentgent/scripts`
 - the managed Python runtime under `TENTGENT_HOME/runtime/python-env`
 
-The installer should preserve:
+Install and upgrade flows should preserve:
 
 - models
 - adapters
@@ -89,14 +115,17 @@ The installer should preserve:
 - train records
 - server records
 - Keychain secrets
+- provider secrets
 - other user runtime data under `TENTGENT_HOME`
 
 ## Default Layout
 
 Default install locations:
 
-- macOS binary: `~/.local/bin/tentgent`
-- macOS support files: `~/.local/share/tentgent`
+- macOS Homebrew binary: `/opt/homebrew/opt/tentgent/bin/tentgent`
+- macOS Homebrew support files: `/opt/homebrew/opt/tentgent/share/tentgent`
+- macOS direct-installer binary: `~/.local/bin/tentgent`
+- macOS direct-installer support files: `~/.local/share/tentgent`
 - macOS runtime home: `~/Library/Application Support/com.tentserv.tentgent`
 - Windows binary: `%LOCALAPPDATA%\Programs\tentgent\bin\tentgent.exe`
 - Windows support files: `%LOCALAPPDATA%\Programs\tentgent\share\tentgent`
@@ -104,7 +133,7 @@ Default install locations:
 - managed Python runtime: `TENTGENT_HOME/runtime/python-env`
 - bootstrap cache: `TENTGENT_HOME/runtime/bootstrap`
 
-Users do not need to preinstall `uv`. The installer downloads pinned bootstrap tools into Tentgent-owned runtime cache.
+Users do not need to preinstall `uv`. Runtime bootstrap downloads pinned bootstrap tools into Tentgent-owned runtime cache.
 The managed Python runtime path may differ when `TENTGENT_PYTHON_ENV_DIR` is set.
 The bootstrap cache is split by purpose:
 
@@ -119,9 +148,9 @@ Do not remove `runtime/python-env` unless you are intentionally repairing or rei
 
 ## Runtime Bootstrap
 
-Direct installers run the managed Python bootstrap by default. Package-manager
-installs such as Homebrew install the CLI and support files only; run the
-runtime bootstrap explicitly after install or when Python dependencies change:
+Direct installers run the managed Python bootstrap by default. Homebrew installs
+the CLI and support files only; run the runtime bootstrap explicitly after
+install or when Python dependencies change:
 
 ```bash
 tentgent runtime bootstrap
@@ -134,7 +163,14 @@ sync and may still resolve the pinned bootstrap tool/cache.
 
 ## Uninstall
 
-Remove installed binaries and support files without deleting user runtime data:
+Remove Homebrew-installed binaries and support files without deleting user
+runtime data:
+
+```bash
+brew uninstall hiroliang/tap/tentgent
+```
+
+Remove direct-installer binaries and support files:
 
 ```bash
 rm -f "$HOME/.local/bin/tentgent"
