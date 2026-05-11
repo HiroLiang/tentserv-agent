@@ -120,7 +120,7 @@ That fallback is allowed only for development-source or explicit override mode.
 Installed-prefix runtime commands must use generated entry points from the managed Python environment and must not fall back to a user PATH `uv`.
 
 `tentgent doctor --fix` should use the same resolved Python project and environment, then run `uv --no-config sync --project <resolved-python-project>` with `UV_PROJECT_ENVIRONMENT=<resolved-python-env>`.
-This is the current developer bootstrap only. Public installers must not require users to preinstall `uv`; they must own the bootstrap step by bundling or downloading a pinned tool, using a prebuilt Python environment, or replacing the Python-source bootstrap strategy.
+This remains a developer bootstrap path. Public installers must not require users to preinstall `uv`; direct installers own bootstrap automatically, while package-manager installs should expose `tentgent runtime bootstrap` as the user-facing managed-runtime setup entry point.
 
 Installed release artifacts should place Python project files at:
 
@@ -165,7 +165,9 @@ runtime/bootstrap/
 `scripts/bootstrap-uv.sh` is the current installer-facing helper for this layout.
 It downloads a pinned `uv` release archive, verifies the pinned `sha256.sum` manifest first, verifies the selected archive from that manifest, then writes the executable and `manifest.toml` into the cache.
 
-`scripts/bootstrap-python-env.sh` is the current installer-facing helper for managed Python environment creation.
+`tentgent runtime bootstrap` is the public CLI entry point for managed Python environment creation in package-manager installs. It resolves the packaged Python project and managed environment, then delegates to `scripts/bootstrap-python-env.sh` so the pinned `uv` bootstrap behavior stays centralized.
+
+`scripts/bootstrap-python-env.sh` is installer-facing plumbing.
 It resolves the packaged or development Python project, ensures pinned `uv` is cached, and runs:
 
 ```text

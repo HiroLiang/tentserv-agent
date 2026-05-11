@@ -2,6 +2,27 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.3.2
+
+`v0.3.2` adds the package-manager friendly managed Python runtime setup entry
+point for the stable 0.3.x line.
+
+What changed:
+
+- Added `tentgent runtime bootstrap` so Homebrew/manual package installs can
+  prepare the managed Python runtime without calling packaged shell scripts
+  directly.
+- Added `tentgent runtime bootstrap --print-plan` for path inspection without
+  syncing.
+- Updated installed-runtime hints to point at the public CLI bootstrap command.
+
+Known limits:
+
+- Homebrew install stays lightweight and does not run Python bootstrap during
+  formula installation.
+- `--dry-run` asks `uv` to plan the sync and may still resolve pinned bootstrap
+  tooling/cache; use `--print-plan` for non-mutating inspection.
+
 ## v0.3.1
 
 `v0.3.1` is a macOS installer hotfix for the stable 0.3.x line. It keeps the
@@ -218,7 +239,7 @@ Included:
 - managed LoRA train plans
 - runnable MLX LoRA training loop
 - runnable PEFT safetensors LoRA training loop
-- installer-managed Python runtime bootstrap for normal installs
+- installer-managed Python runtime bootstrap for direct installs and `tentgent runtime bootstrap` for package-manager installs
 - Windows x86_64 `.zip` artifact and PowerShell installer
 
 Known limits:

@@ -4,6 +4,7 @@ mod chat;
 mod daemon;
 mod dataset;
 mod model;
+mod runtime;
 mod server;
 mod session;
 mod train;
@@ -14,6 +15,7 @@ pub use chat::ChatCommand;
 pub use daemon::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 pub use dataset::DatasetCommands;
 pub use model::ModelCommands;
+pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands};
 pub use server::{ServerCommands, ServerRunCommand};
 pub use session::SessionCommands;
 pub use train::{
@@ -67,6 +69,16 @@ pub enum Commands {
         long_about = "Open the Tentgent terminal UI operator console. The TUI uses the local daemon HTTP API for live runtime workflows and shared local config/AuthManager paths for bootstrap and setup."
     )]
     Tui(TuiCommand),
+    /// Inspect and prepare runtime support assets.
+    #[command(
+        name = "runtime",
+        about = "Inspect and prepare runtime support assets.",
+        long_about = "Inspect and prepare runtime support assets. Use `tentgent runtime bootstrap` after package-manager installs to create or sync the managed Python runtime without invoking packaged support scripts directly."
+    )]
+    Runtime {
+        #[command(subcommand)]
+        action: RuntimeCommands,
+    },
     /// Inspect and manage registered models and downloaded runtimes.
     #[command(
         name = "model",

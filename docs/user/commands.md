@@ -111,6 +111,26 @@ daemon metadata, then `http://127.0.0.1:8790`. Token discovery is `--token`,
 `TENTGENT_DAEMON_TOKEN`, then no token. The TUI never stores daemon tokens or
 provider secrets in config.
 
+## Runtime
+
+Prepare the managed Python runtime after package-manager installs such as
+Homebrew:
+
+```bash
+tentgent runtime bootstrap
+tentgent doctor
+```
+
+Inspect the paths that would be used without syncing:
+
+```bash
+tentgent runtime bootstrap --print-plan
+```
+
+Direct release installers run this bootstrap by default. Use this command when
+you install from a package manager, intentionally skipped installer bootstrap,
+or need to resync Python dependencies after an upgrade.
+
 ## Models
 
 Pull models from Hugging Face:

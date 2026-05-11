@@ -58,6 +58,16 @@ TENTGENT_HOME/runtime/python-env
 
 The actual path shown by `status` or `doctor` may differ when `TENTGENT_PYTHON_ENV_DIR` is set. Treat this environment as required runtime state. Do not remove it unless you are intentionally repairing or reinstalling the managed Python runtime.
 
+Package-manager installs such as Homebrew prepare this environment with:
+
+```bash
+tentgent runtime bootstrap
+```
+
+Use `tentgent runtime bootstrap --print-plan` to inspect resolved runtime paths
+without syncing. Direct release installers run the bootstrap automatically unless
+`--skip-python-bootstrap` is passed.
+
 Bootstrap data lives under:
 
 ```text

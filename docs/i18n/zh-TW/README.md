@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 若你想要可重現的固定版本安裝，請指定版本：
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.ps1 | iex
 ```
 
 接著確認預設安裝位置在 `PATH` 中，並檢查 runtime：
@@ -43,6 +43,13 @@ case ":$PATH:" in
 esac
 tentgent doctor
 tentgent --version
+```
+
+Homebrew 這類 package-manager 安裝只放 CLI 與支援檔案；第一次使用本地 runtime 前請先準備 managed Python runtime：
+
+```bash
+tentgent runtime bootstrap
+tentgent doctor
 ```
 
 升級方式是重新執行 installer。`TENTGENT_HOME` 下的使用者 runtime data 會被保留。
@@ -189,6 +196,8 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 
 ## 版本說明
 
+`v0.3.2` 加入 `tentgent runtime bootstrap`，作為 Homebrew / package-manager 安裝後準備 managed Python runtime 的公開入口。
+
 `v0.3.1` 是 0.3.x stable hotfix，補上 macOS release binary ad-hoc signing 與 installer 安裝後的 quarantine cleanup，降低下載安裝後被 macOS 直接 kill 的情況。
 
 版本功能與限制請看 [docs/user/version.md](../../../docs/user/version.md)。
@@ -248,7 +257,7 @@ Tentgent 會先讀 `.env` / env，再 fallback 到系統 Keychain。若要讓 `.
 - terminal UI operator console，可做 daemon discovery、chat、jobs、resources、store/server/training actions、session cleanup，以及受保護的本機 setup
 - managed LoRA train plans、durable run records、metrics/log inspection，以及可執行的 MLX / PEFT training loops
 - bounded transcript compaction 的本地 session，作為短期 working context
-- 一般安裝用的 installer-managed Python runtime bootstrap
+- 一般 installer 安裝用的 Python runtime bootstrap，以及 package-manager 安裝用的 `tentgent runtime bootstrap`
 
 目前限制：
 

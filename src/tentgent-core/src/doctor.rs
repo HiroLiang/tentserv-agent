@@ -473,10 +473,10 @@ fn check_python_version(
 fn python_bootstrap_hint(source: PythonRuntimeSource) -> &'static str {
     match source {
         PythonRuntimeSource::InstalledPrefix => {
-            "run the installer Python bootstrap, then run `tentgent doctor` again"
+            "run `tentgent runtime bootstrap`, then run `tentgent doctor` again"
         }
         PythonRuntimeSource::DevelopmentSource | PythonRuntimeSource::EnvironmentOverride => {
-            "run `tentgent doctor --fix` during development or use the installer Python bootstrap"
+            "run `tentgent doctor --fix` during development or `tentgent runtime bootstrap` for packaged installs"
         }
     }
 }

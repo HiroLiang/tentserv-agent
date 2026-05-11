@@ -47,15 +47,15 @@ The installer does not edit the user's PowerShell profile automatically.
 Use a fixed version when you want reproducible installation:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.ps1 | iex
 ```
 
 The pinned installer is tied to that release's artifact URL and version.
-`v0.3.1` is the current stable 0.3.x release; use `v0.2.0` if you want the previous
+`v0.3.2` is the current stable 0.3.x release; use `v0.2.0` if you want the previous
 daemon-parity baseline.
 
 ## Upgrade
@@ -117,6 +117,21 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 
 Do not remove `runtime/python-env` unless you are intentionally repairing or reinstalling the managed Python runtime.
 
+## Runtime Bootstrap
+
+Direct installers run the managed Python bootstrap by default. Package-manager
+installs such as Homebrew install the CLI and support files only; run the
+runtime bootstrap explicitly after install or when Python dependencies change:
+
+```bash
+tentgent runtime bootstrap
+tentgent doctor
+```
+
+Use `tentgent runtime bootstrap --print-plan` to inspect the resolved project,
+environment, and cache paths without syncing. `--dry-run` asks `uv` to plan the
+sync and may still resolve the pinned bootstrap tool/cache.
+
 ## Uninstall
 
 Remove installed binaries and support files without deleting user runtime data:
@@ -157,11 +172,12 @@ Smoke-test install layout without downloading heavy Python ML dependencies:
 
 ```bash
 scripts/install.sh \
-  --archive dist/tentgent-0.3.1-aarch64-apple-darwin.tar.gz \
+  --archive dist/tentgent-0.3.2-aarch64-apple-darwin.tar.gz \
   --checksums dist/checksums.txt \
   --prefix /tmp/tentgent-install-smoke \
   --skip-python-bootstrap \
   --skip-doctor
 ```
 
-Omit `--skip-python-bootstrap` to run the full managed Python bootstrap.
+Omit `--skip-python-bootstrap` to run the full managed Python bootstrap, or run
+`tentgent runtime bootstrap` afterward against the installed support files.

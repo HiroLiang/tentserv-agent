@@ -531,7 +531,7 @@ fn hf_snapshot_command(python_runtime: &PythonRuntime) -> Result<Command, ModelE
     if python_runtime.source() == PythonRuntimeSource::InstalledPrefix {
         return Err(ModelError::HfHelper {
             message: format!(
-                "Hugging Face snapshot helper is missing at `{}`; run the installer Python bootstrap or `tentgent doctor` to repair the managed runtime",
+                "Hugging Face snapshot helper is missing at `{}`; run `tentgent runtime bootstrap` or `tentgent doctor` to repair the managed runtime",
                 script.display()
             ),
         });

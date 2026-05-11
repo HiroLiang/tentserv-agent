@@ -390,7 +390,8 @@ Review target:
 
 ### H1: Stable Tag And Release Assets
 
-- Status: planned.
+- Status: implemented in main for `v0.3.2`; tap formula switch follows after
+  release assets are published.
 - create a stable `v0.3.x` tag
 - verify the release workflow marks stable tags as latest and not prerelease
 - confirm stable asset names for:

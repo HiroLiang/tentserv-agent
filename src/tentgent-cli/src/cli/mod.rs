@@ -12,6 +12,7 @@ mod display;
 mod doctor;
 mod model;
 mod python_runtime;
+mod runtime;
 mod runtime_footprint;
 mod server;
 mod session;
@@ -43,6 +44,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
         Commands::Tui(command) => tui::handle_tui_command(command).await?,
+        Commands::Runtime { action } => runtime::handle_runtime_command(action)?,
         Commands::Status => status::handle_status_command()?,
         Commands::Train { action } => train::handle_train_command(action)?,
         Commands::Daemon { action } => daemon::handle_daemon_command(action).await?,
@@ -130,6 +132,43 @@ mod tests {
                 assert_eq!(command.daemon_url.as_deref(), Some("http://127.0.0.1:8790"));
                 assert_eq!(command.token.as_deref(), Some("secret"));
             }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_runtime_bootstrap_options() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "runtime",
+            "bootstrap",
+            "--project",
+            "/tmp/tentgent-python",
+            "--env",
+            "/tmp/tentgent-env",
+            "--uv",
+            "/tmp/uv",
+            "--dry-run",
+            "--print-plan",
+        ])
+        .expect("parse runtime bootstrap");
+
+        match cli.command {
+            Commands::Runtime { action } => match action {
+                super::commands::RuntimeCommands::Bootstrap(command) => {
+                    assert_eq!(
+                        command.project.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent-python"))
+                    );
+                    assert_eq!(
+                        command.env.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent-env"))
+                    );
+                    assert_eq!(command.uv.as_deref(), Some(std::path::Path::new("/tmp/uv")));
+                    assert!(command.dry_run);
+                    assert!(command.print_plan);
+                }
+            },
             other => panic!("unexpected command: {other:?}"),
         }
     }

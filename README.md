@@ -40,11 +40,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 Install a pinned version when you want a reproducible setup:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.ps1 | iex
 ```
 
 Then make sure the default install location is on `PATH` and verify the runtime:
@@ -56,6 +56,15 @@ case ":$PATH:" in
 esac
 tentgent doctor
 tentgent --version
+```
+
+Package-manager installs such as Homebrew install the CLI and support files
+only. Prepare the managed Python runtime explicitly before first local runtime
+use:
+
+```bash
+tentgent runtime bootstrap
+tentgent doctor
 ```
 
 Upgrade by running the installer again. User runtime data under `TENTGENT_HOME` is preserved.
@@ -202,6 +211,7 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.3.2`: adds `tentgent runtime bootstrap` as the package-manager friendly managed Python runtime setup entry point.
 - `v0.3.1`: macOS installer hotfix that ad-hoc signs release binaries and clears quarantine metadata after install.
 - `v0.3.0`: stable 0.3.x baseline for the TUI alpha line, session context fixes, daemon/server boundaries, release safety, size display, runtime footprint visibility, and improved transcript rendering.
 - `v0.3.0-alpha.2`: bugfix preview for session context, rolling summaries, daemon/server boundaries, prerelease safety, size display, and runtime footprint visibility.
@@ -279,7 +289,7 @@ Included:
   store/server/training actions, session cleanup, and guarded local setup
 - managed LoRA train plans, durable run records, metrics/log inspection, and runnable MLX / PEFT training loops
 - local sessions with bounded transcript compaction for short-term working context
-- installer-managed Python runtime bootstrap for normal installs
+- installer-managed Python runtime bootstrap for direct installs and `tentgent runtime bootstrap` for package-manager installs
 
 Known limits:
 

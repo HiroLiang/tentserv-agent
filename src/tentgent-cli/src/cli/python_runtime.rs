@@ -41,7 +41,7 @@ pub fn require_python_script(
 fn missing_runtime_hint(runtime: &PythonRuntime) -> &'static str {
     match runtime.source() {
         PythonRuntimeSource::InstalledPrefix => {
-            "run the installer Python bootstrap, then run `tentgent doctor` to verify the managed runtime"
+            "run `tentgent runtime bootstrap`, then run `tentgent doctor` to verify the managed runtime"
         }
         PythonRuntimeSource::DevelopmentSource | PythonRuntimeSource::EnvironmentOverride => {
             "run `tentgent doctor --fix` during development or `tentgent status` to inspect runtime asset paths"

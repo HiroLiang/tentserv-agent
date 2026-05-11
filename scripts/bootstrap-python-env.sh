@@ -12,8 +12,9 @@ Usage: scripts/bootstrap-python-env.sh [OPTIONS]
 Create or sync Tentgent's managed Python runtime environment using the pinned
 uv executable from the Tentgent bootstrap cache.
 
-This is installer-owned bootstrap plumbing. Normal runtime commands should use
-the generated tentgent-* entry points, not uv.
+This is installer-owned bootstrap plumbing. Normal installs should invoke it
+through `tentgent runtime bootstrap`, then use the generated tentgent-* entry
+points rather than uv.
 
 Options:
   --project <PATH>  Python daemon project directory. Defaults to packaged or repo project.
@@ -81,6 +82,25 @@ resolve_python_env() {
     return
   fi
   echo "${RUNTIME_HOME}/runtime/python-env"
+}
+
+normalize_path_allow_missing() {
+  local raw="$1"
+  local path
+  case "${raw}" in
+    /*) path="${raw}" ;;
+    *) path="${PWD}/${raw}" ;;
+  esac
+
+  local dir
+  local base
+  dir="$(dirname "${path}")"
+  base="$(basename "${path}")"
+  if [[ -d "${dir}" ]]; then
+    echo "$(cd "${dir}" && pwd)/${base}"
+  else
+    echo "${path}"
+  fi
 }
 
 resolve_uv_path() {
@@ -188,8 +208,7 @@ done
 RUNTIME_HOME="$(default_runtime_home)"
 PROJECT_DIR="$(cd "$(resolve_python_project)" && pwd)"
 RAW_ENV_DIR="$(resolve_python_env)"
-mkdir -p "$(dirname "${RAW_ENV_DIR}")"
-ENV_DIR="$(cd "$(dirname "${RAW_ENV_DIR}")" && pwd)/$(basename "${RAW_ENV_DIR}")"
+ENV_DIR="$(normalize_path_allow_missing "${RAW_ENV_DIR}")"
 PYTHON_VERSION="${TENTGENT_BOOTSTRAP_PYTHON_VERSION:-${DEFAULT_PYTHON_VERSION}}"
 UV_CACHE_DIR="${TENTGENT_BOOTSTRAP_UV_CACHE_DIR:-${RUNTIME_HOME}/runtime/bootstrap/uv-cache}"
 UV_PATH=""
@@ -201,6 +220,7 @@ if [[ "${PRINT_PLAN}" == "true" ]]; then
   exit 0
 fi
 
+mkdir -p "$(dirname "${ENV_DIR}")"
 UV_PATH="$(resolve_uv_path)"
 [[ -x "${UV_PATH}" ]] || fail "pinned uv is missing or not executable: ${UV_PATH}"
 
