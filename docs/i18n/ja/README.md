@@ -27,11 +27,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 再現可能なセットアップにしたい場合は、version を固定して install します:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.ps1 | iex
 ```
 
 その後、デフォルトのインストール先を `PATH` に追加し、runtime を確認します:
@@ -189,7 +189,7 @@ models、adapters、datasets、sessions、servers、train records、その他 lo
 
 ## Version Notes
 
-`v0.3.0` は 0.3.x stable baseline です。TUI alpha line、session context fixes、daemon/server chat boundary、release safety、human-facing size display、runtime footprint visibility、transcript rendering 改善をまとめます。
+`v0.3.1` は 0.3.x stable hotfix です。macOS release binary の ad-hoc signing と installer 後の quarantine cleanup を追加し、ダウンロード後に macOS が binary を直接 kill するケースを減らします。
 
 version feature list と known limits は [docs/user/version.md](../../../docs/user/version.md) を参照してください。
 

@@ -40,11 +40,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 Install a pinned version when you want a reproducible setup:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.0/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.1/install.ps1 | iex
 ```
 
 Then make sure the default install location is on `PATH` and verify the runtime:
@@ -202,6 +202,7 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.3.1`: macOS installer hotfix that ad-hoc signs release binaries and clears quarantine metadata after install.
 - `v0.3.0`: stable 0.3.x baseline for the TUI alpha line, session context fixes, daemon/server boundaries, release safety, size display, runtime footprint visibility, and improved transcript rendering.
 - `v0.3.0-alpha.2`: bugfix preview for session context, rolling summaries, daemon/server boundaries, prerelease safety, size display, and runtime footprint visibility.
 - `v0.3.0-alpha.1`: TUI preview release with operator console workflows for chat, jobs, resources, store actions, server/training actions, picker-based create flows, session delete, and compact ref display.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="0.3.0"
+VERSION="0.3.1"
 DEFAULT_BASE_URL="https://agent.tentserv.com/releases"
 
 usage() {
@@ -245,6 +245,15 @@ cp -R "${EXTRACT_DIR}/share/tentgent/scripts" "${SHARE_DIR}/scripts"
 chmod +x "${BIN_DIR}/tentgent"
 chmod +x "${SHARE_DIR}/scripts/bootstrap-uv.sh"
 chmod +x "${SHARE_DIR}/scripts/bootstrap-python-env.sh"
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  if command -v xattr >/dev/null 2>&1; then
+    xattr -dr com.apple.quarantine "${BIN_DIR}/tentgent" "${SHARE_DIR}" 2>/dev/null || true
+  fi
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force --sign - "${BIN_DIR}/tentgent" >/dev/null 2>&1 || true
+  fi
+fi
 
 if [[ "${PYTHON_BOOTSTRAP}" == "true" ]]; then
   echo "==> Bootstrapping managed Python runtime"

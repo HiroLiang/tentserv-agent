@@ -55,6 +55,18 @@ checksum_command() {
   exit 1
 }
 
+sign_macos_binary() {
+  local binary_path="$1"
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    return
+  fi
+  if ! command -v codesign >/dev/null 2>&1; then
+    echo "warning: codesign not found; macOS binary will not be ad-hoc signed" >&2
+    return
+  fi
+  codesign --force --sign - "${binary_path}"
+}
+
 archive_extension_for_target() {
   local target="$1"
   case "${target}" in
@@ -183,6 +195,9 @@ main() {
     "${staging_dir}/share/tentgent/scripts"
 
   cp "${ROOT_DIR}/target/release/${binary_name}" "${staging_dir}/bin/${binary_name}"
+  case "${target}" in
+    *apple-darwin) sign_macos_binary "${staging_dir}/bin/${binary_name}" ;;
+  esac
   cp "${ROOT_DIR}/README.md" "${staging_dir}/README.md"
   cp "${ROOT_DIR}/LICENSE" "${staging_dir}/LICENSE"
   cp "${ROOT_DIR}/scripts/bootstrap-uv.sh" "${staging_dir}/share/tentgent/scripts/bootstrap-uv.sh"

@@ -2,6 +2,29 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.3.1
+
+`v0.3.1` is a macOS installer hotfix for the stable 0.3.x line. It keeps the
+`v0.3.0` feature surface and improves first-run reliability for downloaded
+release binaries.
+
+What changed:
+
+- macOS release packaging now ad-hoc signs the `tentgent` binary before it is
+  archived.
+- macOS installer runs a best-effort quarantine cleanup and ad-hoc re-sign after
+  copying the binary into the install prefix.
+- This reduces `zsh: killed` / Gatekeeper-style first-run failures for
+  non-notarized release artifacts.
+
+Known limits:
+
+- Developer ID signing and notarization are still planned for a later release
+  engineering slice.
+- Users who already installed `v0.3.0` and hit a killed binary can either
+  install `v0.3.1` or manually clear quarantine and ad-hoc sign the installed
+  binary.
+
 ## v0.3.0
 
 `v0.3.0` is the stable 0.3.x baseline for the TUI alpha line and the first
