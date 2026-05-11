@@ -24,3 +24,5 @@ __pycache__/
 
 # Local test artifacts and downloaded/generated model data
 /test-data/
+
+/homebrew-tap/
