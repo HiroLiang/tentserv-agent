@@ -410,12 +410,12 @@ Review target:
 
 ### H2: Create Project-Owned Homebrew Tap
 
-- Status: planned.
-- create or document the `tentserv/homebrew-tap` repository
+- Status: implemented.
+- create or document the `HiroLiang/homebrew-tap` repository
 - add `Formula/tentgent.rb`
 - add tap README install, upgrade, and uninstall examples:
-  - `brew tap tentserv/tap`
-  - `brew install tentgent`
+  - `brew tap hiroliang/tap`
+  - `brew install hiroliang/tap/tentgent`
   - `brew uninstall tentgent`
 - keep `homebrew/core` submission explicitly out of scope
 
@@ -425,7 +425,8 @@ Review target:
 
 ### H2.5: Homebrew Runtime Bootstrap Entry Point
 
-- Status: planned.
+- Status: implemented in main for `v0.3.2`; tap formula switch follows after
+  release assets are published.
 - keep the existing release installers as the full bootstrap path:
   - `install.sh` copies support files, runs packaged `bootstrap-python-env.sh`,
     downloads pinned `uv` into Tentgent runtime cache, syncs the managed Python
@@ -451,7 +452,12 @@ Review target:
 
 ### H3: Formula MVP
 
-- Status: planned.
+- Status: implemented and validated against the public GitHub tap on 2026-05-11.
+- switch the local Homebrew tap registration to the public GitHub tap:
+  - `git -C "$(brew --repository hiroliang/tap)" remote set-url origin https://github.com/HiroLiang/homebrew-tap.git`
+  - `brew update`
+  - verify `git -C "$(brew --repository hiroliang/tap)" remote -v` points at
+    GitHub, not a local workspace checkout
 - use versioned GitHub Release macOS tarballs and exact `sha256` values
 - install `bin/tentgent`
 - install support files under the Homebrew prefix/pkgshare if needed by the
@@ -463,18 +469,30 @@ Review target:
   - release-safe runtime bootstrap command from H2.5
   - `tentgent doctor`
   - `tentgent tui`
+- validate the formula from the public tap path:
+  - `brew update`
+  - `brew audit hiroliang/tap/tentgent`
+  - `brew reinstall hiroliang/tap/tentgent`
+  - `brew test hiroliang/tap/tentgent`
+  - `/opt/homebrew/opt/tentgent/bin/tentgent -V`
+  - `/opt/homebrew/opt/tentgent/bin/tentgent runtime bootstrap --print-plan`
+- verified result:
+  - tap remote is `https://github.com/HiroLiang/homebrew-tap.git`
+  - formula installs `tentgent 0.3.2`
+  - bootstrap print-plan resolves packaged Python and scripts under
+    `/opt/homebrew/Cellar/tentgent/0.3.2`
 
 Review target:
 
-- `brew install tentserv/tap/tentgent` installs the CLI without heavyweight
-  runtime side effects
+- `brew install hiroliang/tap/tentgent` installs the CLI from the public GitHub
+  tap without heavyweight runtime side effects
 
 ### H4: Install, Upgrade, And Uninstall Smoke
 
 - Status: planned.
 - test install from the tap:
-  - `brew tap tentserv/tap`
-  - `brew install tentgent`
+  - `brew tap hiroliang/tap`
+  - `brew install hiroliang/tap/tentgent`
   - `tentgent --version`
   - run the release-safe runtime bootstrap command from H2.5
   - `tentgent doctor`
