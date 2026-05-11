@@ -56,6 +56,26 @@ bash -n scripts/release-metadata.sh
 bash -n scripts/test-release-metadata.sh
 ```
 
+Update the project Homebrew tap after a stable GitHub Release is published:
+
+```bash
+bash scripts/update-homebrew-formula.sh --tag v0.3.3
+```
+
+The helper reads release `checksums.txt`, updates the local
+`hiroliang/tap` formula checkout, and prints the tap validation commands. It is
+edit-only: run `brew audit`, `brew install`, `brew test`, and tap git
+commit/push manually after reviewing the diff. Use `--dry-run` to preview the
+formula patch without writing.
+
+Check the tap updater itself:
+
+```bash
+bash scripts/test-update-homebrew-formula.sh
+bash -n scripts/update-homebrew-formula.sh
+bash -n scripts/test-update-homebrew-formula.sh
+```
+
 ## CLI Help
 
 Inspect layered help:

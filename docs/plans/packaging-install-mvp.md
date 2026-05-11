@@ -540,10 +540,18 @@ Review target:
 
 ### H6: Tap Update Automation
 
-- Status: planned.
-- add or document a helper that reads GitHub Release assets and `checksums.txt`
-- update formula version, URLs, and `sha256` values without hand-copy mistakes
-- run tap-local checks:
+- Status: implemented.
+- added `scripts/update-homebrew-formula.sh` as an edit-only helper that reads
+  GitHub Release `checksums.txt` for a stable tag and updates the local
+  `hiroliang/tap` formula checkout
+- helper updates the two macOS formula URLs and `sha256` values while leaving
+  caveats, install logic, tests, license, homepage, and unrelated formatting
+  untouched
+- helper rejects malformed tags, prerelease tags, missing formula files, and
+  missing macOS checksum entries with clear errors
+- added fixture coverage in `scripts/test-update-homebrew-formula.sh`,
+  including dry-run behavior and missing checksum failures
+- after running the helper, manually run tap-local checks:
   - `brew audit --formula Formula/tentgent.rb`
   - `brew install --formula Formula/tentgent.rb`
   - `brew test tentgent`
