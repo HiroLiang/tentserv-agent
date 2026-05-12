@@ -63,7 +63,16 @@ host_target() {
   case "${os}:${arch}" in
     Darwin:arm64) echo "aarch64-apple-darwin" ;;
     Darwin:x86_64) echo "x86_64-apple-darwin" ;;
+    Linux:x86_64) echo "x86_64-unknown-linux-gnu" ;;
     *) fail "unsupported install target: ${os}:${arch}; pass --target to override" ;;
+  esac
+}
+
+validate_install_target() {
+  local target="$1"
+  case "${target}" in
+    aarch64-apple-darwin | x86_64-apple-darwin | x86_64-unknown-linux-gnu) ;;
+    *) fail "unsupported install target: ${target}" ;;
   esac
 }
 
@@ -170,6 +179,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 TARGET="${TARGET:-$(host_target)}"
+validate_install_target "${TARGET}"
 PACKAGE_NAME="tentgent-${VERSION}-${TARGET}"
 ARCHIVE_NAME="${PACKAGE_NAME}.tar.gz"
 BASE_URL="${TENTGENT_INSTALL_BASE_URL:-${DEFAULT_BASE_URL}/${VERSION}}"

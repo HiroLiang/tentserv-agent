@@ -24,6 +24,13 @@ Use this directory for active or still-open implementation plans that are too la
   project-owned Homebrew tap distribution path: stable release readiness, tag
   assets, tap formula, install/upgrade/uninstall smoke, docs, and tap update
   automation.
+- [linux-release-support.md](./linux-release-support.md)
+  Planned Linux release/install track. Starts with GitHub Release tarballs and
+  `install.sh` support for `x86_64-unknown-linux-gnu`, then full runtime
+  bootstrap smoke.
+- [model-capabilities-embedding-rerank.md](./model-capabilities-embedding-rerank.md)
+  Planned model capability track for embedding and rerank models. Separates
+  model storage format from serving capability before adding non-chat endpoints.
 - [tui-v2-optimization.md](./tui-v2-optimization.md)
   Deferred TUI interaction redesign plan. The `v0.3.0-alpha.1` TUI is treated
   as an archived baseline, not a UX contract.
@@ -35,9 +42,10 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Recommended Order
 
-1. Finish the packaging Homebrew track: H0 release readiness, then H1 stable tag
-   and release assets, then the project-owned tap formula.
-2. Redesign the TUI shell using `v0.3.0-alpha.1` as an archived baseline.
+1. Add Linux release/install support now that the project-owned Homebrew tap is
+   stable enough for macOS distribution.
+2. Plan and implement model capabilities for embedding and rerank models.
+3. Redesign the TUI shell using `v0.3.0-alpha.1` as an archived baseline.
 
 ## Deferred Plans
 

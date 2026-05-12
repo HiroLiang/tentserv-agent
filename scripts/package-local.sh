@@ -7,14 +7,23 @@ VERSION="${TENTGENT_VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' "${ROOT_DIR}/
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/package-local.sh
+Usage: scripts/package-local.sh [OPTIONS]
 
 Build a release-like local Tentgent archive.
+
+Options:
+  --print-plan       Print the resolved package plan and exit without building.
+  -h, --help         Show this help.
 
 Environment:
   TENTGENT_VERSION  Override the package version.
   TENTGENT_TARGET   Override the target triple used in the artifact name.
 USAGE
+}
+
+fail() {
+  echo "error: $*" >&2
+  exit 1
 }
 
 uname_target() {
@@ -26,6 +35,7 @@ uname_target() {
   case "${os}:${arch}" in
     Darwin:arm64) echo "aarch64-apple-darwin" ;;
     Darwin:x86_64) echo "x86_64-apple-darwin" ;;
+    Linux:x86_64) echo "x86_64-unknown-linux-gnu" ;;
     MINGW*:x86_64 | MSYS*:x86_64 | CYGWIN*:x86_64) echo "x86_64-pc-windows-msvc" ;;
     *)
       echo "unsupported-${os}-${arch}" >&2
@@ -37,9 +47,16 @@ uname_target() {
 require_command() {
   local name="$1"
   if ! command -v "${name}" >/dev/null 2>&1; then
-    echo "error: required command not found: ${name}" >&2
-    exit 1
+    fail "required command not found: ${name}"
   fi
+}
+
+validate_package_target() {
+  local target="$1"
+  case "${target}" in
+    aarch64-apple-darwin | x86_64-apple-darwin | x86_64-pc-windows-msvc | x86_64-unknown-linux-gnu) ;;
+    *) fail "unsupported package target: ${target}" ;;
+  esac
 }
 
 checksum_command() {
@@ -93,6 +110,7 @@ host_matches_target() {
   case "${target}:${os}:${arch}" in
     aarch64-apple-darwin:Darwin:arm64) return 0 ;;
     x86_64-apple-darwin:Darwin:x86_64) return 0 ;;
+    x86_64-unknown-linux-gnu:Linux:x86_64) return 0 ;;
     x86_64-pc-windows-msvc:MINGW*:x86_64) return 0 ;;
     x86_64-pc-windows-msvc:MSYS*:x86_64) return 0 ;;
     x86_64-pc-windows-msvc:CYGWIN*:x86_64) return 0 ;;
@@ -107,6 +125,31 @@ windows_path() {
   else
     echo "${path}"
   fi
+}
+
+print_plan() {
+  local target="$1"
+  local archive_extension="$2"
+  local binary_name="$3"
+  local package_name="$4"
+  local archive_path="$5"
+  local checksums_path="$6"
+  local host_match="false"
+
+  if host_matches_target "${target}"; then
+    host_match="true"
+  fi
+
+  cat <<PLAN
+version: ${VERSION}
+target: ${target}
+archive extension: ${archive_extension}
+binary name: ${binary_name}
+package: ${package_name}
+archive: ${archive_path}
+checksums: ${checksums_path}
+host matches target: ${host_match}
+PLAN
 }
 
 create_archive() {
@@ -152,10 +195,23 @@ copy_python_project() {
 }
 
 main() {
-  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    usage
-    exit 0
-  fi
+  local print_plan_only="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --print-plan)
+        print_plan_only="true"
+        shift
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "unknown argument: $1"
+        ;;
+    esac
+  done
 
   local target
   local archive_extension
@@ -166,6 +222,7 @@ main() {
   local checksums_path
 
   target="${TENTGENT_TARGET:-$(uname_target)}"
+  validate_package_target "${target}"
   archive_extension="$(archive_extension_for_target "${target}")"
   binary_name="$(binary_name_for_target "${target}")"
   package_name="tentgent-${VERSION}-${target}"
@@ -173,13 +230,13 @@ main() {
   archive_path="${DIST_DIR}/${package_name}.${archive_extension}"
   checksums_path="${DIST_DIR}/checksums.txt"
 
-  if [[ "${target}" == "unsupported" ]]; then
-    echo "error: unsupported host target; set TENTGENT_TARGET explicitly to continue" >&2
-    exit 1
+  if [[ "${print_plan_only}" == "true" ]]; then
+    print_plan "${target}" "${archive_extension}" "${binary_name}" "${package_name}" "${archive_path}" "${checksums_path}"
+    exit 0
   fi
+
   if ! host_matches_target "${target}"; then
-    echo "error: ${target} packaging must run on a native matching host" >&2
-    exit 1
+    fail "${target} packaging must run on a native matching host"
   fi
 
   require_command cargo
