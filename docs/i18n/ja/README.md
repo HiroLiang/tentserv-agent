@@ -31,11 +31,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 再現可能な script-based setup にしたい場合は GitHub Release installer を使います:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.ps1 | iex
 ```
 
 以前 `install.sh` で install していた場合、`~/.local/bin/tentgent` が
@@ -195,6 +195,8 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 models、adapters、datasets、sessions、servers、train records、その他 local runtime data を消したい場合以外、`TENTGENT_HOME` は削除しないでください。uninstall と runtime-home の詳細は [docs/user/install.md](../../../docs/user/install.md) と [docs/user/runtime.md](../../../docs/user/runtime.md) を参照してください。
 
 ## Version Notes
+
+`v0.3.3` は Homebrew tap update tooling を追加し、stable release 後の formula URL と checksum 更新を repeatable にします。
 
 `v0.3.2` は `tentgent runtime bootstrap` を追加し、Homebrew / package-manager install 後の managed Python runtime setup を公開 CLI 入口にします。
 

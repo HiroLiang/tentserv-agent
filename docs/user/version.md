@@ -2,6 +2,29 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.3.3
+
+`v0.3.3` is a Homebrew maintenance release for the stable 0.3.x line. It keeps
+the runtime and CLI feature surface from `v0.3.2` while making future tap
+updates repeatable.
+
+What changed:
+
+- Added `scripts/update-homebrew-formula.sh` so maintainers can update the
+  project Homebrew tap from GitHub Release `checksums.txt` without hand-copying
+  macOS artifact URLs or SHA-256 values.
+- Added fixture tests for formula update, dry-run, missing checksum, malformed
+  tag, and prerelease rejection behavior.
+- Documented the release-to-tap update workflow in the developer guide.
+
+Known limits:
+
+- The tap updater is edit-only. It does not run `brew`, commit, or push the tap
+  repository automatically.
+- Homebrew installs still require explicit `tentgent runtime bootstrap` before
+  local Python runtime use.
+- Developer ID signing and notarization are still deferred.
+
 ## v0.3.2
 
 `v0.3.2` adds the package-manager friendly managed Python runtime setup entry

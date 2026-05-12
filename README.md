@@ -45,11 +45,11 @@ Use GitHub Release installers when you want a pinned or reproducible
 script-based setup:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.ps1 | iex
 ```
 
 If you previously installed with `install.sh`, `~/.local/bin/tentgent` may
@@ -210,6 +210,7 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.3.3`: adds Homebrew tap update tooling for repeatable formula URL and checksum updates after stable releases.
 - `v0.3.2`: adds `tentgent runtime bootstrap` as the package-manager friendly managed Python runtime setup entry point.
 - `v0.3.1`: macOS installer hotfix that ad-hoc signs release binaries and clears quarantine metadata after install.
 - `v0.3.0`: stable 0.3.x baseline for the TUI alpha line, session context fixes, daemon/server boundaries, release safety, size display, runtime footprint visibility, and improved transcript rendering.

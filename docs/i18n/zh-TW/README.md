@@ -31,11 +31,11 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install
 若你想要可重現的 script-based 安裝，請使用 GitHub Release installer：
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.2/install.ps1 | iex
+irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.ps1 | iex
 ```
 
 如果你之前用 `install.sh` 安裝過，`~/.local/bin/tentgent` 可能會在
@@ -195,6 +195,8 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 除非你確定要刪掉 models、adapters、datasets、sessions、servers、train records 與其他本地 runtime data，否則不要刪 `TENTGENT_HOME`。移除與 runtime-home 細節請看 [docs/user/install.md](../../../docs/user/install.md) 與 [docs/user/runtime.md](../../../docs/user/runtime.md)。
 
 ## 版本說明
+
+`v0.3.3` 加入 Homebrew tap update tooling，讓 stable release 後的 formula URL 與 checksum 更新更可重複。
 
 `v0.3.2` 加入 `tentgent runtime bootstrap`，作為 Homebrew / package-manager 安裝後準備 managed Python runtime 的公開入口。
 
