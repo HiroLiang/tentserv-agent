@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="0.3.4-alpha.1"
+VERSION="0.3.4-alpha.2"
 DEFAULT_BASE_URL="https://agent.tentserv.com/releases"
 
 usage() {
