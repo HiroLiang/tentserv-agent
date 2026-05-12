@@ -5,6 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root_dir="$(cd "${script_dir}/.." && pwd)"
 install_script="${script_dir}/install.sh"
 package_script="${script_dir}/package-local.sh"
+package_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "${root_dir}/Cargo.toml" | head -n 1)"
 
 fail() {
   echo "test-linux-release-targets: $*" >&2
@@ -72,7 +73,7 @@ dist_after_print_plan="$(dist_snapshot)"
 assert_contains "${package_plan}" "target: x86_64-unknown-linux-gnu" "package print-plan"
 assert_contains "${package_plan}" "archive extension: tar.gz" "package print-plan"
 assert_contains "${package_plan}" "binary name: tentgent" "package print-plan"
-assert_contains "${package_plan}" "tentgent-0.3.3-x86_64-unknown-linux-gnu.tar.gz" "package print-plan"
+assert_contains "${package_plan}" "tentgent-${package_version}-x86_64-unknown-linux-gnu.tar.gz" "package print-plan"
 
 if [[ "${dist_before_print_plan}" != "${dist_after_print_plan}" ]]; then
   fail "package --print-plan changed dist/"
