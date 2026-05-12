@@ -20,6 +20,7 @@ Options:
   --project <PATH>  Python daemon project directory. Defaults to packaged or repo project.
   --env <PATH>      Managed Python environment path. Defaults to TENTGENT_HOME/runtime/python-env.
   --uv <PATH>       Use an explicit pinned uv executable path.
+  --profile <NAME>  Runtime dependency profile: base, local-model, training, or full. Defaults to base.
   --dry-run         Ask uv to plan the sync without modifying the environment.
   --print-plan      Print resolved paths without syncing.
   -h, --help        Show this help.
@@ -31,6 +32,7 @@ Environment:
   TENTGENT_BOOTSTRAP_UV               Override pinned uv executable path.
   TENTGENT_BOOTSTRAP_UV_CACHE_DIR     Override uv package/cache directory.
   TENTGENT_BOOTSTRAP_PYTHON_VERSION   Override managed Python version. Defaults to 3.13.
+  TENTGENT_BOOTSTRAP_PROFILE          Override runtime dependency profile. Defaults to base.
 USAGE
 }
 
@@ -132,6 +134,8 @@ resolve_uv_path() {
 
 print_plan() {
   cat <<PLAN
+runtime profile: ${BOOTSTRAP_PROFILE}
+uv extras: $(profile_extras_label)
 python project: ${PROJECT_DIR}
 python env: ${ENV_DIR}
 python version: ${PYTHON_VERSION}
@@ -139,6 +143,38 @@ uv cache: ${UV_CACHE_DIR}
 uv path: ${UV_PATH:-"(resolved during sync)"}
 entrypoint dir: ${ENV_DIR}/bin
 PLAN
+}
+
+validate_profile() {
+  case "$1" in
+    base | local-model | training | full) ;;
+    *) fail "unsupported runtime bootstrap profile: $1 (supported: base, local-model, training, full)" ;;
+  esac
+}
+
+profile_extras_label() {
+  case "${BOOTSTRAP_PROFILE}" in
+    base) echo "none" ;;
+    local-model) echo "local-model" ;;
+    training) echo "training" ;;
+    full) echo "local-model, training" ;;
+  esac
+}
+
+append_profile_sync_args() {
+  case "${BOOTSTRAP_PROFILE}" in
+    base)
+      ;;
+    local-model)
+      SYNC_ARGS+=(--extra local-model)
+      ;;
+    training)
+      SYNC_ARGS+=(--extra training)
+      ;;
+    full)
+      SYNC_ARGS+=(--extra local-model --extra training)
+      ;;
+  esac
 }
 
 verify_project() {
@@ -167,6 +203,7 @@ verify_entrypoints() {
 PROJECT_DIR_OVERRIDE=""
 ENV_DIR_OVERRIDE=""
 UV_PATH_OVERRIDE=""
+PROFILE_OVERRIDE=""
 DRY_RUN="false"
 PRINT_PLAN="false"
 
@@ -185,6 +222,11 @@ while [[ $# -gt 0 ]]; do
     --uv)
       UV_PATH_OVERRIDE="${2:-}"
       [[ -n "${UV_PATH_OVERRIDE}" ]] || fail "--uv requires a path"
+      shift 2
+      ;;
+    --profile)
+      PROFILE_OVERRIDE="${2:-}"
+      [[ -n "${PROFILE_OVERRIDE}" ]] || fail "--profile requires a name"
       shift 2
       ;;
     --dry-run)
@@ -211,8 +253,10 @@ RAW_ENV_DIR="$(resolve_python_env)"
 ENV_DIR="$(normalize_path_allow_missing "${RAW_ENV_DIR}")"
 PYTHON_VERSION="${TENTGENT_BOOTSTRAP_PYTHON_VERSION:-${DEFAULT_PYTHON_VERSION}}"
 UV_CACHE_DIR="${TENTGENT_BOOTSTRAP_UV_CACHE_DIR:-${RUNTIME_HOME}/runtime/bootstrap/uv-cache}"
+BOOTSTRAP_PROFILE="${PROFILE_OVERRIDE:-${TENTGENT_BOOTSTRAP_PROFILE:-base}}"
 UV_PATH=""
 
+validate_profile "${BOOTSTRAP_PROFILE}"
 verify_project
 
 if [[ "${PRINT_PLAN}" == "true" ]]; then
@@ -241,6 +285,7 @@ SYNC_ARGS=(
 if [[ "${DRY_RUN}" == "true" ]]; then
   SYNC_ARGS+=(--dry-run)
 fi
+append_profile_sync_args
 
 UV_PROJECT_ENVIRONMENT="${ENV_DIR}" \
   UV_MANAGED_PYTHON=1 \

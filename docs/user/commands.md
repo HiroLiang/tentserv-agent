@@ -121,6 +121,14 @@ tentgent runtime bootstrap
 tentgent doctor
 ```
 
+Install heavier optional runtime profiles only when needed:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent runtime bootstrap --profile training
+tentgent runtime bootstrap --profile full
+```
+
 Inspect the paths that would be used without syncing:
 
 ```bash

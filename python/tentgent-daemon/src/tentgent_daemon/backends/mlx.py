@@ -6,6 +6,7 @@ from typing import Any
 from .base import ChatBackend, ChatResult
 from ..runtime.adapters import StoredAdapterRecord
 from ..runtime.chat import ChatRequest, Message
+from ..runtime.profile_deps import missing_profile_dependency
 from ..runtime.records import StoredModelRecord
 
 
@@ -158,7 +159,12 @@ def _validate_mlx_adapter_source(adapter: StoredAdapterRecord) -> None:
 
 
 def _load_mlx_symbols():
-    from mlx_lm import generate, load, stream_generate
-    from mlx_lm.sample_utils import make_sampler
+    try:
+        from mlx_lm import generate, load, stream_generate
+        from mlx_lm.sample_utils import make_sampler
+    except ModuleNotFoundError as exc:
+        if exc.name in {"mlx_lm", "mlx"}:
+            raise missing_profile_dependency("local-model", exc.name) from exc
+        raise
 
     return load, generate, stream_generate, make_sampler

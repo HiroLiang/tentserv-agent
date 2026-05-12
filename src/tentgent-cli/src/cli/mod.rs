@@ -148,6 +148,8 @@ mod tests {
             "/tmp/tentgent-env",
             "--uv",
             "/tmp/uv",
+            "--profile",
+            "local-model",
             "--dry-run",
             "--print-plan",
         ])
@@ -165,11 +167,41 @@ mod tests {
                         Some(std::path::Path::new("/tmp/tentgent-env"))
                     );
                     assert_eq!(command.uv.as_deref(), Some(std::path::Path::new("/tmp/uv")));
+                    assert_eq!(
+                        command.profile,
+                        super::commands::RuntimeBootstrapProfile::LocalModel
+                    );
                     assert!(command.dry_run);
                     assert!(command.print_plan);
                 }
             },
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn runtime_bootstrap_profile_defaults_to_base() {
+        let cli = Cli::try_parse_from(["tentgent", "runtime", "bootstrap"])
+            .expect("parse runtime bootstrap");
+
+        match cli.command {
+            Commands::Runtime { action } => match action {
+                super::commands::RuntimeCommands::Bootstrap(command) => {
+                    assert_eq!(
+                        command.profile,
+                        super::commands::RuntimeBootstrapProfile::Base
+                    );
+                }
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_runtime_bootstrap_profile() {
+        let result =
+            Cli::try_parse_from(["tentgent", "runtime", "bootstrap", "--profile", "train"]);
+
+        assert!(result.is_err());
     }
 }

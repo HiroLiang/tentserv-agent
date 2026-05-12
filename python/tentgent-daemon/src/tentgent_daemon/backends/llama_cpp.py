@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-
-from llama_cpp import Llama
+from typing import Any
 
 from .base import ChatBackend, ChatResult
 from ..runtime.chat import ChatRequest, Message
+from ..runtime.profile_deps import missing_profile_dependency
 from ..runtime.records import StoredModelRecord
 
 
 class LlamaCppChatBackend(ChatBackend):
     def __init__(self) -> None:
         self._record: StoredModelRecord | None = None
-        self._model: Llama | None = None
+        self._model: Any | None = None
 
     def load(self, record: StoredModelRecord) -> None:
         if record.primary_format != "gguf":
@@ -21,8 +21,9 @@ class LlamaCppChatBackend(ChatBackend):
                 f"llama.cpp backend cannot load primary_format `{record.primary_format}`"
             )
 
+        llama = _load_llama_class()
         model_path = _resolve_gguf_path(record.variant_source_path)
-        self._model = Llama(
+        self._model = llama(
             model_path=str(model_path),
             n_ctx=2048,
             verbose=False,
@@ -61,10 +62,20 @@ class LlamaCppChatBackend(ChatBackend):
             if content:
                 yield content
 
-    def _require_loaded(self) -> Llama:
+    def _require_loaded(self) -> Any:
         if self._record is None or self._model is None:
             raise RuntimeError("llama.cpp backend is not loaded yet; call load() first.")
         return self._model
+
+
+def _load_llama_class() -> Any:
+    try:
+        from llama_cpp import Llama
+    except ModuleNotFoundError as exc:
+        if exc.name == "llama_cpp":
+            raise missing_profile_dependency("local-model", exc.name) from exc
+        raise
+    return Llama
 
 
 def _resolve_gguf_path(source_dir: Path) -> Path:

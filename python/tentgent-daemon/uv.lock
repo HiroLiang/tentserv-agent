@@ -1130,9 +1130,20 @@ source = { editable = "." }
 dependencies = [
     { name = "gguf" },
     { name = "huggingface-hub" },
+    { name = "safetensors" },
+]
+
+[package.optional-dependencies]
+local-model = [
     { name = "llama-cpp-python", marker = "sys_platform != 'win32'" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "peft" },
+    { name = "safetensors" },
+    { name = "torch" },
+    { name = "transformers" },
+]
+training = [
     { name = "peft" },
     { name = "safetensors" },
     { name = "torch" },
@@ -1143,14 +1154,20 @@ dependencies = [
 requires-dist = [
     { name = "gguf" },
     { name = "huggingface-hub" },
-    { name = "llama-cpp-python", marker = "sys_platform != 'win32'" },
-    { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "peft" },
+    { name = "llama-cpp-python", marker = "sys_platform != 'win32' and extra == 'local-model'" },
+    { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'local-model'" },
+    { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'local-model'" },
+    { name = "peft", marker = "extra == 'local-model'" },
+    { name = "peft", marker = "extra == 'training'" },
     { name = "safetensors" },
-    { name = "torch" },
-    { name = "transformers" },
+    { name = "safetensors", marker = "extra == 'local-model'" },
+    { name = "safetensors", marker = "extra == 'training'" },
+    { name = "torch", marker = "extra == 'local-model'" },
+    { name = "torch", marker = "extra == 'training'" },
+    { name = "transformers", marker = "extra == 'local-model'" },
+    { name = "transformers", marker = "extra == 'training'" },
 ]
+provides-extras = ["local-model", "training"]
 
 [[package]]
 name = "tokenizers"

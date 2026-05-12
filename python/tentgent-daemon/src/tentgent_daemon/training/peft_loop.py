@@ -12,6 +12,7 @@ from typing import Any
 
 from .events import emit
 from .peft_data import IGNORE_INDEX, PeftTokenizedDataset, TokenizedExample
+from ..runtime.profile_deps import missing_profile_dependency
 
 
 @dataclass(frozen=True)
@@ -33,9 +34,14 @@ def run_peft_training(
     plan_ref: str,
     run_ref: str,
 ) -> int:
-    import torch
-    from peft import LoraConfig, TaskType, get_peft_model
-    from transformers import AutoModelForCausalLM
+    try:
+        import torch
+        from peft import LoraConfig, TaskType, get_peft_model
+        from transformers import AutoModelForCausalLM
+    except ModuleNotFoundError as exc:
+        if exc.name in {"torch", "peft", "transformers"}:
+            raise missing_profile_dependency("training", exc.name) from exc
+        raise
 
     peft_config = plan.get("backend_config", {}).get("peft", {})
     if peft_config.get("load_in_4bit") or peft_config.get("load_in_8bit"):
@@ -133,7 +139,12 @@ def run_peft_training(
 
 
 def lora_config(plan: dict[str, Any]) -> Any:
-    from peft import LoraConfig, TaskType
+    try:
+        from peft import LoraConfig, TaskType
+    except ModuleNotFoundError as exc:
+        if exc.name == "peft":
+            raise missing_profile_dependency("training", exc.name) from exc
+        raise
 
     lora = plan.get("lora", {})
     return LoraConfig(

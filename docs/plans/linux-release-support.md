@@ -9,10 +9,10 @@ Homebrew tap path has stabilized.
   for macOS Apple Silicon, macOS Intel, and Windows x86_64 only.
 - `scripts/install.sh` and `scripts/package-local.sh` know the Linux x86_64
   target name after L1.
-- The release workflow knows the Linux x86_64 package job after L2, but a
-  published Linux asset still requires a new tag containing L2.
-- Python bootstrap scripts already know Linux `uv` target names, but the full
-  release/install path has not been smoke-tested on Linux.
+- The release workflow knows the Linux x86_64 package job after L2, and
+  `v0.3.4-alpha.1` published the first Linux x86_64 asset.
+- Python bootstrap scripts already know Linux `uv` target names. L4 splits the
+  managed Python runtime into profiles before claiming full runtime parity.
 - Homebrew remains a macOS distribution path; Linux support should start with
   GitHub Release tarballs and `install.sh`, not Linuxbrew.
 
@@ -194,10 +194,74 @@ Review target:
 - Linux install works without cloning the repository and without mutating
   source-tree paths.
 
-### L4: Full Bootstrap Smoke
+### L4: Runtime Dependency Profiles
+
+- Status: implemented in source; release smoke moves to L5.
+- Split the managed Python runtime into explicit dependency profiles before
+  claiming stable Linux runtime readiness.
+- Motivation from the `v0.3.4-alpha.1` full-bootstrap smoke:
+  - Minimal `ubuntu:24.04` on `linux/amd64` with only `bash`, `curl`,
+    `ca-certificates`, `coreutils`, `gzip`, and `tar` did not pass full
+    bootstrap.
+  - `llama-cpp-python==0.3.20` attempted a native build.
+  - CMake failed because no C/C++ compiler was available:
+    `Could not find the compiler specified in the environment variable CC:
+    cc -pthread`.
+  - A clean diagnostic rerun with `build-essential`, `cmake`, and `pkg-config`
+    passed, but the runtime footprint was about 9.3 GiB.
+- Defined a base profile that can bootstrap in a minimal Linux container without
+  compilers or heavyweight ML wheels.
+- Moved heavyweight local-model and training dependencies behind optional
+  Python extras instead of installing them by default.
+- Runtime bootstrap profiles:
+  - `base`: common CLI Python entrypoints and lightweight runtime helpers
+  - `local-model`: local model serving dependencies such as `llama-cpp-python`,
+    Transformers, PEFT, Torch, and macOS arm64 MLX dependencies
+  - `training`: LoRA/training dependencies such as Torch, Transformers, and PEFT
+  - `full`: bootstrap alias for `local-model + training`
+- Updated `tentgent runtime bootstrap` to select `base` by default and expose
+  `--profile <base|local-model|training|full>`.
+- Updated `scripts/bootstrap-python-env.sh --print-plan` to show runtime profile
+  and uv extras without resolving or downloading pinned uv.
+- Kept `doctor` as a base runtime health check; missing local-model or training
+  packages remain backend/capability warnings instead of base install failures.
+- Made heavyweight backend imports lazy enough that base entrypoint import/help
+  paths do not fail with raw Python import tracebacks.
+- Keep existing chat/session/server behavior unchanged for already bootstrapped
+  environments.
+
+Implementation verification:
+
+```bash
+bash scripts/test-runtime-profiles.sh
+cargo test -p tentgent-cli runtime
+cargo test -p tentgent-core doctor
+```
+
+- Verified a source-mounted minimal `ubuntu:24.04` / `linux/amd64` container can
+  run the default base bootstrap without `build-essential`, `cmake`, or
+  `pkg-config`; the resulting env installed 29 packages and did not include
+  Torch, PEFT, llama-cpp-python, Transformers, MLX, or mlx-lm.
+
+Review target:
+
+- A default Linux runtime bootstrap is small enough and dependency-light enough
+  to pass in a minimal container without build tools.
+
+### L5: Full Bootstrap Smoke
 
 - Run a full `tentgent runtime bootstrap` smoke in a temporary `TENTGENT_HOME`
-  on Linux.
+  on Linux after L4 dependency profiles are implemented.
+- Verify the default base profile first:
+  - no build tools installed
+  - bootstrap runs twice idempotently
+  - managed Python is 3.13.x
+  - pinned uv is 0.11.7
+  - uv package cache is non-empty
+  - base entrypoints exist
+  - `tentgent doctor` exits 0
+- Run additional profile smokes only after their dependency contracts are
+  explicit.
 - Record expected bootstrap cache and managed Python env paths.
 - Treat backend dependency warnings as acceptable when they are capability
   warnings, not install failures.
@@ -207,7 +271,7 @@ Review target:
 - A Linux install can prepare the managed Python runtime and pass doctor with
   only expected backend warnings.
 
-### L5: Optional Linux Expansion
+### L6: Optional Linux Expansion
 
 - Evaluate `aarch64-unknown-linux-gnu` after x86_64 is stable.
 - Decide whether Linux package-manager channels are worth adding.

@@ -64,9 +64,19 @@ Package-manager installs such as Homebrew prepare this environment with:
 tentgent runtime bootstrap
 ```
 
+The default bootstrap profile is `base`, which installs the lightweight Python
+helpers needed by common CLI flows. Install local model serving or training
+dependencies only when needed:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent runtime bootstrap --profile training
+tentgent runtime bootstrap --profile full
+```
+
 Use `tentgent runtime bootstrap --print-plan` to inspect resolved runtime paths
-without syncing. Direct release installers run the bootstrap automatically unless
-`--skip-python-bootstrap` is passed.
+and selected profile extras without syncing. Direct release installers run the
+base bootstrap automatically unless `--skip-python-bootstrap` is passed.
 
 Bootstrap data lives under:
 

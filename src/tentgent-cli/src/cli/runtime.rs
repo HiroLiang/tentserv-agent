@@ -43,6 +43,7 @@ fn handle_bootstrap(command: RuntimeBootstrapCommand) -> Result<()> {
     println!("project: {}", project.display());
     println!("env: {}", env_dir.display());
     println!("script: {}", script.display());
+    println!("profile: {}", command.profile);
 
     let mut process = Command::new(&script);
     process
@@ -50,6 +51,8 @@ fn handle_bootstrap(command: RuntimeBootstrapCommand) -> Result<()> {
         .arg(&project)
         .arg("--env")
         .arg(&env_dir)
+        .arg("--profile")
+        .arg(command.profile.as_str())
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());

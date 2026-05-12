@@ -8,6 +8,7 @@ from typing import Any
 from .events import emit
 from .peft_data import PeftTokenizedDataset, prepare_peft_datasets
 from .peft_loop import run_peft_training
+from ..runtime.profile_deps import missing_profile_dependency
 
 
 def run_peft_lora(
@@ -75,7 +76,12 @@ def run_peft_lora(
 
 
 def load_tokenizer(model_path: Path) -> Any:
-    from transformers import AutoTokenizer
+    try:
+        from transformers import AutoTokenizer
+    except ModuleNotFoundError as exc:
+        if exc.name == "transformers":
+            raise missing_profile_dependency("training", exc.name) from exc
+        raise
 
     tokenizer = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=True)
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:

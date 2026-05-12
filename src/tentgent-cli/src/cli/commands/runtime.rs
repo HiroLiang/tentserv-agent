@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 
 #[derive(Debug, Subcommand)]
 pub enum RuntimeCommands {
@@ -24,10 +24,39 @@ pub struct RuntimeBootstrapCommand {
     /// Use an explicit pinned uv executable path.
     #[arg(long, value_name = "PATH")]
     pub uv: Option<PathBuf>,
+    /// Runtime dependency profile to install.
+    #[arg(long, value_enum, default_value_t = RuntimeBootstrapProfile::Base)]
+    pub profile: RuntimeBootstrapProfile,
     /// Ask uv to plan the sync without modifying the Python environment.
     #[arg(long)]
     pub dry_run: bool,
     /// Print resolved paths without syncing.
     #[arg(long)]
     pub print_plan: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum RuntimeBootstrapProfile {
+    Base,
+    #[value(name = "local-model")]
+    LocalModel,
+    Training,
+    Full,
+}
+
+impl RuntimeBootstrapProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Base => "base",
+            Self::LocalModel => "local-model",
+            Self::Training => "training",
+            Self::Full => "full",
+        }
+    }
+}
+
+impl std::fmt::Display for RuntimeBootstrapProfile {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
 }

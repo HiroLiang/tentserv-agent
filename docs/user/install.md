@@ -148,18 +148,28 @@ Do not remove `runtime/python-env` unless you are intentionally repairing or rei
 
 ## Runtime Bootstrap
 
-Direct installers run the managed Python bootstrap by default. Homebrew installs
-the CLI and support files only; run the runtime bootstrap explicitly after
-install or when Python dependencies change:
+Direct installers run the managed Python base bootstrap by default. Homebrew
+installs the CLI and support files only; run the runtime bootstrap explicitly
+after install or when Python dependencies change:
 
 ```bash
 tentgent runtime bootstrap
 tentgent doctor
 ```
 
+The default profile is `base`. Add heavier runtime dependencies only when you
+need them:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent runtime bootstrap --profile training
+tentgent runtime bootstrap --profile full
+```
+
 Use `tentgent runtime bootstrap --print-plan` to inspect the resolved project,
-environment, and cache paths without syncing. `--dry-run` asks `uv` to plan the
-sync and may still resolve the pinned bootstrap tool/cache.
+environment, cache paths, and selected profile without syncing. `--dry-run`
+asks `uv` to plan the sync and may still resolve the pinned bootstrap
+tool/cache.
 
 ## Uninstall
 
@@ -215,5 +225,6 @@ scripts/install.sh \
   --skip-doctor
 ```
 
-Omit `--skip-python-bootstrap` to run the full managed Python bootstrap, or run
-`tentgent runtime bootstrap` afterward against the installed support files.
+Omit `--skip-python-bootstrap` to run the default base managed Python bootstrap,
+or run `tentgent runtime bootstrap --profile <profile>` afterward against the
+installed support files.

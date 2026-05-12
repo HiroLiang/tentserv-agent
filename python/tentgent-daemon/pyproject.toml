@@ -11,9 +11,20 @@ requires-python = ">=3.11"
 dependencies = [
     "gguf",
     "huggingface-hub",
+    "safetensors",
+]
+
+[project.optional-dependencies]
+local-model = [
     "llama-cpp-python; sys_platform != 'win32'",
     "mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-lm; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "peft",
+    "safetensors",
+    "torch",
+    "transformers",
+]
+training = [
     "peft",
     "safetensors",
     "torch",
