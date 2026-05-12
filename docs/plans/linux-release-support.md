@@ -163,6 +163,7 @@ Review target:
 
 ### L3: Linux Installer Smoke
 
+- Status: implemented against `v0.3.4-alpha.1`.
 - Add CI or documented manual smoke for:
   - `install.sh --skip-python-bootstrap --skip-doctor`
   - installed `tentgent -V`
@@ -172,6 +173,21 @@ Review target:
   install prefix.
 - Verify Linux runtime home defaults and override behavior through
   `TENTGENT_HOME`.
+- Use `bash -s --` for piped Unix installer smoke on Linux. The installer is a
+  Bash script, and Ubuntu `/bin/sh` is usually `dash`.
+- Verified release asset checksum with `sha256sum -c` against
+  `checksums.txt`.
+- Verified both GitHub Release curl installer and downloaded direct archive
+  install paths in Docker `ubuntu:24.04` on `linux/amd64`.
+- Verified installed binary reports `tentgent 0.3.4-alpha.1`.
+- Verified `runtime bootstrap --print-plan` points to:
+  - installed project under `$PREFIX/share/tentgent/python`
+  - managed env under `$TENTGENT_HOME/runtime/python-env`
+  - bootstrap cache under `$TENTGENT_HOME/runtime/bootstrap`
+- Verified `--print-plan` did not create Python env or pinned `uv` tool
+  directories.
+- Note: direct archive smoke still needs `curl` installed because the installer
+  command helper requires it even for local archive/checksum paths.
 
 Review target:
 
