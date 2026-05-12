@@ -11,8 +11,9 @@ Homebrew tap path has stabilized.
   target name after L1.
 - The release workflow knows the Linux x86_64 package job after L2, and
   `v0.3.4-alpha.1` published the first Linux x86_64 asset.
-- Python bootstrap scripts already know Linux `uv` target names. L4 splits the
-  managed Python runtime into profiles before claiming full runtime parity.
+- Python bootstrap scripts already know Linux `uv` target names. L4 split the
+  managed Python runtime into profiles, and L5 verified the default base
+  profile against the `v0.3.4-alpha.2` GitHub Release.
 - Homebrew remains a macOS distribution path; Linux support should start with
   GitHub Release tarballs and `install.sh`, not Linuxbrew.
 
@@ -248,23 +249,66 @@ Review target:
 - A default Linux runtime bootstrap is small enough and dependency-light enough
   to pass in a minimal container without build tools.
 
-### L5: Full Bootstrap Smoke
+### L5: Linux Release Runtime Smoke
 
-- Run a full `tentgent runtime bootstrap` smoke in a temporary `TENTGENT_HOME`
-  on Linux after L4 dependency profiles are implemented.
-- Verify the default base profile first:
-  - no build tools installed
-  - bootstrap runs twice idempotently
-  - managed Python is 3.13.x
-  - pinned uv is 0.11.7
+- Status: implemented against `v0.3.4-alpha.2`.
+- Verified the release tag contains L4 commit `3faa329`.
+- Verified GitHub Release metadata:
+  - tag: `v0.3.4-alpha.2`
+  - release type: prerelease
+  - asset: `tentgent-0.3.4-alpha.2-x86_64-unknown-linux-gnu.tar.gz`
+- Verified the Linux tarball checksum with `sha256sum -c` against the release
+  `checksums.txt` in Docker `ubuntu:24.04` on `linux/amd64`.
+- Extracted the release tarball and verified packaged support files include the
+  L4 profile changes:
+  - `scripts/bootstrap-python-env.sh` supports `--profile`
+  - `--print-plan` prints `runtime profile:`
+  - `python/pyproject.toml` contains `[project.optional-dependencies]`
+  - `local-model` and `training` profile names are present
+- Ran the primary release smoke in Docker `ubuntu:24.04` on `linux/amd64` with
+  only `bash`, `curl`, `ca-certificates`, `coreutils`, `gzip`, and `tar`
+  installed.
+- Asserted no build tools were available before bootstrap:
+  `cc`, `gcc`, `g++`, and `cmake` were all absent.
+- Installed the release with:
+  `install.sh --prefix <temp> --skip-python-bootstrap --skip-doctor`.
+- Verified the installer and profile `--print-plan` paths do not create the
+  managed Python env or pinned uv directory before bootstrap.
+- Verified release profile planning:
+  - `base` -> `uv extras: none`
+  - `local-model` -> `uv extras: local-model`
+  - `training` -> `uv extras: training`
+  - `full` -> `uv extras: local-model, training`
+  - unsupported profile names fail before invoking the shell bootstrap script
+- Ran default `tentgent runtime bootstrap` twice; the second run was
+  idempotent and checked the same 29 packages without reinstalling.
+- Verified runtime outputs:
+  - installed CLI reports `tentgent 0.3.4-alpha.2`
+  - managed Python is `3.13.13`
+  - pinned uv is `0.11.7`
   - uv package cache is non-empty
-  - base entrypoints exist
-  - `tentgent doctor` exits 0
-- Run additional profile smokes only after their dependency contracts are
-  explicit.
-- Record expected bootstrap cache and managed Python env paths.
-- Treat backend dependency warnings as acceptable when they are capability
-  warnings, not install failures.
+  - base env has 29 Python distributions
+  - `torch`, `peft`, `llama_cpp`, `transformers`, `mlx`, and `mlx_lm` are not
+    importable from the base env
+  - `tentgent-hf-snapshot --help`, `tentgent-server --help`, and
+    `tentgent-train-lora-run --help` do not traceback in the base env
+  - `tentgent doctor` exits 0 and reports ready with expected backend
+    capability warnings
+- Recorded runtime footprint from the passing smoke:
+  - `du -sh runtime/python-env`: about `94M`
+  - `du -sh runtime/bootstrap`: about `149M`
+  - `du -sh TENTGENT_HOME`: about `155M`
+  - CLI doctor's human-readable size scan reported `86.9 MiB` for the Python
+    env, `141.1 MiB` for bootstrap, and `228.0 MiB` for runtime home
+- Verified default Linux runtime home planning without `TENTGENT_HOME`:
+  `$HOME/.local/share/tentgent/runtime/python-env`.
+- Note: do not use uv-cache filename matching as a heavy-dependency gate. The
+  cache can contain this project source files such as `llama_cpp.py` or
+  `peft_*.py`, and lightweight dependencies may ship compatibility files such
+  as `_torch.py`; installed distributions and import specs are the reliable
+  base-profile checks.
+- Additional `local-model`, `training`, and `full` profile bootstraps remain
+  diagnostics until those dependency contracts are made explicit.
 
 Review target:
 
