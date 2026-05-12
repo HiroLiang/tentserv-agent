@@ -5,10 +5,12 @@ Homebrew tap path has stabilized.
 
 ## Current State
 
-- GitHub Release assets are built for macOS Apple Silicon, macOS Intel, and
-  Windows x86_64 only.
-- `scripts/install.sh` detects only Darwin targets and rejects Linux hosts.
-- `scripts/package-local.sh` does not package Linux targets.
+- Existing published GitHub Release assets before the first L2 tag were built
+  for macOS Apple Silicon, macOS Intel, and Windows x86_64 only.
+- `scripts/install.sh` and `scripts/package-local.sh` know the Linux x86_64
+  target name after L1.
+- The release workflow knows the Linux x86_64 package job after L2, but a
+  published Linux asset still requires a new tag containing L2.
 - Python bootstrap scripts already know Linux `uv` target names, but the full
   release/install path has not been smoke-tested on Linux.
 - Homebrew remains a macOS distribution path; Linux support should start with
@@ -58,12 +60,101 @@ Review target:
 
 ### L2: GitHub Release Linux Asset
 
+- Status: implemented.
+- Prerequisite: L1 is included in the release tag, so `install.sh`,
+  `package-local.sh`, and `scripts/test-linux-release-targets.sh` already know
+  `x86_64-unknown-linux-gnu`.
 - Add `x86_64-unknown-linux-gnu` to the release workflow matrix on an Ubuntu
   runner.
 - Include the Linux tarball in release assets and `checksums.txt`.
-- Update release notes asset lists and install docs.
+- Update generated release notes asset lists and smoke snippets.
 - Keep Homebrew tap helper unchanged; it should continue updating only macOS
   formula URLs and checksums.
+
+Execution details:
+
+- Add a Linux matrix row to `.github/workflows/release.yml`:
+  - `target: x86_64-unknown-linux-gnu`
+  - `runner: ubuntu-24.04`
+  - `archive_ext: tar.gz`
+- Strengthen the workflow native-target verifier from architecture-only checks
+  to `target:os:arch` checks:
+  - `aarch64-apple-darwin:Darwin:arm64`
+  - `x86_64-apple-darwin:Darwin:x86_64`
+  - `x86_64-unknown-linux-gnu:Linux:x86_64`
+  - `x86_64-pc-windows-msvc:MINGW*/MSYS*/CYGWIN*:x86_64`
+- Keep package creation delegated to `scripts/package-local.sh`; L2 should not
+  add a second packaging algorithm in workflow YAML.
+- Keep the release job artifact collection generic:
+  - tarballs are copied with `tentgent-*.tar.gz`
+  - Windows zips are copied with `tentgent-*.zip`
+  - per-target checksum files are concatenated into one `checksums.txt`
+- Add release-job assertions after `dist-release` is prepared:
+  - macOS Apple Silicon tarball exists
+  - macOS Intel tarball exists
+  - Linux x86_64 tarball exists
+  - Windows x86_64 zip exists
+  - `checksums.txt` contains exactly one package checksum entry for each
+    expected artifact, and exactly four package checksum entries total
+- Add the Linux tarball to generated release notes:
+  `tentgent-<version>-x86_64-unknown-linux-gnu.tar.gz`.
+- Add a Linux installer smoke snippet to generated release notes using
+  `install.sh --skip-python-bootstrap --skip-doctor`.
+- Add a release-notes caveat that Linux support is CLI/install archive
+  availability only; full managed runtime and local backend parity are not
+  claimed yet.
+- Do not change `scripts/update-homebrew-formula.sh`; it should continue to
+  extract only macOS checksums for the Homebrew formula even when
+  `checksums.txt` contains Linux and Windows entries.
+- Add a Linux checksum entry to the Homebrew helper fixture test and assert the
+  formula still does not include Linux URLs.
+- Do not add Linuxbrew, `.deb`, `.rpm`, or user-facing Linux package-manager
+  instructions in this slice.
+
+Implementation acceptance:
+
+- A tag-triggered release workflow has four package jobs:
+  macOS Apple Silicon, macOS Intel, Windows x86_64, and Linux x86_64.
+- The Linux package job publishes
+  `tentgent-<version>-x86_64-unknown-linux-gnu.tar.gz`.
+- The merged release `checksums.txt` includes exactly one checksum entry for
+  each expected release archive.
+- GitHub release notes list the Linux asset and the Linux installer smoke.
+- Homebrew formula update helper behavior remains macOS-only, and its tests
+  pass with Linux checksum entries present.
+- The release remains stable/prerelease-safe through the existing
+  `scripts/release-metadata.sh` flags.
+- Stable tags and prerelease tags publish the same package artifact set when
+  the release workflow runs; Homebrew formula updates remain stable-tag-only.
+
+Suggested verification commands before tagging:
+
+```bash
+bash -n scripts/package-local.sh
+bash -n scripts/install.sh
+bash -n scripts/release-metadata.sh
+bash -n scripts/test-release-metadata.sh
+bash -n scripts/update-homebrew-formula.sh
+bash -n scripts/test-update-homebrew-formula.sh
+bash -n scripts/test-linux-release-targets.sh
+bash scripts/test-release-metadata.sh
+bash scripts/test-update-homebrew-formula.sh
+bash scripts/test-linux-release-targets.sh
+TENTGENT_TARGET=x86_64-unknown-linux-gnu scripts/package-local.sh --print-plan
+git diff --check
+```
+
+Suggested release verification after the first Linux tag:
+
+```bash
+gh release view v<version> --json tagName,isPrerelease,url
+gh release download v<version> \
+  --pattern 'tentgent-<version>-x86_64-unknown-linux-gnu.tar.gz' \
+  --pattern checksums.txt \
+  --dir /tmp/tentgent-linux-release-smoke
+grep 'tentgent-<version>-x86_64-unknown-linux-gnu.tar.gz' \
+  /tmp/tentgent-linux-release-smoke/checksums.txt
+```
 
 Review target:
 

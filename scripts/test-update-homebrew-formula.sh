@@ -69,6 +69,7 @@ write_checksums() {
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  tentgent-0.3.3-aarch64-apple-darwin.tar.gz
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  tentgent-0.3.3-x86_64-apple-darwin.tar.gz
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc *tentgent-0.3.3-x86_64-pc-windows-msvc.zip
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  tentgent-0.3.3-x86_64-unknown-linux-gnu.tar.gz
 SHA
 }
 
@@ -84,6 +85,7 @@ assert_contains "${formula_path}" "releases/download/v0.3.3/tentgent-0.3.3-aarch
 assert_contains "${formula_path}" "releases/download/v0.3.3/tentgent-0.3.3-x86_64-apple-darwin.tar.gz"
 assert_contains "${formula_path}" 'sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"'
 assert_contains "${formula_path}" 'sha256 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"'
+assert_not_contains "${formula_path}" "x86_64-unknown-linux-gnu"
 assert_not_contains "${formula_path}" "releases/download/v0.3.2"
 
 write_formula

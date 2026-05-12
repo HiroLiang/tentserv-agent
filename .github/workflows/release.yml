@@ -28,6 +28,9 @@ jobs:
           - target: x86_64-apple-darwin
             runner: macos-15-intel
             archive_ext: tar.gz
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            archive_ext: tar.gz
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
             archive_ext: zip
@@ -69,13 +72,19 @@ jobs:
 
       - name: Verify native target
         shell: bash
+        env:
+          TENTGENT_TARGET: ${{ matrix.target }}
         run: |
+          os="$(uname -s)"
           arch="$(uname -m)"
-          case "${{ matrix.target }}:${arch}" in
-            aarch64-apple-darwin:arm64) ;;
-            x86_64-apple-darwin:x86_64) ;;
-            x86_64-pc-windows-msvc:x86_64) ;;
-            *) echo "unexpected runner architecture ${arch} for ${{ matrix.target }}" >&2; exit 1 ;;
+          case "${TENTGENT_TARGET}:${os}:${arch}" in
+            aarch64-apple-darwin:Darwin:arm64) ;;
+            x86_64-apple-darwin:Darwin:x86_64) ;;
+            x86_64-unknown-linux-gnu:Linux:x86_64) ;;
+            x86_64-pc-windows-msvc:MINGW*:x86_64) ;;
+            x86_64-pc-windows-msvc:MSYS*:x86_64) ;;
+            x86_64-pc-windows-msvc:CYGWIN*:x86_64) ;;
+            *) echo "unexpected runner ${os}:${arch} for ${TENTGENT_TARGET}" >&2; exit 1 ;;
           esac
 
       - name: Package release artifact
@@ -198,6 +207,51 @@ jobs:
           test -s dist-release/install.sh
           test -s dist-release/install.ps1
 
+          version="${{ steps.release.outputs.version }}"
+          expected_assets=(
+            "tentgent-${version}-aarch64-apple-darwin.tar.gz"
+            "tentgent-${version}-x86_64-apple-darwin.tar.gz"
+            "tentgent-${version}-x86_64-unknown-linux-gnu.tar.gz"
+            "tentgent-${version}-x86_64-pc-windows-msvc.zip"
+          )
+
+          for asset in "${expected_assets[@]}"; do
+            test -s "dist-release/${asset}" || {
+              echo "missing release asset: ${asset}" >&2
+              exit 1
+            }
+
+            matches="$(awk -v name="${asset}" '
+              {
+                got = $2
+                sub(/^\*/, "", got)
+                if (got == name) {
+                  count++
+                }
+              }
+              END { print count + 0 }
+            ' dist-release/checksums.txt)"
+            if [[ "${matches}" != "1" ]]; then
+              echo "expected one checksum entry for ${asset}, got ${matches}" >&2
+              exit 1
+            fi
+          done
+
+          actual_count="$(awk '
+            {
+              name = $2
+              sub(/^\*/, "", name)
+              if (name ~ /^tentgent-.*(\.tar\.gz|\.zip)$/) {
+                count++
+              }
+            }
+            END { print count + 0 }
+          ' dist-release/checksums.txt)"
+          if [[ "${actual_count}" != "${#expected_assets[@]}" ]]; then
+            echo "expected ${#expected_assets[@]} package checksum entries, got ${actual_count}" >&2
+            exit 1
+          fi
+
       - name: Write release notes
         shell: bash
         run: |
@@ -209,10 +263,14 @@ jobs:
           Assets:
           - macOS Apple Silicon: tentgent-${{ steps.release.outputs.version }}-aarch64-apple-darwin.tar.gz
           - macOS Intel: tentgent-${{ steps.release.outputs.version }}-x86_64-apple-darwin.tar.gz
+          - Linux x86_64: tentgent-${{ steps.release.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz
           - Windows x86_64: tentgent-${{ steps.release.outputs.version }}-x86_64-pc-windows-msvc.zip
           - checksums.txt
           - install.sh
           - install.ps1
+
+          Linux x86_64 note:
+          This release includes the Linux x86_64 CLI/install archive. Full managed runtime and local model backend parity is not claimed yet.
 
           macOS installer smoke test:
 
@@ -225,6 +283,13 @@ jobs:
 
           \`\`\`powershell
           irm "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/install.ps1" | iex
+          \`\`\`
+
+          Linux x86_64 installer smoke command:
+
+          \`\`\`bash
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/install.sh" \\
+            | sh -s -- --skip-python-bootstrap --skip-doctor
           \`\`\`
           NOTES
 
