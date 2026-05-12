@@ -22,6 +22,12 @@ Default Windows runtime home:
 %LOCALAPPDATA%\tentserv\tentgent\data
 ```
 
+Default Linux runtime home:
+
+```text
+$HOME/.local/share/tentgent
+```
+
 Runtime directories include:
 
 - `models/`
@@ -103,6 +109,10 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 - Local base-model and compatible adapter requests can use `stream=true` for Server-Sent Events.
 - OpenAI and Anthropic cloud provider runtimes can use the same `stream=true` Server-Sent Events shape.
 - Windows x86_64 is packaged, but MLX is blocked on Windows.
+- Linux x86_64 is available as a prerelease GitHub Release install path. The
+  default base Python runtime has been smoke-tested on Ubuntu 24.04 without
+  build tools. Local-model, training, GPU, and distro-package parity remain
+  dependency-gated.
 
 ## Keychain Prompts
 

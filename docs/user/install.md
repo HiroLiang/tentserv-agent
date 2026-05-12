@@ -35,6 +35,41 @@ curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/
 tentgent doctor
 ```
 
+## Linux x86_64 Preview Install
+
+Linux x86_64 support is available as a prerelease GitHub Release tarball. Use
+the explicit prerelease URL; the stable `latest` installer does not yet
+advertise Linux support.
+
+```bash
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.4-alpha.2/install.sh | bash
+tentgent doctor
+```
+
+Use `bash`, not `sh`, because the Unix installer is a Bash script and some
+Linux distributions map `/bin/sh` to a smaller shell such as `dash`.
+
+The Linux preview was smoke-tested on `ubuntu:24.04` / `linux/amd64`. The
+default `base` runtime bootstrap does not require `cc`, `gcc`, `g++`, or
+`cmake`. It prepares the managed Python runtime and leaves local-model and
+training dependencies as explicit opt-in profiles:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent runtime bootstrap --profile training
+tentgent runtime bootstrap --profile full
+```
+
+To install only the CLI and support files first:
+
+```bash
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.4-alpha.2/install.sh \
+  | bash -s -- --skip-python-bootstrap --skip-doctor
+tentgent runtime bootstrap --print-plan
+tentgent runtime bootstrap
+tentgent doctor
+```
+
 ## Latest Install On Windows
 
 Install the latest GitHub Release from PowerShell:
@@ -67,6 +102,8 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install
 The pinned installer is tied to that release's artifact URL and version.
 `v0.3.3` is the current stable 0.3.x release; use `v0.2.0` if you want the previous
 daemon-parity baseline.
+Use `v0.3.4-alpha.2` only when you specifically want to test the Linux x86_64
+preview.
 
 ## Upgrade
 
@@ -127,11 +164,19 @@ Default install locations:
 - macOS direct-installer binary: `~/.local/bin/tentgent`
 - macOS direct-installer support files: `~/.local/share/tentgent`
 - macOS runtime home: `~/Library/Application Support/com.tentserv.tentgent`
+- Linux x86_64 preview binary: `~/.local/bin/tentgent`
+- Linux x86_64 preview support files: `~/.local/share/tentgent`
+- Linux x86_64 runtime home: `$HOME/.local/share/tentgent`
 - Windows binary: `%LOCALAPPDATA%\Programs\tentgent\bin\tentgent.exe`
 - Windows support files: `%LOCALAPPDATA%\Programs\tentgent\share\tentgent`
 - Windows runtime home: `%LOCALAPPDATA%\tentserv\tentgent\data`
 - managed Python runtime: `TENTGENT_HOME/runtime/python-env`
 - bootstrap cache: `TENTGENT_HOME/runtime/bootstrap`
+
+Linux preview note: with the default direct-installer prefix, support files and
+the default runtime home both live under `$HOME/.local/share/tentgent`. Set and
+persist `TENTGENT_HOME` to a different directory before bootstrap if you want
+runtime data to survive removal of that support-file directory.
 
 Users do not need to preinstall `uv`. Runtime bootstrap downloads pinned bootstrap tools into Tentgent-owned runtime cache.
 The managed Python runtime path may differ when `TENTGENT_PYTHON_ENV_DIR` is set.
@@ -187,15 +232,20 @@ rm -f "$HOME/.local/bin/tentgent"
 rm -rf "$HOME/.local/share/tentgent"
 ```
 
+On Linux preview installs, `$HOME/.local/share/tentgent` may also be the
+default runtime home. Do not remove it unless you intentionally want to delete
+runtime data or you used `TENTGENT_HOME` to place runtime data elsewhere.
+
 ```powershell
 Remove-Item "$env:LOCALAPPDATA\Programs\tentgent" -Recurse -Force
 ```
 
-This leaves `TENTGENT_HOME` intact. Keeping runtime home preserves models,
-adapters, datasets, sessions, server records, train records, logs, and managed
-Python runtime state. To reclaim only safe-to-recreate bootstrap package cache,
-remove `runtime/bootstrap/uv-cache` while no Tentgent installer or Python
-bootstrap process is running:
+When `TENTGENT_HOME` is separate from the removed support-file directory, this
+leaves runtime data intact. Keeping runtime home preserves models, adapters,
+datasets, sessions, server records, train records, logs, and managed Python
+runtime state. To reclaim only safe-to-recreate bootstrap package cache, remove
+`runtime/bootstrap/uv-cache` while no Tentgent installer or Python bootstrap
+process is running:
 
 ```bash
 rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"

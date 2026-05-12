@@ -41,6 +41,20 @@ Recommended Windows PowerShell install from the latest GitHub Release:
 irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
 ```
 
+Linux x86_64 preview install from the verified prerelease:
+
+```bash
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.4-alpha.2/install.sh | bash
+tentgent doctor
+```
+
+The Linux preview uses the GitHub Release tarball and the default `base`
+runtime bootstrap profile. Use the explicit prerelease URL for now; the stable
+`latest` release does not yet advertise Linux support.
+
+On Linux preview installs, set and persist `TENTGENT_HOME` before bootstrap if
+you want runtime data outside the default direct-installer support directory.
+
 Use GitHub Release installers when you want a pinned or reproducible
 script-based setup:
 
@@ -187,7 +201,8 @@ The TUI is an operator console for daemon discovery, chat, jobs, resources, stor
 
 ## Remove The Tool
 
-Remove installed binaries and support files without deleting user runtime data:
+Remove Homebrew-installed binaries and support files without deleting user
+runtime data:
 
 ```bash
 brew uninstall hiroliang/tap/tentgent
@@ -200,6 +215,10 @@ rm -f "$HOME/.local/bin/tentgent"
 rm -rf "$HOME/.local/share/tentgent"
 ```
 
+On Linux preview installs, `$HOME/.local/share/tentgent` may also be the
+default runtime home. Do not remove it unless you intentionally want to delete
+runtime data or you used `TENTGENT_HOME` to place runtime data elsewhere.
+
 Optional safe-to-recreate bootstrap cache cleanup:
 
 ```bash
@@ -210,6 +229,7 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.3.4-alpha.2`: Linux x86_64 preview release with release tarball install, default base runtime bootstrap, and Docker-smoked `doctor` readiness on Ubuntu 24.04.
 - `v0.3.3`: adds Homebrew tap update tooling for repeatable formula URL and checksum updates after stable releases.
 - `v0.3.2`: adds `tentgent runtime bootstrap` as the package-manager friendly managed Python runtime setup entry point.
 - `v0.3.1`: macOS installer hotfix that ad-hoc signs release binaries and clears quarantine metadata after install.

@@ -5,7 +5,8 @@ This directory keeps user-facing Tentgent docs out of the root README so the pro
 ## Start Here
 
 - [install.md](./install.md)
-  Homebrew install, upgrade, uninstall, pinned versions, PATH notes, and local package smoke tests.
+  Homebrew install, Linux x86_64 preview install, upgrade, uninstall, pinned
+  versions, PATH notes, and local package smoke tests.
 - [version.md](./version.md)
   Current version feature list, known limits, and release expectations.
 - [commands.md](./commands.md)

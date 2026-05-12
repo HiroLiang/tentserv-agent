@@ -2,6 +2,36 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.3.4-alpha.2
+
+`v0.3.4-alpha.2` is a Linux x86_64 preview release. It is not the stable
+`latest` release yet, but it is the first release whose Linux tarball was
+smoke-tested through install, base runtime bootstrap, and `doctor`.
+
+What changed:
+
+- Added a Linux x86_64 GitHub Release archive:
+  `tentgent-0.3.4-alpha.2-x86_64-unknown-linux-gnu.tar.gz`.
+- Verified the Unix installer on `ubuntu:24.04` / `linux/amd64` with
+  `curl | bash`.
+- Split managed Python runtime bootstrap into dependency profiles:
+  `base`, `local-model`, `training`, and `full`.
+- Made `base` the default runtime bootstrap profile so Linux can prepare the
+  managed Python runtime without build tools or heavyweight ML packages.
+- Verified the base runtime installs 29 Python distributions, uses Python
+  `3.13.13`, uses pinned uv `0.11.7`, and passes `tentgent doctor`.
+
+Known limits:
+
+- Use the explicit `v0.3.4-alpha.2` release URL for Linux testing. The stable
+  `latest` release still tracks the 0.3.x stable line and does not advertise
+  Linux support.
+- Linux support currently means x86_64 release tarball install plus default
+  base runtime bootstrap. Local-model, training, GPU, Linuxbrew, `.deb`, and
+  `.rpm` support are not claimed yet.
+- Backend warnings for MLX, Transformers/PEFT, and llama-cpp are expected after
+  a base-profile bootstrap because those heavier dependencies are opt-in.
+
 ## v0.3.3
 
 `v0.3.3` is a Homebrew maintenance release for the stable 0.3.x line. It keeps

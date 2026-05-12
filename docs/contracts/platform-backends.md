@@ -72,3 +72,15 @@ The resolver uses the Windows Python environment layout:
 Windows release artifacts, PowerShell installation, and installer-owned Python
 dependency bootstrap are part of the current packaging path. Backend execution
 still depends on the installed Python environment and platform-specific wheels.
+
+## Linux Position
+
+Linux x86_64 is available as a prerelease GitHub Release tarball install path.
+The default `base` managed Python runtime profile has been smoke-tested on
+Ubuntu 24.04 without build tools and passes `tentgent doctor`.
+
+This does not imply full Linux backend parity. Local-model serving, training,
+GPU/CUDA behavior, Linux arm64, Linuxbrew, `.deb`, and `.rpm` distribution are
+still separate readiness decisions. Linux backend rows remain
+`dependency-gated` until their profile-specific dependencies and smoke tests
+are explicit.

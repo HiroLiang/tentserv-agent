@@ -315,12 +315,40 @@ Review target:
 - A Linux install can prepare the managed Python runtime and pass doctor with
   only expected backend warnings.
 
-### L6: Optional Linux Expansion
+### L6: Linux Preview User Docs And Readiness Boundary
 
-- Evaluate `aarch64-unknown-linux-gnu` after x86_64 is stable.
+- Status: implemented.
+- Documented Linux x86_64 as a prerelease preview install path, not stable
+  `latest` support.
+- Added user-facing install guidance that uses the explicit
+  `v0.3.4-alpha.2` release URL and `bash`, not `sh`, for the Unix installer.
+- Documented that the Linux preview was smoke-tested on `ubuntu:24.04` /
+  `linux/amd64`.
+- Documented that the default `base` runtime bootstrap does not require
+  `cc`, `gcc`, `g++`, or `cmake`.
+- Documented Linux runtime-home default planning:
+  `$HOME/.local/share/tentgent`.
+- Documented the support boundary:
+  - supported preview: x86_64 GitHub Release tarball install plus base runtime
+    bootstrap and `doctor`
+  - not claimed yet: local-model profile readiness, training profile readiness,
+    GPU/CUDA, Linuxbrew, `.deb`, `.rpm`, AUR, and Linux arm64
+- Updated user version notes so `v0.3.4-alpha.2` explains the Linux preview
+  without moving the stable 0.3.x line.
+
+Review target:
+
+- A Linux user can find the correct preview install command and understand the
+  current support boundary without reading the implementation plan.
+
+### L7: Optional Linux Expansion
+
+- Evaluate `aarch64-unknown-linux-gnu` after x86_64 preview usage is stable.
 - Decide whether Linux package-manager channels are worth adding.
-- Revisit glibc compatibility and minimum supported distro after real smoke
+- Revisit glibc compatibility and minimum supported distro after more smoke
   data exists.
+- Define separate smokes for `local-model`, `training`, and `full` profiles
+  before advertising local backend parity on Linux.
 
 Review target:
 

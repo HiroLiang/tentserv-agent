@@ -25,9 +25,10 @@ Use this directory for active or still-open implementation plans that are too la
   assets, tap formula, install/upgrade/uninstall smoke, docs, and tap update
   automation.
 - [linux-release-support.md](./linux-release-support.md)
-  Planned Linux release/install track. Starts with GitHub Release tarballs and
-  `install.sh` support for `x86_64-unknown-linux-gnu`, then full runtime
-  bootstrap smoke.
+  Linux release/install track. The x86_64 prerelease path now has GitHub
+  Release tarballs, `install.sh` support, base runtime bootstrap smoke, and
+  user-facing preview docs. Optional expansion remains open for Linux arm64,
+  distro packages, and heavier runtime profiles.
 - [model-capabilities-embedding-rerank.md](./model-capabilities-embedding-rerank.md)
   Planned model capability track for embedding and rerank models. Separates
   model storage format from serving capability before adding non-chat endpoints.
@@ -42,8 +43,8 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Recommended Order
 
-1. Add Linux release/install support now that the project-owned Homebrew tap is
-   stable enough for macOS distribution.
+1. Decide whether Linux optional expansion should continue now or wait for
+   preview feedback.
 2. Plan and implement model capabilities for embedding and rerank models.
 3. Redesign the TUI shell using `v0.3.0-alpha.1` as an archived baseline.
 
