@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "src/tentgent-kernel",
     "src/tentgent-core",
     "src/tentgent-cli",
     "src/tentgent-http",

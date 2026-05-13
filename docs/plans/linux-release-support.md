@@ -343,12 +343,18 @@ Review target:
 
 ### L7: Optional Linux Expansion
 
+- Prerequisite: move the kernel runtime layout, capability manifest, runtime
+  adapter, and backend-gated workflow bundles in
+  [tentgent-kernel-migration.md](./tentgent-kernel-migration.md) before
+  advertising profile-specific Linux readiness.
 - Evaluate `aarch64-unknown-linux-gnu` after x86_64 preview usage is stable.
 - Decide whether Linux package-manager channels are worth adding.
 - Revisit glibc compatibility and minimum supported distro after more smoke
   data exists.
 - Define separate smokes for `local-model`, `training`, and `full` profiles
   before advertising local backend parity on Linux.
+- Use manifest-backed probes to decide CPU vs GPU backend availability instead
+  of inferring readiness only from OS or architecture.
 
 Review target:
 

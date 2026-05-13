@@ -15,6 +15,8 @@ forcing them through chat-only server flows.
   `max_tokens`, `temperature`, and optional `adapter_ref`.
 - There are no first-class embedding or rerank endpoints, model capability
   fields, or compatibility checks.
+- There is no machine-local capability manifest yet, so backend availability is
+  still inferred from platform and dependency checks at command time.
 
 ## Goals
 
@@ -38,6 +40,9 @@ forcing them through chat-only server flows.
 - Do not add training support for embedding/rerank models in this track.
 - Do not claim every Hugging Face embedding or rerank architecture is supported
   immediately.
+- Do not use embedding/rerank work to invent a second machine capability model;
+  local backend readiness should come from the kernel capability manifest in
+  [tentgent-kernel-migration.md](./tentgent-kernel-migration.md).
 
 ## Proposed Concepts
 
@@ -103,6 +108,9 @@ Review target:
 - Return vectors with stable JSON shape and input index ordering.
 - Implement one local backend path first, likely Python `sentence-transformers`
   or a transformers feature path, chosen after dependency review.
+- Gate local backend startup through the kernel capability manifest once the
+  runtime layout, capability manifest, runtime adapter, and backend-gated
+  workflow bundles are in place.
 - Add cloud provider support only if the provider mapping is straightforward and
   does not complicate the local MVP.
 
@@ -119,6 +127,9 @@ Review target:
   results back to original inputs.
 - Implement one local backend path first, likely a cross-encoder rerank model
   path.
+- Gate local backend startup through the kernel capability manifest once the
+  runtime layout, capability manifest, runtime adapter, and backend-gated
+  workflow bundles are in place.
 - Do not add session storage or transcript behavior for rerank requests.
 
 Review target:
@@ -147,6 +158,9 @@ Review target:
   pipeline tags, or explicit user overrides.
 - Embedding and rerank dependencies may increase runtime footprint. Keep
   dependency additions deliberate and documented.
+- Local embedding/rerank backend work should depend on kernel manifest-backed
+  runtime profile readiness instead of re-probing platform, Python, CPU, or GPU
+  state in each endpoint implementation.
 - Session context, rolling summaries, and chat streaming should not be reused
   for embedding/rerank requests.
 

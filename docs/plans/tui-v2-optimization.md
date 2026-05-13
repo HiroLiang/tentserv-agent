@@ -94,6 +94,7 @@ a permanent top-level row.
   - choose model
   - choose dataset
   - choose backend/profile
+  - show runtime capability manifest readiness when available
   - configure advanced settings only if requested
   - preview
   - review
@@ -113,6 +114,10 @@ Do not begin broad TUI V2 implementation until the bugfix rollup fixes the
 session context semantics and daemon/direct-server chat boundary:
 
 - [0.3-bugfix-rollup.md](./archive/0.3-bugfix-rollup.md)
+
+Runtime/backend readiness screens should use the machine-local capability
+manifest once [tentgent-kernel-migration.md](./tentgent-kernel-migration.md)
+adds it, instead of deriving CPU/GPU/profile state from ad hoc TUI checks.
 
 ## Non-Goals
 

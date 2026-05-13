@@ -12,6 +12,7 @@ Use this directory for concise interface documents that define stable boundaries
 - Describe adapter-store identity, compatibility, and source-index boundaries when adapter management behavior changes.
 - Describe canonical dataset schemas when training, evaluation, or cloud dataset generation behavior changes.
 - Describe platform and backend support boundaries before runtime routing behavior depends on them.
+- Describe kernel architecture boundaries before moving core behavior into `tentgent-kernel`.
 - Keep each document focused on one interface or one boundary.
 
 ## Contract Index
@@ -38,6 +39,8 @@ Use this directory for concise interface documents that define stable boundaries
   Runtime-home resolution, standard subdirectories, and environment-variable overrides.
 - [platform-backends.md](./platform-backends.md)
   Platform capability matrix and backend support guardrails.
+- [kernel-architecture.md](./kernel-architecture.md)
+  `tentgent-kernel` module placement, dependency direction, capability readiness, and persistence boundaries.
 
 ## Expansion Rules
 

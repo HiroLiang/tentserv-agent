@@ -24,6 +24,11 @@ If the current task is about agent workflows, role selection, or role-specific w
 - `src/tentgent-core/`
   Shared Rust core types, runtime-facing contracts, routing logic, and server
   runtime launch helpers.
+- `src/tentgent-kernel/`
+  Migration landing zone for unified runtime layout, foundation primitives,
+  machine capability state, and feature use cases. Read
+  `docs/contracts/kernel-architecture.md` before moving behavior into this
+  crate.
 - `src/tentgent-cli/`
   Rust CLI entry point.
 - `src/tentgent-http/`
@@ -49,6 +54,8 @@ Key current documents:
 
 - `docs/contracts/runtime-home.md`
   Runtime-home resolution, environment-variable overrides, and standard storage roots.
+- `docs/contracts/kernel-architecture.md`
+  `tentgent-kernel` module placement, dependency direction, capability readiness, and persistence boundaries.
 - `docs/contracts/auth-secrets.md`
   Provider-secret resolution order and keychain usage rules.
 - `docs/contracts/model-store.md`
