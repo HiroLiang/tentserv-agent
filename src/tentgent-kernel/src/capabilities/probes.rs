@@ -4,18 +4,19 @@ use std::path::{Path, PathBuf};
 
 use crate::features::runtime::domain::{BootstrapProfile, RuntimeReadiness};
 use crate::foundation::error::KernelResult;
-use crate::foundation::layout::domain::{LayoutResolveMode, RuntimeLayout};
-use crate::foundation::layout::resolver::{RuntimeLayoutResolver, StdRuntimeLayoutResolver};
+use crate::foundation::layout::domain::RuntimeLayout;
+use crate::foundation::platform::domain::PlatformFacts;
 use crate::foundation::platform::domain::{Architecture, GpuFacts, OperatingSystem};
-use crate::foundation::platform::probe::{PlatformProbe, StdPlatformProbe};
 
 use super::domain::{
     BackendCapability, BackendKind, CapabilityProbeReport, CapabilityState, RuntimeCapabilityState,
     RuntimeProfileCapability,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityProbeInput {
+    pub platform: PlatformFacts,
+    pub layout: RuntimeLayout,
     pub include_heavy_checks: bool,
 }
 
@@ -23,46 +24,21 @@ pub trait CapabilityProbe {
     fn probe(&self, input: CapabilityProbeInput) -> KernelResult<CapabilityProbeReport>;
 }
 
-#[derive(Debug, Clone)]
-pub struct StdCapabilityProbe<P = StdPlatformProbe, L = StdRuntimeLayoutResolver> {
-    pub platform_probe: P,
-    pub layout_resolver: L,
-}
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StdCapabilityProbe;
 
-impl Default for StdCapabilityProbe {
-    fn default() -> Self {
-        Self {
-            platform_probe: StdPlatformProbe,
-            layout_resolver: StdRuntimeLayoutResolver,
-        }
-    }
-}
-
-impl<P, L> StdCapabilityProbe<P, L> {
-    pub fn new(platform_probe: P, layout_resolver: L) -> Self {
-        Self {
-            platform_probe,
-            layout_resolver,
-        }
-    }
-}
-
-impl<P, L> CapabilityProbe for StdCapabilityProbe<P, L>
-where
-    P: PlatformProbe,
-    L: RuntimeLayoutResolver,
-{
+impl CapabilityProbe for StdCapabilityProbe {
     fn probe(&self, input: CapabilityProbeInput) -> KernelResult<CapabilityProbeReport> {
-        let platform = self.platform_probe.query_platform_facts()?;
-        let layout = self
-            .layout_resolver
-            .resolve_runtime_layout(LayoutResolveMode::ReadOnly)?;
-
-        let runtime = runtime_capability_state(&layout, input);
-        let backends = backend_capabilities(&platform.os, &platform.arch, &platform.gpu, input);
+        let runtime = runtime_capability_state(&input.layout, input.include_heavy_checks);
+        let backends = backend_capabilities(
+            &input.platform.os,
+            &input.platform.arch,
+            &input.platform.gpu,
+            input.include_heavy_checks,
+        );
 
         Ok(CapabilityProbeReport {
-            platform,
+            platform: input.platform,
             runtime,
             backends,
         })
@@ -71,16 +47,16 @@ where
 
 fn runtime_capability_state(
     layout: &RuntimeLayout,
-    input: CapabilityProbeInput,
+    include_heavy_checks: bool,
 ) -> RuntimeCapabilityState {
     RuntimeCapabilityState {
         home_dir: layout.home_dir.clone(),
         python_env_dir: layout.python_env_dir.clone(),
         profiles: vec![
             base_profile_capability(layout),
-            unchecked_profile_capability(BootstrapProfile::LocalModel, input),
-            unchecked_profile_capability(BootstrapProfile::Training, input),
-            unchecked_profile_capability(BootstrapProfile::Full, input),
+            unchecked_profile_capability(BootstrapProfile::LocalModel, include_heavy_checks),
+            unchecked_profile_capability(BootstrapProfile::Training, include_heavy_checks),
+            unchecked_profile_capability(BootstrapProfile::Full, include_heavy_checks),
         ],
     }
 }
@@ -107,12 +83,12 @@ fn base_profile_capability(layout: &RuntimeLayout) -> RuntimeProfileCapability {
 
 fn unchecked_profile_capability(
     profile: BootstrapProfile,
-    input: CapabilityProbeInput,
+    include_heavy_checks: bool,
 ) -> RuntimeProfileCapability {
     RuntimeProfileCapability {
         profile,
         readiness: RuntimeReadiness::Unknown,
-        message: Some(if input.include_heavy_checks {
+        message: Some(if include_heavy_checks {
             "profile-specific dependency checks are not implemented yet".to_string()
         } else {
             "profile-specific dependency checks were skipped".to_string()
@@ -128,39 +104,39 @@ fn backend_capabilities(
     os: &OperatingSystem,
     arch: &Architecture,
     gpu: &GpuFacts,
-    input: CapabilityProbeInput,
+    include_heavy_checks: bool,
 ) -> Vec<BackendCapability> {
     vec![
-        local_model_backend(BackendKind::CpuGguf, input),
-        local_model_backend(BackendKind::SafetensorsPeft, input),
-        mlx_backend(os, arch, gpu, input),
+        local_model_backend(BackendKind::CpuGguf, include_heavy_checks),
+        local_model_backend(BackendKind::SafetensorsPeft, include_heavy_checks),
+        mlx_backend(os, arch, gpu, include_heavy_checks),
         profile_backend(
             BackendKind::Training,
             "training profile readiness is required",
             "run `tentgent runtime bootstrap --profile training`",
-            input,
+            include_heavy_checks,
         ),
         profile_backend(
             BackendKind::Embedding,
             "embedding backend readiness is not implemented yet",
             "install the future embedding runtime profile before using local embeddings",
-            input,
+            include_heavy_checks,
         ),
         profile_backend(
             BackendKind::Rerank,
             "rerank backend readiness is not implemented yet",
             "install the future rerank runtime profile before using local rerank",
-            input,
+            include_heavy_checks,
         ),
     ]
 }
 
-fn local_model_backend(backend: BackendKind, input: CapabilityProbeInput) -> BackendCapability {
+fn local_model_backend(backend: BackendKind, include_heavy_checks: bool) -> BackendCapability {
     profile_backend(
         backend,
         "local-model profile readiness is required",
         "run `tentgent runtime bootstrap --profile local-model`",
-        input,
+        include_heavy_checks,
     )
 }
 
@@ -168,7 +144,7 @@ fn mlx_backend(
     os: &OperatingSystem,
     arch: &Architecture,
     gpu: &GpuFacts,
-    input: CapabilityProbeInput,
+    include_heavy_checks: bool,
 ) -> BackendCapability {
     if !matches!(os, OperatingSystem::Macos) || !matches!(arch, Architecture::Aarch64) {
         return BackendCapability {
@@ -189,7 +165,7 @@ fn mlx_backend(
             BackendKind::Mlx,
             "Metal is visible; MLX Python dependencies still need profile checks",
             "run `tentgent runtime bootstrap --profile local-model`",
-            input,
+            include_heavy_checks,
         );
     }
 
@@ -205,12 +181,12 @@ fn profile_backend(
     backend: BackendKind,
     message: &str,
     next_step: &str,
-    input: CapabilityProbeInput,
+    include_heavy_checks: bool,
 ) -> BackendCapability {
     BackendCapability {
         backend,
         state: CapabilityState::Unknown,
-        message: Some(if input.include_heavy_checks {
+        message: Some(if include_heavy_checks {
             format!("{message}; heavy backend checks are not implemented yet")
         } else {
             format!("{message}; heavy backend checks were skipped")
@@ -231,49 +207,21 @@ fn python_binary_path(env_dir: &Path) -> PathBuf {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::foundation::layout::domain::{LayoutResolveMode, RuntimeLayout};
+    use crate::foundation::layout::domain::RuntimeLayout;
     use crate::foundation::platform::domain::{
         Architecture, CpuFacts, GpuFacts, MetalFacts, OperatingSystem, PlatformFacts,
     };
 
     use super::*;
 
-    #[derive(Debug)]
-    struct FakePlatformProbe {
-        facts: PlatformFacts,
-    }
-
-    impl PlatformProbe for FakePlatformProbe {
-        fn query_platform_facts(&self) -> KernelResult<PlatformFacts> {
-            Ok(self.facts.clone())
-        }
-    }
-
-    #[derive(Debug)]
-    struct FakeLayoutResolver {
-        layout: RuntimeLayout,
-    }
-
-    impl RuntimeLayoutResolver for FakeLayoutResolver {
-        fn resolve_runtime_layout(&self, mode: LayoutResolveMode) -> KernelResult<RuntimeLayout> {
-            assert_eq!(mode, LayoutResolveMode::ReadOnly);
-            Ok(self.layout.clone())
-        }
-    }
-
     #[test]
     fn probe_returns_report_not_manifest() {
-        let probe = StdCapabilityProbe::new(
-            FakePlatformProbe {
-                facts: platform_facts(),
-            },
-            FakeLayoutResolver {
-                layout: runtime_layout("/tmp/tentgent-capability-probe"),
-            },
-        );
+        let probe = StdCapabilityProbe;
 
         let report = probe
             .probe(CapabilityProbeInput {
+                platform: platform_facts(),
+                layout: runtime_layout("/tmp/tentgent-capability-probe"),
                 include_heavy_checks: false,
             })
             .expect("probe capabilities");

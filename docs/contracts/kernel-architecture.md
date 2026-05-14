@@ -71,7 +71,7 @@ capability manifests or decide whether a backend is ready.
 - manifest load/save boundaries
 - lightweight and profile-specific probes
 - `CapabilityRead`, `CapabilityProbe`, and `CapabilityManifestStore`
-  interfaces
+  interfaces used inside the capabilities package
 
 The manifest is a local cache, not user data identity:
 
@@ -85,16 +85,20 @@ explicit refresh, bootstrap/profile changes, schema changes, or stale-state
 handling.
 
 Feature packages must not directly probe OS, GPU, Python imports, or backend
-dependencies. They should ask `CapabilityRead`.
+dependencies. They should call capabilities use cases such as
+`QueryCurrentCapabilities`, `CheckProfileCapability`, `CheckBackendCapability`,
+`EnsureProfileReady`, or `EnsureBackendReady`.
 
-`CapabilityRead` has two kinds of operations:
+`CapabilityRead` has two kinds of service-level operations:
 
 - `check_*` returns state for status, doctor, and TUI display.
 - `ensure_*_ready` gates feature execution and returns an actionable error when
   the cached manifest says a profile or backend is not ready.
 
 `ensure_*_ready` must not imply that hardware or dependencies can be made ready
-by the call itself. It only asserts readiness before starting work.
+by the call itself. It only asserts readiness before starting work. Public
+feature code should prefer the corresponding capability use cases instead of
+calling `CapabilityRead` directly.
 
 Capability probes should return probe reports, not persisted manifests. Refresh
 use cases assemble `MachineCapabilityManifest` from probe reports and write it
@@ -138,11 +142,16 @@ Preferred flow:
 
 ```text
 features/server/usecases
-  -> capabilities::CapabilityRead
-    -> capabilities use cases / manifest
-      -> foundation/platform::QueryPlatformFacts
-        -> foundation/platform::PlatformProbe
-          -> PlatformFacts
+  -> capabilities::EnsureBackendReady
+    -> capabilities::CapabilityRead
+      -> capabilities::CapabilityManifestStore
+        -> MachineCapabilityManifest
+
+capabilities::RefreshCapabilities
+  -> foundation/platform::QueryPlatformFacts
+  -> foundation/layout::QueryRuntimeLayout
+  -> capabilities::CapabilityProbe
+  -> capabilities::CapabilityManifestStore
 ```
 
 Rules:
@@ -152,6 +161,12 @@ Rules:
 - `foundation` must not depend on `capabilities` or `features`.
 - Feature packages should not depend on each other directly unless a use case
   explicitly coordinates cross-feature behavior through a shared context.
+- Cross-package facts should be gathered by use cases, not hidden inside probes.
+  For example, `RefreshCapabilities` calls `QueryPlatformFacts` and
+  `QueryRuntimeLayout`, then passes those facts into `CapabilityProbe`.
+- When a use case is injected into another use case, depend on a narrow usecase
+  trait such as `PlatformFactsQuery` or `RuntimeLayoutQuery`; do not bound a
+  generic on another concrete usecase struct.
 
 ## Platform And Backend Rules
 

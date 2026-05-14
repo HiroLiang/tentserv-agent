@@ -8,6 +8,10 @@ pub struct QueryRuntimeLayout<'a, R> {
     pub resolver: &'a R,
 }
 
+pub trait RuntimeLayoutQuery {
+    fn run(&self) -> KernelResult<RuntimeLayout>;
+}
+
 impl<'a, R> QueryRuntimeLayout<'a, R> {
     pub fn new(resolver: &'a R) -> Self {
         Self { resolver }
@@ -19,6 +23,16 @@ where
     R: RuntimeLayoutResolver,
 {
     pub fn run(&self) -> KernelResult<RuntimeLayout> {
+        self.resolver
+            .resolve_runtime_layout(LayoutResolveMode::ReadOnly)
+    }
+}
+
+impl<R> RuntimeLayoutQuery for QueryRuntimeLayout<'_, R>
+where
+    R: RuntimeLayoutResolver,
+{
+    fn run(&self) -> KernelResult<RuntimeLayout> {
         self.resolver
             .resolve_runtime_layout(LayoutResolveMode::ReadOnly)
     }

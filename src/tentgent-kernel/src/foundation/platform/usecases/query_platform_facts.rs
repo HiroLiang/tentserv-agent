@@ -8,6 +8,10 @@ pub struct QueryPlatformFacts<'a, P> {
     pub probe: &'a P,
 }
 
+pub trait PlatformFactsQuery {
+    fn run(&self) -> KernelResult<PlatformFacts>;
+}
+
 impl<'a, P> QueryPlatformFacts<'a, P> {
     pub fn new(probe: &'a P) -> Self {
         Self { probe }
@@ -19,6 +23,15 @@ where
     P: PlatformProbe,
 {
     pub fn run(&self) -> KernelResult<PlatformFacts> {
+        self.probe.query_platform_facts()
+    }
+}
+
+impl<P> PlatformFactsQuery for QueryPlatformFacts<'_, P>
+where
+    P: PlatformProbe,
+{
+    fn run(&self) -> KernelResult<PlatformFacts> {
         self.probe.query_platform_facts()
     }
 }

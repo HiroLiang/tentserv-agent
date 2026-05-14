@@ -1,7 +1,7 @@
 //! Server application workflows.
 
 use crate::capabilities::domain::BackendKind;
-use crate::capabilities::service::CapabilityRead;
+use crate::capabilities::usecases::EnsureBackendReady;
 use crate::foundation::error::KernelResult;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,11 +11,11 @@ pub struct StartServerInput {
 }
 
 pub fn validate_start_server(
-    capabilities: &impl CapabilityRead,
+    ensure_backend_ready: &EnsureBackendReady<'_>,
     input: &StartServerInput,
 ) -> KernelResult<()> {
     if let Some(backend) = input.required_backend {
-        capabilities.ensure_backend_ready(backend)?;
+        ensure_backend_ready.run(backend)?;
     }
     Ok(())
 }

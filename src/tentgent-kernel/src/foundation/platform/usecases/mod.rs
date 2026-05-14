@@ -2,4 +2,4 @@
 
 pub mod query_platform_facts;
 
-pub use query_platform_facts::QueryPlatformFacts;
+pub use query_platform_facts::{PlatformFactsQuery, QueryPlatformFacts};

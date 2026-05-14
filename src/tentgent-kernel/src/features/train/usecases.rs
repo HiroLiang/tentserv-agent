@@ -1,6 +1,6 @@
 //! Training application workflows.
 
-use crate::capabilities::service::CapabilityRead;
+use crate::capabilities::usecases::EnsureProfileReady;
 use crate::features::runtime::domain::BootstrapProfile;
 use crate::foundation::error::KernelResult;
 
@@ -10,8 +10,8 @@ pub struct RunTrainingInput {
 }
 
 pub fn validate_run_training(
-    capabilities: &impl CapabilityRead,
+    ensure_profile_ready: &EnsureProfileReady<'_>,
     _input: &RunTrainingInput,
 ) -> KernelResult<()> {
-    capabilities.ensure_profile_ready(BootstrapProfile::Training)
+    ensure_profile_ready.run(BootstrapProfile::Training)
 }
