@@ -12,8 +12,8 @@ pub enum KernelError {
     #[error("backend capability is not ready: {backend}; {next_step}")]
     BackendCapabilityNotReady { backend: String, next_step: String },
 
-    #[error("capability manifest is unavailable: {0}")]
-    CapabilityManifestUnavailable(String),
+    #[error("capability state is unavailable: {0}")]
+    CapabilityStateUnavailable(String),
 
     #[error("runtime state is unavailable: {0}")]
     RuntimeStateUnavailable(String),

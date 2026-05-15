@@ -1,112 +1,143 @@
 # Kernel Architecture
 
-This contract defines the internal architecture boundary for `src/tentgent-kernel`.
-It is the source of truth for kernel module placement during the migration from
-`tentgent-core`.
+This contract defines the internal shape of `src/tentgent-kernel` while the
+project migrates behavior out of `tentgent-core`.
+
+The current kernel is intentionally a skeleton. It should first make package
+boundaries and shared data objects obvious. Behavior such as probing, file
+persistence, process spawning, and workflow orchestration moves later, one
+bundle at a time.
 
 ## Top-Level Shape
 
 `tentgent-kernel` has three top-level areas:
 
 ```text
-foundation/      low-level shared primitives
-capabilities/    shared machine readiness state
-features/        user-visible product feature packages
+foundation/      low-level shared facts and path data
+capabilities/    machine capability domain data
+features/        product feature packages
 ```
 
 Rules:
 
-- `foundation` does not know product workflows such as model import, server
-  launch, session chat, or training.
-- `capabilities` is shared readiness state, not a user feature package.
-- `features/*` owns product behavior and may call `foundation` and
-  `capabilities`.
-- CLI, HTTP, and TUI parse input, call feature use cases, and render output.
+- `foundation` contains shared primitives and machine facts. It does not know
+  product workflows such as model import, server launch, session chat, or
+  training.
+- `capabilities` contains shared readiness vocabulary. It is not a user-facing
+  feature package.
+- `features/*` maps to product areas and command families.
+- CLI, HTTP, and TUI stay as input/rendering layers. They should not gain new
+  ad hoc path, probe, or backend readiness logic while the migration is active.
+
+## Current Skeleton
+
+The current implemented shape is data-first:
+
+```text
+src/tentgent-kernel/src/
+  foundation/
+    error.rs
+    layout/
+      domain.rs
+    platform/
+      domain.rs
+  capabilities/
+    domain.rs
+  features/
+    auth/
+      usecases.rs
+    model/
+      usecases.rs
+    adapter/
+      usecases.rs
+    dataset/
+      usecases.rs
+    server/
+      domain.rs
+      usecases.rs
+    daemon/
+      usecases.rs
+    session/
+      usecases.rs
+    runtime/
+      domain.rs
+      usecases.rs
+    train/
+      domain.rs
+      usecases.rs
+```
+
+For now, `domain.rs` files own structures and enums only. `usecases.rs` files
+may exist as placeholders, but they should not hide implementation logic before
+the relevant bundle is moved.
+
+## Domain Files
+
+Use `domain.rs` for:
+
+- pure structs and enums
+- stable names shared by later stores, probes, services, or use cases
+- data that can be tested without filesystem, network, subprocess, or Python
+  runtime access
+
+Do not put these in `domain.rs`:
+
+- filesystem reads or writes
+- environment-variable lookup
+- process spawning
+- backend probing
+- CLI/HTTP/TUI rendering
+- hidden dependency injection
 
 ## Foundation
 
-`foundation` owns primitives that multiple feature packages need but that do
-not make product decisions.
+`foundation` owns low-level shared structures.
 
-Allowed areas:
+Current domain areas:
 
-```text
-foundation/layout/      runtime home, env overrides, standard paths
-foundation/platform/    OS, arch, libc, CPU, GPU, CUDA, Metal facts
-foundation/fs/          atomic write, bounded scans, locks, JSONL helpers
-foundation/ids/         refs, short refs, hash identifiers
-foundation/time/        clock traits and time helpers
-foundation/error.rs     shared kernel errors/results
-```
+- `foundation/layout/domain.rs`: runtime home and standard path data objects.
+- `foundation/platform/domain.rs`: OS, arch, libc, CPU, GPU, CUDA, and Metal
+  fact objects.
+- `foundation/error.rs`: shared kernel errors and result alias.
 
-Current implemented shape:
+Future implementation files may be added when the bundle moves:
 
 ```text
-foundation/layout/
-  domain.rs
-  resolver.rs
-  usecases/
-    query_runtime_layout.rs
-    ensure_runtime_layout.rs
-
-foundation/platform/
-  domain.rs
-  probe.rs
-  usecases/
-    query_platform_facts.rs
+foundation/layout/resolver.rs
+foundation/platform/probe.rs
+foundation/fs/
+foundation/ids/
+foundation/time/
 ```
 
-Foundation use cases may query facts or resolve paths. They must not write
-capability manifests or decide whether a backend is ready.
+These should remain internal helpers for shared mechanics, not product
+workflow owners.
 
 ## Capabilities
 
-`capabilities` owns machine-local readiness:
+`capabilities/domain.rs` owns machine readiness vocabulary:
 
-- `domain.rs` owns readiness language such as backend kinds and capability
-  states
-- `manifest.rs` owns the persisted manifest wrapper such as
-  `MachineCapabilityManifest`
-- platform/runtime/backend readiness states
-- manifest load/save boundaries
-- lightweight and profile-specific probes
-- `CapabilityRead`, `CapabilityProbe`, and `CapabilityManifestStore`
-  interfaces used inside the capabilities package
+- runtime profile readiness
+- backend kinds
+- backend readiness state
+- machine capability state snapshots
 
-The manifest is a local cache, not user data identity:
+Use the term capability state for the data and cache. Do not add a separate
+persisted-wrapper module unless a later migration proves that split removes
+real complexity.
+
+The likely persisted cache path remains:
 
 ```text
 TENTGENT_HOME/runtime/capabilities.toml
 ```
 
-Recommended persistence format is TOML. Default behavior should prefer the
-cached manifest when present, initialize only when missing, and refresh only on
-explicit refresh, bootstrap/profile changes, schema changes, or stale-state
-handling.
-
-Feature packages must not directly probe OS, GPU, Python imports, or backend
-dependencies. They should call capabilities use cases such as
-`QueryCurrentCapabilities`, `CheckProfileCapability`, `CheckBackendCapability`,
-`EnsureProfileReady`, or `EnsureBackendReady`.
-
-`CapabilityRead` has two kinds of service-level operations:
-
-- `check_*` returns state for status, doctor, and TUI display.
-- `ensure_*_ready` gates feature execution and returns an actionable error when
-  the cached manifest says a profile or backend is not ready.
-
-`ensure_*_ready` must not imply that hardware or dependencies can be made ready
-by the call itself. It only asserts readiness before starting work. Public
-feature code should prefer the corresponding capability use cases instead of
-calling `CapabilityRead` directly.
-
-Capability probes should return probe reports, not persisted manifests. Refresh
-use cases assemble `MachineCapabilityManifest` from probe reports and write it
-through `CapabilityManifestStore`.
+That file is local cached state, not user data identity. It should be
+regenerable and safe to refresh later.
 
 ## Features
 
-`features/*` contains user-visible product capabilities:
+Each feature package maps to a product area:
 
 ```text
 features/auth/
@@ -120,96 +151,87 @@ features/runtime/
 features/train/
 ```
 
-Each feature package may contain:
+Feature packages may eventually contain:
 
 ```text
 domain.rs
 store.rs
 service.rs
 runtime.rs
-usecases/
+usecases.rs
 ```
 
-Only create these files when the feature needs them. Keep small features as a
-`usecases.rs` file until splitting reduces reading cost.
+Only add these files when the feature needs them. Prefer a small, consistent
+package over a theoretical Clean Architecture layout. If a file has no real
+job yet, keep it empty or do not create it.
 
-Feature use cases own product orchestration. Store modules do filesystem I/O
-only. Runtime modules adapt external processes or Python helpers.
+## Dependency Direction
 
-## Dependency Flow
-
-Preferred flow:
+Allowed direction:
 
 ```text
-features/server/usecases
-  -> capabilities::EnsureBackendReady
-    -> capabilities::CapabilityRead
-      -> capabilities::CapabilityManifestStore
-        -> MachineCapabilityManifest
-
-capabilities::RefreshCapabilities
-  -> foundation/platform::QueryPlatformFacts
-  -> foundation/layout::QueryRuntimeLayout
-  -> capabilities::CapabilityProbe
-  -> capabilities::CapabilityManifestStore
+features/* -> capabilities -> foundation
+features/* -> foundation
 ```
 
-Rules:
+Disallowed direction:
 
-- `features/*` may depend on `foundation` and `capabilities`.
-- `capabilities` may depend on `foundation`.
-- `foundation` must not depend on `capabilities` or `features`.
-- Feature packages should not depend on each other directly unless a use case
-  explicitly coordinates cross-feature behavior through a shared context.
-- Cross-package facts should be gathered by use cases, not hidden inside probes.
-  For example, `RefreshCapabilities` calls `QueryPlatformFacts` and
-  `QueryRuntimeLayout`, then passes those facts into `CapabilityProbe`.
-- When a use case is injected into another use case, depend on a narrow usecase
-  trait such as `PlatformFactsQuery` or `RuntimeLayoutQuery`; do not bound a
-  generic on another concrete usecase struct.
+```text
+foundation -> capabilities
+foundation -> features/*
+capabilities -> features/*
+```
 
-## Platform And Backend Rules
+Cross-feature behavior should be explicit. If `server` later needs runtime
+layout or capability state, pass those data objects or call a clear package
+boundary. Do not hide feature-to-feature coupling inside probes or stores.
+
+## Runtime Layout Rules
+
+All runtime-home and standard path data should eventually flow through
+`foundation/layout`.
+
+Current skeleton only defines the `RuntimeLayout` data object. Resolver logic,
+environment overrides, and create/read-only behavior are deferred.
+
+Future path resolution should cover:
+
+- `TENTGENT_HOME`
+- standard model, adapter, dataset, session, server, train, cache, runtime,
+  log, and lock directories
+- managed Python env and bootstrap cache paths
+- capability state cache path
+
+## Platform Rules
 
 `PlatformFacts` describes machine facts only:
 
 - OS and architecture
 - Linux libc family/version
 - CPU vendor, brand, and features
-- GPU devices and hardware/runtime facts such as CUDA or Metal visibility
+- GPU devices and hardware/runtime visibility such as CUDA or Metal
 
-Platform facts do not mean a backend is ready.
-
-Backend readiness belongs to `capabilities`. For example, CUDA belongs in GPU
-facts, while `llama-cpp CUDA ready` or `training CUDA ready` belongs in backend
+Platform facts do not mean a backend is ready. Backend readiness belongs to
 capability state.
 
-## Layout Rules
+For example:
 
-All runtime-home and path resolution should flow through
-`foundation/layout`.
-
-Use:
-
-- `QueryRuntimeLayout` for read-only diagnostics and print-plan behavior.
-- `EnsureRuntimeLayout` for mutation paths that may create standard
-  directories.
-
-Feature packages should receive `RuntimeLayout` or a layout resolver. They
-should not construct paths from `TENTGENT_HOME` manually.
+- CUDA visibility belongs in platform/GPU facts.
+- “training backend can use CUDA” belongs in capability state.
 
 ## Persistence Rules
 
 The source of truth remains file-based by default. SQLite may be added later as
-a rebuildable index/cache, but should not become the first source of truth for
-models, adapters, datasets, sessions, servers, runtime manifests, or training
+a rebuildable index/cache, but it should not become the first source of truth
+for models, adapters, datasets, sessions, servers, runtime state, or training
 runs.
 
-Low-level file helpers should live under `foundation/fs`. Product-specific
-persistence should live in the owning feature package or in `capabilities` for
-the capability manifest.
+When persistence moves into kernel, product-specific stores should live in the
+owning package. Shared low-level file helpers can live under `foundation/fs`.
 
 ## Migration Rule
 
-During migration, `tentgent-core` may remain a compatibility facade. New or
-moved behavior should follow this contract instead of adding new ad hoc path,
-probe, or manager logic to old core.
+During migration, `tentgent-core` remains the behavior owner. New kernel code
+should only add structure or move a coherent bundle with tests. Do not add new
+ad hoc path, probe, or manager logic to old core when the matching kernel
+package already exists.

@@ -12,24 +12,11 @@ pub enum BootstrapProfile {
     Full,
 }
 
-impl BootstrapProfile {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Base => "base",
-            Self::LocalModel => "local-model",
-            Self::Training => "training",
-            Self::Full => "full",
-        }
-    }
-
-    pub fn uv_extras(self) -> &'static [&'static str] {
-        match self {
-            Self::Base => &[],
-            Self::LocalModel => &["local-model"],
-            Self::Training => &["training"],
-            Self::Full => &["local-model", "training"],
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BootstrapRuntimeInput {
+    pub profile: BootstrapProfile,
+    pub dry_run: bool,
+    pub print_plan: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

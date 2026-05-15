@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use crate::features::runtime::domain::{BootstrapProfile, RuntimeReadiness};
 use crate::foundation::platform::PlatformFacts;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CapabilityProbeReport {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MachineCapabilities {
+    pub schema_version: u32,
+    pub generated_at: Option<String>,
     pub platform: PlatformFacts,
     pub runtime: RuntimeCapabilityState,
     pub backends: Vec<BackendCapability>,
@@ -45,19 +47,6 @@ pub enum BackendKind {
     Training,
     Embedding,
     Rerank,
-}
-
-impl BackendKind {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::CpuGguf => "cpu-gguf",
-            Self::SafetensorsPeft => "safetensors-peft",
-            Self::Mlx => "mlx",
-            Self::Training => "training",
-            Self::Embedding => "embedding",
-            Self::Rerank => "rerank",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
