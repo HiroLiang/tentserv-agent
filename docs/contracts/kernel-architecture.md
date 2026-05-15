@@ -41,6 +41,9 @@ src/tentgent-kernel/src/
       domain.rs
     platform/
       domain.rs
+      infra.rs
+      ports.rs
+      tests.rs
   capabilities/
     domain.rs
   features/
@@ -67,7 +70,8 @@ src/tentgent-kernel/src/
       usecases.rs
 ```
 
-For now, `domain.rs` files own structures and enums only. `usecases.rs` files
+For now, `domain.rs` files own structures and enums. `ports.rs` files may
+define narrow traits for external facts the package needs. `usecases.rs` files
 may exist as placeholders, but they should not hide implementation logic before
 the relevant bundle is moved.
 
@@ -98,13 +102,17 @@ Current domain areas:
 - `foundation/layout/domain.rs`: runtime home and standard path data objects.
 - `foundation/platform/domain.rs`: OS, arch, libc, CPU, GPU, CUDA, and Metal
   fact objects.
+- `foundation/platform/ports.rs`: `PlatformProbe`, the trait for reading
+  current platform facts.
+- `foundation/platform/infra.rs`: `StdPlatformProbe`, the standard
+  implementation that reads current platform facts.
+- `foundation/platform/tests.rs`: fake probe and standard probe smoke tests.
 - `foundation/error.rs`: shared kernel errors and result alias.
 
 Future implementation files may be added when the bundle moves:
 
 ```text
 foundation/layout/resolver.rs
-foundation/platform/probe.rs
 foundation/fs/
 foundation/ids/
 foundation/time/

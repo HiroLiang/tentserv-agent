@@ -37,6 +37,9 @@ tentgent-kernel/
       domain.rs
     platform/
       domain.rs
+      infra.rs
+      ports.rs
+      tests.rs
   capabilities/
     domain.rs
   features/
@@ -64,8 +67,8 @@ tentgent-kernel/
 ```
 
 The current crate is data-first. `domain.rs` contains structures and enums.
-`usecases.rs` files are placeholders only until a feature bundle actually
-moves.
+`ports.rs` may define narrow traits such as platform fact probing. `usecases.rs`
+files are placeholders only until a feature bundle actually moves.
 
 ## Current State
 
@@ -76,6 +79,8 @@ Implemented:
   session, runtime, and train.
 - Foundation layout domain object: `RuntimeLayout`.
 - Foundation platform domain objects: OS, arch, libc, CPU, GPU, CUDA, Metal.
+- Foundation platform port and infra: `PlatformProbe`, `StdPlatformProbe`, and
+  centralized platform tests.
 - Capability domain objects: runtime profile readiness, backend kinds, backend
   readiness, machine capability state.
 - Small feature input data objects for runtime, server, and training.
@@ -83,7 +88,6 @@ Implemented:
 Not implemented by design:
 
 - runtime layout resolver
-- platform probe
 - capability refresh/read/check services
 - capability state file store
 - feature workflow use cases
@@ -96,13 +100,6 @@ The first kernel spike implemented the items below, then removed them from the
 skeleton so the package shape can settle first. Reintroduce them later
 bundle-by-bundle when each boundary is ready.
 
-- Platform detection:
-  - `StdPlatformProbe`
-  - OS/arch detection
-  - Linux libc detection
-  - CPU brand/features detection
-  - Metal visibility on macOS
-  - CUDA visibility via common command probes
 - Runtime layout:
   - `StdRuntimeLayoutResolver`
   - read-only vs create-capable resolution
@@ -118,7 +115,6 @@ bundle-by-bundle when each boundary is ready.
   - server backend readiness validation
   - training profile/backend readiness validation
 - Tests:
-  - platform standard probe smoke
   - runtime layout resolver tests
   - capability TOML round-trip preview under `target/tentgent-kernel/`
   - check/ensure readiness tests
@@ -230,7 +226,7 @@ Done when:
 
 Move/add:
 
-- lightweight platform probe
+- capability refresh orchestration that consumes existing platform facts
 - runtime/profile readiness detection
 - Python import/backend probes after explicit profile install
 - capability state file schema/version
@@ -318,7 +314,7 @@ Done when:
   runtime adapter, and backend-gated workflow bundles before advertising
   profile-specific Linux readiness.
 - Embedding/rerank local backend work should use kernel readiness gates rather
-  than adding endpoint-specific platform probes.
+  than adding endpoint-specific machine detection.
 - TUI V2 should render kernel-backed readiness instead of deriving backend
   state in the UI layer.
 
