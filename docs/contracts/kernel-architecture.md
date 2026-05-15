@@ -106,11 +106,21 @@ workflow owners.
 - probing machine capability state from runtime layout and platform facts
 - loading and saving cached capability state
 - checking backend and runtime-profile readiness for feature gates
+- resolving current or refreshed capability snapshots for callers without
+  making CLI, HTTP, or TUI assemble layout and platform probes themselves
+- enforcing backend and runtime-profile readiness without exposing checker
+  details to feature packages
 
 Current standard implementations are `FileCapabilityStateStore`,
 `StdMachineCapabilitiesProbe`, and `StdCapabilityChecker`. Heavy Python import
 probes and backend launch checks should be added later as an explicit probe
 bundle, not hidden in the lightweight probe.
+
+`capabilities/usecases/` owns orchestration implementations and their local
+request/response structs. For example, `resolver.rs` keeps
+`MachineCapabilitiesInput` and `MachineCapabilitiesSnapshot` next to
+`StdMachineCapabilitiesResolver`. CLI, HTTP, and TUI should call use cases
+instead of assembling layout, platform, cache, and probe steps themselves.
 
 Use the term capability state for the data and cache. Do not add a separate
 persisted-wrapper module unless a later migration proves that split removes

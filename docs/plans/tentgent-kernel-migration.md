@@ -50,8 +50,13 @@ Implemented:
   readiness, machine capability state.
 - Capability ports for machine capability probing, cached state load/save, and
   backend or runtime-profile readiness checks.
+- Capability orchestration ports for current/refresh snapshot resolution and
+  feature gate enforcement, so CLI/HTTP/TUI do not duplicate layout/platform
+  probing before reading capability state.
 - Capability infra implementations split by port: file-backed TOML state store,
   lightweight platform/layout probe, and cached-state checker.
+- Capability use-case implementations with colocated request/response types
+  for machine capability snapshots and feature gate enforcement.
 - Small feature input data objects for runtime, server, and training.
 
 Not implemented by design:
