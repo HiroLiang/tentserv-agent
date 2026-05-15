@@ -39,6 +39,9 @@ src/tentgent-kernel/src/
     error.rs
     layout/
       domain.rs
+      infra.rs
+      ports.rs
+      tests.rs
     platform/
       domain.rs
       infra.rs
@@ -99,7 +102,14 @@ Do not put these in `domain.rs`:
 
 Current domain areas:
 
-- `foundation/layout/domain.rs`: runtime home and standard path data objects.
+- `foundation/layout/domain.rs`: runtime home, data root, and standard path
+  data objects.
+- `foundation/layout/infra.rs`: `StdRuntimeLayoutResolver`, the standard
+  implementation that resolves roots and derived paths.
+- `foundation/layout/ports.rs`: `RuntimeLayoutResolver`, the trait for
+  resolving runtime layout in read-only or create-capable modes.
+- `foundation/layout/tests.rs`: explicit root, env root, read-only, and create
+  mode tests.
 - `foundation/platform/domain.rs`: OS, arch, libc, CPU, GPU, CUDA, and Metal
   fact objects.
 - `foundation/platform/ports.rs`: `PlatformProbe`, the trait for reading
@@ -112,7 +122,6 @@ Current domain areas:
 Future implementation files may be added when the bundle moves:
 
 ```text
-foundation/layout/resolver.rs
 foundation/fs/
 foundation/ids/
 foundation/time/
@@ -199,16 +208,27 @@ boundary. Do not hide feature-to-feature coupling inside probes or stores.
 All runtime-home and standard path data should eventually flow through
 `foundation/layout`.
 
-Current skeleton only defines the `RuntimeLayout` data object. Resolver logic,
-environment overrides, and create/read-only behavior are deferred.
+Current skeleton defines `RuntimeLayoutInput`, `RuntimeLayout`, and
+`StdRuntimeLayoutResolver`.
 
-Future path resolution should cover:
+The public layout shape should stay small:
 
-- `TENTGENT_HOME`
-- standard model, adapter, dataset, session, server, train, cache, runtime,
-  log, and lock directories
-- managed Python env and bootstrap cache paths
-- capability state cache path
+- `home_dir`: control-plane root for config, sessions, servers, runtime, logs,
+  locks, managed Python, bootstrap tools, and capability state.
+- `data_root_dir`: data-plane root for models, adapters, datasets, training
+  data, and cache.
+
+If `data_root_dir` is unset, it resolves to `home_dir`. Avoid exposing many
+per-directory path overrides as the main user-facing contract; advanced users
+can use a different `home_dir`, a different `data_root_dir`, or OS-level
+mounts/symlinks/junctions.
+
+Implemented path resolution covers:
+
+- `TENTGENT_HOME` / explicit `home_dir`
+- `TENTGENT_DATA_ROOT` / optional explicit `data_root_dir`
+- fixed standard subpaths under those roots
+- read-only vs create-capable resolution mode
 
 ## Platform Rules
 

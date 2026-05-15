@@ -35,6 +35,9 @@ tentgent-kernel/
     error.rs
     layout/
       domain.rs
+      infra.rs
+      ports.rs
+      tests.rs
     platform/
       domain.rs
       infra.rs
@@ -77,7 +80,9 @@ Implemented:
 - `src/tentgent-kernel` workspace crate.
 - Feature package folders for auth, model, adapter, dataset, server, daemon,
   session, runtime, and train.
-- Foundation layout domain object: `RuntimeLayout`.
+- Foundation layout domain, port, and infra: `RuntimeLayoutInput`,
+  `RuntimeLayout`, `RuntimeLayoutResolver`, `StdRuntimeLayoutResolver`, and
+  centralized layout tests.
 - Foundation platform domain objects: OS, arch, libc, CPU, GPU, CUDA, Metal.
 - Foundation platform port and infra: `PlatformProbe`, `StdPlatformProbe`, and
   centralized platform tests.
@@ -87,7 +92,6 @@ Implemented:
 
 Not implemented by design:
 
-- runtime layout resolver
 - capability refresh/read/check services
 - capability state file store
 - feature workflow use cases
@@ -100,11 +104,6 @@ The first kernel spike implemented the items below, then removed them from the
 skeleton so the package shape can settle first. Reintroduce them later
 bundle-by-bundle when each boundary is ready.
 
-- Runtime layout:
-  - `StdRuntimeLayoutResolver`
-  - read-only vs create-capable resolution
-  - env override handling
-  - standard directory creation
 - Capability state:
   - TOML cache at `TENTGENT_HOME/runtime/capabilities.toml`
   - file store for load/save
@@ -132,7 +131,7 @@ instead of adding more ad hoc path or manager logic to old core.
 Move or centralize:
 
 - project identity constants and workspace metadata usage
-- `TENTGENT_HOME` and path override env names
+- `TENTGENT_HOME` and optional data-root override
 - platform default runtime-home resolution
 - standard directory names and file names
 - read-only vs create-capable resolution
@@ -147,6 +146,8 @@ Old areas affected:
 Done when:
 
 - path construction has one source of truth in `RuntimeLayout`
+- the first-class knobs are `home_dir` and optional `data_root_dir`, not a large
+  set of per-directory overrides
 - old managers can be constructed from kernel layout or produce identical paths
 - no new code calls `ProjectDirs::from("com", "tentserv", "tentgent")`
   outside the layout bundle
