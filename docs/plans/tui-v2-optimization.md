@@ -94,7 +94,7 @@ a permanent top-level row.
   - choose model
   - choose dataset
   - choose backend/profile
-  - show runtime capability manifest readiness when available
+  - show runtime capability-state readiness when available
   - configure advanced settings only if requested
   - preview
   - review

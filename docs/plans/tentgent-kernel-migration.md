@@ -27,51 +27,11 @@ Architecture rules live in
 [kernel-architecture.md](../contracts/kernel-architecture.md). This plan
 tracks migration order and current state.
 
-Current shape:
-
-```text
-tentgent-kernel/
-  foundation/
-    error.rs
-    layout/
-      domain.rs
-      infra.rs
-      ports.rs
-      tests.rs
-    platform/
-      domain.rs
-      infra.rs
-      ports.rs
-      tests.rs
-  capabilities/
-    domain.rs
-  features/
-    auth/
-      usecases.rs
-    model/
-      usecases.rs
-    adapter/
-      usecases.rs
-    dataset/
-      usecases.rs
-    server/
-      domain.rs
-      usecases.rs
-    daemon/
-      usecases.rs
-    session/
-      usecases.rs
-    runtime/
-      domain.rs
-      usecases.rs
-    train/
-      domain.rs
-      usecases.rs
-```
-
-The current crate is data-first. `domain.rs` contains structures and enums.
-`ports.rs` may define narrow traits such as platform fact probing. `usecases.rs`
-files are placeholders only until a feature bundle actually moves.
+The current source tree is the authority for exact files. The crate remains
+data-first where possible: `domain.rs` contains structures and enums,
+`ports.rs` defines narrow package traits, and `infra/` or `infra.rs` contains
+standard local-machine implementations. `usecases.rs` files are placeholders
+only until a feature bundle actually moves.
 
 ## Current State
 
@@ -88,37 +48,18 @@ Implemented:
   centralized platform tests.
 - Capability domain objects: runtime profile readiness, backend kinds, backend
   readiness, machine capability state.
+- Capability ports for machine capability probing, cached state load/save, and
+  backend or runtime-profile readiness checks.
+- Capability infra implementations split by port: file-backed TOML state store,
+  lightweight platform/layout probe, and cached-state checker.
 - Small feature input data objects for runtime, server, and training.
 
 Not implemented by design:
 
-- capability refresh/read/check services
-- capability state file store
+- heavy Python import/backend probe implementations
 - feature workflow use cases
 - process/runtime adapters
 - compatibility adapters from old core
-
-## Deferred Implementation Inventory
-
-The first kernel spike implemented the items below, then removed them from the
-skeleton so the package shape can settle first. Reintroduce them later
-bundle-by-bundle when each boundary is ready.
-
-- Capability state:
-  - TOML cache at `TENTGENT_HOME/runtime/capabilities.toml`
-  - file store for load/save
-  - current/read service
-  - refresh service
-  - backend/profile check and ensure helpers
-- Feature gates:
-  - server backend readiness validation
-  - training profile/backend readiness validation
-- Tests:
-  - runtime layout resolver tests
-  - capability TOML round-trip preview under `target/tentgent-kernel/`
-  - check/ensure readiness tests
-
-Keep this inventory as memory only. It is not the current architecture.
 
 ## Migration Bundles
 
@@ -197,7 +138,6 @@ Move persistence adapters after paths and domain types are stable:
 - server spec/process metadata store
 - training plan/run store
 - daemon process metadata store
-- capability state cache store
 
 Done when:
 
@@ -227,16 +167,13 @@ Done when:
 
 Move/add:
 
-- capability refresh orchestration that consumes existing platform facts
-- runtime/profile readiness detection
 - Python import/backend probes after explicit profile install
-- capability state file schema/version
 - stale-state handling
 
 Done when:
 
 - print-plan style diagnostics are non-mutating
-- explicit refresh writes/updates the capability state cache
+- explicit refresh writes/updates the existing capability state cache
 - doctor/status can render missing, stale, ready, blocked, and unsupported
   states
 - no heavy dependencies are installed during lightweight probes

@@ -3,10 +3,9 @@
 This contract defines the internal shape of `src/tentgent-kernel` while the
 project migrates behavior out of `tentgent-core`.
 
-The current kernel is intentionally a skeleton. It should first make package
-boundaries and shared data objects obvious. Behavior such as probing, file
-persistence, process spawning, and workflow orchestration moves later, one
-bundle at a time.
+The current kernel is intentionally incremental. It should make package
+boundaries and shared data objects obvious first, then move behavior one
+coherent bundle at a time.
 
 ## Top-Level Shape
 
@@ -29,54 +28,17 @@ Rules:
 - CLI, HTTP, and TUI stay as input/rendering layers. They should not gain new
   ad hoc path, probe, or backend readiness logic while the migration is active.
 
-## Current Skeleton
+## Current Package Shape
 
-The current implemented shape is data-first:
+The source tree is the authority for exact files. Current packages follow this
+shape:
 
-```text
-src/tentgent-kernel/src/
-  foundation/
-    error.rs
-    layout/
-      domain.rs
-      infra.rs
-      ports.rs
-      tests.rs
-    platform/
-      domain.rs
-      infra.rs
-      ports.rs
-      tests.rs
-  capabilities/
-    domain.rs
-  features/
-    auth/
-      usecases.rs
-    model/
-      usecases.rs
-    adapter/
-      usecases.rs
-    dataset/
-      usecases.rs
-    server/
-      domain.rs
-      usecases.rs
-    daemon/
-      usecases.rs
-    session/
-      usecases.rs
-    runtime/
-      domain.rs
-      usecases.rs
-    train/
-      domain.rs
-      usecases.rs
-```
-
-For now, `domain.rs` files own structures and enums. `ports.rs` files may
-define narrow traits for external facts the package needs. `usecases.rs` files
-may exist as placeholders, but they should not hide implementation logic before
-the relevant bundle is moved.
+- `domain.rs` owns structures and enums.
+- `ports.rs` owns narrow traits for package boundaries.
+- `infra/` or `infra.rs` owns standard implementations that touch the local
+  machine, filesystem, environment, or subprocesses.
+- `usecases.rs` may exist as a placeholder in feature packages, but should not
+  hide implementation logic before the relevant bundle is moved.
 
 ## Domain Files
 
@@ -138,6 +100,17 @@ workflow owners.
 - backend kinds
 - backend readiness state
 - machine capability state snapshots
+
+`capabilities/ports.rs` defines the narrow boundaries for:
+
+- probing machine capability state from runtime layout and platform facts
+- loading and saving cached capability state
+- checking backend and runtime-profile readiness for feature gates
+
+Current standard implementations are `FileCapabilityStateStore`,
+`StdMachineCapabilitiesProbe`, and `StdCapabilityChecker`. Heavy Python import
+probes and backend launch checks should be added later as an explicit probe
+bundle, not hidden in the lightweight probe.
 
 Use the term capability state for the data and cache. Do not add a separate
 persisted-wrapper module unless a later migration proves that split removes
@@ -208,7 +181,7 @@ boundary. Do not hide feature-to-feature coupling inside probes or stores.
 All runtime-home and standard path data should eventually flow through
 `foundation/layout`.
 
-Current skeleton defines `RuntimeLayoutInput`, `RuntimeLayout`, and
+Current layout package defines `RuntimeLayoutInput`, `RuntimeLayout`, and
 `StdRuntimeLayoutResolver`.
 
 The public layout shape should stay small:

@@ -32,13 +32,13 @@ Use this directory for active or still-open implementation plans that are too la
 - [tentgent-kernel-migration.md](./tentgent-kernel-migration.md)
   Planned `tentgent-kernel` migration for unified runtime layout, application
   use cases, filesystem store boundaries, and the machine-local capability
-  manifest. This should become the shared readiness source for
+  state. This should become the shared readiness source for
   Linux/Windows/macOS backend gates before optional local-model, training, GPU,
   or non-chat model capabilities are advertised.
 - [model-capabilities-embedding-rerank.md](./model-capabilities-embedding-rerank.md)
   Planned model capability track for embedding and rerank models. Separates
   model storage format from serving capability before adding non-chat endpoints;
-  local backend work should use kernel capability manifest gates.
+  local backend work should use kernel capability-state gates.
 - [tui-v2-optimization.md](./tui-v2-optimization.md)
   Deferred TUI interaction redesign plan. The `v0.3.0-alpha.1` TUI is treated
   as an archived baseline, not a UX contract.
@@ -52,10 +52,10 @@ Use this directory for active or still-open implementation plans that are too la
 
 1. Start the `tentgent-kernel` migration with the crate shell, runtime layout,
    and app-context bundles.
-2. Move the capability manifest and backend-gated workflow bundles before
+2. Wire capability state into backend-gated workflow bundles before
    profile-specific backend readiness claims.
-3. Use the manifest to decide whether Linux optional expansion should continue
-   now or wait for preview feedback.
+3. Use capability state to decide whether Linux optional expansion should
+   continue now or wait for preview feedback.
 4. Plan and implement model capabilities for embedding and rerank models.
 5. Redesign the TUI shell using `v0.3.0-alpha.1` as an archived baseline.
 

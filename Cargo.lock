@@ -2110,6 +2110,8 @@ dependencies = [
  "directories",
  "serde",
  "thiserror 2.0.18",
+ "time",
+ "toml",
 ]
 
 [[package]]

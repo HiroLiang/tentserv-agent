@@ -343,8 +343,8 @@ Review target:
 
 ### L7: Optional Linux Expansion
 
-- Prerequisite: move the kernel runtime layout, capability manifest, runtime
-  adapter, and backend-gated workflow bundles in
+- Prerequisite: wire kernel runtime layout and capability state into runtime
+  adapters and backend-gated workflow bundles in
   [tentgent-kernel-migration.md](./tentgent-kernel-migration.md) before
   advertising profile-specific Linux readiness.
 - Evaluate `aarch64-unknown-linux-gnu` after x86_64 preview usage is stable.

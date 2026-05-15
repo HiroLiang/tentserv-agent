@@ -15,8 +15,8 @@ forcing them through chat-only server flows.
   `max_tokens`, `temperature`, and optional `adapter_ref`.
 - There are no first-class embedding or rerank endpoints, model capability
   fields, or compatibility checks.
-- There is no machine-local capability manifest yet, so backend availability is
-  still inferred from platform and dependency checks at command time.
+- The kernel has machine-local capability state primitives, but embedding and
+  rerank workflows are not yet gated through them.
 
 ## Goals
 
@@ -41,7 +41,7 @@ forcing them through chat-only server flows.
 - Do not claim every Hugging Face embedding or rerank architecture is supported
   immediately.
 - Do not use embedding/rerank work to invent a second machine capability model;
-  local backend readiness should come from the kernel capability manifest in
+  local backend readiness should come from kernel capability state in
   [tentgent-kernel-migration.md](./tentgent-kernel-migration.md).
 
 ## Proposed Concepts
@@ -108,9 +108,8 @@ Review target:
 - Return vectors with stable JSON shape and input index ordering.
 - Implement one local backend path first, likely Python `sentence-transformers`
   or a transformers feature path, chosen after dependency review.
-- Gate local backend startup through the kernel capability manifest once the
-  runtime layout, capability manifest, runtime adapter, and backend-gated
-  workflow bundles are in place.
+- Gate local backend startup through kernel capability state once runtime
+  adapters and backend-gated workflow bundles are in place.
 - Add cloud provider support only if the provider mapping is straightforward and
   does not complicate the local MVP.
 
@@ -127,9 +126,8 @@ Review target:
   results back to original inputs.
 - Implement one local backend path first, likely a cross-encoder rerank model
   path.
-- Gate local backend startup through the kernel capability manifest once the
-  runtime layout, capability manifest, runtime adapter, and backend-gated
-  workflow bundles are in place.
+- Gate local backend startup through kernel capability state once runtime
+  adapters and backend-gated workflow bundles are in place.
 - Do not add session storage or transcript behavior for rerank requests.
 
 Review target:
