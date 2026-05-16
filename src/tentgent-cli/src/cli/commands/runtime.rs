@@ -11,6 +11,13 @@ pub enum RuntimeCommands {
         long_about = "Create or sync Tentgent's managed Python runtime using the packaged bootstrap script and pinned uv tooling. This is the package-manager friendly runtime setup command for Homebrew and manual installs."
     )]
     Bootstrap(RuntimeBootstrapCommand),
+    /// Show managed Python runtime status.
+    #[command(
+        name = "status",
+        about = "Show managed Python runtime status.",
+        long_about = "Show managed Python runtime status, including resolved runtime-home paths, Python environment presence, Python version, and bootstrap profile readiness."
+    )]
+    Status(RuntimeStatusCommand),
 }
 
 #[derive(Debug, Args)]
@@ -33,6 +40,16 @@ pub struct RuntimeBootstrapCommand {
     /// Print resolved paths without syncing.
     #[arg(long)]
     pub print_plan: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct RuntimeStatusCommand {
+    /// Python daemon project directory override for status resolution.
+    #[arg(long, value_name = "PATH")]
+    pub project: Option<PathBuf>,
+    /// Managed Python environment path override for status resolution.
+    #[arg(long, value_name = "PATH")]
+    pub env: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]

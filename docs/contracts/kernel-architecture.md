@@ -164,6 +164,7 @@ Feature packages may eventually contain:
 
 ```text
 domain.rs
+infra/
 store.rs
 service.rs
 runtime.rs
@@ -174,6 +175,11 @@ usecases/
 Only add these files when the feature needs them. Prefer a small, consistent
 package over a theoretical Clean Architecture layout. If a file has no real
 job yet, keep it empty or do not create it.
+
+`mod.rs` and `lib.rs` are composition files only. They should declare modules,
+re-export the public surface, and carry module-level documentation. Put runtime,
+store, probe, planner, executor, and test logic in focused sibling files instead
+of accumulating behavior inside a generic module entry file.
 
 `features/runtime/domain.rs` owns pure runtime setup names and state:
 
@@ -197,7 +203,21 @@ use cases once their migration bundle moves.
 - probing runtime initialization/readiness state
 
 Runtime infra and use cases are still migration work; old `tentgent-core`
-runtime helpers remain the behavior owner until that bundle moves.
+runtime helpers remain the behavior owner until their callers move. Current
+runtime infra owns the standard Python runtime resolver, executable path
+resolver, bootstrap planner/executor, and read-only runtime state probe.
+
+`features/runtime/usecases/port.rs` defines orchestration boundaries for:
+
+- resolving runtime-home layout and the effective Python runtime layout
+- planning and executing managed runtime bootstrap through runtime infra
+- probing managed runtime state without mutation
+- resolving Python or daemon entrypoint executable paths for callers
+
+Standard runtime use cases live in focused sibling files under
+`features/runtime/usecases/`. They assemble foundation layout/platform ports
+with runtime infra ports; CLI, HTTP, and doctor callers should depend on these
+use cases instead of directly composing runtime infra.
 
 `features/doctor/domain.rs` owns pure diagnostic report names and rules:
 

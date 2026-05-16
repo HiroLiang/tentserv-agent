@@ -57,7 +57,10 @@ fn explicit_data_root_separates_control_and_data_paths() {
     assert_eq!(layout.datasets_dir, data.join("datasets"));
     assert_eq!(layout.train_dir, data.join("train"));
     assert_eq!(layout.cache_dir, data.join("cache"));
-    assert_eq!(layout.bootstrap_uv_cache_dir, data.join("cache/uv-cache"));
+    assert_eq!(
+        layout.bootstrap_uv_cache_dir,
+        home.join("runtime/bootstrap/uv-cache")
+    );
 }
 
 #[test]

@@ -54,7 +54,10 @@ Environment variables are read when a process starts. Tentgent does not rewrite 
 
 ## Runtime Footprint
 
-Use `tentgent status` or `tentgent doctor` to inspect human-readable size information for the runtime home, managed Python environment, and bootstrap caches.
+Use `tentgent runtime status`, `tentgent status`, or `tentgent doctor` to inspect
+human-readable runtime information. `tentgent runtime status` is scoped to the
+managed Python runtime; `tentgent status` and `tentgent doctor` include broader
+platform, backend, and installation diagnostics.
 
 The managed install default for the Python environment is:
 
@@ -83,6 +86,15 @@ tentgent runtime bootstrap --profile full
 Use `tentgent runtime bootstrap --print-plan` to inspect resolved runtime paths
 and selected profile extras without syncing. Direct release installers run the
 base bootstrap automatically unless `--skip-python-bootstrap` is passed.
+
+`tentgent runtime bootstrap` options are independent:
+
+- `--project` overrides the Python daemon project.
+- `--env` overrides the managed Python environment.
+- `--uv` uses an explicit uv executable.
+- `--profile` selects `base`, `local-model`, `training`, or `full`.
+- `--dry-run` asks uv to plan without syncing.
+- `--print-plan` prints the resolved bootstrap plan without syncing.
 
 Bootstrap data lives under:
 

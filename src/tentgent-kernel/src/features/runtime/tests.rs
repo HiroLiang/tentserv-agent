@@ -12,6 +12,9 @@ use super::ports::{
 };
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
+use crate::foundation::platform::{
+    Architecture, CpuFacts, GpuFacts, LibcFacts, OperatingSystem, PlatformFacts,
+};
 
 #[test]
 fn bootstrap_profiles_use_cli_contract_names() {
@@ -105,6 +108,8 @@ fn runtime_ports_cover_resolution_bootstrap_executables_and_state() {
     let plan = ports
         .plan_bootstrap(
             &layout,
+            &runtime,
+            &platform_facts(),
             BootstrapRuntimeInput {
                 project_dir: Some(runtime.project_dir.clone()),
                 python_env_dir: Some(runtime.env_dir.clone()),
@@ -174,6 +179,8 @@ impl RuntimeBootstrapPlanner for FakeRuntimePorts {
     fn plan_bootstrap(
         &self,
         layout: &RuntimeLayout,
+        _runtime: &PythonRuntimeLayout,
+        _platform: &PlatformFacts,
         input: BootstrapRuntimeInput,
     ) -> KernelResult<RuntimeBootstrapPlan> {
         let project_dir = input
@@ -257,5 +264,23 @@ fn runtime_layout(root: &str) -> RuntimeLayout {
         bootstrap_uv_cache_dir: root.join("runtime/bootstrap/uv-cache"),
         capabilities_path: root.join("runtime/capabilities.toml"),
         auth_metadata_path: root.join("runtime/auth.toml"),
+    }
+}
+
+fn platform_facts() -> PlatformFacts {
+    PlatformFacts {
+        os: OperatingSystem::Macos,
+        arch: Architecture::Aarch64,
+        libc: None::<LibcFacts>,
+        cpu: CpuFacts {
+            vendor: None,
+            brand: None,
+            features: Vec::new(),
+        },
+        gpu: GpuFacts {
+            devices: Vec::new(),
+            cuda: None,
+            metal: None,
+        },
     }
 }

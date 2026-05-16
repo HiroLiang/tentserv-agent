@@ -15,9 +15,8 @@ pub use chat::ChatCommand;
 pub use daemon::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 pub use dataset::DatasetCommands;
 pub use model::ModelCommands;
-#[cfg(test)]
 pub use runtime::RuntimeBootstrapProfile;
-pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands};
+pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands, RuntimeStatusCommand};
 pub use server::{ServerCommands, ServerRunCommand};
 pub use session::SessionCommands;
 pub use train::{

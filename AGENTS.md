@@ -116,6 +116,18 @@ Key current documents:
 - If an entrypoint needs special behavior, keep that mapping in the entrypoint
   crate or adapter layer and pass kernel-owned intent data across the boundary.
 
+## Rust Module Structure Rule
+
+- Treat `mod.rs` and `lib.rs` as composition files. They should declare modules,
+  re-export public surface, and carry package-level documentation only.
+- Do not place feature logic, infrastructure implementations, or large test
+  bodies in `mod.rs` or `lib.rs`.
+- Follow the nearest existing package shape before adding a new file. Prefer
+  focused files such as `resolver.rs`, `store.rs`, `probe.rs`, `planner.rs`, or
+  `executor.rs` over a single broad implementation file.
+- Keep structure consistent across kernel packages: scan broadly for the local
+  pattern, then make the smallest scoped change.
+
 ## Documentation Routing Rules
 
 - The root `AGENTS.md` is the global index for repository-wide context.

@@ -113,6 +113,13 @@ provider secrets in config.
 
 ## Runtime
 
+Inspect the managed Python runtime:
+
+```bash
+tentgent runtime status
+tentgent runtime status --project /path/to/python-project --env /path/to/python-env
+```
+
 Prepare the managed Python runtime after package-manager installs such as
 Homebrew:
 
@@ -133,6 +140,7 @@ Inspect the paths that would be used without syncing:
 
 ```bash
 tentgent runtime bootstrap --print-plan
+tentgent runtime bootstrap --profile local-model --dry-run
 ```
 
 Direct release installers run this bootstrap by default. Use this command when

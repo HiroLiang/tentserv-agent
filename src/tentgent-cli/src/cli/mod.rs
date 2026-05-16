@@ -174,6 +174,7 @@ mod tests {
                     assert!(command.dry_run);
                     assert!(command.print_plan);
                 }
+                other => panic!("unexpected runtime command: {other:?}"),
             },
             other => panic!("unexpected command: {other:?}"),
         }
@@ -192,6 +193,7 @@ mod tests {
                         super::commands::RuntimeBootstrapProfile::Base
                     );
                 }
+                other => panic!("unexpected runtime command: {other:?}"),
             },
             other => panic!("unexpected command: {other:?}"),
         }
@@ -203,5 +205,36 @@ mod tests {
             Cli::try_parse_from(["tentgent", "runtime", "bootstrap", "--profile", "train"]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_runtime_status_options() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "runtime",
+            "status",
+            "--project",
+            "/tmp/tentgent-python",
+            "--env",
+            "/tmp/tentgent-env",
+        ])
+        .expect("parse runtime status");
+
+        match cli.command {
+            Commands::Runtime { action } => match action {
+                super::commands::RuntimeCommands::Status(command) => {
+                    assert_eq!(
+                        command.project.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent-python"))
+                    );
+                    assert_eq!(
+                        command.env.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent-env"))
+                    );
+                }
+                other => panic!("unexpected runtime command: {other:?}"),
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 }

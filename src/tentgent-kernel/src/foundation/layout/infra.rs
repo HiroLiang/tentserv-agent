@@ -72,7 +72,7 @@ fn build_runtime_layout(input: &RuntimeLayoutInput) -> KernelResult<RuntimeLayou
         locks_dir: home_dir.join(LOCKS_DIR),
 
         python_env_dir: runtime_dir.join(PYTHON_ENV_DIR),
-        bootstrap_uv_cache_dir: cache_dir.join(BOOTSTRAP_UV_CACHE_DIR),
+        bootstrap_uv_cache_dir: bootstrap_dir.join(BOOTSTRAP_UV_CACHE_DIR),
         bootstrap_uv_dir: bootstrap_dir.join(BOOTSTRAP_UV_DIR),
         capabilities_path: runtime_dir.join(CAPABILITIES_FILE),
         auth_metadata_path: runtime_dir.join(AUTH_METADATA_FILE),
