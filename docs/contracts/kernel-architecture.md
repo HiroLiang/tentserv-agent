@@ -199,6 +199,57 @@ It must not spawn bootstrap scripts, run Python, inspect installed packages, or
 read environment variables directly. Those jobs belong in runtime infra or
 use cases once their migration bundle moves.
 
+`features/model/domain.rs` owns pure model-store names and state:
+
+- canonical SHA-256 `model_ref` and short/hash-prefix selectors
+- model formats, import methods, source kinds, and variant status names
+- manifest, model metadata, source-index metadata, and import/removal result
+  data objects
+- model-store path derivation from an already resolved models directory
+- pure format detection and primary-format selection rules from the model-store
+  contract
+
+It must not walk directories, hash files, copy/import model data, download from
+Hugging Face, read auth secrets, inspect server references, or write metadata.
+Those jobs belong in model infra and use cases when the model migration bundle
+moves.
+
+`features/model/ports.rs` defines narrow boundaries for:
+
+- ensuring model-store directories before mutating model operations
+- staging local or remote model content before canonical identity is known
+- fetching Hugging Face snapshots through an already selected Python runtime
+- building manifests and deriving canonical `model_ref` values
+- reading/writing model catalog metadata, manifests, variants, and source
+  indexes
+- moving/removing canonical model content
+- checking stored server specs that block model removal
+
+Model ports should receive resolved layout/runtime/auth inputs from use cases.
+They should not resolve runtime-home, prompt for auth, decide CLI rendering, or
+silently bootstrap Python runtime dependencies.
+
+`features/model/infra/` owns the standard filesystem and subprocess adapters
+for those ports: model-store directory creation, import staging, manifest
+building, canonical manifest hashing, metadata/catalog reads and writes,
+source-index cleanup, canonical content movement/removal, server-reference
+checks, and Hugging Face snapshot helper execution through an already selected
+Python runtime. The Hugging Face adapter may run the helper process, but it must
+not resolve auth, bootstrap Python, or choose CLI progress rendering.
+
+`features/model/usecases/port.rs` defines workflow boundaries for:
+
+- listing and inspecting stored models without exposing catalog store details
+- importing local model content through staging, manifesting, deduplication, and
+  metadata/index writes
+- pulling Hugging Face model content through resolved auth and Python runtime
+  inputs while reporting progress through a caller-provided sink
+- removing stored models after server-reference checks
+
+Standard model use cases should compose foundation layout, runtime resolution,
+auth secret resolution, and model infra ports. CLI, HTTP, and TUI should call
+these use cases instead of rebuilding model-store orchestration directly.
+
 `features/runtime/ports.rs` defines narrow boundaries for:
 
 - resolving Python project/environment layout from caller overrides, runtime

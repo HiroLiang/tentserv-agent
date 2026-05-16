@@ -8,12 +8,19 @@ use miette::{miette, IntoDiagnostic};
 use serde_json::json;
 use tentgent_core::{
     adapter::AdapterManager,
-    model::ModelManager,
     runtime_assets::resolve_runtime_home,
     session::{
         SessionChatContextMessage, SessionCompactionSummary, SessionManager, SessionMessageInput,
         DEFAULT_SESSION_CONTEXT_MESSAGES, MAX_SESSION_CONTEXT_MESSAGES,
     },
+};
+use tentgent_kernel::features::model::domain::ModelRefSelector;
+use tentgent_kernel::features::model::infra::FileModelCatalogStore;
+use tentgent_kernel::features::model::usecases::{
+    ModelCatalogReadUseCase, ModelInspectRequest, StdModelCatalogReadUseCase,
+};
+use tentgent_kernel::foundation::layout::{
+    LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver,
 };
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
@@ -137,10 +144,7 @@ async fn handle_session_chat_command(command: ChatCommand) -> miette::Result<()>
     let mut turn = session_manager
         .begin_chat_turn(session_ref, max_session_messages, request_messages)
         .map_err(|err| miette!("failed to prepare session chat turn: {err}"))?;
-    let resolved_model_ref = ModelManager::open_readonly_with_home(Some(Path::new(&runtime_home)))
-        .and_then(|manager| manager.inspect(&command.model_ref))
-        .map(|inspection| inspection.metadata.model_ref)
-        .map_err(|err| miette!("failed to resolve model ref for session chat: {err}"))?;
+    let resolved_model_ref = resolve_model_ref_for_session_chat(&runtime_home, &command.model_ref)?;
     let effective_adapter_ref = match &command.adapter_ref {
         Some(adapter_ref) => Some(adapter_ref.clone()),
         None => match turn.metadata.adapter_ref.as_deref() {
@@ -366,6 +370,28 @@ fn parse_cli_message(raw: &str) -> miette::Result<ParsedCliMessage> {
 
 fn format_cli_message(message: &SessionChatContextMessage) -> String {
     format!("{}:{}", message.role, message.content)
+}
+
+fn resolve_model_ref_for_session_chat(
+    runtime_home: &str,
+    model_ref: &str,
+) -> miette::Result<String> {
+    let selector = ModelRefSelector::parse(model_ref)
+        .map_err(|err| miette!("failed to resolve model ref for session chat: {err}"))?;
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let catalog = FileModelCatalogStore;
+    let inspection = StdModelCatalogReadUseCase::new(&layout_resolver, &catalog)
+        .inspect_model(ModelInspectRequest {
+            layout: RuntimeLayoutInput {
+                mode: LayoutResolveMode::ReadOnly,
+                home_dir: Some(Path::new(runtime_home).to_path_buf()),
+                data_root_dir: None,
+            },
+            selector,
+        })
+        .map_err(|err| miette!("failed to resolve model ref for session chat: {err}"))?;
+
+    Ok(inspection.model.metadata.model_ref.into_string())
 }
 
 async fn summarize_with_cli_model(

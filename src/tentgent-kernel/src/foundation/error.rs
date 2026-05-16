@@ -18,6 +18,9 @@ pub enum KernelError {
     #[error("runtime state is unavailable: {0}")]
     RuntimeStateUnavailable(String),
 
+    #[error("model store is unavailable: {0}")]
+    ModelStoreUnavailable(String),
+
     #[error("unsupported target: {0}")]
     UnsupportedTarget(String),
 }

@@ -2158,14 +2158,18 @@ version = "0.3.4-alpha.2"
 dependencies = [
  "directories",
  "dotenvy",
+ "hex",
  "keyring",
  "reqwest",
  "security-framework 3.7.0",
  "serde",
+ "serde_json",
+ "sha2",
  "thiserror 2.0.18",
  "time",
  "tokio",
  "toml",
+ "walkdir",
  "zeroize",
 ]
 
