@@ -69,9 +69,9 @@ Implemented:
 - Auth ports for env-secret probing, keychain secrets, provider validation,
   process-session cache, non-secret metadata store, and keychain prompt
   planning.
-- Lightweight auth infra for env-secret probing, system keychain secret
-  storage, TTL-bounded process-session secret cache, in-memory metadata store, and
-  platform-aware prompt planning.
+- Lightweight auth infra for env-secret probing, platform system secret
+  storage, reqwest-backed provider validation, TTL-bounded process-session
+  secret cache, in-memory metadata store, and platform-aware prompt planning.
 - Auth use-case ports in `features/auth/usecases/port.rs` and implementations
   for provider status, effective secret resolution, local set/remove mutation,
   and provider validation orchestration.

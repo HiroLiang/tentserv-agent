@@ -1,15 +1,14 @@
 //! Auth secret resolution use case.
 
 use crate::features::auth::domain::{
-    AuthEnvLoadPolicy, AuthSecretAccessPolicy, AuthSecretMaterial, AuthSecretSource,
-    KeychainPromptPlan, Provider,
+    normalize_secret_value, AuthEnvLoadPolicy, AuthSecretAccessPolicy, AuthSecretMaterial,
+    AuthSecretSource, KeychainPromptPlan, Provider,
 };
 use crate::features::auth::ports::{
     AuthEnvSecretProbe, AuthKeychainSecretStore, AuthSecretCache, KeychainPromptPlanner,
 };
 use crate::foundation::error::KernelResult;
 use crate::foundation::platform::PlatformFacts;
-use zeroize::Zeroize;
 
 use super::port::AuthSecretResolverUseCase;
 
@@ -137,7 +136,7 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
         let secret = self
             .keychain_store
             .read_keychain_secret(request.provider, keychain_policy)?
-            .and_then(clean_secret)
+            .and_then(normalize_secret_value)
             .map(|secret| {
                 AuthSecretMaterial::new(request.provider, AuthSecretSource::Keychain, secret)
             });
@@ -154,19 +153,5 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
             prompt_plan: Some(prompt_plan),
             keychain_read_attempted: true,
         })
-    }
-}
-
-fn clean_secret(mut secret: String) -> Option<String> {
-    let trimmed = secret.trim();
-    if trimmed.is_empty() {
-        secret.zeroize();
-        None
-    } else if trimmed.len() == secret.len() {
-        Some(secret)
-    } else {
-        let trimmed = trimmed.to_string();
-        secret.zeroize();
-        Some(trimmed)
     }
 }

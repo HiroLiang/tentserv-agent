@@ -1,10 +1,10 @@
 //! System keychain-backed auth secret store.
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use keyring::{Entry, Error as KeyringError};
 
 use crate::features::auth::domain::{
-    AuthSecretAccessPolicy, KeychainPresence, Provider, AUTH_SERVICE,
+    normalize_secret_value, AuthSecretAccessPolicy, KeychainPresence, Provider, AUTH_SERVICE,
 };
 use crate::features::auth::ports::AuthKeychainSecretStore;
 use crate::foundation::error::{KernelError, KernelResult};
@@ -63,24 +63,24 @@ impl AuthKeychainSecretStore for SystemKeychainAuthSecretStore {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn read_native_secret(provider: Provider) -> KernelResult<Option<String>> {
     let entry = native_entry(provider)?;
 
     match entry.get_password() {
-        Ok(secret) => Ok(clean_secret(secret)),
+        Ok(secret) => Ok(normalize_secret_value(secret)),
         Err(KeyringError::NoEntry) => Ok(None),
         Err(err) => Err(keychain_access_error(provider, err)),
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn read_native_secret(provider: Provider) -> KernelResult<Option<String>> {
     let _ = provider;
     Ok(None)
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn write_native_secret(provider: Provider, secret: &str) -> KernelResult<()> {
     let entry = native_entry(provider)?;
     entry
@@ -88,13 +88,13 @@ fn write_native_secret(provider: Provider, secret: &str) -> KernelResult<()> {
         .map_err(|err| keychain_access_error(provider, err))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn write_native_secret(provider: Provider, secret: &str) -> KernelResult<()> {
     let _ = (provider, secret);
     Err(unsupported_native_keychain())
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn remove_native_secret(provider: Provider) -> KernelResult<bool> {
     let entry = native_entry(provider)?;
 
@@ -105,13 +105,13 @@ fn remove_native_secret(provider: Provider) -> KernelResult<bool> {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn remove_native_secret(provider: Provider) -> KernelResult<bool> {
     let _ = provider;
     Err(unsupported_native_keychain())
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn native_entry(provider: Provider) -> KernelResult<Entry> {
     Entry::new(AUTH_SERVICE, provider.keychain_account()).map_err(|err| {
         KernelError::RuntimeStateUnavailable(format!(
@@ -121,7 +121,7 @@ fn native_entry(provider: Provider) -> KernelResult<Entry> {
     })
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn keychain_access_error(provider: Provider, err: KeyringError) -> KernelError {
     KernelError::RuntimeStateUnavailable(format!(
         "failed to access system keychain for {}: {err}",
@@ -129,21 +129,16 @@ fn keychain_access_error(provider: Provider, err: KeyringError) -> KernelError {
     ))
 }
 
-fn clean_secret(secret: String) -> Option<String> {
-    let trimmed = secret.trim().to_string();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    }
-}
-
 fn native_keychain_supported() -> bool {
-    cfg!(any(target_os = "macos", target_os = "windows"))
+    cfg!(any(
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "windows"
+    ))
 }
 
 fn unsupported_native_keychain() -> KernelError {
     KernelError::UnsupportedTarget(
-        "native system keychain storage is supported only on macOS and Windows".to_string(),
+        "native system keychain storage is supported only on macOS, Windows, and Linux".to_string(),
     )
 }

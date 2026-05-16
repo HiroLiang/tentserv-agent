@@ -223,13 +223,18 @@ fall back to the operating system default.
 
 Current lightweight auth infra includes `ProcessSessionAuthSecretCache`,
 `StdAuthEnvSecretProbe`, `InMemoryAuthMetadataStore`,
-`StdKeychainPromptPlanner`, and `SystemKeychainAuthSecretStore`. Provider
-validation and file-backed metadata persistence should be added as explicit
-infra modules; do not hide them inside status rendering or HTTP route code.
+`StdKeychainPromptPlanner`, `SystemKeychainAuthSecretStore`, and
+`ReqwestAuthSecretValidator`. File-backed metadata persistence should be added
+as an explicit infra module; do not hide it inside status rendering or HTTP
+route code.
 The keychain-backed secret store lives in `infra/store.rs`: store is the role,
-while keychain names the secure operating-system backend.
+while keychain names the secure operating-system backend. The current native
+backend is compiled for macOS Keychain, Windows Credential Manager, and Linux
+persistent Secret Service/keyutils storage through the `keyring` crate.
 `ProcessSessionAuthSecretCache` is in-memory only and TTL-bounded; it must not
 be replaced with a persisted secret cache.
+Provider validation lives in `infra/validator.rs`: `reqwest` is the concrete
+HTTP client, while the package boundary remains `AuthSecretValidator`.
 
 `features/auth/usecases/` owns auth workflows by capability:
 

@@ -4,11 +4,10 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use crate::features::auth::domain::{
-    AuthEnvLoadPolicy, AuthEnvSecretMaterial, AuthEnvSecretOrigin, Provider,
+    normalize_secret_value, AuthEnvLoadPolicy, AuthEnvSecretMaterial, AuthEnvSecretOrigin, Provider,
 };
 use crate::features::auth::ports::AuthEnvSecretProbe;
 use crate::foundation::error::{KernelError, KernelResult};
-use zeroize::Zeroize;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct StdAuthEnvSecretProbe;
@@ -23,38 +22,49 @@ impl AuthEnvSecretProbe for StdAuthEnvSecretProbe {
         match policy {
             AuthEnvLoadPolicy::ProcessOnly => process_env_secret(provider, env_var),
             AuthEnvLoadPolicy::CwdDotenvOverride => {
-                if let Some(path) = find_cwd_dotenv()? {
-                    match dotenv_secret(&path, env_var)? {
-                        DotenvSecret::Present(Some(secret)) => {
-                            return Ok(Some(env_secret(
-                                provider,
-                                env_var,
-                                secret,
-                                AuthEnvSecretOrigin::DotenvFile { path },
-                            )));
-                        }
-                        DotenvSecret::Present(None) => return Ok(None),
-                        DotenvSecret::Missing => {}
-                    }
-                }
-                process_env_secret(provider, env_var)
+                dotenv_or_process_env_secret(provider, env_var, find_cwd_dotenv()?)
             }
             AuthEnvLoadPolicy::ExplicitDotenvOverride { path } => {
-                match dotenv_secret(&path, env_var)? {
-                    DotenvSecret::Present(Some(secret)) => {
-                        return Ok(Some(env_secret(
-                            provider,
-                            env_var,
-                            secret,
-                            AuthEnvSecretOrigin::DotenvFile { path },
-                        )));
-                    }
-                    DotenvSecret::Present(None) => return Ok(None),
-                    DotenvSecret::Missing => {}
-                }
-                process_env_secret(provider, env_var)
+                dotenv_or_process_env_secret(provider, env_var, Some(path))
             }
         }
+    }
+}
+
+fn dotenv_or_process_env_secret(
+    provider: Provider,
+    env_var: &str,
+    path: Option<PathBuf>,
+) -> KernelResult<Option<AuthEnvSecretMaterial>> {
+    if let Some(path) = path {
+        match dotenv_path_secret(provider, env_var, path)? {
+            DotenvPathSecret::Resolved(secret) => return Ok(secret),
+            DotenvPathSecret::Missing => {}
+        }
+    }
+
+    process_env_secret(provider, env_var)
+}
+
+enum DotenvPathSecret {
+    Missing,
+    Resolved(Option<AuthEnvSecretMaterial>),
+}
+
+fn dotenv_path_secret(
+    provider: Provider,
+    env_var: &str,
+    path: PathBuf,
+) -> KernelResult<DotenvPathSecret> {
+    match dotenv_secret(&path, env_var)? {
+        DotenvSecret::Present(Some(secret)) => Ok(DotenvPathSecret::Resolved(Some(env_secret(
+            provider,
+            env_var,
+            secret,
+            AuthEnvSecretOrigin::DotenvFile { path },
+        )))),
+        DotenvSecret::Present(None) => Ok(DotenvPathSecret::Resolved(None)),
+        DotenvSecret::Missing => Ok(DotenvPathSecret::Missing),
     }
 }
 
@@ -64,7 +74,7 @@ fn process_env_secret(
 ) -> KernelResult<Option<AuthEnvSecretMaterial>> {
     Ok(env::var(env_var)
         .ok()
-        .and_then(clean_owned)
+        .and_then(normalize_secret_value)
         .map(|secret| env_secret(provider, env_var, secret, AuthEnvSecretOrigin::ProcessEnv)))
 }
 
@@ -94,7 +104,7 @@ fn dotenv_secret(path: &Path, env_var: &str) -> KernelResult<DotenvSecret> {
             ))
         })?;
         if key == env_var {
-            found = DotenvSecret::Present(clean_owned(value));
+            found = DotenvSecret::Present(normalize_secret_value(value));
         }
     }
 
@@ -127,18 +137,4 @@ fn env_secret(
     origin: AuthEnvSecretOrigin,
 ) -> AuthEnvSecretMaterial {
     AuthEnvSecretMaterial::new(provider, env_var, origin, secret)
-}
-
-fn clean_owned(mut value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        value.zeroize();
-        None
-    } else if trimmed.len() == value.len() {
-        Some(value)
-    } else {
-        let trimmed = trimmed.to_string();
-        value.zeroize();
-        Some(trimmed)
-    }
 }

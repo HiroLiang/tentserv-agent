@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 pub const AUTH_SERVICE: &str = "com.tentserv.tentgent.auth";
 
@@ -68,6 +68,20 @@ impl std::fmt::Display for AuthSecretSource {
             Self::Env => formatter.write_str(".env/env"),
             Self::Keychain => formatter.write_str("keychain"),
         }
+    }
+}
+
+pub(crate) fn normalize_secret_value(mut secret: String) -> Option<String> {
+    let trimmed = secret.trim();
+    if trimmed.is_empty() {
+        secret.zeroize();
+        None
+    } else if trimmed.len() == secret.len() {
+        Some(secret)
+    } else {
+        let trimmed = trimmed.to_string();
+        secret.zeroize();
+        Some(trimmed)
     }
 }
 

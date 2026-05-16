@@ -2,15 +2,19 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use reqwest::header::AUTHORIZATION;
+use reqwest::{Method, StatusCode};
+
 use super::domain::{
-    effective_source, AuthEnvLoadPolicy, AuthEnvSecretOrigin, AuthKeyStatus, AuthProviderMetadata,
-    AuthProviderPreference, AuthSecretAccessPolicy, AuthSecretCacheScope, AuthSecretMaterial,
-    AuthSecretReadIntent, AuthSecretSource, AuthValidationState, KeychainBiometricSupport,
-    KeychainPresence, KeychainPromptPreference, Provider, AUTH_SERVICE,
+    effective_source, normalize_secret_value, AuthEnvLoadPolicy, AuthEnvSecretOrigin,
+    AuthKeyStatus, AuthProviderMetadata, AuthProviderPreference, AuthSecretAccessPolicy,
+    AuthSecretCacheScope, AuthSecretMaterial, AuthSecretReadIntent, AuthSecretSource,
+    AuthValidationState, KeychainBiometricSupport, KeychainPresence, KeychainPromptPreference,
+    Provider, AUTH_SERVICE,
 };
 use super::infra::{
-    InMemoryAuthMetadataStore, ProcessSessionAuthSecretCache, StdAuthEnvSecretProbe,
-    StdKeychainPromptPlanner, SystemKeychainAuthSecretStore,
+    InMemoryAuthMetadataStore, ProcessSessionAuthSecretCache, ReqwestAuthSecretValidator,
+    StdAuthEnvSecretProbe, StdKeychainPromptPlanner, SystemKeychainAuthSecretStore,
 };
 use super::ports::{
     AuthEnvSecretProbe, AuthKeychainSecretStore, AuthMetadataStore, AuthSecretCache,
@@ -57,6 +61,19 @@ fn local_status_uses_presence_without_validation() {
     assert_eq!(status.effective_source, Some(AuthSecretSource::Keychain));
     assert_eq!(status.validation, AuthValidationState::NotChecked);
     assert_eq!(status.validation.summary(), "not checked");
+}
+
+#[test]
+fn secret_value_normalization_trims_and_drops_empty_values() {
+    assert_eq!(
+        normalize_secret_value("  sk-test \n".to_string()).as_deref(),
+        Some("sk-test")
+    );
+    assert_eq!(
+        normalize_secret_value("sk-test".to_string()).as_deref(),
+        Some("sk-test")
+    );
+    assert_eq!(normalize_secret_value(" \n\t ".to_string()), None);
 }
 
 #[test]
@@ -313,6 +330,91 @@ fn system_keychain_presence_smoke_is_opt_in_and_prints_observed_state() {
     );
 }
 
+#[test]
+fn reqwest_validator_builds_huggingface_bearer_request() {
+    let request = ReqwestAuthSecretValidator::validation_request(Provider::HuggingFace, "hf-test")
+        .expect("build validation request");
+
+    assert_eq!(request.method(), Method::GET);
+    assert_eq!(
+        request.url().as_str(),
+        "https://huggingface.co/api/whoami-v2"
+    );
+    assert_eq!(
+        header_str(&request, "authorization"),
+        Some("Bearer hf-test")
+    );
+}
+
+#[test]
+fn reqwest_validator_builds_openai_bearer_request() {
+    let request = ReqwestAuthSecretValidator::validation_request(Provider::OpenAI, "sk-test")
+        .expect("build validation request");
+
+    assert_eq!(request.method(), Method::GET);
+    assert_eq!(request.url().as_str(), "https://api.openai.com/v1/models");
+    assert_eq!(
+        request
+            .headers()
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok()),
+        Some("Bearer sk-test")
+    );
+}
+
+#[test]
+fn reqwest_validator_builds_anthropic_versioned_request() {
+    let request = ReqwestAuthSecretValidator::validation_request(Provider::Anthropic, "sk-ant")
+        .expect("build validation request");
+
+    assert_eq!(request.method(), Method::GET);
+    assert_eq!(
+        request.url().as_str(),
+        "https://api.anthropic.com/v1/models"
+    );
+    assert_eq!(header_str(&request, "x-api-key"), Some("sk-ant"));
+    assert_eq!(
+        header_str(&request, "anthropic-version"),
+        Some("2023-06-01")
+    );
+}
+
+#[test]
+fn reqwest_validator_maps_http_status_to_validation_state() {
+    assert_eq!(
+        ReqwestAuthSecretValidator::validation_state_for_status(Provider::OpenAI, StatusCode::OK),
+        AuthValidationState::Verified
+    );
+    assert!(matches!(
+        ReqwestAuthSecretValidator::validation_state_for_status(
+            Provider::OpenAI,
+            StatusCode::UNAUTHORIZED
+        ),
+        AuthValidationState::Invalid { .. }
+    ));
+    assert!(matches!(
+        ReqwestAuthSecretValidator::validation_state_for_status(
+            Provider::Anthropic,
+            StatusCode::FORBIDDEN
+        ),
+        AuthValidationState::Invalid { .. }
+    ));
+    assert!(matches!(
+        ReqwestAuthSecretValidator::validation_state_for_status(
+            Provider::HuggingFace,
+            StatusCode::TOO_MANY_REQUESTS
+        ),
+        AuthValidationState::Unknown { .. }
+    ));
+    assert!(matches!(
+        ReqwestAuthSecretValidator::validation_state_for_status(
+            Provider::HuggingFace,
+            StatusCode::INTERNAL_SERVER_ERROR
+        ),
+        AuthValidationState::Unknown { .. }
+    ));
+}
+
 fn macos_platform() -> PlatformFacts {
     platform(OperatingSystem::Macos, Architecture::Aarch64)
 }
@@ -337,6 +439,13 @@ fn platform(os: OperatingSystem, arch: Architecture) -> PlatformFacts {
             metal: None,
         },
     }
+}
+
+fn header_str<'a>(request: &'a reqwest::Request, name: &str) -> Option<&'a str> {
+    request
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
 }
 
 fn temp_path(label: &str) -> PathBuf {

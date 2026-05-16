@@ -135,3 +135,9 @@ HF_TOKEN="your token" tentgent model pull hf-internal-testing/tiny-random-gpt2 -
 ```
 
 One-shot environment variables apply only to that command and do not need `unset`.
+
+On platforms where native secret storage is unsupported or unavailable,
+Tentgent should not store provider keys in plaintext files. Use environment
+variables for repeatable headless flows. Commands that need a provider key may
+offer a one-operation prompt, and HTTP provider workflows may accept a
+per-request secret, but those values are not persistent auth setup.

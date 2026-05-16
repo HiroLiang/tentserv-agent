@@ -48,10 +48,11 @@ tests to print what they observed:
 cargo test -p tentgent-kernel -- --show-output
 ```
 
-CI runners may not have GPUs, CUDA, Metal, Keychain entries, provider tokens,
-or a managed Python runtime. Live-machine tests should print the observed facts
-and treat missing optional local capabilities as data, not as a failure,
-unless the test explicitly provisions that dependency.
+CI runners may not have GPUs, CUDA, Metal, Keychain entries, Linux
+Secret Service/D-Bus session state, provider tokens, or a managed Python
+runtime. Live-machine tests should print the observed facts and treat missing
+optional local capabilities as data, not as a failure, unless the test
+explicitly provisions that dependency.
 
 The kernel keychain smoke test is opt-in because it may prompt the platform
 credential UI. To run it locally and print the observed presence state without

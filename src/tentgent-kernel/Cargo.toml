@@ -11,6 +11,7 @@ path = "src/lib.rs"
 [dependencies]
 directories.workspace = true
 dotenvy.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 time.workspace = true
@@ -22,6 +23,9 @@ keyring = { workspace = true, features = ["apple-native"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { workspace = true, features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { workspace = true, features = ["linux-native-sync-persistent"] }
 
 [dev-dependencies]
 tokio.workspace = true

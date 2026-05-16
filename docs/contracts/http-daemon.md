@@ -208,6 +208,12 @@ credential values. Environment-variable credentials bypass Keychain reads.
 When no env override is present, checking Keychain presence may trigger the
 platform Keychain prompt.
 
+`GET /v1/auth` and `GET /v1/auth/{provider}` are diagnostic-only and must not
+accept provider secret values. Future HTTP workflows that perform provider work
+may accept a per-request provider secret in a header or request body field, but
+must not accept it in query strings, persist it, return it, or store it as
+daemon-global mutable state.
+
 `GET /v1/doctor` returns observational local diagnostics for the daemon runtime
 home. It may inspect files, commands, Python runtime assets, platform
 capability, and local paths, but it must not create, write, install, download,
