@@ -105,6 +105,17 @@ Key current documents:
 - App identifier: `com.tentserv.tentgent`
 - Environment variable prefix: `TENTGENT_`
 
+## Kernel Boundary Rule
+
+- `src/tentgent-kernel/` should avoid CLI, HTTP, TUI, daemon, or other
+  entrypoint-specific naming unless the type is explicitly an adapter boundary
+  for that entrypoint.
+- Kernel domain, port, and use-case names should describe product capabilities,
+  intents, state, and infrastructure roles rather than the caller that first
+  used them.
+- If an entrypoint needs special behavior, keep that mapping in the entrypoint
+  crate or adapter layer and pass kernel-owned intent data across the boundary.
+
 ## Documentation Routing Rules
 
 - The root `AGENTS.md` is the global index for repository-wide context.

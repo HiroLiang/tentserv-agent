@@ -33,6 +33,7 @@ const BOOTSTRAP_DIR: &str = "bootstrap";
 const BOOTSTRAP_UV_DIR: &str = "uv";
 const BOOTSTRAP_UV_CACHE_DIR: &str = "uv-cache";
 const CAPABILITIES_FILE: &str = "capabilities.toml";
+const AUTH_METADATA_FILE: &str = "auth.toml";
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct StdRuntimeLayoutResolver;
@@ -74,6 +75,7 @@ fn build_runtime_layout(input: &RuntimeLayoutInput) -> KernelResult<RuntimeLayou
         bootstrap_uv_cache_dir: cache_dir.join(BOOTSTRAP_UV_CACHE_DIR),
         bootstrap_uv_dir: bootstrap_dir.join(BOOTSTRAP_UV_DIR),
         capabilities_path: runtime_dir.join(CAPABILITIES_FILE),
+        auth_metadata_path: runtime_dir.join(AUTH_METADATA_FILE),
         bootstrap_dir,
         runtime_dir,
         data_root_dir,

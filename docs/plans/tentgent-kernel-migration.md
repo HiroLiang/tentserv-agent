@@ -61,20 +61,31 @@ Implemented:
   for machine capability snapshots and feature gate enforcement.
 - Runtime feature domain objects for bootstrap profiles/plans, Python runtime
   source/layout, Python entrypoint names, and runtime readiness snapshots.
+- Runtime ports for Python runtime layout resolution, managed executable path
+  resolution, bootstrap planning/execution, and runtime state probing. Standard
+  runtime infra/use cases are not moved yet.
+- Doctor feature domain objects for diagnostic execution mode, repair intent,
+  check status/category, summaries, reports, path checks, command checks, and
+  repair plans.
+- Doctor ports for path checks, command checks, runtime-check mapping,
+  capability-check mapping, and explicit repair planning. Standard doctor
+  infra/use cases are not moved yet.
 - Config feature domain objects for config schema/defaults, daemon endpoint
   defaults, daemon URL/token source resolution, and secret-like key names.
 - Auth feature domain objects for provider identity, secret source/status,
-  validation state, keychain prompt preference, and process-session cache
-  policy with redacted/drop-clearing secret material wrappers.
+  validation state, secret access intent, and process-session cache policy with
+  redacted/drop-clearing secret material wrappers.
 - Auth ports for env-secret probing, keychain secrets, provider validation,
-  process-session cache, non-secret metadata store, and keychain prompt
-  planning.
+  process-session cache, and non-secret metadata store.
 - Lightweight auth infra for env-secret probing, platform system secret
   storage, reqwest-backed provider validation, TTL-bounded process-session
-  secret cache, in-memory metadata store, and platform-aware prompt planning.
+  secret cache, and in-memory/file-backed metadata stores. Keychain store infra
+  owns native unlock behavior instead of exposing prompt preferences to callers.
 - Auth use-case ports in `features/auth/usecases/port.rs` and implementations
-  for provider status, effective secret resolution, local set/remove mutation,
-  and provider validation orchestration.
+  for provider status, effective secret resolution including prompt/request
+  provided one-operation secrets, local set/remove mutation, and provider
+  validation orchestration.
+- CLI auth command composition now uses kernel auth infra/use cases directly.
 - Small feature input data objects for server and training.
 
 Not implemented by design:

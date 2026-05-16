@@ -75,7 +75,15 @@ persistence.
 
 ## Keychain Prompt Rule
 
-- On macOS, a system Keychain prompt is expected when Tentgent reads a stored secret from the system keychain.
+- On macOS, Tentgent writes provider secrets with Security Framework
+  user-presence access control. It prefers the Data Protection Keychain when
+  the current process has the required entitlement, and otherwise uses the
+  login Keychain with the same user-presence access control. If macOS rejects
+  user-presence access control because the process lacks required signing
+  entitlements, the store may fall back to a standard login Keychain entry so
+  local auth remains usable. Reads of user-presence entries should let the
+  system prefer Touch ID or another available user-presence mechanism and fall
+  back to the system password prompt.
 - On Windows and Linux, the operating system or desktop credential backend may
   use its own unlock prompt, session keyring, or credential UI.
 - Commands that only inspect local model-store metadata, such as `model ls` and `model inspect`, should not trigger provider-secret reads.
@@ -90,18 +98,28 @@ persistence.
   Keychain secret by default.
 - Secret-use flows such as provider validation, Hugging Face pulls, cloud
   server launch, and dataset cloud generation may read the Keychain secret.
-  These flows should prefer biometric unlock when the platform backend can
-  support it and may use a short process-session cache so one accepted unlock
-  can serve repeated operations in the same CLI/daemon/TUI process.
+  They may use a short process-session cache so one accepted unlock can serve
+  repeated operations in the same CLI/daemon/TUI process.
 - Process-session secret cache is memory-only, TTL-bounded, and must never be
   persisted under `TENTGENT_HOME` or config. Secret wrappers should clear their
   owned memory on drop where the Rust type can reasonably guarantee it.
-- Biometric unlock is a preference, not a cross-platform guarantee. The current
-  generic keyring path may fall back to the operating system's default Keychain
-  prompt behavior.
-- Prompt planning belongs in auth infra. The generic planner must report when
-  biometric unlock was requested but the current backend cannot honor it, so
-  CLI/TUI can explain why the operating-system default prompt is used.
+- Keychain unlock strategy belongs inside the Keychain secret store, not in
+  user config or use-case request data. When a platform backend can request a
+  non-password system unlock path, such as user presence or biometrics, the
+  store should try that single path first and then fall back to the system
+  password prompt if it is unavailable or rejected.
+- Existing macOS entries written before this policy are treated as legacy
+  entries. They may still read through the old prompt path until the provider
+  secret is set again and rewritten with user-presence access control.
+- Unsigned development binaries may be unable to create user-presence Keychain
+  entries. That is a signing/entitlement constraint rather than a user-facing
+  setting.
+- The store must not iterate every possible biometric or unlock device, and
+  CLI/TUI/HTTP callers must not expose dynamic prompt preferences. Callers
+  describe intent only: status, secret use, or validation.
+- Rust `std` does not provide a biometric API. macOS uses
+  `security-framework` directly for user-presence access control; Windows and
+  Linux use native `keyring` backends and their operating-system prompt policy.
 
 ## Kernel Use Cases
 
@@ -110,15 +128,22 @@ Auth workflows are capability-sized modules under `features/auth/usecases/`:
 - status: assemble provider status without reading Keychain secret material by
   default.
 - resolution: resolve the effective secret as `.env/env`, process-session
-  TTL cache, then Keychain.
+  TTL cache, then Keychain. When a caller supplies a prompt-provided or
+  request-provided secret, that explicit one-operation secret is resolved before
+  env/cache/Keychain and carries its own non-persistent source.
 - mutation: set/remove local Keychain secrets and keep non-secret metadata and
   process cache consistent.
 - validation: resolve a secret, call a provider validator, and record the
   non-secret validation state.
 
 Use-case ports live in `features/auth/usecases/port.rs`. Lower-level ports for
-env probing, Keychain storage, validation HTTP, metadata, cache, and prompt
-planning stay in `features/auth/ports.rs`.
+env probing, Keychain storage, validation HTTP, metadata, and cache stay in
+`features/auth/ports.rs`.
+
+Auth metadata persistence uses `TENTGENT_HOME/runtime/auth.toml`. That file is
+auth-specific local state and must contain only non-secret metadata. It is
+separate from user `config.toml` so auth state can evolve without turning
+general config into a secret-adjacent persistence surface.
 
 ## Cloud Server Launch Rule
 
@@ -139,6 +164,12 @@ planning stay in `features/auth/ports.rs`.
 - `tentgent auth anthropic`
 - `tentgent auth anthropic set`
 - `tentgent auth anthropic rm`
+
+The CLI auth surface composes kernel auth use cases directly. It uses
+`StdAuthStatusUseCase`, `StdAuthSecretMutationUseCase`, and
+`StdAuthSecretValidationUseCase` with the shared system secret store and
+`runtime/auth.toml` metadata store. CLI rendering must not manually persist
+provider auth metadata or secret values outside those use-case boundaries.
 
 ## TUI Surface
 

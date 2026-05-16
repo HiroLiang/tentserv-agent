@@ -60,6 +60,8 @@ impl std::fmt::Display for Provider {
 pub enum AuthSecretSource {
     Env,
     Keychain,
+    Prompt,
+    Request,
 }
 
 impl std::fmt::Display for AuthSecretSource {
@@ -67,6 +69,8 @@ impl std::fmt::Display for AuthSecretSource {
         match self {
             Self::Env => formatter.write_str(".env/env"),
             Self::Keychain => formatter.write_str("keychain"),
+            Self::Prompt => formatter.write_str("prompt"),
+            Self::Request => formatter.write_str("request"),
         }
     }
 }
@@ -110,6 +114,14 @@ impl AuthSecretMaterial {
             source,
             secret: Zeroizing::new(secret.into()),
         }
+    }
+
+    pub fn normalized(
+        provider: Provider,
+        source: AuthSecretSource,
+        secret: impl Into<String>,
+    ) -> Option<Self> {
+        normalize_secret_value(secret.into()).map(|secret| Self::new(provider, source, secret))
     }
 
     pub fn secret(&self) -> &str {
@@ -246,35 +258,6 @@ pub enum AuthSecretReadIntent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum KeychainPromptPreference {
-    SystemDefault,
-    PreferBiometric,
-    PasswordAllowed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct KeychainPromptPlan {
-    pub requested: KeychainPromptPreference,
-    pub effective: KeychainPromptPreference,
-    pub biometric_support: KeychainBiometricSupport,
-}
-
-impl KeychainPromptPlan {
-    pub const fn honors_biometric_preference(&self) -> bool {
-        matches!(self.biometric_support, KeychainBiometricSupport::Supported)
-            && matches!(self.effective, KeychainPromptPreference::PreferBiometric)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum KeychainBiometricSupport {
-    Supported,
-    BackendUnsupported { reason: String },
-    PlatformUnsupported { reason: String },
-    Unknown { reason: String },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AuthSecretCacheScope {
     None,
     ProcessSession,
@@ -283,31 +266,27 @@ pub enum AuthSecretCacheScope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthSecretAccessPolicy {
     pub read_intent: AuthSecretReadIntent,
-    pub keychain_prompt: KeychainPromptPreference,
     pub cache_scope: AuthSecretCacheScope,
 }
 
 impl AuthSecretAccessPolicy {
-    pub const fn non_prompting_status() -> Self {
+    pub const fn status_only() -> Self {
         Self {
             read_intent: AuthSecretReadIntent::StatusOnly,
-            keychain_prompt: KeychainPromptPreference::SystemDefault,
             cache_scope: AuthSecretCacheScope::None,
         }
     }
 
-    pub const fn cli_secret_use() -> Self {
+    pub const fn resolve_for_use() -> Self {
         Self {
             read_intent: AuthSecretReadIntent::ResolveForUse,
-            keychain_prompt: KeychainPromptPreference::PreferBiometric,
             cache_scope: AuthSecretCacheScope::ProcessSession,
         }
     }
 
-    pub const fn cli_secret_validation() -> Self {
+    pub const fn resolve_and_validate() -> Self {
         Self {
             read_intent: AuthSecretReadIntent::ResolveAndValidate,
-            keychain_prompt: KeychainPromptPreference::PreferBiometric,
             cache_scope: AuthSecretCacheScope::ProcessSession,
         }
     }
@@ -345,7 +324,7 @@ impl AuthProviderPreference {
         Self {
             provider,
             enabled: true,
-            access_policy: AuthSecretAccessPolicy::cli_secret_use(),
+            access_policy: AuthSecretAccessPolicy::resolve_for_use(),
         }
     }
 }

@@ -1,4 +1,4 @@
-//! Runtime feature package.
+//! Doctor diagnostics feature package.
 
 pub mod domain;
 pub mod ports;

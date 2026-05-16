@@ -1,8 +1,7 @@
 //! Auth secret validation use case.
 
 use crate::features::auth::domain::{
-    AuthProviderMetadata, AuthSecretSource, AuthValidationState, KeychainPresence,
-    KeychainPromptPlan, Provider,
+    AuthProviderMetadata, AuthSecretSource, AuthValidationState, KeychainPresence, Provider,
 };
 use crate::features::auth::ports::{AuthMetadataStore, AuthSecretValidator};
 
@@ -33,7 +32,6 @@ impl AuthSecretValidationRequest {
 pub struct AuthSecretValidationResult {
     pub provider: Provider,
     pub source: Option<AuthSecretSource>,
-    pub prompt_plan: Option<KeychainPromptPlan>,
     pub validation: AuthValidationState,
 }
 
@@ -58,10 +56,10 @@ impl<'a> StdAuthSecretValidationUseCase<'a> {
 }
 
 impl AuthSecretValidationUseCase for StdAuthSecretValidationUseCase<'_> {
-    fn validate_secret<'a>(
-        &'a self,
+    fn validate_secret(
+        &self,
         request: AuthSecretValidationRequest,
-    ) -> AuthUseCaseFuture<'a, AuthSecretValidationResult> {
+    ) -> AuthUseCaseFuture<'_, AuthSecretValidationResult> {
         Box::pin(async move {
             let resolution = self.resolver.resolve_secret(request.resolution)?;
             let provider = resolution.provider;
@@ -86,7 +84,6 @@ impl AuthSecretValidationUseCase for StdAuthSecretValidationUseCase<'_> {
             Ok(AuthSecretValidationResult {
                 provider,
                 source: resolution.source(),
-                prompt_plan: resolution.prompt_plan,
                 validation,
             })
         })
@@ -99,9 +96,11 @@ fn keychain_presence_after_validation(
 ) -> KeychainPresence {
     match resolution.source() {
         Some(AuthSecretSource::Keychain) => KeychainPresence::Present,
-        Some(AuthSecretSource::Env) => existing
-            .map(|metadata| metadata.keychain_presence)
-            .unwrap_or(KeychainPresence::Unknown),
+        Some(AuthSecretSource::Env | AuthSecretSource::Prompt | AuthSecretSource::Request) => {
+            existing
+                .map(|metadata| metadata.keychain_presence)
+                .unwrap_or(KeychainPresence::Unknown)
+        }
         None if resolution.keychain_read_attempted => KeychainPresence::Absent,
         None => existing
             .map(|metadata| metadata.keychain_presence)

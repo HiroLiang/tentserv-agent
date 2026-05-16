@@ -136,10 +136,11 @@ The likely persisted cache path remains:
 
 ```text
 TENTGENT_HOME/runtime/capabilities.toml
+TENTGENT_HOME/runtime/auth.toml
 ```
 
-That file is local cached state, not user data identity. It should be
-regenerable and safe to refresh later.
+These files are local cached/state metadata, not user data identity.
+`auth.toml` must contain only non-secret provider metadata.
 
 ## Features
 
@@ -153,6 +154,7 @@ features/dataset/
 features/config/
 features/server/
 features/daemon/
+features/doctor/
 features/session/
 features/runtime/
 features/train/
@@ -184,6 +186,42 @@ It must not spawn bootstrap scripts, run Python, inspect installed packages, or
 read environment variables directly. Those jobs belong in runtime infra or
 use cases once their migration bundle moves.
 
+`features/runtime/ports.rs` defines narrow boundaries for:
+
+- resolving Python project/environment layout from caller overrides, runtime
+  home layout, packaged install candidates, development source, and environment
+  policy
+- resolving the managed Python binary and daemon entrypoint executable paths
+- planning runtime bootstrap script invocation without spawning it
+- executing runtime bootstrap from an explicit plan
+- probing runtime initialization/readiness state
+
+Runtime infra and use cases are still migration work; old `tentgent-core`
+runtime helpers remain the behavior owner until that bundle moves.
+
+`features/doctor/domain.rs` owns pure diagnostic report names and rules:
+
+- doctor execution mode (`observational` vs local CLI)
+- explicit repair intent such as developer Python environment sync
+- check categories, pass/warn/fail/skipped status, summaries, and reports
+- path, command, and repair-plan request data used by future doctor infra
+
+`features/doctor/ports.rs` defines narrow boundaries for:
+
+- filesystem path health checks without baking path logic into renderers
+- external command checks such as developer `uv --version`
+- mapping runtime state into doctor checks without reimplementing runtime
+  bootstrap or Python runtime resolution
+- mapping capability state into doctor checks without probing backends twice
+- planning explicit repair actions separately from ordinary diagnostics
+
+Runtime and doctor overlap only in the facts they inspect. Runtime owns
+initialization and bootstrap planning/execution for the managed Python
+environment. Doctor owns cross-system diagnosis and must not initialize runtime
+during an observational report. `doctor --fix` style behavior should remain an
+explicit repair intent that delegates to runtime bootstrap/planning/execution
+code instead of hiding initialization inside diagnostics.
+
 `features/config/domain.rs` owns pure user-config names and rules:
 
 - config file name, schema version, and config section data
@@ -200,16 +238,16 @@ infra or callers that map local state into config domain inputs.
 
 - provider names, CLI names, environment variables, and keychain accounts
 - auth secret source, keychain presence, validation, and status data
-- secret access intent, prompt preference, and process-session cache policy
+- secret access intent and process-session cache policy
 - secret material wrappers that redact debug output and clear owned secret
   memory on drop
 - non-secret provider preferences
-- keychain prompt plans and biometric support state
 
 It must not read `.env`, environment variables, Keychain, or provider
-validation endpoints directly. Biometric unlock is represented as a prompt
-preference; platform infra decides whether it can honor that preference or must
-fall back to the operating system default.
+validation endpoints directly. Keychain unlock details are not user-configurable
+domain data; they belong inside the secret-store infra. Store implementations
+should prefer one available non-password system unlock path first, then fall
+back to the platform password prompt.
 
 `features/auth/ports.rs` defines narrow boundaries for:
 
@@ -219,20 +257,27 @@ fall back to the operating system default.
 - validating provider secrets
 - process-session secret caching
 - loading/saving non-secret auth metadata
-- planning Keychain prompt behavior from platform facts and prompt preference
 
 Current lightweight auth infra includes `ProcessSessionAuthSecretCache`,
 `StdAuthEnvSecretProbe`, `InMemoryAuthMetadataStore`,
-`StdKeychainPromptPlanner`, `SystemKeychainAuthSecretStore`, and
-`ReqwestAuthSecretValidator`. File-backed metadata persistence should be added
-as an explicit infra module; do not hide it inside status rendering or HTTP
-route code.
+`FileAuthMetadataStore`, `SystemKeychainAuthSecretStore`, and
+`ReqwestAuthSecretValidator`.
 The keychain-backed secret store lives in `infra/store.rs`: store is the role,
-while keychain names the secure operating-system backend. The current native
-backend is compiled for macOS Keychain, Windows Credential Manager, and Linux
-persistent Secret Service/keyutils storage through the `keyring` crate.
+while keychain names the secure operating-system backend. The macOS backend
+uses Security Framework user-presence access control so protected entries can
+prefer Touch ID and fall back to password. It prefers the Data Protection
+Keychain when the current process has the required entitlement, and otherwise
+uses the login Keychain with the same access control. If an unsigned
+development binary lacks the required signing entitlements to create
+user-presence items, the store may fall back to a standard login Keychain entry
+so local auth remains usable. Windows and Linux use native `keyring` backends
+and their operating-system prompt policy.
+The store owns native unlock behavior; callers must not pass prompt
+preferences through domain or use-case request data.
 `ProcessSessionAuthSecretCache` is in-memory only and TTL-bounded; it must not
 be replaced with a persisted secret cache.
+File-backed auth metadata lives in `infra/metadata.rs` and writes
+`runtime/auth.toml`; it must never serialize secret material.
 Provider validation lives in `infra/validator.rs`: `reqwest` is the concrete
 HTTP client, while the package boundary remains `AuthSecretValidator`.
 
@@ -240,7 +285,8 @@ HTTP client, while the package boundary remains `AuthSecretValidator`.
 
 - `status.rs`: non-secret provider status assembly.
 - `resolver.rs`: effective secret resolution using env, process TTL cache, and
-  Keychain according to access policy.
+  Keychain according to access policy, with explicit prompt/request-provided
+  secrets resolved first when supplied by the caller.
 - `mutation.rs`: local set/remove flows for Keychain secrets, non-secret
   metadata, and process cache.
 - `validation.rs`: provider validation orchestration and metadata updates.
@@ -249,6 +295,11 @@ HTTP client, while the package boundary remains `AuthSecretValidator`.
 
 Auth use cases may move secrets in memory, but they must not render, log,
 serialize, or persist secret values outside the system Keychain.
+
+The Rust CLI auth command now composes these kernel auth use cases directly.
+HTTP auth status, TUI auth setup, and core runtime provider-secret callers are
+still migration callers until their entry points are switched to the same
+kernel package.
 
 ## Dependency Direction
 

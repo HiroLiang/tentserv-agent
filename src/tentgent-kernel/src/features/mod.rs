@@ -5,6 +5,7 @@ pub mod auth;
 pub mod config;
 pub mod daemon;
 pub mod dataset;
+pub mod doctor;
 pub mod model;
 pub mod runtime;
 pub mod server;

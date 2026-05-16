@@ -580,10 +580,20 @@ Review target:
   implementation track
 - sign macOS binaries with a stable Developer ID Application identity and
   `com.tentserv.tentgent` signing identifier
+- define the release entitlements plist instead of relying on ad-hoc
+  development signing; include the real Apple Team ID-prefixed Keychain access
+  group if Keychain sharing or user-presence-protected items require it
 - use `--options runtime` and `--timestamp` for distribution-signed macOS
   command-line binaries
 - verify the signed binary with `codesign --verify --strict --verbose=4` and
   record the designated requirement with `codesign -dr -`
+- run an opt-in signed-binary Keychain smoke test after Developer ID signing:
+  write, read, and remove a macOS user-presence-protected provider-secret test
+  item, then confirm whether the resulting path is user-presence/Touch ID or
+  the standard login Keychain fallback
+- keep unsigned development binaries on the standard login Keychain fallback
+  path, and keep CI live Keychain/Touch ID tests opt-in so headless runners do
+  not fail due to missing local biometric state or signing entitlements
 - package macOS releases as signed `.pkg` or another artifact shape that can be
   notarized and stapled; do not rely on stapling standalone Mach-O binaries
 - submit release artifacts to Apple notarization through `notarytool` using

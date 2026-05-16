@@ -55,6 +55,8 @@ Reserved runtime files:
 - `runtime/tentgent.sock`
 - `runtime/tentgent.pid`
 - `runtime/daemon.toml`
+- `runtime/auth.toml`
+- `runtime/capabilities.toml`
 - `runtime/bootstrap/`
 - `config.toml`
 
@@ -65,6 +67,13 @@ pid/process metadata only after confirming the recorded pid is not running.
 Missing runtime-home states should be reported with stable warning codes such as
 `runtime_home_missing`, `runtime_dir_missing`, `process_path_missing`,
 `pid_path_stale`, or `process_metadata_stale`.
+
+## Auth Metadata
+
+`runtime/auth.toml` stores non-secret provider auth metadata such as keychain
+presence, validation state, and last update/validation timestamps. It must not
+contain provider secret values, daemon bearer tokens, or request-provided
+provider keys.
 
 ## Shared Config
 

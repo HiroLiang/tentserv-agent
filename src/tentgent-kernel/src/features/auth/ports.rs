@@ -3,12 +3,10 @@
 use std::{future::Future, pin::Pin};
 
 use crate::foundation::error::KernelResult;
-use crate::foundation::platform::PlatformFacts;
 
 use super::domain::{
     AuthEnvLoadPolicy, AuthEnvSecretMaterial, AuthProviderMetadata, AuthSecretAccessPolicy,
-    AuthSecretMaterial, AuthValidationState, KeychainPresence, KeychainPromptPlan,
-    KeychainPromptPreference, Provider,
+    AuthSecretMaterial, AuthValidationState, KeychainPresence, Provider,
 };
 
 pub type AuthValidationFuture<'a> =
@@ -25,6 +23,7 @@ pub trait AuthEnvSecretProbe {
 pub trait AuthKeychainSecretStore {
     fn keychain_presence(&self, provider: Provider) -> KernelResult<KeychainPresence>;
 
+    /// Store implementations own native unlock behavior for secret reads.
     fn read_keychain_secret(
         &self,
         provider: Provider,
@@ -57,12 +56,4 @@ pub trait AuthMetadataStore {
     fn save_provider_metadata(&self, metadata: &AuthProviderMetadata) -> KernelResult<()>;
 
     fn remove_provider_metadata(&self, provider: Provider) -> KernelResult<()>;
-}
-
-pub trait KeychainPromptPlanner {
-    fn plan_prompt(
-        &self,
-        platform: &PlatformFacts,
-        preference: KeychainPromptPreference,
-    ) -> KernelResult<KeychainPromptPlan>;
 }

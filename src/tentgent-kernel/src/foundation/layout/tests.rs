@@ -44,6 +44,11 @@ fn explicit_data_root_separates_control_and_data_paths() {
     assert_eq!(layout.sessions_dir, home.join("sessions"));
     assert_eq!(layout.servers_dir, home.join("servers"));
     assert_eq!(layout.runtime_dir, home.join("runtime"));
+    assert_eq!(layout.auth_metadata_path, home.join("runtime/auth.toml"));
+    assert_eq!(
+        layout.capabilities_path,
+        home.join("runtime/capabilities.toml")
+    );
     assert_eq!(layout.logs_dir, home.join("logs"));
     assert_eq!(layout.locks_dir, home.join("locks"));
 
@@ -127,6 +132,7 @@ fn create_mode_creates_standard_dirs_without_creating_python_env() {
 
     assert!(!layout.config_path.exists());
     assert!(!layout.capabilities_path.exists());
+    assert!(!layout.auth_metadata_path.exists());
     assert!(!layout.python_env_dir.exists());
 }
 

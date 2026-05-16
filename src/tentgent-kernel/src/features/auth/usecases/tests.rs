@@ -4,11 +4,9 @@ use std::sync::Mutex;
 use crate::features::auth::domain::{
     AuthEnvLoadPolicy, AuthEnvSecretMaterial, AuthEnvSecretOrigin, AuthProviderMetadata,
     AuthSecretAccessPolicy, AuthSecretMaterial, AuthSecretSource, AuthValidationState,
-    KeychainPresence, KeychainPromptPreference, Provider,
+    KeychainPresence, Provider,
 };
-use crate::features::auth::infra::{
-    InMemoryAuthMetadataStore, ProcessSessionAuthSecretCache, StdKeychainPromptPlanner,
-};
+use crate::features::auth::infra::{InMemoryAuthMetadataStore, ProcessSessionAuthSecretCache};
 use crate::features::auth::ports::{
     AuthEnvSecretProbe, AuthKeychainSecretStore, AuthMetadataStore, AuthSecretCache,
     AuthSecretValidator, AuthValidationFuture,
@@ -20,9 +18,6 @@ use crate::features::auth::usecases::{
     StdAuthSecretResolverUseCase, StdAuthSecretValidationUseCase, StdAuthStatusUseCase,
 };
 use crate::foundation::error::KernelResult;
-use crate::foundation::platform::{
-    Architecture, CpuFacts, GpuFacts, OperatingSystem, PlatformFacts,
-};
 
 #[test]
 fn status_uses_metadata_without_keychain_secret_reads_by_default() {
@@ -91,23 +86,81 @@ fn resolver_prefers_env_and_does_not_touch_keychain() {
         .write_keychain_secret(Provider::OpenAI, "sk-from-keychain")
         .expect("write fake keychain");
     let cache = ProcessSessionAuthSecretCache::new();
-    let prompt_planner = StdKeychainPromptPlanner::new();
-    let resolver =
-        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache, &prompt_planner);
+    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
 
     let resolution = resolver
-        .resolve_secret(AuthSecretResolutionRequest::cli_use(
+        .resolve_secret(AuthSecretResolutionRequest::for_secret_use(
             Provider::OpenAI,
             AuthEnvLoadPolicy::ProcessOnly,
-            macos_platform(),
         ))
         .expect("resolve secret");
 
     assert_eq!(resolution.source(), Some(AuthSecretSource::Env));
     assert_eq!(resolution.secret.expect("secret").secret(), "sk-from-env");
-    assert!(resolution.prompt_plan.is_none());
     assert!(!resolution.keychain_read_attempted);
     assert_eq!(keychain_store.secret_reads(), 0);
+}
+
+#[test]
+fn resolver_uses_provided_secret_before_env_and_keychain() {
+    let env_probe = FakeEnvProbe::default();
+    env_probe.insert(Provider::OpenAI, "sk-from-env");
+    let keychain_store = FakeKeychainStore::default();
+    keychain_store
+        .write_keychain_secret(Provider::OpenAI, "sk-from-keychain")
+        .expect("write fake keychain");
+    let cache = ProcessSessionAuthSecretCache::new();
+    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
+
+    let resolution = resolver
+        .resolve_secret(
+            AuthSecretResolutionRequest::for_secret_use(
+                Provider::OpenAI,
+                AuthEnvLoadPolicy::ProcessOnly,
+            )
+            .with_prompt_secret(" sk-from-prompt \n"),
+        )
+        .expect("resolve provided secret");
+
+    assert_eq!(resolution.source(), Some(AuthSecretSource::Prompt));
+    assert_eq!(
+        resolution.secret.expect("secret").secret(),
+        "sk-from-prompt"
+    );
+    assert!(!resolution.keychain_read_attempted);
+    assert_eq!(keychain_store.secret_reads(), 0);
+    assert_eq!(
+        cache
+            .load_cached_secret(Provider::OpenAI)
+            .expect("load cache")
+            .expect("cached provided secret")
+            .source,
+        AuthSecretSource::Prompt
+    );
+}
+
+#[test]
+fn resolver_does_not_cache_request_secret_without_cache_scope() {
+    let env_probe = FakeEnvProbe::default();
+    let keychain_store = FakeKeychainStore::default();
+    let cache = ProcessSessionAuthSecretCache::new();
+    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
+    let mut request = AuthSecretResolutionRequest::for_secret_use(
+        Provider::Anthropic,
+        AuthEnvLoadPolicy::ProcessOnly,
+    )
+    .with_request_secret("sk-request");
+    request.access_policy.cache_scope = crate::features::auth::domain::AuthSecretCacheScope::None;
+
+    let resolution = resolver
+        .resolve_secret(request)
+        .expect("resolve request secret");
+
+    assert_eq!(resolution.source(), Some(AuthSecretSource::Request));
+    assert!(cache
+        .load_cached_secret(Provider::Anthropic)
+        .expect("load cache")
+        .is_none());
 }
 
 #[test]
@@ -118,13 +171,10 @@ fn resolver_reads_keychain_once_then_uses_process_cache() {
         .write_keychain_secret(Provider::HuggingFace, "hf-keychain")
         .expect("write fake keychain");
     let cache = ProcessSessionAuthSecretCache::new();
-    let prompt_planner = StdKeychainPromptPlanner::new();
-    let resolver =
-        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache, &prompt_planner);
-    let request = AuthSecretResolutionRequest::cli_use(
+    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
+    let request = AuthSecretResolutionRequest::for_secret_use(
         Provider::HuggingFace,
         AuthEnvLoadPolicy::ProcessOnly,
-        macos_platform(),
     );
 
     let first = resolver
@@ -139,10 +189,6 @@ fn resolver_reads_keychain_once_then_uses_process_cache() {
     assert!(first.keychain_read_attempted);
     assert!(!second.keychain_read_attempted);
     assert_eq!(keychain_store.secret_reads(), 1);
-    assert!(
-        first.prompt_plan.expect("prompt plan").effective
-            == KeychainPromptPreference::SystemDefault
-    );
 }
 
 #[test]
@@ -164,7 +210,7 @@ fn mutation_sets_metadata_cache_and_removes_all_local_auth_state() {
         keychain_store
             .read_keychain_secret(
                 Provider::Anthropic,
-                AuthSecretAccessPolicy::cli_secret_use()
+                AuthSecretAccessPolicy::resolve_for_use()
             )
             .expect("read fake keychain"),
         Some("sk-ant-test".to_string())
@@ -210,9 +256,7 @@ async fn validation_resolves_secret_validates_provider_and_updates_metadata() {
         .expect("write fake keychain");
     let metadata_store = InMemoryAuthMetadataStore::new();
     let cache = ProcessSessionAuthSecretCache::new();
-    let prompt_planner = StdKeychainPromptPlanner::new();
-    let resolver =
-        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache, &prompt_planner);
+    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
     let validator = FakeValidator {
         expected_secret: "sk-openai".to_string(),
         validation: AuthValidationState::Verified,
@@ -221,10 +265,9 @@ async fn validation_resolves_secret_validates_provider_and_updates_metadata() {
 
     let result = validation
         .validate_secret(
-            AuthSecretValidationRequest::new(AuthSecretResolutionRequest::cli_validation(
+            AuthSecretValidationRequest::new(AuthSecretResolutionRequest::for_secret_validation(
                 Provider::OpenAI,
                 AuthEnvLoadPolicy::ProcessOnly,
-                macos_platform(),
             ))
             .with_validated_at("2026-05-16T02:00:00Z"),
         )
@@ -381,23 +424,5 @@ impl AuthSecretValidator for FakeValidator {
             assert_eq!(secret, self.expected_secret);
             Ok(self.validation.clone())
         })
-    }
-}
-
-fn macos_platform() -> PlatformFacts {
-    PlatformFacts {
-        os: OperatingSystem::Macos,
-        arch: Architecture::Aarch64,
-        libc: None,
-        cpu: CpuFacts {
-            vendor: Some("Apple".to_string()),
-            brand: Some("Apple M fixture".to_string()),
-            features: Vec::new(),
-        },
-        gpu: GpuFacts {
-            devices: Vec::new(),
-            cuda: None,
-            metal: None,
-        },
     }
 }

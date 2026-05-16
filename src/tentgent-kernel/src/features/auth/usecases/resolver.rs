@@ -2,13 +2,10 @@
 
 use crate::features::auth::domain::{
     normalize_secret_value, AuthEnvLoadPolicy, AuthSecretAccessPolicy, AuthSecretMaterial,
-    AuthSecretSource, KeychainPromptPlan, Provider,
+    AuthSecretSource, Provider,
 };
-use crate::features::auth::ports::{
-    AuthEnvSecretProbe, AuthKeychainSecretStore, AuthSecretCache, KeychainPromptPlanner,
-};
-use crate::foundation::error::KernelResult;
-use crate::foundation::platform::PlatformFacts;
+use crate::features::auth::ports::{AuthEnvSecretProbe, AuthKeychainSecretStore, AuthSecretCache};
+use crate::foundation::error::{KernelError, KernelResult};
 
 use super::port::AuthSecretResolverUseCase;
 
@@ -17,34 +14,38 @@ pub struct AuthSecretResolutionRequest {
     pub provider: Provider,
     pub env_policy: AuthEnvLoadPolicy,
     pub access_policy: AuthSecretAccessPolicy,
-    pub platform: PlatformFacts,
+    pub provided_secret: Option<AuthSecretMaterial>,
 }
 
 impl AuthSecretResolutionRequest {
-    pub fn cli_use(
-        provider: Provider,
-        env_policy: AuthEnvLoadPolicy,
-        platform: PlatformFacts,
-    ) -> Self {
+    pub fn for_secret_use(provider: Provider, env_policy: AuthEnvLoadPolicy) -> Self {
         Self {
             provider,
             env_policy,
-            access_policy: AuthSecretAccessPolicy::cli_secret_use(),
-            platform,
+            access_policy: AuthSecretAccessPolicy::resolve_for_use(),
+            provided_secret: None,
         }
     }
 
-    pub fn cli_validation(
-        provider: Provider,
-        env_policy: AuthEnvLoadPolicy,
-        platform: PlatformFacts,
-    ) -> Self {
+    pub fn for_secret_validation(provider: Provider, env_policy: AuthEnvLoadPolicy) -> Self {
         Self {
             provider,
             env_policy,
-            access_policy: AuthSecretAccessPolicy::cli_secret_validation(),
-            platform,
+            access_policy: AuthSecretAccessPolicy::resolve_and_validate(),
+            provided_secret: None,
         }
+    }
+
+    pub fn with_prompt_secret(mut self, secret: impl Into<String>) -> Self {
+        self.provided_secret =
+            AuthSecretMaterial::normalized(self.provider, AuthSecretSource::Prompt, secret);
+        self
+    }
+
+    pub fn with_request_secret(mut self, secret: impl Into<String>) -> Self {
+        self.provided_secret =
+            AuthSecretMaterial::normalized(self.provider, AuthSecretSource::Request, secret);
+        self
     }
 }
 
@@ -52,7 +53,6 @@ impl AuthSecretResolutionRequest {
 pub struct AuthSecretResolution {
     pub provider: Provider,
     pub secret: Option<AuthSecretMaterial>,
-    pub prompt_plan: Option<KeychainPromptPlan>,
     pub keychain_read_attempted: bool,
 }
 
@@ -70,7 +70,6 @@ pub struct StdAuthSecretResolverUseCase<'a> {
     env_probe: &'a dyn AuthEnvSecretProbe,
     keychain_store: &'a dyn AuthKeychainSecretStore,
     cache: &'a dyn AuthSecretCache,
-    prompt_planner: &'a dyn KeychainPromptPlanner,
 }
 
 impl<'a> StdAuthSecretResolverUseCase<'a> {
@@ -78,13 +77,11 @@ impl<'a> StdAuthSecretResolverUseCase<'a> {
         env_probe: &'a dyn AuthEnvSecretProbe,
         keychain_store: &'a dyn AuthKeychainSecretStore,
         cache: &'a dyn AuthSecretCache,
-        prompt_planner: &'a dyn KeychainPromptPlanner,
     ) -> Self {
         Self {
             env_probe,
             keychain_store,
             cache,
-            prompt_planner,
         }
     }
 }
@@ -94,6 +91,25 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
         &self,
         request: AuthSecretResolutionRequest,
     ) -> KernelResult<AuthSecretResolution> {
+        if let Some(secret) = request.provided_secret {
+            if secret.provider != request.provider {
+                return Err(KernelError::RuntimeStateUnavailable(format!(
+                    "provided auth secret provider {:?} does not match request provider {:?}",
+                    secret.provider, request.provider
+                )));
+            }
+
+            if request.access_policy.should_cache_for_process() {
+                self.cache.save_cached_secret(secret.clone())?;
+            }
+
+            return Ok(AuthSecretResolution {
+                provider: request.provider,
+                secret: Some(secret),
+                keychain_read_attempted: false,
+            });
+        }
+
         if let Some(env_secret) = self
             .env_probe
             .probe_env_secret(request.provider, request.env_policy)?
@@ -101,7 +117,6 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
             return Ok(AuthSecretResolution {
                 provider: request.provider,
                 secret: Some(env_secret.into_secret_material()),
-                prompt_plan: None,
                 keychain_read_attempted: false,
             });
         }
@@ -111,7 +126,6 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
                 return Ok(AuthSecretResolution {
                     provider: request.provider,
                     secret: Some(secret),
-                    prompt_plan: None,
                     keychain_read_attempted: false,
                 });
             }
@@ -121,21 +135,13 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
             return Ok(AuthSecretResolution {
                 provider: request.provider,
                 secret: None,
-                prompt_plan: None,
                 keychain_read_attempted: false,
             });
         }
 
-        let prompt_plan = self
-            .prompt_planner
-            .plan_prompt(&request.platform, request.access_policy.keychain_prompt)?;
-        let keychain_policy = AuthSecretAccessPolicy {
-            keychain_prompt: prompt_plan.effective,
-            ..request.access_policy
-        };
         let secret = self
             .keychain_store
-            .read_keychain_secret(request.provider, keychain_policy)?
+            .read_keychain_secret(request.provider, request.access_policy)?
             .and_then(normalize_secret_value)
             .map(|secret| {
                 AuthSecretMaterial::new(request.provider, AuthSecretSource::Keychain, secret)
@@ -150,7 +156,6 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
         Ok(AuthSecretResolution {
             provider: request.provider,
             secret,
-            prompt_plan: Some(prompt_plan),
             keychain_read_attempted: true,
         })
     }

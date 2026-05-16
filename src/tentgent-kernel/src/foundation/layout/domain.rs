@@ -39,4 +39,5 @@ pub struct RuntimeLayout {
     pub bootstrap_uv_dir: PathBuf,
     pub bootstrap_uv_cache_dir: PathBuf,
     pub capabilities_path: PathBuf,
+    pub auth_metadata_path: PathBuf,
 }

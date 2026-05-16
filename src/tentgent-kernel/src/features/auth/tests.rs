@@ -9,19 +9,14 @@ use super::domain::{
     effective_source, normalize_secret_value, AuthEnvLoadPolicy, AuthEnvSecretOrigin,
     AuthKeyStatus, AuthProviderMetadata, AuthProviderPreference, AuthSecretAccessPolicy,
     AuthSecretCacheScope, AuthSecretMaterial, AuthSecretReadIntent, AuthSecretSource,
-    AuthValidationState, KeychainBiometricSupport, KeychainPresence, KeychainPromptPreference,
-    Provider, AUTH_SERVICE,
+    AuthValidationState, KeychainPresence, Provider, AUTH_SERVICE,
 };
 use super::infra::{
-    InMemoryAuthMetadataStore, ProcessSessionAuthSecretCache, ReqwestAuthSecretValidator,
-    StdAuthEnvSecretProbe, StdKeychainPromptPlanner, SystemKeychainAuthSecretStore,
+    FileAuthMetadataStore, InMemoryAuthMetadataStore, ProcessSessionAuthSecretCache,
+    ReqwestAuthSecretValidator, StdAuthEnvSecretProbe, SystemKeychainAuthSecretStore,
 };
 use super::ports::{
     AuthEnvSecretProbe, AuthKeychainSecretStore, AuthMetadataStore, AuthSecretCache,
-    KeychainPromptPlanner,
-};
-use crate::foundation::platform::{
-    Architecture, CpuFacts, GpuFacts, OperatingSystem, PlatformFacts,
 };
 
 #[test]
@@ -77,6 +72,21 @@ fn secret_value_normalization_trims_and_drops_empty_values() {
 }
 
 #[test]
+fn provided_secret_sources_are_ephemeral_inputs() {
+    assert_eq!(AuthSecretSource::Prompt.to_string(), "prompt");
+    assert_eq!(AuthSecretSource::Request.to_string(), "request");
+    assert_eq!(
+        AuthSecretMaterial::normalized(Provider::OpenAI, AuthSecretSource::Prompt, " sk \n")
+            .expect("normalized prompt secret"),
+        AuthSecretMaterial::new(Provider::OpenAI, AuthSecretSource::Prompt, "sk")
+    );
+    assert!(
+        AuthSecretMaterial::normalized(Provider::OpenAI, AuthSecretSource::Request, " \t")
+            .is_none()
+    );
+}
+
+#[test]
 fn validation_state_exposes_summary_and_detail() {
     let invalid = AuthValidationState::Invalid {
         reason: "provider rejected key".to_string(),
@@ -95,22 +105,18 @@ fn validation_state_exposes_summary_and_detail() {
 
 #[test]
 fn status_policy_does_not_read_or_cache_keychain_secret() {
-    let policy = AuthSecretAccessPolicy::non_prompting_status();
+    let policy = AuthSecretAccessPolicy::status_only();
 
     assert_eq!(policy.read_intent, AuthSecretReadIntent::StatusOnly);
-    assert_eq!(
-        policy.keychain_prompt,
-        KeychainPromptPreference::SystemDefault
-    );
     assert_eq!(policy.cache_scope, AuthSecretCacheScope::None);
     assert!(!policy.may_read_keychain_secret());
     assert!(!policy.should_cache_for_process());
 }
 
 #[test]
-fn cli_secret_policies_prefer_biometrics_and_process_session_cache() {
-    let use_policy = AuthSecretAccessPolicy::cli_secret_use();
-    let validate_policy = AuthSecretAccessPolicy::cli_secret_validation();
+fn secret_policies_read_keychain_and_process_session_cache() {
+    let use_policy = AuthSecretAccessPolicy::resolve_for_use();
+    let validate_policy = AuthSecretAccessPolicy::resolve_and_validate();
 
     assert_eq!(use_policy.read_intent, AuthSecretReadIntent::ResolveForUse);
     assert_eq!(
@@ -118,10 +124,6 @@ fn cli_secret_policies_prefer_biometrics_and_process_session_cache() {
         AuthSecretReadIntent::ResolveAndValidate
     );
     for policy in [use_policy, validate_policy] {
-        assert_eq!(
-            policy.keychain_prompt,
-            KeychainPromptPreference::PreferBiometric
-        );
         assert_eq!(policy.cache_scope, AuthSecretCacheScope::ProcessSession);
         assert!(policy.may_read_keychain_secret());
         assert!(policy.should_cache_for_process());
@@ -136,7 +138,7 @@ fn provider_preference_defaults_to_enabled_secret_use_policy() {
     assert!(preference.enabled);
     assert_eq!(
         preference.access_policy,
-        AuthSecretAccessPolicy::cli_secret_use()
+        AuthSecretAccessPolicy::resolve_for_use()
     );
 }
 
@@ -253,45 +255,42 @@ fn in_memory_metadata_store_round_trips_non_secret_metadata() {
 }
 
 #[test]
-fn generic_prompt_planner_falls_back_when_biometric_backend_is_missing() {
-    let planner = StdKeychainPromptPlanner::new();
-    let plan = planner
-        .plan_prompt(&macos_platform(), KeychainPromptPreference::PreferBiometric)
-        .expect("plan prompt");
+fn file_metadata_store_round_trips_non_secret_auth_state() {
+    let path = temp_path("auth-file-metadata").join("runtime/auth.toml");
+    let store = FileAuthMetadataStore::new(path.clone());
+    let metadata = AuthProviderMetadata {
+        provider: Provider::OpenAI,
+        keychain_presence: KeychainPresence::Unknown,
+        last_updated_at: Some("2026-05-16T03:00:00Z".to_string()),
+        last_validated_at: Some("2026-05-16T03:01:00Z".to_string()),
+        validation: AuthValidationState::Invalid {
+            reason: "provider rejected key".to_string(),
+        },
+    };
 
-    assert_eq!(plan.requested, KeychainPromptPreference::PreferBiometric);
-    assert_eq!(plan.effective, KeychainPromptPreference::SystemDefault);
-    assert!(matches!(
-        plan.biometric_support,
-        KeychainBiometricSupport::BackendUnsupported { .. }
-    ));
-    assert!(!plan.honors_biometric_preference());
-}
+    store
+        .save_provider_metadata(&metadata)
+        .expect("save file metadata");
 
-#[test]
-fn prompt_planner_honors_biometric_when_backend_is_available() {
-    let planner = StdKeychainPromptPlanner::with_biometric_backend_available(true);
-    let plan = planner
-        .plan_prompt(&macos_platform(), KeychainPromptPreference::PreferBiometric)
-        .expect("plan prompt");
+    let raw = fs::read_to_string(&path).expect("read metadata file");
+    assert!(raw.contains("schema_version = 1"));
+    assert!(!raw.contains("sk-"));
 
-    assert_eq!(plan.effective, KeychainPromptPreference::PreferBiometric);
-    assert_eq!(plan.biometric_support, KeychainBiometricSupport::Supported);
-    assert!(plan.honors_biometric_preference());
-}
+    let reloaded = FileAuthMetadataStore::new(path);
+    assert_eq!(
+        reloaded
+            .load_provider_metadata(Provider::OpenAI)
+            .expect("load file metadata"),
+        Some(metadata)
+    );
 
-#[test]
-fn prompt_planner_marks_biometric_unsupported_off_macos() {
-    let planner = StdKeychainPromptPlanner::with_biometric_backend_available(true);
-    let plan = planner
-        .plan_prompt(&linux_platform(), KeychainPromptPreference::PreferBiometric)
-        .expect("plan prompt");
-
-    assert_eq!(plan.effective, KeychainPromptPreference::SystemDefault);
-    assert!(matches!(
-        plan.biometric_support,
-        KeychainBiometricSupport::PlatformUnsupported { .. }
-    ));
+    reloaded
+        .remove_provider_metadata(Provider::OpenAI)
+        .expect("remove file metadata");
+    assert!(reloaded
+        .load_provider_metadata(Provider::OpenAI)
+        .expect("load removed file metadata")
+        .is_none());
 }
 
 #[test]
@@ -299,10 +298,7 @@ fn system_keychain_store_honors_non_prompting_read_policy() {
     let store = SystemKeychainAuthSecretStore::new();
 
     let secret = store
-        .read_keychain_secret(
-            Provider::OpenAI,
-            AuthSecretAccessPolicy::non_prompting_status(),
-        )
+        .read_keychain_secret(Provider::OpenAI, AuthSecretAccessPolicy::status_only())
         .expect("non-prompting read policy should not access keychain");
 
     assert!(secret.is_none());
@@ -413,32 +409,6 @@ fn reqwest_validator_maps_http_status_to_validation_state() {
         ),
         AuthValidationState::Unknown { .. }
     ));
-}
-
-fn macos_platform() -> PlatformFacts {
-    platform(OperatingSystem::Macos, Architecture::Aarch64)
-}
-
-fn linux_platform() -> PlatformFacts {
-    platform(OperatingSystem::Linux, Architecture::X86_64)
-}
-
-fn platform(os: OperatingSystem, arch: Architecture) -> PlatformFacts {
-    PlatformFacts {
-        os,
-        arch,
-        libc: None,
-        cpu: CpuFacts {
-            vendor: None,
-            brand: None,
-            features: Vec::new(),
-        },
-        gpu: GpuFacts {
-            devices: Vec::new(),
-            cuda: None,
-            metal: None,
-        },
-    }
 }
 
 fn header_str<'a>(request: &'a reqwest::Request, name: &str) -> Option<&'a str> {

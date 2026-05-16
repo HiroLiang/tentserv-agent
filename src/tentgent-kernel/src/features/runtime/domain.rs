@@ -59,6 +59,33 @@ pub struct RuntimeBootstrapPlan {
     pub print_plan: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeBootstrapOutcome {
+    pub status: RuntimeBootstrapStatus,
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RuntimeBootstrapStatus {
+    Succeeded,
+    Failed,
+}
+
+impl RuntimeBootstrapStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PythonRuntimeResolutionInput {
+    pub project_dir: Option<PathBuf>,
+    pub python_env_dir: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PythonRuntimeLayout {
     pub project_dir: PathBuf,
