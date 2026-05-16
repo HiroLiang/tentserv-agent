@@ -39,6 +39,9 @@ shape:
   machine, filesystem, environment, or subprocesses.
 - `usecases.rs` may exist as a placeholder in feature packages, but should not
   hide implementation logic before the relevant bundle is moved.
+- `usecases/` owns capability-sized workflow implementations when a feature
+  has real orchestration. If workflow ports would make package `ports.rs` too
+  broad, keep those use-case ports in `usecases/port.rs`.
 
 ## Domain Files
 
@@ -106,15 +109,18 @@ workflow owners.
 - probing machine capability state from runtime layout and platform facts
 - loading and saving cached capability state
 - checking backend and runtime-profile readiness for feature gates
-- resolving current or refreshed capability snapshots for callers without
-  making CLI, HTTP, or TUI assemble layout and platform probes themselves
-- enforcing backend and runtime-profile readiness without exposing checker
-  details to feature packages
 
 Current standard implementations are `FileCapabilityStateStore`,
 `StdMachineCapabilitiesProbe`, and `StdCapabilityChecker`. Heavy Python import
 probes and backend launch checks should be added later as an explicit probe
 bundle, not hidden in the lightweight probe.
+
+`capabilities/usecases/port.rs` defines use-case-level ports for:
+
+- resolving current or refreshed capability snapshots for callers without
+  making CLI, HTTP, or TUI assemble layout and platform probes themselves
+- enforcing backend and runtime-profile readiness without exposing checker
+  details to feature packages
 
 `capabilities/usecases/` owns orchestration implementations and their local
 request/response structs. For example, `resolver.rs` keeps
@@ -160,6 +166,7 @@ store.rs
 service.rs
 runtime.rs
 usecases.rs
+usecases/
 ```
 
 Only add these files when the feature needs them. Prefer a small, consistent
@@ -188,6 +195,55 @@ use cases once their migration bundle moves.
 It must not read environment variables, load or save TOML files, traverse TOML
 values, or read daemon process metadata directly. Those jobs belong in config
 infra or callers that map local state into config domain inputs.
+
+`features/auth/domain.rs` owns pure provider-auth names and policy:
+
+- provider names, CLI names, environment variables, and keychain accounts
+- auth secret source, keychain presence, validation, and status data
+- secret access intent, prompt preference, and process-session cache policy
+- secret material wrappers that redact debug output and clear owned secret
+  memory on drop
+- non-secret provider preferences
+- keychain prompt plans and biometric support state
+
+It must not read `.env`, environment variables, Keychain, or provider
+validation endpoints directly. Biometric unlock is represented as a prompt
+preference; platform infra decides whether it can honor that preference or must
+fall back to the operating system default.
+
+`features/auth/ports.rs` defines narrow boundaries for:
+
+- probing environment-provided secrets from process env, cwd `.env`, or an
+  explicit env file policy
+- reading/writing/removing Keychain secrets
+- validating provider secrets
+- process-session secret caching
+- loading/saving non-secret auth metadata
+- planning Keychain prompt behavior from platform facts and prompt preference
+
+Current lightweight auth infra includes `ProcessSessionAuthSecretCache`,
+`StdAuthEnvSecretProbe`, `InMemoryAuthMetadataStore`,
+`StdKeychainPromptPlanner`, and `SystemKeychainAuthSecretStore`. Provider
+validation and file-backed metadata persistence should be added as explicit
+infra modules; do not hide them inside status rendering or HTTP route code.
+The keychain-backed secret store lives in `infra/store.rs`: store is the role,
+while keychain names the secure operating-system backend.
+`ProcessSessionAuthSecretCache` is in-memory only and TTL-bounded; it must not
+be replaced with a persisted secret cache.
+
+`features/auth/usecases/` owns auth workflows by capability:
+
+- `status.rs`: non-secret provider status assembly.
+- `resolver.rs`: effective secret resolution using env, process TTL cache, and
+  Keychain according to access policy.
+- `mutation.rs`: local set/remove flows for Keychain secrets, non-secret
+  metadata, and process cache.
+- `validation.rs`: provider validation orchestration and metadata updates.
+- `port.rs`: use-case-level traits for CLI, HTTP, TUI, and future server
+  preflight callers.
+
+Auth use cases may move secrets in memory, but they must not render, log,
+serialize, or persist secret values outside the system Keychain.
 
 ## Dependency Direction
 

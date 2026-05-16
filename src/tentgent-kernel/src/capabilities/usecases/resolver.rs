@@ -1,12 +1,12 @@
 //! Machine capability resolution use case.
 
 use crate::capabilities::domain::MachineCapabilities;
-use crate::capabilities::ports::{
-    CapabilityStateStore, MachineCapabilitiesProbe, MachineCapabilitiesResolver,
-};
+use crate::capabilities::ports::{CapabilityStateStore, MachineCapabilitiesProbe};
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput, RuntimeLayoutResolver};
 use crate::foundation::platform::{PlatformFacts, PlatformProbe};
+
+use super::port::MachineCapabilitiesResolver;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MachineCapabilitiesInput {

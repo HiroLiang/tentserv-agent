@@ -8,11 +8,10 @@ use crate::capabilities::domain::{
 use crate::capabilities::infra::{
     FileCapabilityStateStore, StdCapabilityChecker, StdMachineCapabilitiesProbe,
 };
-use crate::capabilities::ports::{
-    CapabilityGate, CapabilityStateStore, MachineCapabilitiesResolver,
-};
+use crate::capabilities::ports::CapabilityStateStore;
 use crate::capabilities::usecases::{
-    MachineCapabilitiesInput, StdCapabilityGate, StdMachineCapabilitiesResolver,
+    CapabilityGate, MachineCapabilitiesInput, MachineCapabilitiesResolver, StdCapabilityGate,
+    StdMachineCapabilitiesResolver,
 };
 use crate::features::runtime::domain::{BootstrapProfile, RuntimeReadiness};
 use crate::foundation::error::{KernelError, KernelResult};

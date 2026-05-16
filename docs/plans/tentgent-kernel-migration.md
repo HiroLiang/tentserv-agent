@@ -31,7 +31,8 @@ The current source tree is the authority for exact files. The crate remains
 data-first where possible: `domain.rs` contains structures and enums,
 `ports.rs` defines narrow package traits, and `infra/` or `infra.rs` contains
 standard local-machine implementations. `usecases.rs` files are placeholders
-only until a feature bundle actually moves.
+only until a feature bundle actually moves; moved workflow bundles should use
+`usecases/` directories with capability-sized modules.
 
 ## Current State
 
@@ -50,9 +51,10 @@ Implemented:
   readiness, machine capability state.
 - Capability ports for machine capability probing, cached state load/save, and
   backend or runtime-profile readiness checks.
-- Capability orchestration ports for current/refresh snapshot resolution and
-  feature gate enforcement, so CLI/HTTP/TUI do not duplicate layout/platform
-  probing before reading capability state.
+- Capability use-case ports in `capabilities/usecases/port.rs` for
+  current/refresh snapshot resolution and feature gate enforcement, so
+  CLI/HTTP/TUI do not duplicate layout/platform probing before reading
+  capability state.
 - Capability infra implementations split by port: file-backed TOML state store,
   lightweight platform/layout probe, and cached-state checker.
 - Capability use-case implementations with colocated request/response types
@@ -61,12 +63,25 @@ Implemented:
   source/layout, Python entrypoint names, and runtime readiness snapshots.
 - Config feature domain objects for config schema/defaults, daemon endpoint
   defaults, daemon URL/token source resolution, and secret-like key names.
+- Auth feature domain objects for provider identity, secret source/status,
+  validation state, keychain prompt preference, and process-session cache
+  policy with redacted/drop-clearing secret material wrappers.
+- Auth ports for env-secret probing, keychain secrets, provider validation,
+  process-session cache, non-secret metadata store, and keychain prompt
+  planning.
+- Lightweight auth infra for env-secret probing, system keychain secret
+  storage, TTL-bounded process-session secret cache, in-memory metadata store, and
+  platform-aware prompt planning.
+- Auth use-case ports in `features/auth/usecases/port.rs` and implementations
+  for provider status, effective secret resolution, local set/remove mutation,
+  and provider validation orchestration.
 - Small feature input data objects for server and training.
 
 Not implemented by design:
 
 - heavy Python import/backend probe implementations
-- feature workflow use cases
+- remaining feature workflow use cases outside the current capability and auth
+  bundles
 - process/runtime adapters
 - compatibility adapters from old core
 

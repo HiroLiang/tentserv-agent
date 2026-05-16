@@ -39,6 +39,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 unicode-width = "0.2"
 walkdir = "2"
+zeroize = "1"
 
 [workspace.metadata.tentgent]
 app_slug = "tentgent"

@@ -13,11 +13,8 @@ pub use domain::{
     RuntimeCapabilityState, RuntimeProfileCapability,
 };
 pub use infra::{FileCapabilityStateStore, StdCapabilityChecker, StdMachineCapabilitiesProbe};
-pub use ports::{
-    CapabilityChecker, CapabilityGate, CapabilityStateStore, MachineCapabilitiesProbe,
-    MachineCapabilitiesResolver,
-};
+pub use ports::{CapabilityChecker, CapabilityStateStore, MachineCapabilitiesProbe};
 pub use usecases::{
-    MachineCapabilitiesInput, MachineCapabilitiesSnapshot, StdCapabilityGate,
-    StdMachineCapabilitiesResolver,
+    CapabilityGate, MachineCapabilitiesInput, MachineCapabilitiesResolver,
+    MachineCapabilitiesSnapshot, StdCapabilityGate, StdMachineCapabilitiesResolver,
 };

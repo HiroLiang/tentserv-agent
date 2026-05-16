@@ -3,9 +3,11 @@
 use crate::capabilities::domain::{
     BackendKind, CapabilityCheck, CapabilityState, MachineCapabilities,
 };
-use crate::capabilities::ports::{CapabilityChecker, CapabilityGate};
+use crate::capabilities::ports::CapabilityChecker;
 use crate::features::runtime::domain::BootstrapProfile;
 use crate::foundation::error::{KernelError, KernelResult};
+
+use super::port::CapabilityGate;
 
 pub struct StdCapabilityGate<'a> {
     checker: &'a dyn CapabilityChecker,

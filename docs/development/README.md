@@ -34,6 +34,33 @@ Check the Rust workspace:
 cargo check --workspace
 ```
 
+Run Rust tests:
+
+```bash
+cargo test --workspace
+```
+
+Some kernel tests intentionally read the current machine, such as platform
+fact probing. Use `-- --show-output` when you need successful live-machine
+tests to print what they observed:
+
+```bash
+cargo test -p tentgent-kernel -- --show-output
+```
+
+CI runners may not have GPUs, CUDA, Metal, Keychain entries, provider tokens,
+or a managed Python runtime. Live-machine tests should print the observed facts
+and treat missing optional local capabilities as data, not as a failure,
+unless the test explicitly provisions that dependency.
+
+The kernel keychain smoke test is opt-in because it may prompt the platform
+credential UI. To run it locally and print the observed presence state without
+printing any secret value:
+
+```bash
+TENTGENT_RUN_KEYCHAIN_TESTS=1 cargo test -p tentgent-kernel -- --show-output
+```
+
 Run Python unit tests that do not require provider network access:
 
 ```bash
@@ -47,6 +74,22 @@ Use the Makefile wrappers:
 make check
 make run-cli ARGS='--help'
 ```
+
+## Current CI/CD
+
+The repository currently has one GitHub Actions workflow:
+`.github/workflows/release.yml`.
+
+It runs on `v*.*.*` tag pushes and manual `workflow_dispatch`. The package job
+builds release artifacts on native runners for macOS Apple Silicon, macOS
+Intel, Linux x86_64, and Windows x86_64, then uploads the archives and
+checksums. The release job downloads those artifacts, prepares installer
+assets and release notes, creates or updates the GitHub Release, and verifies
+prerelease/latest release state.
+
+The current release workflow does not run `cargo fmt`, `cargo check`,
+`cargo test`, or Python unit tests before packaging. `scripts/package-local.sh`
+performs `cargo build --release --bin tentgent` as part of artifact packaging.
 
 Check release tag parsing and prerelease flag helpers:
 

@@ -46,7 +46,7 @@ fn std_probe_detects_current_platform() {
     let facts = StdPlatformProbe
         .probe()
         .expect("query current platform facts");
-    eprintln!("{facts:#?}");
+    eprintln!("local platform facts detected by StdPlatformProbe:\n{facts:#?}");
 
     match facts.os {
         OperatingSystem::Macos | OperatingSystem::Linux | OperatingSystem::Windows => {}

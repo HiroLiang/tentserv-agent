@@ -2108,10 +2108,14 @@ name = "tentgent-kernel"
 version = "0.3.4-alpha.2"
 dependencies = [
  "directories",
+ "dotenvy",
+ "keyring",
  "serde",
  "thiserror 2.0.18",
  "time",
+ "tokio",
  "toml",
+ "zeroize",
 ]
 
 [[package]]
