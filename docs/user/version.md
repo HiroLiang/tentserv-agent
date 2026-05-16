@@ -30,7 +30,10 @@ Known limits:
   base runtime bootstrap. Local-model, training, GPU, Linuxbrew, `.deb`, and
   `.rpm` support are not claimed yet.
 - Backend warnings for MLX, Transformers/PEFT, and llama-cpp are expected after
-  a base-profile bootstrap because those heavier dependencies are opt-in.
+  a base-profile bootstrap because those heavier dependencies are opt-in. After
+  `tentgent runtime bootstrap --profile full`, `tentgent doctor` should verify
+  those backend modules by import; embedding and rerank probes remain future
+  work and may still report unknown.
 
 ## v0.3.3
 

@@ -56,8 +56,9 @@ Environment variables are read when a process starts. Tentgent does not rewrite 
 
 Use `tentgent runtime status`, `tentgent status`, or `tentgent doctor` to inspect
 human-readable runtime information. `tentgent runtime status` is scoped to the
-managed Python runtime; `tentgent status` and `tentgent doctor` include broader
-platform, backend, and installation diagnostics.
+managed Python runtime and can be narrowed with `--profile`; `tentgent status`
+and `tentgent doctor` include broader platform, backend, and installation
+diagnostics.
 
 The managed install default for the Python environment is:
 
@@ -112,6 +113,11 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 
 - `tentgent doctor` runs installation and runtime health checks.
 - `tentgent status` reports the current platform and backend capability state.
+- `tentgent doctor` verifies `local-model`, `training`, and `full` profile
+  readiness by importing the expected Python modules from the selected managed
+  Python environment. A successful `full` bootstrap should make GGUF,
+  safetensors/PEFT, MLX on Apple Silicon macOS, and training dependencies
+  report ready.
 - `safetensors` models run through the `transformers-peft` backend when Python dependencies are installed.
 - `mlx` models run through the MLX backend only on Apple Silicon macOS.
 - `gguf` models run through `llama-cpp-python` when that dependency is installed.
@@ -125,6 +131,8 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
   default base Python runtime has been smoke-tested on Ubuntu 24.04 without
   build tools. Local-model, training, GPU, and distro-package parity remain
   dependency-gated.
+- Embedding and rerank backend capability probes are not implemented yet, so
+  they may still report unknown even when the base runtime is healthy.
 
 ## Keychain Prompts
 

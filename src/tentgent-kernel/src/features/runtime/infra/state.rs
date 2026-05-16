@@ -9,7 +9,9 @@ use crate::features::runtime::ports::RuntimeStateProbe;
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
 
-use super::path::python_binary_path;
+use super::{
+    probe_python_modules, python_binary_for_env, runtime_profile_modules, PythonModuleProbe,
+};
 
 /// Probes managed runtime state without mutating the environment.
 #[derive(Debug, Clone, Copy, Default)]
@@ -24,7 +26,7 @@ impl RuntimeStateProbe for StdRuntimeStateProbe {
         let python_env_dir = runtime
             .map(|runtime| runtime.env_dir.clone())
             .unwrap_or_else(|| layout.python_env_dir.clone());
-        let python_binary = python_binary_path(&python_env_dir);
+        let python_binary = python_binary_for_env(&python_env_dir);
         let env_exists = python_env_dir.is_dir();
         let binary_exists = python_binary.is_file();
 
@@ -40,7 +42,7 @@ impl RuntimeStateProbe for StdRuntimeStateProbe {
                     .then(|| python_version(&python_binary))
                     .flatten(),
             },
-            profiles: runtime_profiles(env_exists, binary_exists),
+            profiles: runtime_profiles(&python_binary, env_exists, binary_exists),
         })
     }
 }
@@ -62,7 +64,11 @@ fn python_version(python_binary: &Path) -> Option<String> {
     (!version.is_empty()).then(|| version.to_string())
 }
 
-fn runtime_profiles(env_exists: bool, binary_exists: bool) -> Vec<RuntimeProfileState> {
+fn runtime_profiles(
+    python_binary: &Path,
+    env_exists: bool,
+    binary_exists: bool,
+) -> Vec<RuntimeProfileState> {
     [
         BootstrapProfile::Base,
         BootstrapProfile::LocalModel,
@@ -70,11 +76,12 @@ fn runtime_profiles(env_exists: bool, binary_exists: bool) -> Vec<RuntimeProfile
         BootstrapProfile::Full,
     ]
     .into_iter()
-    .map(|profile| runtime_profile(profile, env_exists, binary_exists))
+    .map(|profile| runtime_profile(python_binary, profile, env_exists, binary_exists))
     .collect()
 }
 
 fn runtime_profile(
+    python_binary: &Path,
     profile: BootstrapProfile,
     env_exists: bool,
     binary_exists: bool,
@@ -95,18 +102,27 @@ fn runtime_profile(
         };
     }
 
-    match profile {
-        BootstrapProfile::Base => RuntimeProfileState {
+    let modules = runtime_profile_modules(profile);
+    let probe = probe_python_modules(python_binary, &modules);
+    match probe {
+        PythonModuleProbe::Ready => RuntimeProfileState {
             profile,
             readiness: RuntimeReadiness::Ready,
-            message: Some("managed Python interpreter is available".to_string()),
+            message: Some(if modules.is_empty() {
+                "managed Python interpreter is available".to_string()
+            } else {
+                format!("{} profile dependencies are importable", profile.as_str())
+            }),
         },
-        BootstrapProfile::LocalModel | BootstrapProfile::Training | BootstrapProfile::Full => {
-            RuntimeProfileState {
-                profile,
-                readiness: RuntimeReadiness::Unknown,
-                message: Some("profile-specific Python packages have not been probed".to_string()),
-            }
-        }
+        PythonModuleProbe::Missing { modules } => RuntimeProfileState {
+            profile,
+            readiness: RuntimeReadiness::Missing,
+            message: Some(format!("missing Python modules: {}", modules.join(", "))),
+        },
+        PythonModuleProbe::Failed { detail } => RuntimeProfileState {
+            profile,
+            readiness: RuntimeReadiness::Unknown,
+            message: Some(format!("failed to probe Python modules: {detail}")),
+        },
     }
 }

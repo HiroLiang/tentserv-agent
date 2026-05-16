@@ -1,6 +1,6 @@
 //! Capability package ports.
 
-use crate::features::runtime::domain::BootstrapProfile;
+use crate::features::runtime::domain::{BootstrapProfile, PythonRuntimeLayout};
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
 use crate::foundation::platform::PlatformFacts;
@@ -13,6 +13,7 @@ pub trait MachineCapabilitiesProbe {
     fn probe(
         &self,
         layout: &RuntimeLayout,
+        runtime: Option<&PythonRuntimeLayout>,
         platform: &PlatformFacts,
     ) -> KernelResult<MachineCapabilities>;
 }

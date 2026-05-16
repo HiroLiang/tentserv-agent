@@ -217,6 +217,8 @@ mod tests {
             "/tmp/tentgent-python",
             "--env",
             "/tmp/tentgent-env",
+            "--profile",
+            "full",
         ])
         .expect("parse runtime status");
 
@@ -230,6 +232,10 @@ mod tests {
                     assert_eq!(
                         command.env.as_deref(),
                         Some(std::path::Path::new("/tmp/tentgent-env"))
+                    );
+                    assert_eq!(
+                        command.profile,
+                        Some(super::commands::RuntimeBootstrapProfile::Full)
                     );
                 }
                 other => panic!("unexpected runtime command: {other:?}"),

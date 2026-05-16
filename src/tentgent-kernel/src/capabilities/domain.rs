@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::features::runtime::domain::{BootstrapProfile, RuntimeReadiness};
 use crate::foundation::platform::PlatformFacts;
 
+pub const CAPABILITY_SCHEMA_VERSION: u32 = 2;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MachineCapabilities {
     pub schema_version: u32,

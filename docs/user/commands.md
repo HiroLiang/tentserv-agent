@@ -117,6 +117,7 @@ Inspect the managed Python runtime:
 
 ```bash
 tentgent runtime status
+tentgent runtime status --profile full
 tentgent runtime status --project /path/to/python-project --env /path/to/python-env
 ```
 

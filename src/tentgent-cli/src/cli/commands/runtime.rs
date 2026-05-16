@@ -50,6 +50,9 @@ pub struct RuntimeStatusCommand {
     /// Managed Python environment path override for status resolution.
     #[arg(long, value_name = "PATH")]
     pub env: Option<PathBuf>,
+    /// Show readiness for one runtime dependency profile.
+    #[arg(long, value_enum)]
+    pub profile: Option<RuntimeBootstrapProfile>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]

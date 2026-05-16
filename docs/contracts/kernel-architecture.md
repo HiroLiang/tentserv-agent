@@ -111,9 +111,16 @@ workflow owners.
 - checking backend and runtime-profile readiness for feature gates
 
 Current standard implementations are `FileCapabilityStateStore`,
-`StdMachineCapabilitiesProbe`, and `StdCapabilityChecker`. Heavy Python import
-probes and backend launch checks should be added later as an explicit probe
-bundle, not hidden in the lightweight probe.
+`StdMachineCapabilitiesProbe`, and `StdCapabilityChecker`. The standard
+capability probe verifies runtime profile and backend dependencies by importing
+the expected Python modules with the selected runtime interpreter. It still does
+not launch models, start servers, run training jobs, or perform GPU allocation
+smoke tests.
+Capability probes receive the selected Python runtime layout when a caller has
+already resolved it, so development-source and override environments do not get
+misreported as missing just because they are outside `TENTGENT_HOME`.
+Capability schema version `2` records this import-probed readiness semantics;
+older cached capability files should be treated as stale by use cases.
 
 `capabilities/usecases/port.rs` defines use-case-level ports for:
 
@@ -234,6 +241,23 @@ use cases instead of directly composing runtime infra.
   bootstrap or Python runtime resolution
 - mapping capability state into doctor checks without probing backends twice
 - planning explicit repair actions separately from ordinary diagnostics
+
+`features/doctor/infra/` owns the standard doctor adapters for those ports:
+filesystem path probes, command probes, runtime fact-to-check mapping,
+capability snapshot-to-check mapping, and repair planning. These adapters may
+inspect local paths and run diagnostic commands, but they must not bootstrap the
+runtime or execute repair steps directly.
+
+`features/doctor/usecases/port.rs` defines workflow boundaries for:
+
+- building a doctor report for local CLI, HTTP, or TUI callers without letting
+  those frontends assemble path, command, runtime, and capability checks
+- running an explicit repair flow that delegates mutation to runtime use cases
+  and returns a fresh doctor report
+
+Standard doctor use cases compose runtime state use cases, capability resolver
+use cases, and doctor infra mappers. They may orchestrate diagnostic checks, but
+must not hide runtime bootstrap inside ordinary report generation.
 
 Runtime and doctor overlap only in the facts they inspect. Runtime owns
 initialization and bootstrap planning/execution for the managed Python

@@ -117,6 +117,7 @@ fn handle_status(
     runtime: &CliRuntimeKernel,
     command: super::commands::RuntimeStatusCommand,
 ) -> Result<()> {
+    let selected_profile = command.profile.map(bootstrap_profile);
     let result = runtime
         .state_usecase()
         .runtime_state(RuntimeStateRequest {
@@ -181,7 +182,7 @@ fn handle_status(
         Cell::new("uv_cache_dir"),
         Cell::new(result.state.uv_cache_dir.display().to_string()),
     ]);
-    add_profile_rows(&mut table, &result.state);
+    add_profile_rows(&mut table, &result.state, selected_profile);
 
     println!("{table}");
     println!();
@@ -206,8 +207,16 @@ fn render_bootstrap_summary(
     }
 }
 
-fn add_profile_rows(table: &mut Table, state: &RuntimeInitState) {
+fn add_profile_rows(
+    table: &mut Table,
+    state: &RuntimeInitState,
+    selected_profile: Option<BootstrapProfile>,
+) {
     for profile in &state.profiles {
+        if !profile_matches(selected_profile, profile.profile) {
+            continue;
+        }
+
         let value = match &profile.message {
             Some(message) => format!("{}: {message}", readiness_label(profile.readiness)),
             None => readiness_label(profile.readiness).to_string(),
@@ -216,6 +225,13 @@ fn add_profile_rows(table: &mut Table, state: &RuntimeInitState) {
             Cell::new(format!("profile_{}", profile.profile.as_str())),
             Cell::new(value),
         ]);
+    }
+}
+
+fn profile_matches(selected: Option<BootstrapProfile>, profile: BootstrapProfile) -> bool {
+    match selected {
+        Some(selected) => selected == profile,
+        None => true,
     }
 }
 
@@ -296,5 +312,18 @@ mod tests {
     fn runtime_bootstrap_print_plan_does_not_request_layout_creation() {
         assert_eq!(bootstrap_layout_mode(true), LayoutResolveMode::ReadOnly);
         assert_eq!(bootstrap_layout_mode(false), LayoutResolveMode::Create);
+    }
+
+    #[test]
+    fn runtime_status_profile_filter_matches_only_selected_profile() {
+        assert!(profile_matches(None, BootstrapProfile::Training));
+        assert!(profile_matches(
+            Some(BootstrapProfile::Full),
+            BootstrapProfile::Full
+        ));
+        assert!(!profile_matches(
+            Some(BootstrapProfile::Full),
+            BootstrapProfile::Training
+        ));
     }
 }

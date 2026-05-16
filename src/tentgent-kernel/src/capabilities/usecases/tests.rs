@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::capabilities::domain::{
     BackendCapability, BackendKind, CapabilityState, MachineCapabilities, RuntimeCapabilityState,
-    RuntimeProfileCapability,
+    RuntimeProfileCapability, CAPABILITY_SCHEMA_VERSION,
 };
 use crate::capabilities::infra::{
     FileCapabilityStateStore, StdCapabilityChecker, StdMachineCapabilitiesProbe,
@@ -26,7 +26,7 @@ use crate::foundation::platform::{
 fn resolver_current_returns_cached_snapshot_without_reprobing_capabilities() {
     let layout = test_layout("resolver-current");
     let cached = MachineCapabilities {
-        schema_version: 7,
+        schema_version: CAPABILITY_SCHEMA_VERSION,
         generated_at: Some("2026-05-15T00:00:00Z".to_string()),
         platform: linux_platform(),
         runtime: RuntimeCapabilityState {
@@ -84,7 +84,7 @@ fn resolver_refresh_probes_and_saves_snapshot() {
 #[test]
 fn gate_allows_ready_profile_and_rejects_missing_backend() {
     let capabilities = MachineCapabilities {
-        schema_version: 1,
+        schema_version: CAPABILITY_SCHEMA_VERSION,
         generated_at: None,
         platform: linux_platform(),
         runtime: RuntimeCapabilityState {
@@ -140,6 +140,7 @@ fn machine_capabilities_input(
             home_dir: Some(layout.home_dir.clone()),
             data_root_dir: Some(layout.data_root_dir.clone()),
         },
+        runtime: None,
     }
 }
 

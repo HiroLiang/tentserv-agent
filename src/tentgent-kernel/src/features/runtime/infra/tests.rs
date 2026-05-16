@@ -179,6 +179,32 @@ fn std_runtime_state_probe_reports_missing_runtime_without_mutation() {
     assert_eq!(state.profiles[0].readiness, RuntimeReadiness::Missing);
 }
 
+#[cfg(unix)]
+#[test]
+fn std_runtime_state_probe_marks_profiles_ready_when_dependencies_import() {
+    let root = temp_path("runtime-state-dependencies");
+    let env_dir = root.join("env");
+    let bin_dir = env_dir.join("bin");
+    fs::create_dir_all(&bin_dir).expect("create bin dir");
+    write_fake_python(&bin_dir.join("python"), &[]).expect("write fake python");
+    let layout = runtime_layout(&root.join("home"));
+    let runtime = PythonRuntimeLayout {
+        project_dir: root.join("python"),
+        env_dir,
+        source: PythonRuntimeSource::DevelopmentSource,
+    };
+
+    let state = StdRuntimeStateProbe
+        .probe_runtime_state(&layout, Some(&runtime))
+        .expect("probe state");
+
+    assert_eq!(state.python.version.as_deref(), Some("Python 3.13.11"));
+    assert!(state
+        .profiles
+        .iter()
+        .all(|profile| profile.readiness == RuntimeReadiness::Ready));
+}
+
 fn platform_facts(os: OperatingSystem) -> PlatformFacts {
     PlatformFacts {
         os,
@@ -219,6 +245,48 @@ fn runtime_layout(root: &Path) -> RuntimeLayout {
         capabilities_path: root.join("runtime/capabilities.toml"),
         auth_metadata_path: root.join("runtime/auth.toml"),
     }
+}
+
+#[cfg(unix)]
+fn write_fake_python(path: &Path, missing_modules: &[&str]) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let missing_cases = missing_modules
+        .iter()
+        .map(|module| {
+            format!(
+                r#""{module}") echo "{module} (ModuleNotFoundError: No module named {module})"; status=1 ;;"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(
+        path,
+        format!(
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "Python 3.13.11"
+  exit 0
+fi
+if [ "$1" = "-c" ]; then
+  shift
+  shift
+  status=0
+  for module in "$@"; do
+    case "$module" in
+{missing_cases}
+      *) ;;
+    esac
+  done
+  exit "$status"
+fi
+exit 0
+"#
+        ),
+    )?;
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
 }
 
 fn temp_path(label: &str) -> PathBuf {
