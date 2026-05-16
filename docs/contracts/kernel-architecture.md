@@ -144,6 +144,7 @@ features/auth/
 features/model/
 features/adapter/
 features/dataset/
+features/config/
 features/server/
 features/daemon/
 features/session/
@@ -164,6 +165,29 @@ usecases.rs
 Only add these files when the feature needs them. Prefer a small, consistent
 package over a theoretical Clean Architecture layout. If a file has no real
 job yet, keep it empty or do not create it.
+
+`features/runtime/domain.rs` owns pure runtime setup names and state:
+
+- bootstrap profiles and resolved bootstrap plans
+- Python runtime source and resolved Python project/environment layout
+- Python entrypoint script names exposed by the daemon package
+- runtime initialization/readiness snapshots
+
+It must not spawn bootstrap scripts, run Python, inspect installed packages, or
+read environment variables directly. Those jobs belong in runtime infra or
+use cases once their migration bundle moves.
+
+`features/config/domain.rs` owns pure user-config names and rules:
+
+- config file name, schema version, and config section data
+- daemon URL and token resolution source enums
+- daemon endpoint formatting and default daemon endpoint values
+- pure daemon URL/token precedence rules
+- secret-like config key classification
+
+It must not read environment variables, load or save TOML files, traverse TOML
+values, or read daemon process metadata directly. Those jobs belong in config
+infra or callers that map local state into config domain inputs.
 
 ## Dependency Direction
 

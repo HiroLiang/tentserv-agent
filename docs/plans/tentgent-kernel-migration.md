@@ -38,8 +38,8 @@ only until a feature bundle actually moves.
 Implemented:
 
 - `src/tentgent-kernel` workspace crate.
-- Feature package folders for auth, model, adapter, dataset, server, daemon,
-  session, runtime, and train.
+- Feature package folders for auth, model, adapter, dataset, config, server,
+  daemon, session, runtime, and train.
 - Foundation layout domain, port, and infra: `RuntimeLayoutInput`,
   `RuntimeLayout`, `RuntimeLayoutResolver`, `StdRuntimeLayoutResolver`, and
   centralized layout tests.
@@ -57,7 +57,11 @@ Implemented:
   lightweight platform/layout probe, and cached-state checker.
 - Capability use-case implementations with colocated request/response types
   for machine capability snapshots and feature gate enforcement.
-- Small feature input data objects for runtime, server, and training.
+- Runtime feature domain objects for bootstrap profiles/plans, Python runtime
+  source/layout, Python entrypoint names, and runtime readiness snapshots.
+- Config feature domain objects for config schema/defaults, daemon endpoint
+  defaults, daemon URL/token source resolution, and secret-like key names.
+- Small feature input data objects for server and training.
 
 Not implemented by design:
 
