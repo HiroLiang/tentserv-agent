@@ -122,6 +122,12 @@ The first stable REST surface is:
   prefix. Model DTOs expose `model_capabilities` and
   `model_capability_source` from kernel metadata so chat, embedding, and rerank
   support remains visible at the API boundary.
+- `GET /v1/adapters`
+  Kernel-backed adapter catalog list response.
+- `GET /v1/adapters/{reference}`
+  Kernel-backed adapter inspection response for a full adapter ref or unique
+  prefix. Adapter DTOs expose base-model binding hints, backend support, source
+  metadata, and optional training provenance from kernel metadata.
 
 ## Runtime Boundary
 

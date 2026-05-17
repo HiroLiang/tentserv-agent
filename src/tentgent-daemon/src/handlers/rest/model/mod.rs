@@ -59,11 +59,8 @@ pub async fn inspect(
 
 fn model_error(error: KernelError) -> RestError {
     match error {
-        KernelError::ModelStoreUnavailable(message) if message.contains("was not found") => {
-            RestError::not_found("not_found", message)
-        }
-        KernelError::ModelStoreUnavailable(message) if message.contains("ambiguous") => {
-            RestError::conflict("ambiguous_ref", message)
+        KernelError::ModelStoreUnavailable(message) => {
+            RestError::store_lookup("model_read_failed", message)
         }
         other => RestError::kernel("model_read_failed", other),
     }

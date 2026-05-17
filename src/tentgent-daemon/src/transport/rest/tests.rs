@@ -218,6 +218,171 @@ async fn model_inspect_rejects_invalid_reference() {
     assert_eq!(body["error"], "bad_request");
 }
 
+#[tokio::test]
+async fn adapters_returns_empty_catalog_for_isolated_home() {
+    let requested_home = unique_home("adapters-empty");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/adapters")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["adapters"].as_array().expect("adapters").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn adapter_list_and_inspect_read_kernel_catalog() {
+    let requested_home = unique_home("adapters-catalog");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let adapter_ref = "d".repeat(64);
+    let base_model_ref = "e".repeat(64);
+    write_adapter_fixture(&home, &adapter_ref, &base_model_ref);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/adapters")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let adapters = body["adapters"].as_array().expect("adapters");
+    assert_eq!(adapters.len(), 1);
+    assert_eq!(
+        adapters[0]["adapter_ref"].as_str(),
+        Some(adapter_ref.as_str())
+    );
+    assert_eq!(adapters[0]["short_ref"].as_str(), Some(&adapter_ref[..12]));
+    assert_eq!(adapters[0]["format"], "mlx");
+    assert_eq!(adapters[0]["type"], "lora");
+    assert_eq!(
+        adapters[0]["base_model_ref"].as_str(),
+        Some(base_model_ref.as_str())
+    );
+    assert_eq!(adapters[0]["backend_support"], serde_json::json!(["mlx"]));
+    assert!(adapters[0].get("manifest_path").is_none());
+    assert!(adapters[0].get("managed_source_path").is_none());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/adapters/{}", &adapter_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let adapter = &body["adapter"];
+    assert_eq!(adapter["adapter_ref"].as_str(), Some(adapter_ref.as_str()));
+    let expected_manifest_path = path_string(
+        home.join("adapters/store")
+            .join(&adapter_ref)
+            .join("manifest.json"),
+    );
+    assert_eq!(
+        adapter["manifest_path"].as_str(),
+        Some(expected_manifest_path.as_str())
+    );
+    let expected_managed_source_path = path_string(
+        home.join("adapters/store")
+            .join(&adapter_ref)
+            .join("source"),
+    );
+    assert_eq!(
+        adapter["managed_source_path"].as_str(),
+        Some(expected_managed_source_path.as_str())
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn adapter_inspect_returns_not_found_for_missing_reference() {
+    let requested_home = unique_home("adapters-not-found");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let adapter_ref = "f".repeat(64);
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/adapters/{}", &adapter_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "not_found");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn adapter_inspect_returns_conflict_for_ambiguous_prefix() {
+    let requested_home = unique_home("adapters-ambiguous");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let first_ref = format!("{}0", "1".repeat(63));
+    let second_ref = format!("{}1", "1".repeat(63));
+    let base_model_ref = "2".repeat(64);
+    write_adapter_fixture(&home, &first_ref, &base_model_ref);
+    write_adapter_fixture(&home, &second_ref, &base_model_ref);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/adapters/{}", &first_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "ambiguous_ref");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn adapter_inspect_rejects_invalid_reference() {
+    let state = rest_state("adapters-invalid-ref");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/adapters/not-hex")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+}
+
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
@@ -290,6 +455,38 @@ imported_at = "2026-05-01T00:00:00Z"
         ),
     )
     .expect("model metadata");
+}
+
+fn write_adapter_fixture(home: &std::path::Path, adapter_ref: &str, base_model_ref: &str) {
+    let store_dir = home.join("adapters/store").join(adapter_ref);
+    fs::create_dir_all(store_dir.join("source")).expect("adapter source dir");
+    fs::write(store_dir.join("manifest.json"), "{}").expect("manifest");
+    fs::write(
+        store_dir.join("adapter.toml"),
+        format!(
+            r#"adapter_ref = "{adapter_ref}"
+short_ref = "{}"
+adapter_format = "mlx"
+adapter_type = "lora"
+base_model_ref = "{base_model_ref}"
+base_model_source_repo = "mlx-community/base-model"
+base_model_source_revision = "resolved-sha"
+model_family = "qwen"
+backend_support = ["mlx"]
+source_kind = "local"
+source_path = "{}"
+training_dataset_ref = "dataset-ref"
+training_run_ref = "run-ref"
+training_config_ref = "config-ref"
+file_count = 1
+total_bytes = 10
+imported_at = "2026-05-01T00:00:00Z"
+"#,
+            &adapter_ref[..12],
+            path_string(home.join("fixtures/adapter"))
+        ),
+    )
+    .expect("adapter metadata");
 }
 
 fn path_string(path: impl AsRef<std::path::Path>) -> String {

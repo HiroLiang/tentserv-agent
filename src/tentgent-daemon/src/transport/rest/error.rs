@@ -30,6 +30,16 @@ impl RestError {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, code, message)
     }
 
+    pub fn store_lookup(code: impl Into<String>, message: String) -> Self {
+        if message.contains("was not found") {
+            Self::not_found("not_found", message)
+        } else if message.contains("ambiguous") {
+            Self::conflict("ambiguous_ref", message)
+        } else {
+            Self::internal(code, message)
+        }
+    }
+
     pub fn kernel(code: impl Into<String>, error: KernelError) -> Self {
         Self::internal(code, error.to_string())
     }
