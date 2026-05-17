@@ -438,6 +438,60 @@ The current standard chat use case composes runtime resolution, chat model
 resolution, chat adapter resolution, and a chat runtime client for prepare,
 completion, and streaming flows.
 
+`features/server/domain.rs` owns pure model-bound server names and durable
+state:
+
+- canonical SHA-256 `server_ref` and short/hash-prefix selectors
+- local/cloud runtime target names, cloud provider names, launch modes, and
+  local backend labels
+- stored `server.toml` and `process.toml` data shapes
+- server-store path derivation from an already resolved `servers_dir`
+- runtime-ref parsing for local model refs and `openai:`, `anthropic:`, and
+  `claude:` cloud prefixes
+
+It must not read model stores, write specs, inspect process liveness, resolve
+auth secrets, build Python commands, launch servers, probe HTTP health, or
+render CLI/HTTP responses. Those jobs belong in server infra, server use cases,
+runtime infra, auth use cases, or frontend layers.
+
+`features/server/ports.rs` defines narrow boundaries for:
+
+- ensuring the server-store directory layout
+- deriving stable server refs from normalized local/cloud bind identity
+- reading/writing stored server specs and process metadata
+- probing and controlling local process ids
+- supplying timestamps for durable server records
+
+Server ports should receive resolved layout, runtime target, and selector
+inputs from use cases. They should not resolve runtime-home, validate Keychain
+state, decide CLI/HTTP rendering, silently bootstrap Python, or duplicate model
+catalog orchestration in frontends.
+
+`features/server/infra/` owns the standard filesystem and local-process
+adapters for those ports: server-store directory creation, legacy-compatible
+server-ref hashing, TOML spec/process catalog reads and writes, stale process
+metadata cleanup, process liveness probing, process termination, and RFC3339
+timestamps. It also owns the Python `tentgent-server` command launcher through
+an already selected runtime layout. Runtime launching may inject launch-time
+cloud auth environment variables, but provider secrets must come from auth use
+cases and must never be persisted in server specs or process metadata.
+
+`features/server/usecases/port.rs` defines workflow boundaries for:
+
+- creating or reusing stored server specs without launching them
+- listing, inspecting, and removing stored stopped servers
+- resolving a stopped server before launch while checking local model
+  availability and chat capability
+- recording spawned process ids, clearing matching process metadata, and
+  stopping running server processes
+
+Standard server use cases compose foundation layout, model catalog reads,
+server infra ports, and pure server identity rules. The Rust CLI server
+command now composes these kernel server use cases directly for spec creation,
+catalog reads, process state, and Python server launch. HTTP server lifecycle
+routes are still migration callers until they switch from the legacy core
+`ServerManager` to this kernel package.
+
 `features/train/domain.rs` owns pure LoRA training names and planning rules:
 
 - train refs and short/hash-prefix selectors

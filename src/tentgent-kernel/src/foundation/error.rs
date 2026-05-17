@@ -33,6 +33,12 @@ pub enum KernelError {
     #[error("chat runtime is unavailable: {0}")]
     ChatRuntimeUnavailable(String),
 
+    #[error("server store is unavailable: {0}")]
+    ServerStoreUnavailable(String),
+
+    #[error("server runtime is unavailable: {0}")]
+    ServerRuntimeUnavailable(String),
+
     #[error("train store is unavailable: {0}")]
     TrainStoreUnavailable(String),
 
