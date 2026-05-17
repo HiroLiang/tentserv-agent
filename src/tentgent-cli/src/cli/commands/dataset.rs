@@ -126,7 +126,7 @@ pub enum DatasetCommands {
         name = "eval",
         about = "Evaluate a local or managed dataset with OpenAI or Claude.",
         long_about = "Evaluate a local dataset path or managed dataset reference with OpenAI or Claude and write a local report directory. The dataset is not modified.",
-        override_usage = "tentgent dataset eval <DATASET_REF|PATH> -p <openai|anthropic|claude> -m <MODEL> -o <DIR> [OPTIONS]"
+        override_usage = "tentgent dataset eval <DATASET_REF|PATH> -p <openai|anthropic|claude> -m <MODEL> -o <REPORT_DIR> [OPTIONS]"
     )]
     Eval {
         /// Local dataset path, full dataset_ref, or unique short-ref prefix.
@@ -138,8 +138,8 @@ pub enum DatasetCommands {
         /// Provider model name to use for evaluation.
         #[arg(short = 'm', long, value_name = "MODEL")]
         model: String,
-        /// Local output directory for the evaluation report.
-        #[arg(short = 'o', long, value_name = "DIR")]
+        /// Local empty output directory for the evaluation report. Do not use the dataset directory.
+        #[arg(short = 'o', long, value_name = "REPORT_DIR")]
         output: PathBuf,
         /// Split to review.
         #[arg(short = 'S', long, value_name = "SPLIT", default_value = "train", value_parser = ["train", "valid", "test", "eval_cases", "all"])]

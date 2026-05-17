@@ -203,6 +203,8 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
                 .validate_dataset_provider_auth(provider, "dataset synth")
                 .await?;
             render_dataset_provider_auth_preflight(auth.provider, auth.source, "dataset synth");
+            let output_dir = absolutize_cli_path(&output)?;
+            render_dataset_synth_started(provider, &model, &output_dir, split, &counts, retries);
             let runtime_resolution = dataset.runtime_resolution_usecase();
             let auth_resolver = dataset.auth_resolver_usecase();
             let runtime_client = PythonDatasetSynthRuntimeClient::new(&dataset.executable_resolver);
@@ -222,7 +224,7 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
                     synth: DatasetSynthRequest {
                         provider,
                         provider_model: model,
-                        output_dir: absolutize_cli_path(&output)?,
+                        output_dir,
                         prompt_source,
                         split,
                         counts,
@@ -255,10 +257,14 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
 
             let provider = parse_dataset_provider("eval", "--provider <PROVIDER>", &provider)?;
             let split = parse_dataset_eval_split("eval", "--split <SPLIT>", &split)?;
+            let input_selection = dataset_eval_input_selection(&input)?;
+            let output_dir = absolutize_cli_path(&output)?;
+            ensure_dataset_eval_output_dir_ready(&output_dir)?;
             let auth = dataset
                 .validate_dataset_provider_auth(provider, "dataset eval")
                 .await?;
             render_dataset_provider_auth_preflight(auth.provider, auth.source, "dataset eval");
+            render_dataset_eval_started(provider, &model, &input, &output_dir, split, max_records);
             let runtime_resolution = dataset.runtime_resolution_usecase();
             let auth_resolver = dataset.auth_resolver_usecase();
             let runtime_client = PythonDatasetEvalRuntimeClient::new(&dataset.executable_resolver);
@@ -278,8 +284,8 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
                     ),
                     provider,
                     provider_model: model,
-                    input: dataset_eval_input_selection(&input)?,
-                    output_dir: absolutize_cli_path(&output)?,
+                    input: input_selection,
+                    output_dir,
                     split,
                     max_records,
                     criteria: criteria.clone(),
@@ -1246,6 +1252,33 @@ fn absolutize_cli_path(path: &Path) -> Result<PathBuf> {
     Ok(env::current_dir().into_diagnostic()?.join(path))
 }
 
+fn ensure_dataset_eval_output_dir_ready(output_dir: &Path) -> Result<()> {
+    if !output_dir.exists() {
+        return Ok(());
+    }
+    if !output_dir.is_dir() {
+        return Err(miette!(
+            "dataset eval output path exists but is not a directory: {}",
+            output_dir.display()
+        ));
+    }
+    if output_dir
+        .read_dir()
+        .into_diagnostic()?
+        .next()
+        .transpose()
+        .into_diagnostic()?
+        .is_some()
+    {
+        return Err(miette!(
+            "dataset eval output directory must be empty: {}. `eval` checks the input dataset and writes a separate report; use a fresh report directory, for example `./generated-dataset-eval`.",
+            output_dir.display()
+        ));
+    }
+
+    Ok(())
+}
+
 fn render_dataset_provider_auth_preflight(
     provider: Provider,
     source: AuthSecretSource,
@@ -1258,6 +1291,69 @@ fn render_dataset_provider_auth_preflight(
         source,
         purpose
     );
+}
+
+fn render_dataset_synth_started(
+    provider: DatasetProvider,
+    model: &str,
+    output_dir: &Path,
+    split: DatasetSplitKind,
+    counts: &DatasetSynthCounts,
+    retries: u32,
+) {
+    println!(
+        "{} dataset with {}:{} into {} ({}, retries={}). This may take a few minutes.",
+        style("generating").cyan().bold(),
+        provider.as_str(),
+        model,
+        output_dir.display(),
+        synth_job_summary(split, counts),
+        retries
+    );
+}
+
+fn render_dataset_eval_started(
+    provider: DatasetProvider,
+    model: &str,
+    input: &str,
+    output_dir: &Path,
+    split: DatasetEvalSplit,
+    max_records: u32,
+) {
+    println!(
+        "{} dataset with {}:{} from {} into {} (split={}, max_records={}). This may take a few minutes.",
+        style("evaluating").cyan().bold(),
+        provider.as_str(),
+        model,
+        input,
+        output_dir.display(),
+        split.as_str(),
+        max_records
+    );
+}
+
+fn synth_job_summary(split: DatasetSplitKind, counts: &DatasetSynthCounts) -> String {
+    let mut parts = Vec::new();
+    if let Some(count) = counts.train_count {
+        parts.push(format!("train={count}"));
+    }
+    if let Some(count) = counts.valid_count {
+        parts.push(format!("valid={count}"));
+    }
+    if let Some(count) = counts.test_count {
+        parts.push(format!("test={count}"));
+    }
+    if let Some(count) = counts.eval_count {
+        parts.push(format!("eval_cases={count}"));
+    }
+    if parts.is_empty() {
+        match counts.count {
+            Some(count) => format!("{}={count}", split.as_str()),
+            None => split.as_str().to_string(),
+        }
+    } else {
+        parts.join(", ")
+    }
 }
 
 fn provider_auth_provider(provider: DatasetProvider) -> Provider {

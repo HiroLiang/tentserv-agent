@@ -478,10 +478,10 @@ impl DatasetTemplateUseCase for FakeDatasetUseCases {
 }
 
 impl DatasetSynthesisUseCase for FakeDatasetUseCases {
-    fn render_synth_prompt<'a>(
-        &'a self,
+    fn render_synth_prompt(
+        &self,
         request: DatasetSynthPromptRenderRequest,
-    ) -> super::port::DatasetUseCaseFuture<'a, super::port::DatasetSynthPromptRenderResult> {
+    ) -> super::port::DatasetUseCaseFuture<'_, super::port::DatasetSynthPromptRenderResult> {
         Box::pin(async move {
             let layout = runtime_layout_from_input(&request.layout);
             Ok(super::port::DatasetSynthPromptRenderResult {
@@ -492,10 +492,10 @@ impl DatasetSynthesisUseCase for FakeDatasetUseCases {
         })
     }
 
-    fn synthesize_dataset<'a>(
-        &'a self,
+    fn synthesize_dataset(
+        &self,
         request: DatasetSynthesizeRequest,
-    ) -> super::port::DatasetUseCaseFuture<'a, super::port::DatasetSynthesizeResult> {
+    ) -> super::port::DatasetUseCaseFuture<'_, super::port::DatasetSynthesizeResult> {
         Box::pin(async move {
             let layout = runtime_layout_from_input(&request.layout);
             Ok(super::port::DatasetSynthesizeResult {
@@ -512,10 +512,10 @@ impl DatasetSynthesisUseCase for FakeDatasetUseCases {
 }
 
 impl DatasetEvaluationUseCase for FakeDatasetUseCases {
-    fn evaluate_dataset<'a>(
-        &'a self,
+    fn evaluate_dataset(
+        &self,
         request: DatasetEvaluateRequest,
-    ) -> super::port::DatasetUseCaseFuture<'a, super::port::DatasetEvaluateResult> {
+    ) -> super::port::DatasetUseCaseFuture<'_, super::port::DatasetEvaluateResult> {
         Box::pin(async move {
             let layout = runtime_layout_from_input(&request.layout);
             Ok(super::port::DatasetEvaluateResult {
@@ -644,17 +644,17 @@ impl AuthSecretResolverUseCase for FakeAuthSecretResolver {
 struct FakeDatasetSynthRuntimeClient;
 
 impl DatasetSynthRuntimeClient for FakeDatasetSynthRuntimeClient {
-    fn render_synth_prompt<'a>(
-        &'a self,
+    fn render_synth_prompt(
+        &self,
         request: DatasetSynthPromptRuntimeRequest,
-    ) -> DatasetPortFuture<'a, String> {
+    ) -> DatasetPortFuture<'_, String> {
         Box::pin(async move { Ok(format!("prompt for {}", request.request.split.as_str())) })
     }
 
-    fn synthesize_dataset<'a>(
-        &'a self,
+    fn synthesize_dataset(
+        &self,
         request: DatasetSynthRuntimeRequest,
-    ) -> DatasetPortFuture<'a, DatasetSynthRuntimeOutput> {
+    ) -> DatasetPortFuture<'_, DatasetSynthRuntimeOutput> {
         Box::pin(async move {
             Ok(DatasetSynthRuntimeOutput {
                 outcome: json!({
@@ -672,10 +672,10 @@ impl DatasetSynthRuntimeClient for FakeDatasetSynthRuntimeClient {
 struct FakeDatasetEvalRuntimeClient;
 
 impl DatasetEvalRuntimeClient for FakeDatasetEvalRuntimeClient {
-    fn evaluate_dataset<'a>(
-        &'a self,
+    fn evaluate_dataset(
+        &self,
         request: DatasetEvalRuntimeRequest,
-    ) -> DatasetPortFuture<'a, serde_json::Value> {
+    ) -> DatasetPortFuture<'_, serde_json::Value> {
         Box::pin(async move {
             Ok(json!({
                 "status": "reviewed",

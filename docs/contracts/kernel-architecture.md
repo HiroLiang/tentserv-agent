@@ -438,6 +438,23 @@ The current standard chat use case composes runtime resolution, chat model
 resolution, chat adapter resolution, and a chat runtime client for prepare,
 completion, and streaming flows.
 
+`features/session/domain.rs` owns pure session-store names and transcript state:
+
+- managed session refs, short refs, and prefix selectors
+- session store filenames and path derivation from an already resolved runtime
+  home
+- persisted `session.toml` and `messages.jsonl` schema names
+- message roles, metadata, warnings, list/inspect/message result data, and
+  create/update/append/remove request and outcome data
+- bounded context and compaction constants, summary provenance names, and
+  request-scoped context summary data
+
+It must not read or write session files, acquire locks, generate refs, inspect
+server or adapter stores, call chat models for summaries, proxy HTTP, or render
+CLI/HTTP/TUI output. Those jobs belong in session infra/use cases, chat use
+cases, server/adapter use cases, or frontend layers when the session migration
+bundle moves.
+
 `features/server/domain.rs` owns pure model-bound server names and durable
 state:
 

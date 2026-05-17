@@ -38,10 +38,10 @@ impl<'a> StdDatasetEvaluationUseCase<'a> {
 }
 
 impl DatasetEvaluationUseCase for StdDatasetEvaluationUseCase<'_> {
-    fn evaluate_dataset<'a>(
-        &'a self,
+    fn evaluate_dataset(
+        &self,
         request: DatasetEvaluateRequest,
-    ) -> DatasetUseCaseFuture<'a, DatasetEvaluateResult> {
+    ) -> DatasetUseCaseFuture<'_, DatasetEvaluateResult> {
         Box::pin(async move {
             let provider = request.provider;
             let runtime = self

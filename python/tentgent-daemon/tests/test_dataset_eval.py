@@ -12,6 +12,7 @@ from tentgent_daemon.datasets.eval import (
     load_dataset_sample,
     parse_provider_eval_report,
 )
+from tentgent_daemon.datasets.provider import DatasetProviderError
 from tentgent_daemon.providers import ProviderChatRequest, ProviderChatResponse
 
 
@@ -117,6 +118,29 @@ class DatasetEvalTests(unittest.TestCase):
             written = json.loads((output / "eval-report.json").read_text(encoding="utf-8"))
             self.assertEqual(written["summary"], "Looks useful.")
             self.assertEqual(client.requests[0].messages[0].role, "system")
+
+    def test_evaluate_dataset_rejects_non_empty_output_before_provider_call(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dataset = root / "dataset"
+            output = root / "report"
+            dataset.mkdir()
+            output.mkdir()
+            (dataset / "train.jsonl").write_text(CANONICAL_ROW + "\n", encoding="utf-8")
+            (output / "existing.txt").write_text("occupied", encoding="utf-8")
+            client = FakeProviderClient("{}")
+
+            with self.assertRaisesRegex(DatasetProviderError, "output directory must be empty"):
+                evaluate_dataset(
+                    provider="openai",
+                    model="gpt-4.1-mini",
+                    dataset_path=dataset,
+                    output_dir=output,
+                    api_key="test-key",
+                    client=client,
+                )
+
+            self.assertEqual(client.requests, [])
 
 
 if __name__ == "__main__":

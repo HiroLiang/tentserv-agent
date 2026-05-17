@@ -121,17 +121,17 @@ impl<'a> PythonDatasetSynthRuntimeClient<'a> {
 }
 
 impl DatasetSynthRuntimeClient for PythonDatasetSynthRuntimeClient<'_> {
-    fn render_synth_prompt<'a>(
-        &'a self,
+    fn render_synth_prompt(
+        &self,
         request: DatasetSynthPromptRuntimeRequest,
-    ) -> DatasetPortFuture<'a, String> {
+    ) -> DatasetPortFuture<'_, String> {
         Box::pin(async move { self.render_synth_prompt_blocking(request) })
     }
 
-    fn synthesize_dataset<'a>(
-        &'a self,
+    fn synthesize_dataset(
+        &self,
         request: DatasetSynthRuntimeRequest,
-    ) -> DatasetPortFuture<'a, DatasetSynthRuntimeOutput> {
+    ) -> DatasetPortFuture<'_, DatasetSynthRuntimeOutput> {
         Box::pin(async move { self.synthesize_dataset_blocking(request) })
     }
 }
@@ -173,10 +173,7 @@ impl<'a> PythonDatasetEvalRuntimeClient<'a> {
 }
 
 impl DatasetEvalRuntimeClient for PythonDatasetEvalRuntimeClient<'_> {
-    fn evaluate_dataset<'a>(
-        &'a self,
-        request: DatasetEvalRuntimeRequest,
-    ) -> DatasetPortFuture<'a, Value> {
+    fn evaluate_dataset(&self, request: DatasetEvalRuntimeRequest) -> DatasetPortFuture<'_, Value> {
         Box::pin(async move { self.evaluate_dataset_blocking(request) })
     }
 

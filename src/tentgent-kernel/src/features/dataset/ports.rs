@@ -230,25 +230,25 @@ pub trait DatasetTemplateRenderer {
 /// Executes provider-backed dataset synthesis through an external runtime.
 pub trait DatasetSynthRuntimeClient {
     /// Renders the provider prompt without auth or network calls.
-    fn render_synth_prompt<'a>(
-        &'a self,
+    fn render_synth_prompt(
+        &self,
         request: DatasetSynthPromptRuntimeRequest,
-    ) -> DatasetPortFuture<'a, String>;
+    ) -> DatasetPortFuture<'_, String>;
 
     /// Runs provider-backed dataset synthesis and returns the helper JSON outcome.
-    fn synthesize_dataset<'a>(
-        &'a self,
+    fn synthesize_dataset(
+        &self,
         request: DatasetSynthRuntimeRequest,
-    ) -> DatasetPortFuture<'a, DatasetSynthRuntimeOutput>;
+    ) -> DatasetPortFuture<'_, DatasetSynthRuntimeOutput>;
 }
 
 /// Executes provider-backed dataset evaluation through an external runtime.
 pub trait DatasetEvalRuntimeClient {
     /// Runs provider-backed dataset evaluation and returns the helper JSON outcome.
-    fn evaluate_dataset<'a>(
-        &'a self,
+    fn evaluate_dataset(
+        &self,
         request: DatasetEvalRuntimeRequest,
-    ) -> DatasetPortFuture<'a, serde_json::Value>;
+    ) -> DatasetPortFuture<'_, serde_json::Value>;
 
     /// Maps a runtime failure into optional debug artifact paths when available.
     fn runtime_debug(&self, error_detail: &str) -> Option<DatasetRuntimeDebug>;

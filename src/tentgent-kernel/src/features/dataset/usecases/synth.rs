@@ -34,10 +34,10 @@ impl<'a> StdDatasetSynthesisUseCase<'a> {
 }
 
 impl DatasetSynthesisUseCase for StdDatasetSynthesisUseCase<'_> {
-    fn render_synth_prompt<'a>(
-        &'a self,
+    fn render_synth_prompt(
+        &self,
         request: DatasetSynthPromptRenderRequest,
-    ) -> DatasetUseCaseFuture<'a, DatasetSynthPromptRenderResult> {
+    ) -> DatasetUseCaseFuture<'_, DatasetSynthPromptRenderResult> {
         Box::pin(async move {
             let runtime = self
                 .runtime_resolution
@@ -61,10 +61,10 @@ impl DatasetSynthesisUseCase for StdDatasetSynthesisUseCase<'_> {
         })
     }
 
-    fn synthesize_dataset<'a>(
-        &'a self,
+    fn synthesize_dataset(
+        &self,
         request: DatasetSynthesizeRequest,
-    ) -> DatasetUseCaseFuture<'a, DatasetSynthesizeResult> {
+    ) -> DatasetUseCaseFuture<'_, DatasetSynthesizeResult> {
         Box::pin(async move {
             let provider = request.synth.provider;
             let runtime = self

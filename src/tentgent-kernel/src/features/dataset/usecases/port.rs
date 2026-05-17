@@ -261,25 +261,25 @@ pub trait DatasetTemplateUseCase {
 /// Use-case boundary for provider-backed dataset synthesis.
 pub trait DatasetSynthesisUseCase {
     /// Resolves runtime and renders the exact synthesis prompt without auth or network calls.
-    fn render_synth_prompt<'a>(
-        &'a self,
+    fn render_synth_prompt(
+        &self,
         request: DatasetSynthPromptRenderRequest,
-    ) -> DatasetUseCaseFuture<'a, DatasetSynthPromptRenderResult>;
+    ) -> DatasetUseCaseFuture<'_, DatasetSynthPromptRenderResult>;
 
     /// Resolves runtime/auth and asks the provider runtime helper to write dataset files.
-    fn synthesize_dataset<'a>(
-        &'a self,
+    fn synthesize_dataset(
+        &self,
         request: DatasetSynthesizeRequest,
-    ) -> DatasetUseCaseFuture<'a, DatasetSynthesizeResult>;
+    ) -> DatasetUseCaseFuture<'_, DatasetSynthesizeResult>;
 }
 
 /// Use-case boundary for provider-backed dataset evaluation.
 pub trait DatasetEvaluationUseCase {
     /// Resolves local or managed input, runtime, and auth before writing an evaluation report.
-    fn evaluate_dataset<'a>(
-        &'a self,
+    fn evaluate_dataset(
+        &self,
         request: DatasetEvaluateRequest,
-    ) -> DatasetUseCaseFuture<'a, DatasetEvaluateResult>;
+    ) -> DatasetUseCaseFuture<'_, DatasetEvaluateResult>;
 }
 
 /// Use-case boundary for exporting managed dataset sources.
