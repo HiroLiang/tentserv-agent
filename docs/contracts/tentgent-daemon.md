@@ -140,6 +140,14 @@ The first stable REST surface is:
   Kernel-backed stored server inspection response for a full server ref or
   unique prefix. Server DTOs expose runtime target, bind settings, process
   metadata, and server-local paths from kernel state.
+- `GET /v1/sessions`
+  Kernel-backed session catalog list response.
+- `GET /v1/sessions/{reference}`
+  Kernel-backed session inspection response for a full session ref or unique
+  prefix.
+- `GET /v1/sessions/{reference}/messages`
+  Kernel-backed recent transcript response. The optional `tail` query parameter
+  defaults to 200 and is capped at 1000 messages.
 
 ## Runtime Boundary
 

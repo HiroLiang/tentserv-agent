@@ -708,6 +708,226 @@ async fn server_inspect_rejects_invalid_reference() {
     assert_eq!(body["error"], "bad_request");
 }
 
+#[tokio::test]
+async fn sessions_returns_empty_catalog_for_isolated_home() {
+    let requested_home = unique_home("sessions-empty");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sessions")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["sessions"].as_array().expect("sessions").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn session_list_inspect_and_messages_read_kernel_store() {
+    let requested_home = unique_home("sessions-catalog");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let older_ref = "111111111111000000000000";
+    let newer_ref = "222222222222000000000000";
+    write_session_fixture(
+        &home,
+        older_ref,
+        "Older",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        0,
+        None,
+    );
+    write_session_fixture(
+        &home,
+        newer_ref,
+        "Newer",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:20:00Z",
+        3,
+        Some(&[
+            session_message("user", "one"),
+            session_message("assistant", "two"),
+            session_message("user", "three"),
+        ]),
+    );
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sessions")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let sessions = body["sessions"].as_array().expect("sessions");
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(sessions[0]["session_ref"], newer_ref);
+    assert_eq!(sessions[0]["short_ref"], "222222222222");
+    assert_eq!(sessions[0]["title"], "Newer");
+    assert_eq!(
+        sessions[0]["store_path"].as_str(),
+        Some(path_string(home.join("sessions").join(newer_ref)).as_str())
+    );
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sessions/222222")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let session = &body["session"];
+    assert_eq!(session["session_ref"], newer_ref);
+    let expected_messages_path =
+        path_string(home.join("sessions").join(newer_ref).join("messages.jsonl"));
+    assert_eq!(
+        session["messages_path"].as_str(),
+        Some(expected_messages_path.as_str())
+    );
+    assert!(session["warnings"].as_array().expect("warnings").is_empty());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sessions/222222/messages?tail=2&ignored=true")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let messages = body["messages"].as_array().expect("messages");
+    assert_eq!(body["session"]["session_ref"], newer_ref);
+    assert_eq!(body["tail"], 2);
+    assert_eq!(body["total_messages"], 3);
+    assert_eq!(body["truncated"], true);
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0]["index"], 1);
+    assert_eq!(messages[0]["role"], "assistant");
+    assert_eq!(messages[0]["metadata"], serde_json::json!({}));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn session_messages_reject_invalid_tail() {
+    let state = rest_state("sessions-invalid-tail");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sessions/222222222222/messages?tail=0")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn session_inspect_returns_not_found_for_missing_reference() {
+    let requested_home = unique_home("sessions-not-found");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sessions/333333333333")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "not_found");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn session_inspect_returns_conflict_for_ambiguous_prefix() {
+    let requested_home = unique_home("sessions-ambiguous");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    write_session_fixture(
+        &home,
+        "444444444444000000000000",
+        "First",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:10:00Z",
+        0,
+        None,
+    );
+    write_session_fixture(
+        &home,
+        "444444444444111111111111",
+        "Second",
+        "2026-05-01T00:00:00Z",
+        "2026-05-01T00:20:00Z",
+        0,
+        None,
+    );
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sessions/444444")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "ambiguous_ref");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn session_inspect_rejects_invalid_reference() {
+    let state = rest_state("sessions-invalid-ref");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/sessions/not-hex")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+}
+
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
@@ -868,6 +1088,50 @@ created_at = "2026-05-01T00:00:00Z"
         ),
     )
     .expect("server spec");
+}
+
+fn write_session_fixture(
+    home: &std::path::Path,
+    session_ref: &str,
+    title: &str,
+    created_at: &str,
+    updated_at: &str,
+    message_count: usize,
+    messages: Option<&[String]>,
+) {
+    let session_dir = home.join("sessions").join(session_ref);
+    fs::create_dir_all(&session_dir).expect("session dir");
+    fs::write(
+        session_dir.join("session.toml"),
+        format!(
+            r#"schema = "tentgent.session.v1"
+session_ref = "{session_ref}"
+short_ref = "{}"
+title = "{title}"
+created_at = "{created_at}"
+updated_at = "{updated_at}"
+message_count = {message_count}
+default_server_ref = "server-ref"
+adapter_ref = "adapter-ref"
+tags = ["smoke", "rest"]
+"#,
+            &session_ref[..12]
+        ),
+    )
+    .expect("session metadata");
+    if let Some(messages) = messages {
+        fs::write(
+            session_dir.join("messages.jsonl"),
+            messages.join("\n") + "\n",
+        )
+        .expect("session messages");
+    }
+}
+
+fn session_message(role: &str, content: &str) -> String {
+    format!(
+        r#"{{"schema":"tentgent.session.message.v1","role":"{role}","content":"{content}","created_at":"2026-05-01T00:00:00Z","metadata":{{}}}}"#
+    )
 }
 
 fn path_string(path: impl AsRef<std::path::Path>) -> String {

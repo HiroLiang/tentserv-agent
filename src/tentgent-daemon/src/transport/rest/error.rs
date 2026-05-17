@@ -31,7 +31,7 @@ impl RestError {
     }
 
     pub fn store_lookup(code: impl Into<String>, message: String) -> Self {
-        if message.contains("was not found") {
+        if message.contains("was not found") || message.contains("not found") {
             Self::not_found("not_found", message)
         } else if message.contains("ambiguous") {
             Self::conflict("ambiguous_ref", message)

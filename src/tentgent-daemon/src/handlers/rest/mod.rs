@@ -3,4 +3,5 @@ pub mod dataset;
 pub mod health;
 pub mod model;
 pub mod server;
+pub mod session;
 pub mod status;
