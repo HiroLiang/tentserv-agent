@@ -14,14 +14,17 @@ use tentgent_core::{
         config_path, resolve_daemon_token, resolve_daemon_url, DaemonTokenSource, DaemonUrlInputs,
         DaemonUrlResolution, TentgentConfig, DAEMON_URL_ENV_VAR,
     },
-    daemon::{DaemonInspection, DaemonManager, DEFAULT_DAEMON_PORT},
+    daemon::{DaemonInspection, DEFAULT_DAEMON_PORT},
 };
 use tentgent_http::security::DAEMON_TOKEN_ENV_VAR;
 use tokio::{sync::mpsc, task::JoinHandle};
 
 use crate::cli::{
     commands::TuiCommand,
-    daemon::{start_daemon_detached, DetachedDaemonOptions, DetachedDaemonStartOutcome},
+    daemon::{
+        daemon_status_with_cleanup, start_daemon_detached, DetachedDaemonOptions,
+        DetachedDaemonStartOutcome,
+    },
 };
 
 use super::{
@@ -448,8 +451,7 @@ pub(super) struct TuiApp {
 
 impl TuiApp {
     pub(super) fn new(command: TuiCommand) -> miette::Result<Self> {
-        let manager = DaemonManager::new(command.home.as_deref()).into_diagnostic()?;
-        let inspection = manager.status().into_diagnostic()?;
+        let inspection = daemon_status_with_cleanup(command.home.as_deref())?;
         let home = inspection.home_dir.clone();
         let config_path = config_path(&home);
         let (config, config_error) = load_config_with_error(&home);
@@ -4851,8 +4853,7 @@ impl TuiApp {
             return Err(miette::miette!("home path cannot be empty"));
         }
         self.bump_generation();
-        let manager = DaemonManager::new(Some(&next_home)).into_diagnostic()?;
-        let inspection = manager.status().into_diagnostic()?;
+        let inspection = daemon_status_with_cleanup(Some(&next_home))?;
         let (config, config_error) = load_config_with_error(&next_home);
         self.home = next_home;
         self.config_path = config_path(&self.home);
@@ -5243,8 +5244,8 @@ fn input_line(label: &str, value: &str, cursor: usize, masked: bool) -> InputLin
 }
 
 async fn collect_refresh(inputs: RefreshInputs) -> Result<RefreshData, String> {
-    let manager = DaemonManager::new(Some(&inputs.home)).map_err(|error| error.to_string())?;
-    let inspection = manager.status().map_err(|error| error.to_string())?;
+    let inspection =
+        daemon_status_with_cleanup(Some(&inputs.home)).map_err(|error| error.to_string())?;
     let (config, mut config_error) = load_config_with_error(&inputs.home);
     let daemon_url = resolve_daemon_url(DaemonUrlInputs {
         flag_url: inputs.flag_daemon_url.as_deref(),

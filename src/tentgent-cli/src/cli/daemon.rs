@@ -1,34 +1,110 @@
 use std::{
     env,
-    fs::OpenOptions,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     time::Duration,
 };
 
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
-
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
-use miette::{miette, IntoDiagnostic};
-use reqwest::StatusCode;
-use tentgent_core::daemon::{
-    DaemonError, DaemonInspection, DaemonManager, DaemonRunRequest, DaemonRunSpec,
-    DaemonStopOutcome, DaemonWarning, DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT,
-};
+use miette::IntoDiagnostic;
+use tentgent_core::daemon as core_daemon;
 use tentgent_http::{
-    security::{check_bind_safety, BindSafetyReport, DaemonSecurityConfig, DAEMON_TOKEN_ENV_VAR},
+    security::{DaemonSecurityConfig, DAEMON_TOKEN_ENV_VAR},
     DaemonHttpServer, DaemonHttpState,
 };
-use tokio::time::{sleep, Instant};
+use tentgent_kernel::{
+    features::daemon::{
+        domain::{
+            daemon_url, DaemonBind, DaemonInspection as KernelDaemonInspection,
+            DaemonProcessMetadata as KernelDaemonProcessMetadata,
+            DaemonWarning as KernelDaemonWarning, DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT,
+        },
+        infra::{
+            FileDaemonStateStore, ReqwestDaemonHttpReadinessProbe, StdDaemonBindSafetyChecker,
+            StdDaemonDetachedLauncher, StdDaemonProcessController, StdDaemonProcessProbe,
+            StdDaemonStoreLayoutInitializer, SystemDaemonClock,
+        },
+        usecases::{
+            DaemonClearProcessRequest, DaemonDetachedStartRequest, DaemonDetachedStartUseCase,
+            DaemonInspectionMode, DaemonLifecycleUseCase, DaemonPrepareRunRequest,
+            DaemonReadinessToken, DaemonRecordProcessStartRequest, DaemonStatusRequest,
+            DaemonStatusUseCase, DaemonStopRequest, StdDaemonUseCase,
+        },
+    },
+    foundation::layout::{LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver},
+};
 
 use super::commands::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 
 const DAEMON_URL_ENV_VAR: &str = "TENTGENT_DAEMON_URL";
 const DAEMON_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
-const DAEMON_READINESS_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const DAEMON_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
+
+type DaemonInspection = core_daemon::DaemonInspection;
+type DaemonWarning = core_daemon::DaemonWarning;
+
+struct CliDaemonKernel {
+    layout_resolver: StdRuntimeLayoutResolver,
+    layout_initializer: StdDaemonStoreLayoutInitializer,
+    state_store: FileDaemonStateStore,
+    process_probe: StdDaemonProcessProbe,
+    process_controller: StdDaemonProcessController,
+    bind_safety_checker: StdDaemonBindSafetyChecker,
+    detached_launcher: StdDaemonDetachedLauncher,
+    readiness_probe: ReqwestDaemonHttpReadinessProbe,
+    clock: SystemDaemonClock,
+}
+
+impl CliDaemonKernel {
+    fn new() -> miette::Result<Self> {
+        Ok(Self {
+            layout_resolver: StdRuntimeLayoutResolver,
+            layout_initializer: StdDaemonStoreLayoutInitializer,
+            state_store: FileDaemonStateStore,
+            process_probe: StdDaemonProcessProbe,
+            process_controller: StdDaemonProcessController::default(),
+            bind_safety_checker: StdDaemonBindSafetyChecker,
+            detached_launcher: StdDaemonDetachedLauncher,
+            readiness_probe: ReqwestDaemonHttpReadinessProbe::new(DAEMON_PROBE_TIMEOUT)
+                .into_diagnostic()?,
+            clock: SystemDaemonClock,
+        })
+    }
+
+    fn usecase(&self) -> StdDaemonUseCase<'_> {
+        StdDaemonUseCase::new(
+            &self.layout_resolver,
+            &self.layout_initializer,
+            &self.state_store,
+            &self.process_probe,
+            &self.process_controller,
+            &self.bind_safety_checker,
+            &self.detached_launcher,
+            &self.readiness_probe,
+            &self.clock,
+        )
+    }
+}
+
+fn daemon_layout(home: Option<PathBuf>, mode: LayoutResolveMode) -> RuntimeLayoutInput {
+    RuntimeLayoutInput {
+        mode,
+        home_dir: home,
+        data_root_dir: None,
+    }
+}
+
+pub(crate) fn daemon_status_with_cleanup(home: Option<&Path>) -> miette::Result<DaemonInspection> {
+    let kernel = CliDaemonKernel::new()?;
+    let daemon = kernel.usecase();
+    let status = daemon
+        .daemon_status(DaemonStatusRequest {
+            layout: daemon_layout(home.map(Path::to_path_buf), LayoutResolveMode::ReadOnly),
+            mode: DaemonInspectionMode::CleanupStale,
+        })
+        .into_diagnostic()?;
+    Ok(core_daemon_inspection(status.inspection))
+}
 
 pub async fn handle_daemon_command(action: DaemonCommands) -> miette::Result<()> {
     match action {
@@ -40,15 +116,20 @@ pub async fn handle_daemon_command(action: DaemonCommands) -> miette::Result<()>
             start_daemon(DetachedDaemonOptions::from_start(command)).await?
         }
         DaemonCommands::Status { home } => {
-            let manager = DaemonManager::open_readonly(home.as_deref()).into_diagnostic()?;
-            let inspection = manager.status_with_cleanup().into_diagnostic()?;
+            let inspection = daemon_status_with_cleanup(home.as_deref())?;
             render_daemon_inspection("Daemon status", &inspection);
             render_daemon_guidance(&inspection);
         }
         DaemonCommands::Stop { home } => {
-            let manager = DaemonManager::new(home.as_deref()).into_diagnostic()?;
-            let outcome = manager.stop().into_diagnostic()?;
-            render_daemon_stop(&outcome);
+            let kernel = CliDaemonKernel::new()?;
+            let daemon = kernel.usecase();
+            let outcome = daemon
+                .stop_daemon(DaemonStopRequest {
+                    layout: daemon_layout(home, LayoutResolveMode::Create),
+                })
+                .into_diagnostic()?;
+            let inspection = core_daemon_inspection(outcome.inspection);
+            render_daemon_stop(outcome.stopped_pid, &inspection);
         }
     }
 
@@ -56,24 +137,37 @@ pub async fn handle_daemon_command(action: DaemonCommands) -> miette::Result<()>
 }
 
 async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
-    let manager = DaemonManager::new(command.home.as_deref()).into_diagnostic()?;
-    let spec = manager
-        .prepare_run(DaemonRunRequest {
+    let kernel = CliDaemonKernel::new()?;
+    let daemon = kernel.usecase();
+    let security = DaemonSecurityConfig::from_env();
+    let prepared = daemon
+        .prepare_run(DaemonPrepareRunRequest {
+            layout: daemon_layout(command.home.clone(), LayoutResolveMode::Create),
             host: command.host,
             port: command.port,
+            token_enabled: security.token_enabled(),
+            allow_unsafe_bind: command.allow_unsafe_bind,
         })
         .into_diagnostic()?;
-    let security = DaemonSecurityConfig::from_env();
-    let bind_safety =
-        validate_daemon_bind_safety(&spec.host, &security, command.allow_unsafe_bind)?;
-    for warning in bind_safety.warnings {
+    for warning in &prepared.bind_warnings {
         println!("{} {}", style("warning").yellow().bold(), warning);
     }
-    let server = DaemonHttpServer::bind(spec.host, spec.port).await?;
+    let server = DaemonHttpServer::bind(prepared.bind.host.clone(), prepared.bind.port).await?;
     let pid = std::process::id();
-    let inspection = manager
-        .record_process_start(pid, server.host().to_string(), server.port())
+    let recorded = daemon
+        .record_process_start(DaemonRecordProcessStartRequest {
+            layout: daemon_layout(
+                Some(prepared.layout.home_dir.clone()),
+                LayoutResolveMode::ReadOnly,
+            ),
+            pid,
+            bind: DaemonBind {
+                host: server.host().to_string(),
+                port: server.port(),
+            },
+        })
         .into_diagnostic()?;
+    let inspection = core_daemon_inspection(recorded.inspection);
 
     render_daemon_inspection("Daemon started", &inspection);
     println!(
@@ -82,6 +176,7 @@ async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
         server.bind_label()
     );
     println!("{} press Ctrl-C to stop.", style("note").yellow().bold());
+    let home_dir = inspection.home_dir.clone();
 
     let serve_result = tokio::select! {
         result = server.serve(DaemonHttpState::with_security(inspection, security)) => Some(result),
@@ -90,8 +185,11 @@ async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
             None
         }
     };
-    manager
-        .clear_process_if_matches(Some(pid))
+    daemon
+        .clear_process_if_matches(DaemonClearProcessRequest {
+            layout: daemon_layout(Some(home_dir), LayoutResolveMode::ReadOnly),
+            expected_pid: Some(pid),
+        })
         .into_diagnostic()?;
     if let Some(result) = serve_result {
         result?;
@@ -127,20 +225,6 @@ impl DetachedDaemonOptions {
             allow_unsafe_bind: command.allow_unsafe_bind,
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DetachedDaemonChildCommand {
-    executable: PathBuf,
-    args: Vec<String>,
-    stdout_log_path: PathBuf,
-    stderr_log_path: PathBuf,
-}
-
-#[derive(Debug)]
-struct DaemonReadiness {
-    inspection: DaemonInspection,
-    status_warning: Option<String>,
 }
 
 #[derive(Debug)]
@@ -198,242 +282,71 @@ async fn start_daemon(options: DetachedDaemonOptions) -> miette::Result<()> {
 pub(crate) async fn start_daemon_detached(
     options: DetachedDaemonOptions,
 ) -> miette::Result<DetachedDaemonStartOutcome> {
-    let manager = DaemonManager::new(options.home.as_deref()).into_diagnostic()?;
-    let initial = manager.status().into_diagnostic()?;
-    if initial.running {
-        return existing_daemon_outcome(&initial).await;
-    }
-
-    let spec = match manager.prepare_run(DaemonRunRequest {
-        host: options.host,
-        port: options.port,
-    }) {
-        Ok(spec) => spec,
-        Err(DaemonError::AlreadyRunning(_)) => {
-            let inspection = manager.status().into_diagnostic()?;
-            return existing_daemon_outcome(&inspection).await;
-        }
-        Err(error) => return Err(error).into_diagnostic(),
-    };
-
     let security = DaemonSecurityConfig::from_env();
-    let bind_safety =
-        validate_daemon_bind_safety(&spec.host, &security, options.allow_unsafe_bind)?;
-    let bind_warnings = bind_safety.warnings;
-
-    let child = build_detached_child_command(
-        env::current_exe().into_diagnostic()?,
-        &spec,
-        options.allow_unsafe_bind,
-    );
-    let launched_pid = launch_detached_child(&child).await?;
-    let expected_url = daemon_url(&spec.host, spec.port);
-    let token = read_daemon_token_from_env();
-    let readiness = wait_for_daemon_readiness(
-        &manager,
-        &expected_url,
-        &spec.inspection.home_dir,
-        &child.stdout_log_path,
-        &child.stderr_log_path,
-        token.as_deref(),
-        DAEMON_STARTUP_TIMEOUT,
-    )
-    .await?;
+    let kernel = CliDaemonKernel::new()?;
+    let daemon = kernel.usecase();
+    let token = read_daemon_token_from_env().and_then(DaemonReadinessToken::parse);
+    let result = daemon
+        .start_daemon_detached(DaemonDetachedStartRequest {
+            layout: daemon_layout(options.home, LayoutResolveMode::Create),
+            host: options.host,
+            port: options.port,
+            token_enabled: security.token_enabled(),
+            allow_unsafe_bind: options.allow_unsafe_bind,
+            executable: env::current_exe().into_diagnostic()?,
+            status_probe_token: token,
+            startup_timeout: DAEMON_STARTUP_TIMEOUT,
+        })
+        .await
+        .into_diagnostic()?;
 
     Ok(DetachedDaemonStartOutcome {
-        daemon_url: daemon_url_from_process_metadata(&readiness.inspection).unwrap_or(expected_url),
-        inspection: readiness.inspection,
-        launched_pid,
-        stdout_log_path: child.stdout_log_path,
-        stderr_log_path: child.stderr_log_path,
-        status_warning: readiness.status_warning,
-        bind_warnings,
-        already_running: false,
+        daemon_url: result.daemon_url,
+        inspection: core_daemon_inspection(result.inspection),
+        launched_pid: result.launched_pid,
+        stdout_log_path: result.stdout_log_path,
+        stderr_log_path: result.stderr_log_path,
+        status_warning: result.status_warning,
+        bind_warnings: result.bind_warnings,
+        already_running: result.already_running,
     })
 }
 
-async fn existing_daemon_outcome(
-    inspection: &DaemonInspection,
-) -> miette::Result<DetachedDaemonStartOutcome> {
-    let process = inspection.process.as_ref().ok_or_else(|| {
-        miette!("daemon metadata was expected to be running but no process metadata was present")
-    })?;
-    let url = daemon_url(&process.host, process.port);
-    let client = probe_client()?;
-    match probe_healthz(&client, &url).await {
-        Ok(()) => Ok(DetachedDaemonStartOutcome {
-            inspection: inspection.clone(),
-            daemon_url: url,
-            launched_pid: None,
-            stdout_log_path: inspection.stdout_log_path.clone(),
-            stderr_log_path: inspection.stderr_log_path.clone(),
-            status_warning: None,
-            bind_warnings: Vec::new(),
-            already_running: true,
-        }),
-        Err(detail) => Err(existing_daemon_unreachable_error(inspection, &url, &detail)),
+fn core_daemon_inspection(inspection: KernelDaemonInspection) -> DaemonInspection {
+    DaemonInspection {
+        home_dir: inspection.home_dir,
+        runtime_dir: inspection.runtime_dir,
+        log_dir: inspection.log_dir,
+        process_path: inspection.process_path,
+        pid_path: inspection.pid_path,
+        stdout_log_path: inspection.stdout_log_path,
+        stderr_log_path: inspection.stderr_log_path,
+        running: inspection.running,
+        process: inspection.process.map(core_daemon_process_metadata),
+        warnings: inspection
+            .warnings
+            .into_iter()
+            .map(core_daemon_warning)
+            .collect(),
     }
 }
 
-fn validate_daemon_bind_safety(
-    host: &str,
-    security: &DaemonSecurityConfig,
-    allow_unsafe_bind: bool,
-) -> miette::Result<BindSafetyReport> {
-    check_bind_safety(host, security.token_enabled(), allow_unsafe_bind)
-}
-
-fn build_detached_child_command(
-    executable: PathBuf,
-    spec: &DaemonRunSpec,
-    allow_unsafe_bind: bool,
-) -> DetachedDaemonChildCommand {
-    let mut args = vec![
-        "daemon".to_string(),
-        "run".to_string(),
-        "--home".to_string(),
-        spec.inspection.home_dir.display().to_string(),
-        "--host".to_string(),
-        spec.host.clone(),
-        "--port".to_string(),
-        spec.port.to_string(),
-    ];
-    if allow_unsafe_bind {
-        args.push("--allow-unsafe-bind".to_string());
-    }
-
-    DetachedDaemonChildCommand {
-        executable,
-        args,
-        stdout_log_path: spec.inspection.stdout_log_path.clone(),
-        stderr_log_path: spec.inspection.stderr_log_path.clone(),
+fn core_daemon_process_metadata(
+    process: KernelDaemonProcessMetadata,
+) -> core_daemon::DaemonProcessMetadata {
+    core_daemon::DaemonProcessMetadata {
+        pid: process.pid,
+        host: process.host,
+        port: process.port,
+        started_at: process.started_at,
     }
 }
 
-async fn launch_detached_child(
-    command: &DetachedDaemonChildCommand,
-) -> miette::Result<Option<u32>> {
-    let stdout = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&command.stdout_log_path)
-        .into_diagnostic()?;
-    let stderr = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&command.stderr_log_path)
-        .into_diagnostic()?;
-
-    let mut child = Command::new(&command.executable);
-    child
-        .args(&command.args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr));
-    #[cfg(unix)]
-    {
-        child.process_group(0);
-    }
-
-    let child = child.spawn().into_diagnostic()?;
-    Ok(Some(child.id()))
-}
-
-async fn wait_for_daemon_readiness(
-    manager: &DaemonManager,
-    expected_url: &str,
-    home_dir: &Path,
-    stdout_log_path: &Path,
-    stderr_log_path: &Path,
-    token: Option<&str>,
-    wait_duration: Duration,
-) -> miette::Result<DaemonReadiness> {
-    let client = probe_client()?;
-    let deadline = Instant::now() + wait_duration;
-    let mut last_probe_error: Option<String> = None;
-
-    loop {
-        let inspection = manager.status().into_diagnostic()?;
-        if let Some(process) = inspection.process.as_ref() {
-            if inspection.running {
-                let url = daemon_url(&process.host, process.port);
-                match probe_healthz(&client, &url).await {
-                    Ok(()) => {
-                        let status_warning = match token {
-                            Some(token) => probe_status_warning(&client, &url, token).await,
-                            None => None,
-                        };
-                        return Ok(DaemonReadiness {
-                            inspection,
-                            status_warning,
-                        });
-                    }
-                    Err(detail) => {
-                        last_probe_error = Some(detail);
-                    }
-                }
-            }
-        }
-
-        if Instant::now() >= deadline {
-            return Err(startup_timeout_error(
-                expected_url,
-                home_dir,
-                stdout_log_path,
-                stderr_log_path,
-                last_probe_error.as_deref(),
-            ));
-        }
-
-        sleep(DAEMON_READINESS_POLL_INTERVAL).await;
-    }
-}
-
-fn probe_client() -> miette::Result<reqwest::Client> {
-    reqwest::Client::builder()
-        .timeout(DAEMON_PROBE_TIMEOUT)
-        .build()
-        .into_diagnostic()
-}
-
-async fn probe_healthz(client: &reqwest::Client, daemon_url: &str) -> Result<(), String> {
-    let response = client
-        .get(endpoint_url(daemon_url, "/healthz"))
-        .send()
-        .await
-        .map_err(|error| error.to_string())?;
-    if response.status().is_success() {
-        Ok(())
-    } else {
-        Err(format!("GET /healthz returned {}", response.status()))
-    }
-}
-
-async fn probe_status_warning(
-    client: &reqwest::Client,
-    daemon_url: &str,
-    token: &str,
-) -> Option<String> {
-    let response = client
-        .get(endpoint_url(daemon_url, "/v1/status"))
-        .bearer_auth(token)
-        .send()
-        .await;
-    match response {
-        Ok(response) => status_probe_warning(response.status()),
-        Err(error) => Some(format!(
-            "daemon ready but /v1/status could not be confirmed: {error}"
-        )),
-    }
-}
-
-fn status_probe_warning(status: StatusCode) -> Option<String> {
-    if status.is_success() {
-        None
-    } else if status == StatusCode::UNAUTHORIZED {
-        Some("daemon ready but status requires a valid token".to_string())
-    } else {
-        Some(format!("daemon ready but /v1/status returned {status}"))
+fn core_daemon_warning(warning: KernelDaemonWarning) -> DaemonWarning {
+    DaemonWarning {
+        code: warning.code,
+        message: warning.message,
+        path: warning.path,
     }
 }
 
@@ -442,14 +355,6 @@ fn read_daemon_token_from_env() -> Option<String> {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-}
-
-fn endpoint_url(daemon_url: &str, path: &str) -> String {
-    format!("{}{}", daemon_url.trim_end_matches('/'), path)
-}
-
-fn daemon_url(host: &str, port: u16) -> String {
-    format!("http://{}:{port}", host_for_url(host))
 }
 
 fn daemon_url_from_process_metadata(inspection: &DaemonInspection) -> Option<String> {
@@ -476,66 +381,14 @@ fn read_env_string(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn host_for_url(host: &str) -> String {
-    let trimmed = host.trim();
-    if trimmed.starts_with('[') && trimmed.ends_with(']') {
-        trimmed.to_string()
-    } else if trimmed.contains(':') {
-        format!("[{trimmed}]")
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn startup_timeout_error(
-    expected_url: &str,
-    home_dir: &Path,
-    stdout_log_path: &Path,
-    stderr_log_path: &Path,
-    last_probe_error: Option<&str>,
-) -> miette::Report {
-    let detail = last_probe_error
-        .map(|detail| format!("\nlast health probe: {detail}"))
-        .unwrap_or_default();
-    miette!(
-        "timed out waiting for daemon readiness at {expected_url}\nhome: {}\nstdout log: {}\nstderr log: {}{detail}",
-        home_dir.display(),
-        stdout_log_path.display(),
-        stderr_log_path.display(),
-    )
-}
-
-fn existing_daemon_unreachable_error(
-    inspection: &DaemonInspection,
-    url: &str,
-    detail: &str,
-) -> miette::Report {
-    let process = inspection
-        .process
-        .as_ref()
-        .expect("caller provides running daemon inspection");
-    miette!(
-        "daemon metadata under this home points to live pid {}, but {url}/healthz is not reachable: {detail}\nhome: {}\nstdout log: {}\nstderr log: {}\nstop command: {}",
-        process.pid,
-        inspection.home_dir.display(),
-        inspection.stdout_log_path.display(),
-        inspection.stderr_log_path.display(),
-        daemon_stop_command(&inspection.home_dir),
-    )
-}
-
-fn render_daemon_stop(outcome: &DaemonStopOutcome) {
+fn render_daemon_stop(stopped_pid: u32, inspection: &DaemonInspection) {
     println!(
         "{} {}",
         style("==>").cyan().bold(),
         style("Daemon stopped").bold()
     );
-    println!(
-        "{} pid {}",
-        style("stopped").green().bold(),
-        outcome.stopped_pid
-    );
-    println!("{}", render_daemon_table(&outcome.inspection));
+    println!("{} pid {}", style("stopped").green().bold(), stopped_pid);
+    println!("{}", render_daemon_table(inspection));
 }
 
 fn render_daemon_inspection(title: &str, inspection: &DaemonInspection) {
@@ -750,56 +603,6 @@ mod tests {
     }
 
     #[test]
-    fn detached_child_command_reuses_foreground_run_without_detach() {
-        let spec = daemon_run_spec("/tmp/tentgent-home", "127.0.0.1", 8791);
-        let command = build_detached_child_command(PathBuf::from("/bin/tentgent"), &spec, true);
-
-        assert_eq!(command.executable, PathBuf::from("/bin/tentgent"));
-        assert_eq!(
-            command.args,
-            vec![
-                "daemon",
-                "run",
-                "--home",
-                "/tmp/tentgent-home",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                "8791",
-                "--allow-unsafe-bind",
-            ]
-        );
-        assert!(!command.args.iter().any(|arg| arg == "--detach"));
-        assert_eq!(
-            command.stdout_log_path,
-            PathBuf::from("/tmp/tentgent-home/logs/daemon.stdout.log")
-        );
-        assert_eq!(
-            command.stderr_log_path,
-            PathBuf::from("/tmp/tentgent-home/logs/daemon.stderr.log")
-        );
-    }
-
-    #[test]
-    fn daemon_bind_safety_helper_is_shared_for_detached_and_foreground_paths() {
-        let disabled = DaemonSecurityConfig::disabled();
-        assert!(validate_daemon_bind_safety("0.0.0.0", &disabled, false).is_err());
-        assert!(validate_daemon_bind_safety("0.0.0.0", &disabled, true).is_ok());
-
-        let enabled = DaemonSecurityConfig::from_token_value(Some("secret"));
-        assert!(validate_daemon_bind_safety("0.0.0.0", &enabled, false).is_ok());
-    }
-
-    #[test]
-    fn status_probe_unauthorized_is_warning_not_failure() {
-        assert_eq!(
-            status_probe_warning(StatusCode::UNAUTHORIZED).as_deref(),
-            Some("daemon ready but status requires a valid token")
-        );
-        assert!(status_probe_warning(StatusCode::OK).is_none());
-    }
-
-    #[test]
     fn stopped_daemon_guidance_includes_home_url_and_start_command() {
         let inspection = stopped_inspection("/tmp/tentgent-home");
         let lines = daemon_guidance_lines(&inspection);
@@ -833,14 +636,6 @@ mod tests {
         assert!(!lines
             .iter()
             .any(|line| line.starts_with("cleanup: tentgent daemon stop")));
-    }
-
-    fn daemon_run_spec(home: &str, host: &str, port: u16) -> DaemonRunSpec {
-        DaemonRunSpec {
-            host: host.to_string(),
-            port,
-            inspection: stopped_inspection(home),
-        }
     }
 
     fn stopped_inspection(home: &str) -> DaemonInspection {

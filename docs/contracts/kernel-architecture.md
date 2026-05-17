@@ -75,6 +75,8 @@ Current domain areas:
   resolving runtime layout in read-only or create-capable modes.
 - `foundation/layout/tests.rs`: explicit root, env root, read-only, and create
   mode tests.
+- `foundation/net/domain.rs`: pure host/port formatting helpers for URL
+  authority strings shared by config and daemon feature packages.
 - `foundation/platform/domain.rs`: OS, arch, libc, CPU, GPU, CUDA, and Metal
   fact objects.
 - `foundation/platform/ports.rs`: `PlatformProbe`, the trait for reading
@@ -512,6 +514,71 @@ The Rust CLI session commands and `chat --session` path are wired through
 `StdSessionUseCase`; CLI-specific adapters resolve server and adapter refs
 through the corresponding kernel catalog use cases and keep summary generation
 as command-level orchestration.
+
+`features/daemon/domain.rs` owns pure daemon process and local endpoint state:
+
+- default daemon bind host and port
+- stored daemon process metadata shape
+- daemon runtime status, warning records, and stable warning-code names
+- daemon metadata, pid, stdout-log, and stderr-log filenames
+- daemon path derivation from already resolved home, runtime, and log
+  directories
+- pure host normalization and daemon URL formatting
+
+It must not resolve runtime-home, read environment variables, create
+directories, read or write process metadata, inspect process liveness, spawn
+foreground or detached daemon processes, probe HTTP readiness, validate bearer
+tokens, or render CLI/HTTP/TUI output. Those jobs belong in daemon infra,
+daemon use cases, HTTP security, or frontend layers once the daemon migration
+bundle moves.
+
+`features/daemon/ports.rs` defines narrow boundaries for:
+
+- ensuring daemon runtime/log directories before mutation
+- observing daemon process metadata, pid files, and path existence facts
+- recording and clearing daemon process state
+- probing and controlling persisted daemon pids
+- checking bind safety from explicit bind/auth inputs
+- launching detached daemon child processes
+- probing daemon HTTP health and authenticated status readiness
+- supplying RFC3339 timestamps for process metadata
+
+Daemon ports should receive resolved runtime layout, explicit bind data, and
+explicit token/auth state from use cases. They should not resolve runtime-home,
+read daemon token environment variables, decide CLI/HTTP rendering, or couple
+kernel code to the HTTP route layer.
+Daemon async port futures are `Send`, and daemon port traits are `Sync`, so
+CLI/TUI entrypoints can spawn detached-start work without rebuilding adapters.
+
+`features/daemon/infra/` owns the standard filesystem, local-process,
+bind-safety, detached-launch, readiness-probe, and clock adapters for those
+ports. It preserves the existing daemon metadata and pid-file layout, classifies
+unsafe binds without DNS resolution, launches detached child commands with
+stdout/stderr log files, and probes `/healthz` plus optional authenticated
+`/v1/status`. It must not parse CLI flags, read daemon token environment
+variables, own HTTP route handling, or render daemon status.
+
+`features/daemon/usecases/port.rs` defines workflow boundaries for:
+
+- resolving daemon status with cleanup or observational inspection modes
+- preparing foreground runs from explicit layout, bind, and auth inputs
+- recording started daemon process metadata after a listener has bound
+- clearing matching daemon process metadata after shutdown
+- stopping a running daemon process
+- starting or reusing a detached daemon process and waiting for readiness
+
+Daemon use cases should compose foundation layout resolution, daemon infra
+ports, explicit daemon-token presence, and readiness probes. CLI, HTTP, and TUI
+entrypoints should call these use cases instead of rebuilding daemon metadata,
+bind-safety, process-control, and readiness orchestration directly. Use case
+requests may carry a redacted readiness token for optional `/v1/status` probes,
+but use cases must not read token environment variables or persist token
+values.
+The current `StdDaemonUseCase` composes layout resolution, daemon state store,
+process probe/control, bind safety, detached launching, readiness probing, and
+clock ports for status, foreground lifecycle, and detached startup workflows.
+The Rust CLI daemon command path and TUI daemon status refresh use this kernel
+use case surface; HTTP route handling remains outside the daemon kernel package.
 
 `features/server/domain.rs` owns pure model-bound server names and durable
 state:

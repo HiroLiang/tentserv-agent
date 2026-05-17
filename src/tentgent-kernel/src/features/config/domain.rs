@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::foundation::net::http_url_from_host_port;
+
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 pub const DAEMON_URL_ENV_VAR: &str = "TENTGENT_DAEMON_URL";
@@ -212,7 +214,7 @@ pub fn validate_daemon_url(url: &str, origin: &str) -> Result<(), DaemonUrlValid
 }
 
 pub fn daemon_url(host: &str, port: u16) -> String {
-    format!("http://{}:{port}", host_for_url(host))
+    http_url_from_host_port(host, port)
 }
 
 pub fn default_daemon_url() -> String {
@@ -242,17 +244,6 @@ fn authority_has_host(authority: &str) -> bool {
         .map(|(host, _)| host)
         .unwrap_or(without_userinfo);
     !host.trim().is_empty()
-}
-
-fn host_for_url(host: &str) -> String {
-    let trimmed = host.trim();
-    if trimmed.starts_with('[') && trimmed.ends_with(']') {
-        trimmed.to_string()
-    } else if trimmed.contains(':') {
-        format!("[{trimmed}]")
-    } else {
-        trimmed.to_string()
-    }
 }
 
 fn invalid_daemon_url(origin: &str, url: &str) -> DaemonUrlValidationError {
