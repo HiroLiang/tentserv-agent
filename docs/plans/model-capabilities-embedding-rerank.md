@@ -8,13 +8,19 @@ forcing them through chat-only server flows.
 
 - Model metadata records source, primary format, detected formats, file count,
   and size.
+- Kernel model domain has a `model_capabilities` metadata field with `chat`,
+  `embedding`, and `rerank` values. Old metadata defaults to `chat`, and new
+  imports still default to `chat` until import/pull overrides are wired.
+- Kernel model domain records `model_capability_source` so callers can
+  distinguish default chat fallback, explicit user input, future Hugging Face
+  metadata detection, and manual metadata updates.
 - Format detection is layout-based: `safetensors`, `gguf`, or `mlx`.
 - Server specs distinguish local vs cloud runtimes, but local server behavior is
   chat-oriented.
 - Direct server chat and daemon chat contracts are built around `messages`,
   `max_tokens`, `temperature`, and optional `adapter_ref`.
-- There are no first-class embedding or rerank endpoints, model capability
-  fields, or compatibility checks.
+- There are no first-class embedding or rerank endpoints, CLI/HTTP capability
+  overrides, or server compatibility checks.
 - The kernel has machine-local capability state primitives, but embedding and
   rerank workflows are not yet gated through them.
 
@@ -37,7 +43,7 @@ forcing them through chat-only server flows.
   capability metadata.
 - Do not make adapters compatible with embedding/rerank models in the first
   pass.
-- Do not add training support for embedding/rerank models in this track.
+- Do not add embedding/rerank training execution in this track.
 - Do not claim every Hugging Face embedding or rerank architecture is supported
   immediately.
 - Do not use embedding/rerank work to invent a second machine capability model;

@@ -1,4 +1,4 @@
-//! Model store identity, metadata, and pure format-selection rules.
+//! Model store identity, metadata, and pure serving-capability rules.
 
 use std::path::{Path, PathBuf};
 
@@ -191,6 +191,64 @@ impl std::fmt::Display for ModelFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelCapability {
+    Chat,
+    Embedding,
+    Rerank,
+}
+
+impl ModelCapability {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::Embedding => "embedding",
+            Self::Rerank => "rerank",
+        }
+    }
+}
+
+impl std::fmt::Display for ModelCapability {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+pub fn default_model_capabilities() -> Vec<ModelCapability> {
+    vec![ModelCapability::Chat]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelCapabilitySource {
+    DefaultChat,
+    ExplicitUser,
+    HuggingFaceMetadata,
+    ManualUpdate,
+}
+
+impl ModelCapabilitySource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DefaultChat => "default-chat",
+            Self::ExplicitUser => "explicit-user",
+            Self::HuggingFaceMetadata => "huggingface-metadata",
+            Self::ManualUpdate => "manual-update",
+        }
+    }
+}
+
+impl std::fmt::Display for ModelCapabilitySource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+pub const fn default_model_capability_source() -> ModelCapabilitySource {
+    ModelCapabilitySource::DefaultChat
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ModelSourceKind {
     #[serde(rename = "huggingface")]
     HuggingFace,
@@ -297,6 +355,10 @@ pub struct ModelMetadata {
     pub source_path: Option<String>,
     pub primary_format: ModelFormat,
     pub detected_formats: Vec<ModelFormat>,
+    #[serde(default = "default_model_capabilities")]
+    pub model_capabilities: Vec<ModelCapability>,
+    #[serde(default = "default_model_capability_source")]
+    pub model_capability_source: ModelCapabilitySource,
     pub file_count: usize,
     pub total_bytes: u64,
     pub imported_at: String,
@@ -309,6 +371,10 @@ impl ModelMetadata {
 
     pub fn has_consistent_short_ref(&self) -> bool {
         self.short_ref == self.expected_short_ref()
+    }
+
+    pub fn supports_capability(&self, capability: ModelCapability) -> bool {
+        self.model_capabilities.contains(&capability)
     }
 
     pub fn source_summary(&self) -> String {

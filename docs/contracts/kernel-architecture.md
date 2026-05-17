@@ -202,7 +202,8 @@ use cases once their migration bundle moves.
 `features/model/domain.rs` owns pure model-store names and state:
 
 - canonical SHA-256 `model_ref` and short/hash-prefix selectors
-- model formats, import methods, source kinds, and variant status names
+- model formats, serving capabilities, import methods, source kinds, and
+  variant status names
 - manifest, model metadata, source-index metadata, and import/removal result
   data objects
 - model-store path derivation from an already resolved models directory
@@ -210,9 +211,9 @@ use cases once their migration bundle moves.
   contract
 
 It must not walk directories, hash files, copy/import model data, download from
-Hugging Face, read auth secrets, inspect server references, or write metadata.
-Those jobs belong in model infra and use cases when the model migration bundle
-moves.
+Hugging Face, infer serving capabilities from remote metadata, read auth
+secrets, inspect server references, or write metadata. Those jobs belong in
+model infra and use cases when the model migration bundle moves.
 
 `features/model/ports.rs` defines narrow boundaries for:
 
@@ -249,6 +250,22 @@ not resolve auth, bootstrap Python, or choose CLI progress rendering.
 Standard model use cases should compose foundation layout, runtime resolution,
 auth secret resolution, and model infra ports. CLI, HTTP, and TUI should call
 these use cases instead of rebuilding model-store orchestration directly.
+
+`features/adapter/domain.rs` owns pure adapter-store names and compatibility
+rules:
+
+- canonical SHA-256 `adapter_ref` and short/hash-prefix selectors
+- adapter formats, source kinds, backend-support names, manifest metadata, and
+  source/base index metadata
+- adapter-store path derivation from an already resolved adapters directory
+- pure format detection for PEFT and MLX adapter layouts
+- conservative compatibility checks against a selected chat-capable base model
+  and backend
+
+It must not walk directories, hash files, copy/import adapter data, download
+from Hugging Face, read auth secrets, inspect server references, or write
+metadata. Those jobs belong in adapter infra and use cases when the adapter
+migration bundle moves.
 
 `features/runtime/ports.rs` defines narrow boundaries for:
 

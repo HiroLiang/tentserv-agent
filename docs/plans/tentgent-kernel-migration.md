@@ -59,11 +59,17 @@ Implemented:
   lightweight platform/layout probe, and cached-state checker.
 - Capability use-case implementations with colocated request/response types
   for machine capability snapshots and feature gate enforcement.
+- Model feature domain objects include model serving capabilities for chat,
+  embedding, and rerank metadata, with source/provenance and old metadata
+  defaulting to chat.
 - Runtime feature domain objects for bootstrap profiles/plans, Python runtime
   source/layout, Python entrypoint names, and runtime readiness snapshots.
 - Runtime ports for Python runtime layout resolution, managed executable path
   resolution, bootstrap planning/execution, and runtime state probing. Standard
   runtime infra/use cases are not moved yet.
+- Adapter feature domain objects for canonical adapter refs/selectors, adapter
+  metadata, manifests, source/base indexes, adapter-store path derivation,
+  format detection, and conservative base-model/backend compatibility checks.
 - Doctor feature domain objects for diagnostic execution mode, repair intent,
   check status/category, summaries, reports, path checks, command checks, and
   repair plans.

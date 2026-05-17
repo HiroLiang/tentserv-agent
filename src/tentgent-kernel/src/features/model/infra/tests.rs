@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::model::domain::{
-    HfModelSourceIndex, LocalModelSourceIndex, ModelFormat, ModelImportMethod, ModelManifest,
-    ModelManifestEntry, ModelMetadata, ModelRef, ModelRefSelector, ModelSourceKind,
-    ModelStoreLayout, ModelVariantMetadata, ModelVariantStatus, SOURCE_DIRNAME,
+    default_model_capabilities, default_model_capability_source, HfModelSourceIndex,
+    LocalModelSourceIndex, ModelFormat, ModelImportMethod, ModelManifest, ModelManifestEntry,
+    ModelMetadata, ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
+    ModelVariantMetadata, ModelVariantStatus, SOURCE_DIRNAME,
 };
 use crate::features::model::ports::{
     ModelCatalogStore, ModelContentStore, ModelIdentityGenerator, ModelManifestBuilder,
@@ -214,6 +215,8 @@ fn metadata_fixture(model_ref: ModelRef) -> ModelMetadata {
         source_path: Some("/tmp/source".to_string()),
         primary_format: ModelFormat::Gguf,
         detected_formats: vec![ModelFormat::Gguf],
+        model_capabilities: default_model_capabilities(),
+        model_capability_source: default_model_capability_source(),
         file_count: 1,
         total_bytes: 11,
         imported_at: imported_at(),

@@ -66,6 +66,8 @@ TENTGENT_HOME/
 - `source_path`
 - `primary_format`
 - `detected_formats`
+- `model_capabilities`
+- `model_capability_source`
 - `file_count`
 - `total_bytes`
 - `imported_at`
@@ -90,6 +92,37 @@ Primary format selection order:
 1. `mlx` for `mlx-community/*`
 2. `safetensors` when detected
 3. `gguf` when detected
+
+## Model Capability Metadata
+
+`model_capabilities` describes what endpoint families a model can serve. It is
+separate from file format and local backend readiness.
+
+Initial capability values:
+
+- `chat`
+- `embedding`
+- `rerank`
+
+Existing metadata without `model_capabilities` should be read as `["chat"]`.
+New imports default to `["chat"]` until explicit import/pull overrides or
+source metadata detection are added. A model may list multiple capabilities
+when later evidence or user input proves that it supports more than one serving
+shape.
+
+`model_capability_source` records why the current capability set was chosen:
+
+- `default-chat`: backward-compatible default for old metadata or imports
+  without explicit evidence.
+- `explicit-user`: import or pull input explicitly declared capabilities.
+- `huggingface-metadata`: source metadata such as pipeline tags or
+  architectures provided enough evidence.
+- `manual-update`: a later local metadata mutation changed the capability set.
+
+Changing capability metadata does not change `model_ref`; canonical identity is
+still content-derived from the manifest. A later metadata update may add
+`embedding` or `rerank` to an imported model when the user or source metadata
+can justify it.
 
 ## Hugging Face Pull Contract
 

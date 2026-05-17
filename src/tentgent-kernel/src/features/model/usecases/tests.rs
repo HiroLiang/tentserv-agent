@@ -7,8 +7,9 @@ use crate::features::auth::usecases::{
     AuthSecretResolution, AuthSecretResolutionRequest, AuthSecretResolverUseCase,
 };
 use crate::features::model::domain::{
-    HfModelPullProgress, ModelFormat, ModelImportOutcome, ModelInspection, ModelMetadata, ModelRef,
-    ModelRefSelector, ModelRemovalOutcome, ModelSourceKind, ModelStoreLayout, ModelSummary,
+    default_model_capabilities, default_model_capability_source, HfModelPullProgress, ModelFormat,
+    ModelImportOutcome, ModelInspection, ModelMetadata, ModelRef, ModelRefSelector,
+    ModelRemovalOutcome, ModelSourceKind, ModelStoreLayout, ModelSummary,
 };
 use crate::features::model::infra::{
     FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
@@ -360,6 +361,8 @@ fn metadata_fixture() -> ModelMetadata {
         source_path: Some("/tmp/source-model".to_string()),
         primary_format: ModelFormat::Gguf,
         detected_formats: vec![ModelFormat::Gguf],
+        model_capabilities: default_model_capabilities(),
+        model_capability_source: default_model_capability_source(),
         file_count: 1,
         total_bytes: 42,
         imported_at: "2026-05-17T00:00:00Z".to_string(),

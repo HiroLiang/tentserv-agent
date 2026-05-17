@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::features::model::domain::{
-    detect_model_formats, select_primary_model_format, HfModelSourceIndex, LocalModelSourceIndex,
-    ModelImportMethod, ModelImportOutcome, ModelMetadata, ModelSourceKind, ModelStoreLayout,
-    ModelVariantMetadata, ModelVariantStatus, SOURCE_DIRNAME,
+    default_model_capabilities, default_model_capability_source, detect_model_formats,
+    select_primary_model_format, HfModelSourceIndex, LocalModelSourceIndex, ModelImportMethod,
+    ModelImportOutcome, ModelMetadata, ModelSourceKind, ModelStoreLayout, ModelVariantMetadata,
+    ModelVariantStatus, SOURCE_DIRNAME,
 };
 use crate::features::model::ports::{
     ModelCatalogStore, ModelContentStore, ModelIdentityGenerator, ModelManifestBuilder,
@@ -124,6 +125,8 @@ impl ModelImportFinalizer<'_> {
                 .map(|path| path.display().to_string()),
             primary_format,
             detected_formats,
+            model_capabilities: default_model_capabilities(),
+            model_capability_source: default_model_capability_source(),
             file_count: manifest.file_count(),
             total_bytes: manifest.total_bytes(),
             imported_at,

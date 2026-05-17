@@ -5,11 +5,12 @@ use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
 
 use super::domain::{
-    detect_model_formats, escape_huggingface_repo_id, select_primary_model_format,
-    HfModelPullProgress, HfModelSourceIndex, LocalModelSourceIndex, ModelFormat, ModelImportMethod,
-    ModelManifest, ModelManifestEntry, ModelMetadata, ModelRef, ModelRefParseError,
-    ModelRefSelector, ModelSourceKind, ModelStoreLayout, ModelVariantMetadata, ModelVariantStatus,
-    HUGGINGFACE_SOURCE_DIRNAME, LOCAL_SOURCE_DIRNAME, MODEL_MANIFEST_FILENAME,
+    default_model_capabilities, default_model_capability_source, detect_model_formats,
+    escape_huggingface_repo_id, select_primary_model_format, HfModelPullProgress,
+    HfModelSourceIndex, LocalModelSourceIndex, ModelCapability, ModelCapabilitySource, ModelFormat,
+    ModelImportMethod, ModelManifest, ModelManifestEntry, ModelMetadata, ModelRef,
+    ModelRefParseError, ModelRefSelector, ModelSourceKind, ModelStoreLayout, ModelVariantMetadata,
+    ModelVariantStatus, HUGGINGFACE_SOURCE_DIRNAME, LOCAL_SOURCE_DIRNAME, MODEL_MANIFEST_FILENAME,
     MODEL_METADATA_FILENAME, SHORT_MODEL_REF_LENGTH, SOURCE_DIRNAME, STAGING_DIRNAME,
     STORE_DIRNAME, VARIANTS_DIRNAME, VARIANT_METADATA_FILENAME,
 };
@@ -168,13 +169,86 @@ fn metadata_reports_source_summary_and_short_ref_consistency() {
         source_path: None,
         primary_format: ModelFormat::Gguf,
         detected_formats: vec![ModelFormat::Gguf],
+        model_capabilities: vec![ModelCapability::Chat, ModelCapability::Embedding],
+        model_capability_source: ModelCapabilitySource::ExplicitUser,
         file_count: 1,
         total_bytes: 42,
         imported_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
     assert!(metadata.has_consistent_short_ref());
+    assert!(metadata.supports_capability(ModelCapability::Chat));
+    assert!(metadata.supports_capability(ModelCapability::Embedding));
+    assert!(!metadata.supports_capability(ModelCapability::Rerank));
+    assert_eq!(
+        metadata.model_capability_source,
+        ModelCapabilitySource::ExplicitUser
+    );
     assert_eq!(metadata.source_summary(), "org/model@resolved-sha");
+}
+
+#[test]
+fn model_metadata_defaults_missing_capabilities_to_chat() {
+    let body = format!(
+        r#"{{
+            "model_ref": "{model_ref}",
+            "short_ref": "{short_ref}",
+            "source_kind": "local",
+            "source_repo": null,
+            "source_revision": null,
+            "source_path": "/tmp/source",
+            "primary_format": "gguf",
+            "detected_formats": ["gguf"],
+            "file_count": 1,
+            "total_bytes": 42,
+            "imported_at": "2026-05-17T00:00:00Z"
+        }}"#,
+        model_ref = "e".repeat(64),
+        short_ref = "e".repeat(SHORT_MODEL_REF_LENGTH)
+    );
+
+    let metadata: ModelMetadata = serde_json::from_str(&body).expect("metadata");
+
+    assert_eq!(metadata.model_capabilities, vec![ModelCapability::Chat]);
+    assert_eq!(
+        metadata.model_capability_source,
+        ModelCapabilitySource::DefaultChat
+    );
+}
+
+#[test]
+fn model_metadata_capabilities_round_trip_as_strings() {
+    let model_ref = ModelRef::parse("f".repeat(64)).expect("model ref");
+    let metadata = ModelMetadata {
+        short_ref: model_ref.short_ref().to_string(),
+        model_ref,
+        source_kind: ModelSourceKind::Local,
+        source_repo: None,
+        source_revision: None,
+        source_path: Some("/tmp/source".to_string()),
+        primary_format: ModelFormat::Safetensors,
+        detected_formats: vec![ModelFormat::Safetensors],
+        model_capabilities: vec![ModelCapability::Chat, ModelCapability::Rerank],
+        model_capability_source: ModelCapabilitySource::ManualUpdate,
+        file_count: 1,
+        total_bytes: 42,
+        imported_at: "2026-05-17T00:00:00Z".to_string(),
+    };
+
+    let body = toml::to_string_pretty(&metadata).expect("serialize metadata");
+    assert!(body.contains("\"chat\""));
+    assert!(body.contains("\"rerank\""));
+    assert!(body.contains("model_capability_source = \"manual-update\""));
+
+    let parsed: ModelMetadata = toml::from_str(&body).expect("parse metadata");
+    assert_eq!(
+        parsed.model_capabilities,
+        vec![ModelCapability::Chat, ModelCapability::Rerank]
+    );
+    assert_eq!(
+        parsed.model_capability_source,
+        ModelCapabilitySource::ManualUpdate
+    );
 }
 
 #[test]
@@ -348,6 +422,8 @@ fn model_metadata_fixture(model_ref: ModelRef) -> ModelMetadata {
         source_path: Some("/tmp/source".to_string()),
         primary_format: ModelFormat::Gguf,
         detected_formats: vec![ModelFormat::Gguf],
+        model_capabilities: default_model_capabilities(),
+        model_capability_source: default_model_capability_source(),
         file_count: 1,
         total_bytes: 42,
         imported_at: "2026-05-17T00:00:00Z".to_string(),
