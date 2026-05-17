@@ -1,6 +1,6 @@
 //! Session identity, metadata, transcript, and context domain types.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
@@ -287,18 +287,68 @@ pub struct SessionWarning {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionStoreConfig {
+    File(SessionStoreLayout),
+    Sql(SessionSqlStoreConfig),
+}
+
+impl SessionStoreConfig {
+    pub fn file_from_home_dir(home_dir: impl Into<PathBuf>) -> Self {
+        Self::File(SessionStoreLayout::from_home_dir(home_dir))
+    }
+
+    pub fn file_from_sessions_dir(sessions_dir: impl Into<PathBuf>) -> Self {
+        Self::File(SessionStoreLayout::from_sessions_dir(sessions_dir))
+    }
+
+    pub fn file_layout(&self) -> Option<&SessionStoreLayout> {
+        match self {
+            Self::File(layout) => Some(layout),
+            Self::Sql(_) => None,
+        }
+    }
+
+    pub fn runtime_home_dir(&self) -> Option<&Path> {
+        match self {
+            Self::File(layout) => Some(&layout.home_dir),
+            Self::Sql(config) => config.runtime_home_dir.as_deref(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionSqlStoreConfig {
+    pub backend: String,
+    pub database_url: String,
+    pub runtime_home_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionStorageLocation {
+    File(SessionFilePaths),
+    External {
+        backend: String,
+        locator: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionFilePaths {
+    pub store_path: PathBuf,
+    pub metadata_path: PathBuf,
+    pub messages_path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionSummary {
     pub metadata: SessionMetadata,
-    pub store_path: PathBuf,
-    pub messages_path: PathBuf,
+    pub location: SessionStorageLocation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionInspection {
     pub metadata: SessionMetadata,
-    pub store_path: PathBuf,
-    pub metadata_path: PathBuf,
-    pub messages_path: PathBuf,
+    pub location: SessionStorageLocation,
     pub warnings: Vec<SessionWarning>,
 }
 
@@ -319,7 +369,9 @@ pub struct StoredSessionMessage {
     pub role: SessionMessageRole,
     pub content: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub server_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub adapter_ref: Option<String>,
     pub metadata: Value,
 }
@@ -419,7 +471,7 @@ pub struct SessionAppendedMessage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionAppendOutcome {
     pub metadata: SessionMetadata,
-    pub store_path: PathBuf,
+    pub location: SessionStorageLocation,
     pub appended: Vec<SessionAppendedMessage>,
 }
 
@@ -464,7 +516,7 @@ pub struct SessionCompactionSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionCompactionOutcome {
     pub metadata: SessionMetadata,
-    pub store_path: PathBuf,
+    pub location: SessionStorageLocation,
     pub compacted: bool,
     pub source_message_count: usize,
     pub replaced_message_count: usize,
@@ -519,6 +571,14 @@ impl SessionStoreLayout {
 
     pub fn session_lock_path(&self, session_ref: &SessionRef) -> PathBuf {
         self.session_dir(session_ref).join(SESSION_LOCK_FILENAME)
+    }
+
+    pub fn file_location(&self, session_ref: &SessionRef) -> SessionStorageLocation {
+        SessionStorageLocation::File(SessionFilePaths {
+            store_path: self.session_dir(session_ref),
+            metadata_path: self.metadata_path(session_ref),
+            messages_path: self.messages_path(session_ref),
+        })
     }
 }
 
@@ -609,6 +669,18 @@ mod tests {
             PathBuf::from("/tmp/tentgent-home/sessions")
                 .join(session_ref.as_str())
                 .join(SESSION_MESSAGES_FILENAME)
+        );
+        assert_eq!(
+            layout.file_location(&session_ref),
+            SessionStorageLocation::File(SessionFilePaths {
+                store_path: PathBuf::from("/tmp/tentgent-home/sessions").join(session_ref.as_str()),
+                metadata_path: PathBuf::from("/tmp/tentgent-home/sessions")
+                    .join(session_ref.as_str())
+                    .join(SESSION_METADATA_FILENAME),
+                messages_path: PathBuf::from("/tmp/tentgent-home/sessions")
+                    .join(session_ref.as_str())
+                    .join(SESSION_MESSAGES_FILENAME),
+            })
         );
     }
 }

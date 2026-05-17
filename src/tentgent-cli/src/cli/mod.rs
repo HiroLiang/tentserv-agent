@@ -15,6 +15,7 @@ mod runtime;
 mod runtime_footprint;
 mod server;
 mod session;
+mod session_kernel;
 mod status;
 mod train;
 mod tui;

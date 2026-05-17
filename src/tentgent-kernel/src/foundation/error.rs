@@ -39,6 +39,9 @@ pub enum KernelError {
     #[error("server runtime is unavailable: {0}")]
     ServerRuntimeUnavailable(String),
 
+    #[error("session store is unavailable: {0}")]
+    SessionStoreUnavailable(String),
+
     #[error("train store is unavailable: {0}")]
     TrainStoreUnavailable(String),
 

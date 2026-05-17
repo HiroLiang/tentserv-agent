@@ -1,14 +1,10 @@
 use std::{
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use miette::{miette, IntoDiagnostic};
 use serde_json::json;
-use tentgent_core::session::{
-    SessionChatContextMessage, SessionCompactionSummary, SessionManager, SessionMessageInput,
-    DEFAULT_SESSION_CONTEXT_MESSAGES, MAX_SESSION_CONTEXT_MESSAGES,
-};
 use tentgent_kernel::features::adapter::domain::AdapterRefSelector;
 use tentgent_kernel::features::adapter::infra::FileAdapterCatalogStore;
 use tentgent_kernel::features::adapter::usecases::StdAdapterCompatibilityCheckUseCase;
@@ -30,11 +26,22 @@ use tentgent_kernel::features::runtime::infra::{
     StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
 use tentgent_kernel::features::runtime::usecases::StdRuntimeResolutionUseCase;
+use tentgent_kernel::features::session::domain::{
+    SessionChatContextMessage, SessionCompactionSummary, SessionMessageInput, SessionMessageRole,
+    DEFAULT_SESSION_CONTEXT_MESSAGES, MAX_SESSION_CONTEXT_MESSAGES,
+};
+use tentgent_kernel::features::session::usecases::{
+    AppendSessionChatAssistantRequest, ApplySessionChatSummaryRequest,
+    PrepareSessionChatTurnRequest, SessionChatContextUseCase, SessionChatSummaryScope,
+};
 use tentgent_kernel::foundation::layout::{
-    LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
+    LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver,
 };
 
-use super::commands::ChatCommand;
+use super::{
+    commands::ChatCommand,
+    session_kernel::{parse_session_selector, session_store_selection_from_str, CliSessionKernel},
+};
 
 pub async fn handle_chat_command(command: ChatCommand) -> miette::Result<()> {
     if command.session_ref.is_none() && command.max_session_messages.is_some() {
@@ -77,7 +84,6 @@ pub async fn handle_chat_command(command: ChatCommand) -> miette::Result<()> {
 }
 
 async fn handle_session_chat_command(command: ChatCommand) -> miette::Result<()> {
-    let runtime_home = resolve_runtime_home_for_cli(command.home.as_deref())?;
     let session_ref = command.session_ref.as_deref().expect("checked session");
     let max_session_messages = command
         .max_session_messages
@@ -90,57 +96,84 @@ async fn handle_session_chat_command(command: ChatCommand) -> miette::Result<()>
     }
 
     let request_messages = resolve_message_inputs(&command)?;
-    let session_manager = SessionManager::new_with_home(Some(Path::new(&runtime_home)))
-        .map_err(|err| miette!("failed to open session store: {err}"))?;
-    let mut turn = session_manager
-        .begin_chat_turn(session_ref, max_session_messages, request_messages)
+    let kernel = CliSessionKernel::new();
+    let session = kernel.session_usecase();
+    let store =
+        session_store_selection_from_str(command.home.as_deref(), LayoutResolveMode::Create);
+    let selector = parse_session_selector(session_ref)?;
+    let mut turn = session
+        .prepare_session_chat_turn(PrepareSessionChatTurnRequest {
+            store: store.clone(),
+            selector: selector.clone(),
+            max_session_messages,
+            request_messages: request_messages.clone(),
+        })
         .map_err(|err| miette!("failed to prepare session chat turn: {err}"))?;
     let selected_adapter_ref = command
         .adapter_ref
         .clone()
         .or_else(|| turn.metadata.adapter_ref.clone());
 
-    turn.apply_clear_compaction_if_needed()
-        .map_err(|err| miette!("failed to compact session transcript: {err}"))?;
-    if let Ok(Some(input)) = turn.rolling_context_input() {
+    if let Some(requirement) = turn.rolling_context.clone() {
         if let Ok(summary) = summarize_with_cli_model(
             command.home.as_deref(),
             &command.model_ref,
             selected_adapter_ref.as_deref(),
-            &input.prompt_messages,
+            requirement.input.prompt_messages(),
         )
         .await
         {
-            let _ = turn.apply_rolling_context_summary(summary);
+            if let Ok(result) = session.apply_session_chat_summary(ApplySessionChatSummaryRequest {
+                store: store.clone(),
+                selector: selector.clone(),
+                max_session_messages,
+                request_messages: request_messages.clone(),
+                scope: SessionChatSummaryScope::RollingContext,
+                summary,
+            }) {
+                turn = result.turn;
+            }
         }
     }
-    if let Some(input) = turn
-        .persisted_compaction_input()
-        .map_err(|err| miette!("failed to prepare session compaction: {err}"))?
-    {
+    if let Some(requirement) = turn.persisted_compaction.clone() {
         let summary = summarize_with_cli_model(
             command.home.as_deref(),
             &command.model_ref,
             selected_adapter_ref.as_deref(),
-            &input.prompt_messages,
+            requirement.input.prompt_messages(),
         )
         .await?;
-        turn.apply_persisted_compaction_summary(summary)
-            .map_err(|err| miette!("failed to compact session transcript: {err}"))?;
+        turn = session
+            .apply_session_chat_summary(ApplySessionChatSummaryRequest {
+                store: store.clone(),
+                selector: selector.clone(),
+                max_session_messages,
+                request_messages: request_messages.clone(),
+                scope: SessionChatSummaryScope::PersistedCompaction,
+                summary,
+            })
+            .map_err(|err| miette!("failed to compact session transcript: {err}"))?
+            .turn;
     }
-    if let Some(input) = turn
-        .request_context_summary_input()
-        .map_err(|err| miette!("failed to prepare session context summary: {err}"))?
-    {
+    if let Some(requirement) = turn.request_context_summary.clone() {
         let summary = summarize_with_cli_model(
             command.home.as_deref(),
             &command.model_ref,
             selected_adapter_ref.as_deref(),
-            &input.prompt_messages,
+            requirement.input.prompt_messages(),
         )
         .await?;
-        turn.apply_request_context_summary(summary)
-            .map_err(|err| miette!("failed to apply session context summary: {err}"))?;
+        turn = session
+            .apply_session_chat_summary(ApplySessionChatSummaryRequest {
+                store: store.clone(),
+                selector: selector.clone(),
+                max_session_messages,
+                request_messages: request_messages.clone(),
+                scope: SessionChatSummaryScope::RequestContext,
+                summary,
+            })
+            .map_err(|err| miette!("failed to apply session context summary: {err}"))?
+            .turn;
     }
 
     let prompt = chat_prompt_from_context(&turn.context_messages)?;
@@ -183,7 +216,16 @@ async fn handle_session_chat_command(command: ChatCommand) -> miette::Result<()>
         "adapter_ref": effective_adapter_ref,
         "finish_reason": result.response.finish_reason.as_str(),
     });
-    turn.append_assistant(assistant, None, effective_adapter_ref, metadata)
+    session
+        .append_session_chat_assistant(AppendSessionChatAssistantRequest {
+            store,
+            selector,
+            request_messages,
+            assistant_content: assistant,
+            assistant_server_ref: None,
+            assistant_adapter_ref: effective_adapter_ref,
+            assistant_metadata: metadata,
+        })
         .map_err(|err| miette!("failed to append session transcript: {err}"))?;
 
     Ok(())
@@ -312,13 +354,6 @@ fn chat_generation_options(command: &ChatCommand) -> ChatGenerationOptions {
     }
 }
 
-fn resolve_runtime_home_for_cli(home: Option<&str>) -> miette::Result<String> {
-    let layout = StdRuntimeLayoutResolver
-        .resolve(runtime_layout_input(LayoutResolveMode::ReadOnly, home))
-        .map_err(|err| miette!("failed to resolve Tentgent runtime home: {err}"))?;
-    Ok(layout.home_dir.to_string_lossy().into_owned())
-}
-
 fn resolve_messages(command: &ChatCommand) -> miette::Result<Vec<String>> {
     if !command.messages.is_empty() {
         return Ok(command.messages.clone());
@@ -346,7 +381,7 @@ fn chat_prompt_from_cli_messages(messages: Vec<String>) -> miette::Result<ChatPr
 fn chat_prompt_from_context(messages: &[SessionChatContextMessage]) -> miette::Result<ChatPrompt> {
     let messages = messages
         .iter()
-        .map(|message| chat_message_from_role_content(&message.role, &message.content))
+        .map(|message| chat_message_from_role_content(message.role.as_str(), &message.content))
         .collect::<miette::Result<Vec<_>>>()?;
     ChatPrompt::new(messages).map_err(|err| miette!("failed to build session chat prompt: {err}"))
 }
@@ -362,7 +397,8 @@ fn resolve_message_inputs(command: &ChatCommand) -> miette::Result<Vec<SessionMe
         .map(|message| {
             let parsed = parse_cli_message(&message)?;
             Ok(SessionMessageInput {
-                role: parsed.role,
+                role: SessionMessageRole::parse(&parsed.role)
+                    .map_err(|err| miette!("failed to parse session message role: {err}"))?,
                 content: parsed.content,
                 server_ref: None,
                 adapter_ref: None,

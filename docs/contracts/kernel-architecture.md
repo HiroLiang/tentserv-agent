@@ -438,7 +438,8 @@ The current standard chat use case composes runtime resolution, chat model
 resolution, chat adapter resolution, and a chat runtime client for prepare,
 completion, and streaming flows.
 
-`features/session/domain.rs` owns pure session-store names and transcript state:
+`features/session/domain.rs` owns pure session identity, storage-location, and
+transcript state:
 
 - managed session refs, short refs, and prefix selectors
 - session store filenames and path derivation from an already resolved runtime
@@ -446,6 +447,10 @@ completion, and streaming flows.
 - persisted `session.toml` and `messages.jsonl` schema names
 - message roles, metadata, warnings, list/inspect/message result data, and
   create/update/append/remove request and outcome data
+- backend-neutral session store configuration: file-backed layout or SQL-backed
+  database configuration
+- backend-neutral session storage locations, including current file paths and
+  future external store locators
 - bounded context and compaction constants, summary provenance names, and
   request-scoped context summary data
 
@@ -454,6 +459,59 @@ server or adapter stores, call chat models for summaries, proxy HTTP, or render
 CLI/HTTP/TUI output. Those jobs belong in session infra/use cases, chat use
 cases, server/adapter use cases, or frontend layers when the session migration
 bundle moves.
+
+`features/session/ports.rs` defines backend-neutral boundaries for:
+
+- generating unique session refs, reading clocks, and acquiring create/session
+  locks
+- semantic session store operations: ensure, list, inspect, load metadata, read
+  transcripts, create, update metadata, append messages, rewrite compacted
+  transcripts, and remove
+- resolving server and adapter refs used by session defaults and summary calls
+- generating persisted, rolling, and request-scoped summaries through chat/model
+  infrastructure
+
+Session store ports must take `SessionStoreConfig`, not `SessionStoreLayout`.
+`SessionStoreLayout` is only the file-backed variant payload; SQL-backed stores
+must not be forced to invent session directories. Ports must describe session
+operations rather than file operations. The first implementation can keep the
+current `session.toml` and `messages.jsonl` layout, but callers should not
+depend on those files through the port surface so a future SQLite or SQL-backed
+store can implement the same boundary.
+
+`features/session/infra/` provides the current file-backed implementation of
+those ports. `FileSessionStore` preserves the legacy on-disk layout internally,
+while `FileSessionLockManager`, `StdSessionIdentityGenerator`, and
+`SystemSessionClock` keep lock, ref, and timestamp behavior outside the domain.
+
+`features/session/usecases/port.rs` defines caller-facing session workflows:
+
+- resolving caller store selection into either the default file-backed runtime
+  home store or an explicit backend-neutral store config
+- read-only catalog work: list, inspect, and read recent messages
+- create, update, append, append-after-compaction, and remove mutations
+- manual compaction preparation and summary application
+- chat-turn context preparation, chat-turn summary application, and assistant
+  append after generation
+- generating summaries required by session compaction through chat/model
+  infrastructure
+
+Use case requests must take `SessionStoreSelection` rather than
+`SessionStoreLayout`. `DefaultFile` is the only branch that resolves a
+`RuntimeLayout`; explicit file or SQL configs pass through without forcing a
+runtime layout onto the caller. Use case results should return
+`ResolvedSessionStore`, so entrypoints can report the effective store when it is
+useful without depending on file paths for SQL-backed implementations.
+The current standard session use case composes the layout resolver, file/SQL
+neutral session store, lock manager, clock, identity generator, server/adapter
+reference resolvers, and summary generator. Shared compaction and chat-context
+planning rules live in `features/session/usecases/common.rs`, while
+`StdSessionUseCase` owns the workflow sequencing that CLI, HTTP, and future TUI
+entrypoints should call.
+The Rust CLI session commands and `chat --session` path are wired through
+`StdSessionUseCase`; CLI-specific adapters resolve server and adapter refs
+through the corresponding kernel catalog use cases and keep summary generation
+as command-level orchestration.
 
 `features/server/domain.rs` owns pure model-bound server names and durable
 state:
