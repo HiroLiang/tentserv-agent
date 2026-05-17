@@ -24,6 +24,12 @@ pub enum KernelError {
     #[error("adapter store is unavailable: {0}")]
     AdapterStoreUnavailable(String),
 
+    #[error("dataset store is unavailable: {0}")]
+    DatasetStoreUnavailable(String),
+
+    #[error("dataset runtime is unavailable: {0}")]
+    DatasetRuntimeUnavailable(String),
+
     #[error("chat runtime is unavailable: {0}")]
     ChatRuntimeUnavailable(String),
 

@@ -316,6 +316,56 @@ Current standard adapter use cases live in focused sibling files under
 `features/adapter/usecases/`: catalog reads, local import, Hugging Face pull,
 training-run import, base-model binding, compatibility checks, and removal.
 
+`features/dataset/domain.rs` owns pure dataset-store names and schema state:
+
+- canonical SHA-256 `dataset_ref` and short/hash-prefix selectors
+- dataset formats, source kinds, split names, provider names, and template
+  request data
+- deterministic manifest, package metadata, validation outcome, diff outcome,
+  import/export/removal result, and synth/eval request data
+- dataset-store path derivation from an already resolved datasets directory
+
+It must not walk directories, hash files, copy/import dataset data, call cloud
+providers, read auth secrets, inspect training references, run Python, or write
+metadata. Those jobs belong in dataset infra and use cases when the dataset
+migration bundle moves.
+
+`features/dataset/ports.rs` defines narrow boundaries for:
+
+- ensuring dataset-store directories before mutating dataset operations
+- staging local or generated dataset content before canonical identity is known
+- building manifests and deriving canonical `dataset_ref` values
+- detecting training package readiness and split metadata
+- reading/writing dataset catalog metadata, manifests, and source indexes
+- moving/exporting/removing canonical dataset content
+- validating JSONL files or dataset directories against the canonical schema
+- diffing stored or staged dataset manifests
+- rendering editable Markdown-backed dataset templates
+- executing provider-backed synth/eval workflows through an already selected
+  Python runtime and auth secret
+- checking train plans/runs that block dataset removal
+
+Dataset ports should receive resolved layout/runtime/auth inputs from use
+cases. They should not resolve runtime-home, prompt for auth, decide CLI/HTTP
+rendering, silently bootstrap Python dependencies, or duplicate train-reference
+policy in frontends.
+
+`features/dataset/templates/` owns Markdown-backed templates that are meant to
+be edited as text, such as dataset generation prompts. Rust code may include and
+render these files, but long prompt bodies should live as `.md` templates rather
+than string literals inside services or use cases.
+
+`features/dataset/infra/` owns the standard filesystem, validation, template,
+reference-guard, and subprocess adapters for dataset ports: dataset-store
+directory creation, import/diff staging, manifest building, canonical manifest
+hashing, package readiness detection, metadata/catalog reads and writes,
+source-index cleanup, canonical content movement/export/removal, schema
+validation, manifest diffing, Markdown template rendering, train plan/run
+reference checks, and dataset synth/eval helper execution through an already
+selected Python runtime. Runtime clients may build helper argv and parse helper
+JSON/progress output, but they must not resolve auth, bootstrap Python, call
+providers directly, or decide CLI/HTTP rendering.
+
 `features/chat/domain.rs` owns pure chat request and execution names:
 
 - normalized chat roles and messages
