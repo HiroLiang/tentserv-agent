@@ -1,5 +1,5 @@
 use crate::{
-    bootstrap::RestConfig,
+    bootstrap::{LoggingRuntime, RestConfig},
     runtime::{JobRegistry, MemoryCache, Scheduler},
 };
 
@@ -7,6 +7,7 @@ use super::DaemonServices;
 
 pub struct DaemonAppState {
     services: DaemonServices,
+    logging: LoggingRuntime,
     cache: MemoryCache,
     jobs: JobRegistry,
     scheduler: Scheduler,
@@ -14,9 +15,10 @@ pub struct DaemonAppState {
 }
 
 impl DaemonAppState {
-    pub fn new(services: DaemonServices, rest: RestConfig) -> Self {
+    pub fn new(services: DaemonServices, logging: LoggingRuntime, rest: RestConfig) -> Self {
         Self {
             services,
+            logging,
             cache: MemoryCache::default(),
             jobs: JobRegistry::default(),
             scheduler: Scheduler::default(),
@@ -26,6 +28,10 @@ impl DaemonAppState {
 
     pub fn services(&self) -> &DaemonServices {
         &self.services
+    }
+
+    pub fn logging(&self) -> &LoggingRuntime {
+        &self.logging
     }
 
     pub fn cache(&self) -> &MemoryCache {

@@ -52,14 +52,26 @@ infrastructure, and use cases.
 Daemon startup should be split into stable steps:
 
 1. Parse process arguments or external config.
-2. Initialize logging and tracing.
-3. Build kernel infrastructure bundles.
-4. Build daemon-local runtime systems.
-5. Build transport entrypoints.
-6. Run the enabled transports until shutdown.
+2. Resolve runtime layout enough to find `logs_dir`.
+3. Initialize logging and tracing.
+4. Build kernel infrastructure bundles.
+5. Build daemon-local runtime systems.
+6. Build transport entrypoints.
+7. Run the enabled transports until shutdown.
 
 Startup code should not embed route behavior. Route behavior belongs under
 `handlers/`, with kernel-facing work delegated to app services.
+
+## Logging Boundary
+
+Daemon structured logs are written through `tracing`. The file sink should use
+`RuntimeLayout.logs_dir` from the kernel layout resolver instead of hard-coded
+paths.
+
+The daemon tracing log uses a rolling `daemon.log` prefix under `logs/`.
+Detached-process stdout and stderr files such as `daemon.stdout.log` and
+`daemon.stderr.log` remain lifecycle-launch artifacts, not the primary
+structured application log.
 
 ## Kernel Component Boundary
 
