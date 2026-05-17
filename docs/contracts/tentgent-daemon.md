@@ -134,6 +134,12 @@ The first stable REST surface is:
   Kernel-backed dataset inspection response for a full dataset ref or unique
   prefix. Dataset DTOs expose tuning readiness, split paths, warnings, source
   metadata, and managed source paths from kernel metadata.
+- `GET /v1/servers`
+  Kernel-backed stored server list response with process-state observation.
+- `GET /v1/servers/{reference}`
+  Kernel-backed stored server inspection response for a full server ref or
+  unique prefix. Server DTOs expose runtime target, bind settings, process
+  metadata, and server-local paths from kernel state.
 
 ## Runtime Boundary
 

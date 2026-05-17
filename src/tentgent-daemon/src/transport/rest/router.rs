@@ -2,7 +2,7 @@ use axum::{routing::get, Router};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::rest::{adapter, dataset, health, model, status};
+use crate::handlers::rest::{adapter, dataset, health, model, server, status};
 
 use super::state::RestState;
 
@@ -16,6 +16,8 @@ pub fn build_router(state: RestState) -> Router {
         .route("/v1/adapters/{reference}", get(adapter::inspect))
         .route("/v1/datasets", get(dataset::list))
         .route("/v1/datasets/{reference}", get(dataset::inspect))
+        .route("/v1/servers", get(server::list))
+        .route("/v1/servers/{reference}", get(server::inspect))
         .with_state(state)
         .layer(
             TraceLayer::new_for_http()
