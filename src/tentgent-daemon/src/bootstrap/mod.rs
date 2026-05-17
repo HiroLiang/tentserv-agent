@@ -27,7 +27,7 @@ pub fn bootstrap_daemon_app(config: DaemonBootstrapConfig) -> Result<DaemonApp> 
     );
 
     let services = DaemonServices::bootstrap(&config)?;
-    let state = DaemonAppState::new(services, logging, config.rest);
+    let state = DaemonAppState::new(services, logging, layout, config.rest);
 
     Ok(DaemonApp::new(state))
 }

@@ -6,7 +6,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 use super::LoggingConfig;
 
-const DEFAULT_LOG_FILTER: &str = "tentgent_daemon=info,tentgent_kernel=info";
+const DEFAULT_LOG_FILTER: &str = "tentgent_daemon=info,tentgent_kernel=info,tower_http=info";
 const DAEMON_LOG_FILE_PREFIX: &str = "daemon.log";
 
 pub struct LoggingRuntime {

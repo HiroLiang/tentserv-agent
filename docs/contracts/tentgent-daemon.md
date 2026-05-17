@@ -92,12 +92,36 @@ REST is one transport entrypoint, not the daemon architecture itself. Future
 local sockets or internal control channels should be added under `transport/`
 and wired through the same `DaemonAppState`.
 
+The REST transport uses `axum` directly inside `src/transport/rest/` and
+`src/handlers/rest/`. Axum types should not leak into `app/`, `kernel/`, or
+kernel use cases.
+
 Transport handlers should:
 
 - Parse request DTOs.
 - Call daemon services or kernel use cases.
 - Map domain results to response DTOs.
 - Avoid owning persistence or runtime capability decisions directly.
+
+REST response DTOs should live beside the handler that owns that API surface
+(`handlers/rest/<feature>/dto.rs` for larger features, or the handler file for
+tiny endpoints). `transport/rest/response.rs` should stay limited to truly
+shared response primitives such as the service name and standard error shape, so
+new API groups do not grow a global DTO file.
+
+The first stable REST surface is:
+
+- `GET /healthz`
+  Lightweight process health response.
+- `GET /v1/status`
+  Kernel-backed daemon status response.
+- `GET /v1/models`
+  Kernel-backed model catalog list response.
+- `GET /v1/models/{reference}`
+  Kernel-backed model inspection response for a full model ref or unique
+  prefix. Model DTOs expose `model_capabilities` and
+  `model_capability_source` from kernel metadata so chat, embedding, and rerank
+  support remains visible at the API boundary.
 
 ## Runtime Boundary
 

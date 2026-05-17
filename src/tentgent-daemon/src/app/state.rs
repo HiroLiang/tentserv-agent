@@ -2,12 +2,14 @@ use crate::{
     bootstrap::{LoggingRuntime, RestConfig},
     runtime::{JobRegistry, MemoryCache, Scheduler},
 };
+use tentgent_kernel::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
 
 use super::DaemonServices;
 
 pub struct DaemonAppState {
     services: DaemonServices,
     logging: LoggingRuntime,
+    layout: RuntimeLayout,
     cache: MemoryCache,
     jobs: JobRegistry,
     scheduler: Scheduler,
@@ -15,10 +17,16 @@ pub struct DaemonAppState {
 }
 
 impl DaemonAppState {
-    pub fn new(services: DaemonServices, logging: LoggingRuntime, rest: RestConfig) -> Self {
+    pub fn new(
+        services: DaemonServices,
+        logging: LoggingRuntime,
+        layout: RuntimeLayout,
+        rest: RestConfig,
+    ) -> Self {
         Self {
             services,
             logging,
+            layout,
             cache: MemoryCache::default(),
             jobs: JobRegistry::default(),
             scheduler: Scheduler::default(),
@@ -32,6 +40,18 @@ impl DaemonAppState {
 
     pub fn logging(&self) -> &LoggingRuntime {
         &self.logging
+    }
+
+    pub fn layout(&self) -> &RuntimeLayout {
+        &self.layout
+    }
+
+    pub fn layout_input(&self, mode: LayoutResolveMode) -> RuntimeLayoutInput {
+        RuntimeLayoutInput {
+            mode,
+            home_dir: Some(self.layout.home_dir.clone()),
+            data_root_dir: Some(self.layout.data_root_dir.clone()),
+        }
     }
 
     pub fn cache(&self) -> &MemoryCache {
