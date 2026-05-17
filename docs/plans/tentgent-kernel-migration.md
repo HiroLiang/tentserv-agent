@@ -70,6 +70,22 @@ Implemented:
 - Adapter feature domain objects for canonical adapter refs/selectors, adapter
   metadata, manifests, source/base indexes, adapter-store path derivation,
   format detection, and conservative base-model/backend compatibility checks.
+- Adapter ports for layout initialization, source staging, Hugging Face
+  snapshot fetching, manifest/identity creation, source metadata reads,
+  catalog writes, source/base indexes, content movement, and server-reference
+  checks.
+- Adapter infra implementations split by port: file-backed adapter-store
+  layout, staging, source metadata reads, manifest and identity generation,
+  catalog writes, source/base indexes, content movement, server-reference
+  checks, and Hugging Face snapshot helper execution.
+- Adapter use-case ports in `features/adapter/usecases/port.rs` for catalog
+  reads, local imports, Hugging Face pulls, training-run imports, base-model
+  binding, server-time compatibility checks, and removal workflows.
+- Adapter use-case implementations for catalog reads, local imports, Hugging
+  Face pulls, training-run imports, base-model binding, server-time
+  compatibility checks, and removal orchestration.
+- CLI adapter command composition now uses kernel adapter infra/use cases for
+  local imports, Hugging Face pulls, catalog reads, binding, and removal.
 - Doctor feature domain objects for diagnostic execution mode, repair intent,
   check status/category, summaries, reports, path checks, command checks, and
   repair plans.

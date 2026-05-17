@@ -21,6 +21,9 @@ pub enum KernelError {
     #[error("model store is unavailable: {0}")]
     ModelStoreUnavailable(String),
 
+    #[error("adapter store is unavailable: {0}")]
+    AdapterStoreUnavailable(String),
+
     #[error("unsupported target: {0}")]
     UnsupportedTarget(String),
 }

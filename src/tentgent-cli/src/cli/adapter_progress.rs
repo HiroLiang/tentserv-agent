@@ -1,5 +1,5 @@
 use indicatif::{ProgressBar, ProgressStyle};
-use tentgent_core::adapter::HfPullProgress;
+use tentgent_kernel::features::adapter::domain::HfAdapterPullProgress;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PullProgressMode {
@@ -36,7 +36,7 @@ impl PullProgress {
         }
     }
 
-    pub(super) fn update(&mut self, event: HfPullProgress) {
+    pub(super) fn update(&mut self, event: HfAdapterPullProgress) {
         if event.finished {
             return;
         }

@@ -2,7 +2,9 @@ use std::path::Path;
 
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
-use tentgent_core::adapter::{AdapterMetadata, AdapterSourceKind, AdapterSummary};
+use tentgent_kernel::features::adapter::domain::{
+    AdapterMetadata, AdapterSourceKind, AdapterSummary,
+};
 
 use super::display::format_bytes;
 
@@ -53,7 +55,7 @@ pub fn render_adapter_list(adapters: &[AdapterSummary]) {
 
 fn base_summary(metadata: &AdapterMetadata) -> String {
     if let Some(base_model_ref) = &metadata.base_model_ref {
-        return short_ref(base_model_ref);
+        return short_ref(base_model_ref.as_str());
     }
 
     if let Some(repo) = &metadata.base_model_source_repo {

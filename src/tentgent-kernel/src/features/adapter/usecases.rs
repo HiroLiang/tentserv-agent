@@ -1,1 +1,0 @@
-//! Adapter application workflows.

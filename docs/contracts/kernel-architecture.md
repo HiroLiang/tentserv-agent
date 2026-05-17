@@ -267,6 +267,54 @@ from Hugging Face, read auth secrets, inspect server references, or write
 metadata. Those jobs belong in adapter infra and use cases when the adapter
 migration bundle moves.
 
+`features/adapter/ports.rs` defines narrow boundaries for:
+
+- ensuring adapter-store directories before mutating adapter operations
+- staging local, Hugging Face, or training-run adapter content before canonical
+  identity is known
+- fetching Hugging Face snapshots through an already selected Python runtime
+- building manifests and deriving canonical `adapter_ref` values
+- reading source metadata hints from staged adapter content
+- reading/writing adapter catalog metadata, manifests, and source/base indexes
+- moving/removing canonical adapter content
+- checking stored server specs that block adapter removal
+
+Adapter ports should receive resolved layout/runtime/auth inputs from use
+cases. They should not resolve runtime-home, prompt for auth, decide CLI
+rendering, validate base-model compatibility by themselves, or silently
+bootstrap Python runtime dependencies.
+
+`features/adapter/infra/` owns the standard filesystem and subprocess adapters
+for those ports: adapter-store directory creation, import staging, source
+metadata reads from adapter config files, manifest building, canonical manifest
+hashing, metadata/catalog reads and writes, source-index and base-index cleanup,
+canonical content movement/removal, server-reference checks, and Hugging Face
+snapshot helper execution through an already selected Python runtime. The
+Hugging Face adapter may run the helper process, but it must not resolve auth,
+bootstrap Python, validate base-model compatibility, or choose CLI progress
+rendering.
+
+`features/adapter/usecases/port.rs` defines workflow boundaries for:
+
+- listing and inspecting stored adapters without exposing catalog store details
+- importing local adapter content through staging, manifesting, deduplication,
+  optional base-model binding, and metadata/index writes
+- pulling Hugging Face adapter content through resolved auth and Python runtime
+  inputs while reporting progress through a caller-provided sink
+- importing successful training-run adapter output with training provenance
+  indexes
+- binding an existing adapter to one managed local base model
+- validating an adapter for a selected server base model/backend target
+- removing stored adapters after server-reference checks
+
+Standard adapter use cases should compose foundation layout, runtime
+resolution, auth secret resolution, model catalog reads, and adapter infra
+ports. CLI, HTTP, TUI, training, and server preflight callers should call these
+use cases instead of rebuilding adapter-store orchestration directly.
+Current standard adapter use cases live in focused sibling files under
+`features/adapter/usecases/`: catalog reads, local import, Hugging Face pull,
+training-run import, base-model binding, compatibility checks, and removal.
+
 `features/runtime/ports.rs` defines narrow boundaries for:
 
 - resolving Python project/environment layout from caller overrides, runtime
@@ -409,6 +457,9 @@ Auth use cases may move secrets in memory, but they must not render, log,
 serialize, or persist secret values outside the system Keychain.
 
 The Rust CLI auth command now composes these kernel auth use cases directly.
+The Rust CLI adapter command now composes kernel adapter infra and use cases
+directly for local imports, Hugging Face pulls, catalog reads, binding, and
+removal.
 HTTP auth status, TUI auth setup, and core runtime provider-secret callers are
 still migration callers until their entry points are switched to the same
 kernel package.
