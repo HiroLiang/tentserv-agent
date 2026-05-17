@@ -157,6 +157,7 @@ Each feature package maps to a product area:
 features/auth/
 features/model/
 features/adapter/
+features/chat/
 features/dataset/
 features/config/
 features/server/
@@ -314,6 +315,55 @@ use cases instead of rebuilding adapter-store orchestration directly.
 Current standard adapter use cases live in focused sibling files under
 `features/adapter/usecases/`: catalog reads, local import, Hugging Face pull,
 training-run import, base-model binding, compatibility checks, and removal.
+
+`features/chat/domain.rs` owns pure chat request and execution names:
+
+- normalized chat roles and messages
+- prompt and generation option data
+- chat backend names used by local model execution
+- resolved local-model and cloud-provider runtime targets
+- resolved request-time adapter selection data
+- response, finish-reason, and streaming-event data
+
+It must not parse CLI flags, read HTTP bodies, inspect model or adapter stores,
+spawn Python, proxy HTTP, read sessions, or write transcripts. Those jobs belong
+in chat infra or use cases once the chat migration bundle moves.
+
+`features/chat/ports.rs` defines narrow boundaries for:
+
+- resolving a model selector into a chat-capable runtime target
+- resolving and validating an adapter selector for a selected local chat target
+- executing a prepared chat request through a selected Python runtime client
+
+Chat ports should receive resolved layout/runtime data from use cases. They
+should not resolve runtime-home, decide CLI/HTTP rendering, silently bootstrap
+Python dependencies, or duplicate model/adapter catalog orchestration in
+frontends.
+
+`features/chat/infra/` owns the standard adapters for those ports: model target
+resolution by adapting the model catalog use case, adapter target resolution by
+adapting the adapter compatibility use case, and `tentgent-chat-once` process
+execution through an already selected Python runtime. Chat infra may build
+runtime argv and parse process output, but it must not prompt for auth, launch
+servers, choose session context, or write chat transcripts.
+
+`features/chat/usecases/port.rs` defines workflow boundaries for:
+
+- preparing a chat request by resolving layout, Python runtime, model target,
+  optional adapter target, prompt, and generation options
+- running one-shot non-streaming chat generation through the prepared runtime
+  request
+- running streaming chat generation while forwarding normalized stream events
+  through a caller-provided sink
+
+Chat use cases should be the shared orchestration surface for CLI, HTTP, and
+future TUI callers. Frontends should parse input and render output, while chat
+use cases own model/adapter/runtime composition. Session transcript reads,
+compaction, and writes should remain in session-specific workflows that call the
+chat use cases with already selected context messages.
+The current standard chat use case composes runtime resolution, chat model
+resolution, chat adapter resolution, and a chat runtime client for prepare,
+completion, and streaming flows.
 
 `features/runtime/ports.rs` defines narrow boundaries for:
 

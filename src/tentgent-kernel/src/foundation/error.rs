@@ -24,6 +24,9 @@ pub enum KernelError {
     #[error("adapter store is unavailable: {0}")]
     AdapterStoreUnavailable(String),
 
+    #[error("chat runtime is unavailable: {0}")]
+    ChatRuntimeUnavailable(String),
+
     #[error("unsupported target: {0}")]
     UnsupportedTarget(String),
 }

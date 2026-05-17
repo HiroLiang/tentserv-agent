@@ -21,23 +21,6 @@ pub fn require_python_interpreter(runtime: &PythonRuntime, label: &str) -> Resul
     ))
 }
 
-pub fn require_python_script(
-    runtime: &PythonRuntime,
-    script: &str,
-    label: &str,
-) -> Result<PathBuf> {
-    let entrypoint = runtime.script_bin(script);
-    if entrypoint.exists() {
-        return Ok(entrypoint);
-    }
-
-    Err(miette!(
-        "{label} is missing at `{}`; {}",
-        entrypoint.display(),
-        missing_runtime_hint(runtime)
-    ))
-}
-
 fn missing_runtime_hint(runtime: &PythonRuntime) -> &'static str {
     match runtime.source() {
         PythonRuntimeSource::InstalledPrefix => {
