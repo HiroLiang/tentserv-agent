@@ -20,82 +20,28 @@ use tentgent_kernel::{
             DaemonWarning as KernelDaemonWarning, DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT,
         },
         infra::{
-            FileDaemonStateStore, ReqwestDaemonHttpReadinessProbe, StdDaemonBindSafetyChecker,
-            StdDaemonDetachedLauncher, StdDaemonProcessController, StdDaemonProcessProbe,
-            StdDaemonStoreLayoutInitializer, SystemDaemonClock,
+            daemon_runtime_layout_input as daemon_layout, StdDaemonKernel,
+            DEFAULT_DAEMON_PROBE_TIMEOUT,
         },
         usecases::{
             DaemonClearProcessRequest, DaemonDetachedStartRequest, DaemonDetachedStartUseCase,
             DaemonInspectionMode, DaemonLifecycleUseCase, DaemonPrepareRunRequest,
             DaemonReadinessToken, DaemonRecordProcessStartRequest, DaemonStatusRequest,
-            DaemonStatusUseCase, DaemonStopRequest, StdDaemonUseCase,
+            DaemonStatusUseCase, DaemonStopRequest,
         },
     },
-    foundation::layout::{LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver},
+    foundation::layout::LayoutResolveMode,
 };
 
 use super::commands::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 
 const DAEMON_URL_ENV_VAR: &str = "TENTGENT_DAEMON_URL";
 const DAEMON_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
-const DAEMON_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
-
 type DaemonInspection = core_daemon::DaemonInspection;
 type DaemonWarning = core_daemon::DaemonWarning;
 
-struct CliDaemonKernel {
-    layout_resolver: StdRuntimeLayoutResolver,
-    layout_initializer: StdDaemonStoreLayoutInitializer,
-    state_store: FileDaemonStateStore,
-    process_probe: StdDaemonProcessProbe,
-    process_controller: StdDaemonProcessController,
-    bind_safety_checker: StdDaemonBindSafetyChecker,
-    detached_launcher: StdDaemonDetachedLauncher,
-    readiness_probe: ReqwestDaemonHttpReadinessProbe,
-    clock: SystemDaemonClock,
-}
-
-impl CliDaemonKernel {
-    fn new() -> miette::Result<Self> {
-        Ok(Self {
-            layout_resolver: StdRuntimeLayoutResolver,
-            layout_initializer: StdDaemonStoreLayoutInitializer,
-            state_store: FileDaemonStateStore,
-            process_probe: StdDaemonProcessProbe,
-            process_controller: StdDaemonProcessController::default(),
-            bind_safety_checker: StdDaemonBindSafetyChecker,
-            detached_launcher: StdDaemonDetachedLauncher,
-            readiness_probe: ReqwestDaemonHttpReadinessProbe::new(DAEMON_PROBE_TIMEOUT)
-                .into_diagnostic()?,
-            clock: SystemDaemonClock,
-        })
-    }
-
-    fn usecase(&self) -> StdDaemonUseCase<'_> {
-        StdDaemonUseCase::new(
-            &self.layout_resolver,
-            &self.layout_initializer,
-            &self.state_store,
-            &self.process_probe,
-            &self.process_controller,
-            &self.bind_safety_checker,
-            &self.detached_launcher,
-            &self.readiness_probe,
-            &self.clock,
-        )
-    }
-}
-
-fn daemon_layout(home: Option<PathBuf>, mode: LayoutResolveMode) -> RuntimeLayoutInput {
-    RuntimeLayoutInput {
-        mode,
-        home_dir: home,
-        data_root_dir: None,
-    }
-}
-
 pub(crate) fn daemon_status_with_cleanup(home: Option<&Path>) -> miette::Result<DaemonInspection> {
-    let kernel = CliDaemonKernel::new()?;
+    let kernel = StdDaemonKernel::new(DEFAULT_DAEMON_PROBE_TIMEOUT).into_diagnostic()?;
     let daemon = kernel.usecase();
     let status = daemon
         .daemon_status(DaemonStatusRequest {
@@ -121,7 +67,7 @@ pub async fn handle_daemon_command(action: DaemonCommands) -> miette::Result<()>
             render_daemon_guidance(&inspection);
         }
         DaemonCommands::Stop { home } => {
-            let kernel = CliDaemonKernel::new()?;
+            let kernel = StdDaemonKernel::new(DEFAULT_DAEMON_PROBE_TIMEOUT).into_diagnostic()?;
             let daemon = kernel.usecase();
             let outcome = daemon
                 .stop_daemon(DaemonStopRequest {
@@ -137,7 +83,7 @@ pub async fn handle_daemon_command(action: DaemonCommands) -> miette::Result<()>
 }
 
 async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
-    let kernel = CliDaemonKernel::new()?;
+    let kernel = StdDaemonKernel::new(DEFAULT_DAEMON_PROBE_TIMEOUT).into_diagnostic()?;
     let daemon = kernel.usecase();
     let security = DaemonSecurityConfig::from_env();
     let prepared = daemon
@@ -167,7 +113,8 @@ async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
             },
         })
         .into_diagnostic()?;
-    let inspection = core_daemon_inspection(recorded.inspection);
+    let kernel_inspection = recorded.inspection;
+    let inspection = core_daemon_inspection(kernel_inspection.clone());
 
     render_daemon_inspection("Daemon started", &inspection);
     println!(
@@ -179,7 +126,7 @@ async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
     let home_dir = inspection.home_dir.clone();
 
     let serve_result = tokio::select! {
-        result = server.serve(DaemonHttpState::with_security(inspection, security)) => Some(result),
+        result = server.serve(DaemonHttpState::with_security(kernel_inspection, security)) => Some(result),
         signal = tokio::signal::ctrl_c() => {
             signal.into_diagnostic()?;
             None
@@ -283,7 +230,7 @@ pub(crate) async fn start_daemon_detached(
     options: DetachedDaemonOptions,
 ) -> miette::Result<DetachedDaemonStartOutcome> {
     let security = DaemonSecurityConfig::from_env();
-    let kernel = CliDaemonKernel::new()?;
+    let kernel = StdDaemonKernel::new(DEFAULT_DAEMON_PROBE_TIMEOUT).into_diagnostic()?;
     let daemon = kernel.usecase();
     let token = read_daemon_token_from_env().and_then(DaemonReadinessToken::parse);
     let result = daemon

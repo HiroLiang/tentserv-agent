@@ -5,6 +5,7 @@ members = [
     "src/tentgent-core",
     "src/tentgent-cli",
     "src/tentgent-http",
+    "src/tentgent-daemon",
 ]
 default-members = ["src/tentgent-cli"]
 

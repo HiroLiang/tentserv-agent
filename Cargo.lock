@@ -2139,6 +2139,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tentgent-daemon"
+version = "0.3.4-alpha.2"
+dependencies = [
+ "clap",
+ "miette",
+ "tentgent-kernel",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "tentgent-http"
 version = "0.3.4-alpha.2"
 dependencies = [
@@ -2148,6 +2160,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tentgent-core",
+ "tentgent-kernel",
  "time",
  "tokio",
 ]

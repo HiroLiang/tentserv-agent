@@ -31,8 +31,11 @@ If the current task is about agent workflows, role selection, or role-specific w
   crate.
 - `src/tentgent-cli/`
   Rust CLI entry point.
+- `src/tentgent-daemon/`
+  Rust long-running daemon application host for bootstrap, transports,
+  daemon-local runtime systems, and kernel use-case wiring.
 - `src/tentgent-http/`
-  Rust HTTP daemon entry point and route layer.
+  Legacy Rust HTTP daemon entry point and route layer.
 - `python/tentgent-daemon/`
   Standalone Python subproject that owns model runtimes, backend selection, and adapter lifecycle.
 - `python/tentgent-daemon/src/tentgent_daemon/`
@@ -72,6 +75,8 @@ Key current documents:
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - `docs/contracts/http-daemon.md`
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
+- `docs/contracts/tentgent-daemon.md`
+  Rust daemon application host, bootstrap, transport, and runtime-state boundary.
 - `docs/contracts/training-lora.md`
   Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
 - `docs/user/README.md`

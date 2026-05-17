@@ -6,10 +6,10 @@ use std::{
 
 use serde_json::{json, Value};
 use tentgent_core::{
-    daemon::{DaemonInspection, DaemonProcessMetadata},
     dataset::DatasetManager,
     server::{LaunchMode, ServerManager, ServerRunRequest},
 };
+use tentgent_kernel::features::daemon::domain::{DaemonInspection, DaemonProcessMetadata};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,

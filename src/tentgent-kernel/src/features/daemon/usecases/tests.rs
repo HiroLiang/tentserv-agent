@@ -19,9 +19,7 @@ use crate::features::daemon::ports::{
     DaemonPidFile, DaemonPortFuture, DaemonProcessController, DaemonProcessProbe, DaemonStateStore,
     DaemonStatusProbeOutcome, DaemonStoreSnapshot,
 };
-use crate::features::daemon::test_support::{
-    assert_http_daemon_url, successful_healthz_probe,
-};
+use crate::features::daemon::test_support::{assert_http_daemon_url, successful_healthz_probe};
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::{
     LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput, StdRuntimeLayoutResolver,

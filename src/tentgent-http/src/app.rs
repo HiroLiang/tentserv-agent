@@ -9,7 +9,7 @@ use std::{
 };
 
 use miette::{miette, IntoDiagnostic};
-use tentgent_core::daemon::DaemonInspection;
+use tentgent_kernel::features::daemon::domain::DaemonInspection;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::Notify,

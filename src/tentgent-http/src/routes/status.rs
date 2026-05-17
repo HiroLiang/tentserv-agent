@@ -1,4 +1,15 @@
-use tentgent_core::{daemon::DaemonManager, VERSION};
+use tentgent_core::VERSION;
+use tentgent_kernel::{
+    features::daemon::{
+        domain::{DaemonInspection, DaemonWarning},
+        infra::{
+            daemon_runtime_layout_input as daemon_layout, StdDaemonKernel,
+            DEFAULT_DAEMON_PROBE_TIMEOUT,
+        },
+        usecases::{DaemonInspectionMode, DaemonStatusRequest, DaemonStatusUseCase},
+    },
+    foundation::layout::LayoutResolveMode,
+};
 
 use crate::{
     app::DaemonHttpState,
@@ -28,10 +39,7 @@ pub(crate) fn status_response(state: &DaemonHttpState) -> HttpResponse {
 fn status_item(state: &DaemonHttpState) -> StatusResponse {
     let inspection = state.inspection();
     let process = inspection.process.as_ref();
-    let warnings = DaemonManager::open_readonly(Some(&inspection.home_dir))
-        .and_then(|manager| manager.status_observational())
-        .map(|dynamic| dynamic.warnings)
-        .unwrap_or_else(|_| inspection.warnings.clone());
+    let warnings = dynamic_warnings(inspection);
     StatusResponse {
         service: SERVICE_NAME,
         version: VERSION,
@@ -61,4 +69,21 @@ fn status_item(state: &DaemonHttpState) -> StatusResponse {
             })
             .collect(),
     }
+}
+
+fn dynamic_warnings(inspection: &DaemonInspection) -> Vec<DaemonWarning> {
+    let Ok(kernel) = StdDaemonKernel::new(DEFAULT_DAEMON_PROBE_TIMEOUT) else {
+        return inspection.warnings.clone();
+    };
+    let daemon = kernel.usecase();
+    daemon
+        .daemon_status(DaemonStatusRequest {
+            layout: daemon_layout(
+                Some(inspection.home_dir.clone()),
+                LayoutResolveMode::ReadOnly,
+            ),
+            mode: DaemonInspectionMode::Observational,
+        })
+        .map(|dynamic| dynamic.inspection.warnings)
+        .unwrap_or_else(|_| inspection.warnings.clone())
 }

@@ -557,6 +557,8 @@ unsafe binds without DNS resolution, launches detached child commands with
 stdout/stderr log files, and probes `/healthz` plus optional authenticated
 `/v1/status`. It must not parse CLI flags, read daemon token environment
 variables, own HTTP route handling, or render daemon status.
+`StdDaemonKernel` is the owned standard adapter bundle used by CLI and HTTP
+entrypoints so they do not duplicate daemon use-case wiring.
 
 `features/daemon/usecases/port.rs` defines workflow boundaries for:
 
@@ -577,8 +579,9 @@ values.
 The current `StdDaemonUseCase` composes layout resolution, daemon state store,
 process probe/control, bind safety, detached launching, readiness probing, and
 clock ports for status, foreground lifecycle, and detached startup workflows.
-The Rust CLI daemon command path and TUI daemon status refresh use this kernel
-use case surface; HTTP route handling remains outside the daemon kernel package.
+The Rust CLI daemon command path, TUI daemon status refresh, low-level
+`tentgent-http` binary, and HTTP status route use this kernel use case surface.
+HTTP route handling remains outside the daemon kernel package.
 
 `features/server/domain.rs` owns pure model-bound server names and durable
 state:

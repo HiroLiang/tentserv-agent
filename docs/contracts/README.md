@@ -33,6 +33,8 @@ Use this directory for concise interface documents that define stable boundaries
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - [http-daemon.md](./http-daemon.md)
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
+- [tentgent-daemon.md](./tentgent-daemon.md)
+  Rust daemon application host, bootstrap, transport, and runtime-state boundary.
 - [training-lora.md](./training-lora.md)
   Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
 - [runtime-home.md](./runtime-home.md)
