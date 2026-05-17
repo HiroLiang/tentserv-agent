@@ -1,7 +1,9 @@
 use std::io::{self, Write};
 
 use miette::{miette, IntoDiagnostic, Result};
-use tentgent_core::train::{LoraTrainBackend, LoraTrainOverrides, LoraTrainPlan};
+use tentgent_kernel::features::train::domain::{
+    LoraTrainBackend, LoraTrainOverrides, LoraTrainPlan,
+};
 
 pub fn collect_overrides(
     plan: &LoraTrainPlan,

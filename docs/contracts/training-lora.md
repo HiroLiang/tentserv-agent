@@ -23,6 +23,16 @@ tentgent train lora run-worker --home <HOME> --run-ref <RUN_REF>
 The `run-worker` command is hidden. It is an internal detached worker entry for
 the HTTP daemon and should not be treated as user-facing CLI.
 
+Kernel migration state:
+
+- CLI plan management now uses `tentgent-kernel` train use cases for plan
+  preview/create/list/inspect/remove.
+- CLI run startup and foreground execution use `tentgent-kernel` train use
+  cases for durable run records and adapter use cases for successful adapter
+  imports.
+- HTTP train routes are intentionally left on the legacy path until the CLI
+  migration is complete.
+
 Current slice memory:
 
 - Slice 1: Rust run orchestration, durable run artifacts, clean CLI events, Python skeleton runner

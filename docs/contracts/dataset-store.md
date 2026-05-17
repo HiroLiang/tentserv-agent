@@ -188,10 +188,11 @@ The evaluator supports `--split train|valid|test|eval_cases|all`, `--max-records
 
 Use `dataset rm <DATASET_REF>` to remove one managed dataset store record and its local source index.
 
-Removal does not delete exported working copies. Future training-run registries may add reference protection before a dataset can be removed.
+Removal does not delete exported working copies. Kernel-backed dataset removal
+checks local LoRA train plans and run records before deleting managed dataset
+content. The legacy HTTP dataset routes still await the kernel migration.
 
 ## Non-Goals
 
 - no Hugging Face dataset pull
 - no training integration
-- no training-run reference protection yet

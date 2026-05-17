@@ -1,6 +1,6 @@
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
-use tentgent_core::train::{
+use tentgent_kernel::features::train::domain::{
     LoraTrainPlan, LoraTrainPlanCreateOutcome, LoraTrainPlanInspection,
     LoraTrainPlanPreviewOutcome, LoraTrainPlanRemovalOutcome, LoraTrainPlanSummary,
 };

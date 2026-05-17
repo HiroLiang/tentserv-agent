@@ -11,7 +11,6 @@ mod dataset;
 mod display;
 mod doctor;
 mod model;
-mod python_runtime;
 mod runtime;
 mod runtime_footprint;
 mod server;

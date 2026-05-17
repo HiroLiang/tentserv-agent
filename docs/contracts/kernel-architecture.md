@@ -366,6 +366,29 @@ selected Python runtime. Runtime clients may build helper argv and parse helper
 JSON/progress output, but they must not resolve auth, bootstrap Python, call
 providers directly, or decide CLI/HTTP rendering.
 
+`features/dataset/usecases/port.rs` defines workflow boundaries for:
+
+- listing and inspecting managed datasets without exposing catalog store
+  details
+- importing local dataset content through staging, manifesting, deduplication,
+  and metadata/index writes
+- validating local or managed dataset content against the canonical schema
+- rendering editable dataset templates and exact provider synthesis prompts
+- running provider-backed dataset synthesis through resolved auth and Python
+  runtime inputs
+- running provider-backed dataset evaluation for a local path or managed
+  dataset selector
+- exporting, diffing, and removing managed dataset content while enforcing
+  reference guards
+
+Standard dataset use cases should compose foundation layout, runtime
+resolution, auth secret resolution, and dataset infra ports. CLI, HTTP, TUI,
+and training callers should call these use cases instead of rebuilding
+dataset-store orchestration directly.
+Current standard dataset use cases live in focused sibling files under
+`features/dataset/usecases/`: catalog reads, local import, validation, template
+rendering, provider-backed synthesis/evaluation, export, diff, and removal.
+
 `features/chat/domain.rs` owns pure chat request and execution names:
 
 - normalized chat roles and messages
@@ -414,6 +437,49 @@ chat use cases with already selected context messages.
 The current standard chat use case composes runtime resolution, chat model
 resolution, chat adapter resolution, and a chat runtime client for prepare,
 completion, and streaming flows.
+
+`features/train/domain.rs` owns pure LoRA training names and planning rules:
+
+- train refs and short/hash-prefix selectors
+- LoRA backend request/selection names, plan/run statuses, and config sections
+- plan, run, metrics-tail, raw-log, and store-layout data objects
+- pure backend-selection defaults for MLX, PEFT, and blocked GGUF plans
+- pure override application and automatic profile defaults
+
+It must not read model or dataset catalogs, inspect files, write plan/run
+records, spawn Python, import adapters, or render CLI/HTTP output. Those jobs
+belong in train infra, train use cases, runtime infra, and frontend layers.
+
+`features/train/ports.rs` defines narrow boundaries for:
+
+- ensuring the LoRA train-store directory layout
+- reading/writing train plans and run records
+- initializing per-run metrics/raw-log artifacts
+- probing persisted process liveness
+- supplying timestamps and generated run refs
+- launching hidden detached train workers
+
+Train ports should receive resolved layout and selector inputs from use cases.
+They should not resolve runtime-home, choose CLI rendering, bootstrap Python, or
+import successful adapter output by themselves.
+
+`features/train/infra/` owns the standard filesystem and local-process
+adapters for those ports: train-store directory creation, TOML plan/run
+catalogs, metrics/raw-log tails, process liveness probing, timestamp/run-ref
+generation, and detached worker launch.
+
+`features/train/usecases/port.rs` defines workflow boundaries for:
+
+- previewing, creating, listing, inspecting, and removing LoRA train plans
+- creating and updating durable LoRA run records
+- listing/inspecting runs and reading bounded metrics/raw-log tails
+
+Standard train use cases compose foundation layout/platform, model and dataset
+catalog reads, train infra ports, and train planning rules. CLI should call
+these use cases for plan/run state instead of using `tentgent-core` managers.
+Foreground CLI execution may still own progress rendering while using train
+use cases for durable state and adapter use cases for successful run imports.
+HTTP train routes remain on the legacy path until the CLI migration is complete.
 
 `features/runtime/ports.rs` defines narrow boundaries for:
 
