@@ -35,6 +35,9 @@ infrastructure, and use cases.
   state.
 - `src/app/`
   Owns `DaemonApp`, shared app state, and service registry accessors.
+- `src/kernel/`
+  Owns daemon-local composition of kernel infrastructure components and exposes
+  use-case builders to app services.
 - `src/transport/`
   Owns long-running listeners such as REST, local sockets, or future streaming
   transports.
@@ -57,6 +60,19 @@ Daemon startup should be split into stable steps:
 
 Startup code should not embed route behavior. Route behavior belongs under
 `handlers/`, with kernel-facing work delegated to app services.
+
+## Kernel Component Boundary
+
+`src/kernel/` is allowed to know which concrete kernel infrastructure structs
+compose a feature. Code outside this daemon composition layer should prefer
+use-case builders such as `models().catalog_usecase()` or
+`server_usecase()` instead of directly constructing filesystem stores, probes,
+or runtime clients.
+
+Cross-feature use cases should be built at the component registry level so
+handlers do not need to know supporting dependencies. For example, chat can
+receive a chat use case while the registry wires runtime resolution, model
+resolution, adapter compatibility, and runtime execution behind it.
 
 ## Transport Boundary
 

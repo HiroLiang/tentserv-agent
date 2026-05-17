@@ -2144,6 +2144,7 @@ version = "0.3.4-alpha.2"
 dependencies = [
  "clap",
  "miette",
+ "serde_json",
  "tentgent-kernel",
  "tokio",
  "tracing",
