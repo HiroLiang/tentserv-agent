@@ -128,6 +128,12 @@ The first stable REST surface is:
   Kernel-backed adapter inspection response for a full adapter ref or unique
   prefix. Adapter DTOs expose base-model binding hints, backend support, source
   metadata, and optional training provenance from kernel metadata.
+- `GET /v1/datasets`
+  Kernel-backed dataset catalog list response.
+- `GET /v1/datasets/{reference}`
+  Kernel-backed dataset inspection response for a full dataset ref or unique
+  prefix. Dataset DTOs expose tuning readiness, split paths, warnings, source
+  metadata, and managed source paths from kernel metadata.
 
 ## Runtime Boundary
 

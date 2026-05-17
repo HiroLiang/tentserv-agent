@@ -383,6 +383,171 @@ async fn adapter_inspect_rejects_invalid_reference() {
     assert_eq!(body["error"], "bad_request");
 }
 
+#[tokio::test]
+async fn datasets_returns_empty_catalog_for_isolated_home() {
+    let requested_home = unique_home("datasets-empty");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/datasets")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["datasets"].as_array().expect("datasets").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn dataset_list_and_inspect_read_kernel_catalog() {
+    let requested_home = unique_home("datasets-catalog");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let dataset_ref = "3".repeat(64);
+    write_dataset_fixture(&home, &dataset_ref);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/datasets")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let datasets = body["datasets"].as_array().expect("datasets");
+    assert_eq!(datasets.len(), 1);
+    assert_eq!(
+        datasets[0]["dataset_ref"].as_str(),
+        Some(dataset_ref.as_str())
+    );
+    assert_eq!(datasets[0]["short_ref"].as_str(), Some(&dataset_ref[..12]));
+    assert_eq!(datasets[0]["format"], "directory");
+    assert_eq!(datasets[0]["source_kind"], "local");
+    assert_eq!(datasets[0]["tuning_ready"], true);
+    assert_eq!(datasets[0]["splits"]["train"], "train.jsonl");
+    assert_eq!(datasets[0]["splits"]["validation"], "valid.jsonl");
+    assert_eq!(
+        datasets[0]["warnings"],
+        serde_json::json!(["small training set"])
+    );
+    assert!(datasets[0].get("manifest_path").is_none());
+    assert!(datasets[0].get("managed_source_path").is_none());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/datasets/{}", &dataset_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let dataset = &body["dataset"];
+    assert_eq!(dataset["dataset_ref"].as_str(), Some(dataset_ref.as_str()));
+    let expected_manifest_path = path_string(
+        home.join("datasets/store")
+            .join(&dataset_ref)
+            .join("manifest.json"),
+    );
+    assert_eq!(
+        dataset["manifest_path"].as_str(),
+        Some(expected_manifest_path.as_str())
+    );
+    let expected_managed_source_path = path_string(
+        home.join("datasets/store")
+            .join(&dataset_ref)
+            .join("source"),
+    );
+    assert_eq!(
+        dataset["managed_source_path"].as_str(),
+        Some(expected_managed_source_path.as_str())
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn dataset_inspect_returns_not_found_for_missing_reference() {
+    let requested_home = unique_home("datasets-not-found");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let dataset_ref = "4".repeat(64);
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/datasets/{}", &dataset_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "not_found");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn dataset_inspect_returns_conflict_for_ambiguous_prefix() {
+    let requested_home = unique_home("datasets-ambiguous");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let first_ref = format!("{}0", "5".repeat(63));
+    let second_ref = format!("{}1", "5".repeat(63));
+    write_dataset_fixture(&home, &first_ref);
+    write_dataset_fixture(&home, &second_ref);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/datasets/{}", &first_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "ambiguous_ref");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn dataset_inspect_rejects_invalid_reference() {
+    let state = rest_state("datasets-invalid-ref");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/datasets/not-hex")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+}
+
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
@@ -487,6 +652,40 @@ imported_at = "2026-05-01T00:00:00Z"
         ),
     )
     .expect("adapter metadata");
+}
+
+fn write_dataset_fixture(home: &std::path::Path, dataset_ref: &str) {
+    let store_dir = home.join("datasets/store").join(dataset_ref);
+    fs::create_dir_all(store_dir.join("source")).expect("dataset source dir");
+    fs::write(store_dir.join("manifest.json"), "{}").expect("manifest");
+    fs::write(
+        store_dir.join("dataset.toml"),
+        format!(
+            r#"dataset_ref = "{dataset_ref}"
+short_ref = "{}"
+source_kind = "local"
+source_path = "{}"
+dataset_format = "directory"
+file_count = 2
+total_bytes = 20
+imported_at = "2026-05-01T00:00:00Z"
+
+[package]
+tuning_ready = true
+warnings = ["small training set"]
+
+[package.splits]
+train = "train.jsonl"
+validation = "valid.jsonl"
+test = "test.jsonl"
+eval_cases = "eval_cases.jsonl"
+source_manifest = "manifest.json"
+"#,
+            &dataset_ref[..12],
+            path_string(home.join("fixtures/dataset"))
+        ),
+    )
+    .expect("dataset metadata");
 }
 
 fn path_string(path: impl AsRef<std::path::Path>) -> String {
