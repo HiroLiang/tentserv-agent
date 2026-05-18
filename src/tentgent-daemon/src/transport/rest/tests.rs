@@ -591,6 +591,50 @@ async fn datasets_returns_empty_catalog_for_isolated_home() {
 }
 
 #[tokio::test]
+async fn train_plans_returns_empty_catalog_for_isolated_home() {
+    let requested_home = unique_home("train-plans-empty");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/train/lora/plans")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["plans"].as_array().expect("plans").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn train_plan_preview_rejects_path_like_refs_before_kernel_lookup() {
+    let state = rest_state("train-plan-preview-invalid-ref");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/train/lora/plans/preview")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model_ref":"models/local","dataset_ref":"aaaaaaaaaaaa","backend":"auto"}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+}
+
+#[tokio::test]
 async fn dataset_list_and_inspect_read_kernel_catalog() {
     let requested_home = unique_home("datasets-catalog");
     let state = rest_state_for_home(requested_home);

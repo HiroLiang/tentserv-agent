@@ -75,6 +75,29 @@ Current state:
   jobs expose runtime start/completion and bounded progress output. LoRA train
   jobs launch the worker and poll the kernel run record until terminal status.
 
+## Handoff
+
+As of the daemon train API pass, `tentgent-daemon` has kernel-backed REST
+surfaces for status, jobs, model, adapter, dataset, server read, session read,
+and LoRA train plan/run management. Train run start is job-backed; train
+plan/list/inspect/delete and run list/inspect/metrics/logs are synchronous
+kernel use-case calls.
+
+Verified locally without keychain or runtime-worker execution:
+
+- `cargo fmt --check`
+- `cargo check -p tentgent-daemon`
+- focused daemon REST tests for train empty-list and request validation
+
+Next work should focus on daemon session/chat orchestration:
+
+- implement the Session Manager runtime layer described below
+- bridge session summary generation through chat infrastructure
+- add session compaction jobs once the manager can safely prepare and apply
+  summaries
+- then expose daemon chat/session mutation routes that use the manager instead
+  of putting multi-step orchestration in REST handlers
+
 ## Session Manager
 
 The Session Manager coordinates daemon session workflows that require more than

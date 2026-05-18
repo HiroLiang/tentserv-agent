@@ -31,8 +31,28 @@ pub fn build_router(state: RestState) -> Router {
         .route("/v1/datasets/eval/jobs", post(dataset::eval_job))
         .route("/v1/datasets/{reference}", get(dataset::inspect))
         .route(
+            "/v1/train/lora/plans",
+            get(train::list_plans).post(train::create_plan),
+        )
+        .route("/v1/train/lora/plans/preview", post(train::preview_plan))
+        .route(
             "/v1/train/lora/plans/{reference}/runs",
-            post(train::start_lora_run_job),
+            get(train::list_plan_runs).post(train::start_lora_run_job),
+        )
+        .route(
+            "/v1/train/lora/plans/{reference}",
+            get(train::inspect_plan).delete(train::remove_plan),
+        )
+        .route("/v1/train/lora/runs", get(train::list_runs))
+        .route("/v1/train/lora/runs/{reference}", get(train::inspect_run))
+        .route(
+            "/v1/train/lora/runs/{reference}/metrics",
+            get(train::metrics),
+        )
+        .route("/v1/train/lora/runs/{reference}/logs", get(train::logs))
+        .route(
+            "/v1/train/lora/runs/{reference}/logs/raw",
+            get(train::raw_log),
         )
         .route("/v1/servers", get(server::list))
         .route("/v1/servers/{reference}", get(server::inspect))

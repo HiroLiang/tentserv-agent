@@ -162,10 +162,36 @@ The first stable REST surface is:
   auth and Python runtime execution happen inside the job.
 - `POST /v1/datasets/eval/jobs`
   Starts a daemon background job for provider-backed dataset evaluation.
+- `GET /v1/train/lora/plans`
+  Kernel-backed LoRA train plan list response.
+- `POST /v1/train/lora/plans/preview`
+  Builds a normalized LoRA train plan preview without writing it.
+- `POST /v1/train/lora/plans`
+  Creates or reuses a normalized LoRA train plan.
+- `GET /v1/train/lora/plans/{reference}`
+  Kernel-backed LoRA train plan inspection response for a full plan ref or
+  unique prefix.
+- `DELETE /v1/train/lora/plans/{reference}`
+  Removes a saved LoRA train plan when it has no run records.
+- `GET /v1/train/lora/runs`
+  Kernel-backed list response for all LoRA train runs.
+- `GET /v1/train/lora/plans/{reference}/runs`
+  Kernel-backed list response for runs under one LoRA train plan.
 - `POST /v1/train/lora/plans/{reference}/runs`
   Starts a daemon background job for a LoRA train run from a saved plan. The job
   creates the kernel run record, launches the detached worker, then polls the
   run record until it reaches a terminal status.
+- `GET /v1/train/lora/runs/{reference}`
+  Kernel-backed LoRA train run inspection response for a full run ref or unique
+  prefix.
+- `GET /v1/train/lora/runs/{reference}/metrics`
+  Reads a bounded tail of JSON metric events for one LoRA train run. The
+  optional `tail` query parameter defaults to 200 and is capped at 1000 events.
+- `GET /v1/train/lora/runs/{reference}/logs`
+  Reads raw-log metadata for one LoRA train run.
+- `GET /v1/train/lora/runs/{reference}/logs/raw`
+  Reads a bounded raw-log tail for one LoRA train run. The optional
+  `tail_bytes` query parameter defaults to 65536 and is capped at 262144 bytes.
 - `GET /v1/servers`
   Kernel-backed stored server list response with process-state observation.
 - `GET /v1/servers/{reference}`
