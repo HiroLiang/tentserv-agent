@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::features::model::domain::{
-    default_model_capabilities, default_model_capability_source, detect_model_formats,
-    select_primary_model_format, HfModelSourceIndex, LocalModelSourceIndex, ModelCapability,
-    ModelCapabilitySource, ModelImportMethod, ModelImportOutcome, ModelMetadata, ModelSourceKind,
-    ModelStoreLayout, ModelVariantMetadata, ModelVariantStatus, SOURCE_DIRNAME,
+    detect_model_formats, select_primary_model_format, HfModelSourceIndex, LocalModelSourceIndex,
+    ModelCapabilityAssignment, ModelCapabilitySource, ModelImportMethod, ModelImportOutcome,
+    ModelMetadata, ModelSourceKind, ModelStoreLayout, ModelVariantMetadata, ModelVariantStatus,
+    SOURCE_DIRNAME,
 };
 use crate::features::model::ports::{
     ModelCatalogStore, ModelContentStore, ModelIdentityGenerator, ModelManifestBuilder,
@@ -72,9 +72,9 @@ impl ModelImportFinalizer<'_> {
         staged: &StagedModelSource,
         source: ModelImportSource,
         method: ModelImportMethod,
-        explicit_capability: Option<ModelCapability>,
+        capability_assignment: ModelCapabilityAssignment,
     ) -> KernelResult<ModelImportOutcome> {
-        let result = self.finalize_inner(store, staged, source, method, explicit_capability);
+        let result = self.finalize_inner(store, staged, source, method, capability_assignment);
         let cleanup = self.stager.discard_staging(staged);
 
         match (result, cleanup) {
@@ -90,7 +90,7 @@ impl ModelImportFinalizer<'_> {
         staged: &StagedModelSource,
         source: ModelImportSource,
         method: ModelImportMethod,
-        explicit_capability: Option<ModelCapability>,
+        capability_assignment: ModelCapabilityAssignment,
     ) -> KernelResult<ModelImportOutcome> {
         let manifest = self.manifest_builder.build_manifest(&staged.source_dir)?;
         let model_ref = self.identity.model_ref_for_manifest(&manifest)?;
@@ -103,8 +103,8 @@ impl ModelImportFinalizer<'_> {
 
         if self.content.model_content_exists(store, &model_ref)? {
             let mut metadata = self.catalog.load_model_metadata(store, &model_ref)?;
-            if let Some(capability) = explicit_capability {
-                apply_explicit_capability(&mut metadata, capability);
+            if should_apply_capability_assignment(&metadata, &capability_assignment) {
+                apply_capability_assignment(&mut metadata, &capability_assignment);
                 self.catalog.save_model_metadata(store, &metadata)?;
             }
             let source_index_path = self.save_source_index(store, &metadata, &source)?;
@@ -120,8 +120,6 @@ impl ModelImportFinalizer<'_> {
             .install_staged_source(store, staged, &model_ref, primary_format)?;
 
         let imported_at = imported_at_now()?;
-        let (model_capabilities, model_capability_source) =
-            capability_metadata(explicit_capability);
         let metadata = ModelMetadata {
             model_ref: model_ref.clone(),
             short_ref: model_ref.short_ref().to_string(),
@@ -133,8 +131,8 @@ impl ModelImportFinalizer<'_> {
                 .map(|path| path.display().to_string()),
             primary_format,
             detected_formats,
-            model_capabilities,
-            model_capability_source,
+            model_capabilities: capability_assignment.capabilities.clone(),
+            model_capability_source: capability_assignment.source,
             file_count: manifest.file_count(),
             total_bytes: manifest.total_bytes(),
             imported_at,
@@ -208,19 +206,24 @@ fn imported_at_now() -> KernelResult<String> {
     })
 }
 
-fn capability_metadata(
-    explicit_capability: Option<ModelCapability>,
-) -> (Vec<ModelCapability>, ModelCapabilitySource) {
-    match explicit_capability {
-        Some(capability) => (vec![capability], ModelCapabilitySource::ExplicitUser),
-        None => (
-            default_model_capabilities(),
-            default_model_capability_source(),
-        ),
+fn should_apply_capability_assignment(
+    metadata: &ModelMetadata,
+    assignment: &ModelCapabilityAssignment,
+) -> bool {
+    match assignment.source {
+        ModelCapabilitySource::ExplicitUser => true,
+        ModelCapabilitySource::HuggingFaceMetadata => metadata
+            .model_capability_source
+            .allows_auto_detection_update(),
+        ModelCapabilitySource::DefaultChat => false,
+        ModelCapabilitySource::ManualUpdate => true,
     }
 }
 
-fn apply_explicit_capability(metadata: &mut ModelMetadata, capability: ModelCapability) {
-    metadata.model_capabilities = vec![capability];
-    metadata.model_capability_source = ModelCapabilitySource::ExplicitUser;
+fn apply_capability_assignment(
+    metadata: &mut ModelMetadata,
+    assignment: &ModelCapabilityAssignment,
+) {
+    metadata.model_capabilities = assignment.capabilities.clone();
+    metadata.model_capability_source = assignment.source;
 }

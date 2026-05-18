@@ -1,6 +1,6 @@
 //! Local model import use case.
 
-use crate::features::model::domain::ModelImportMethod;
+use crate::features::model::domain::{ModelCapabilityAssignment, ModelImportMethod};
 use crate::features::model::ports::{
     ModelCatalogStore, ModelContentStore, ModelIdentityGenerator, ModelManifestBuilder,
     ModelSourceIndexStore, ModelSourceStager, ModelStoreLayoutInitializer,
@@ -69,7 +69,10 @@ impl ModelLocalImportUseCase for StdModelLocalImportUseCase<'_> {
                 original_path: request.source_path,
             },
             ModelImportMethod::Add,
-            request.capability,
+            request
+                .capability
+                .map(ModelCapabilityAssignment::explicit)
+                .unwrap_or_else(ModelCapabilityAssignment::default_chat),
         )?;
 
         Ok(ModelLocalImportResult {

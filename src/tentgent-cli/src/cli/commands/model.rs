@@ -67,4 +67,18 @@ pub enum ModelCommands {
         #[arg(value_name = "REF")]
         reference: String,
     },
+    /// Correct stored model capability metadata.
+    #[command(
+        name = "set-capability",
+        about = "Correct stored model capability metadata.",
+        long_about = "Correct stored model capability metadata without changing model content or model_ref. Tentgent accepts either the full model_ref or a unique short_ref prefix."
+    )]
+    SetCapability {
+        /// Full model_ref or unique short-ref prefix.
+        #[arg(value_name = "REF")]
+        reference: String,
+        /// Serving capability to assign to this model.
+        #[arg(value_name = "chat|embedding|rerank")]
+        capability: ModelCapability,
+    },
 }

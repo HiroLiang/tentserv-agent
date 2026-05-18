@@ -27,6 +27,9 @@ one pass without a staged breakdown.
   Active roadmap after `v0.3.5-alpha.0`: model capability classification,
   embedding and rerank endpoint work, deferred audio contracts, and Apple
   Developer ID signing before beta or release candidate tags.
+- [m2-model-capability-detection-and-correction.md](./m2-model-capability-detection-and-correction.md)
+  Next execution slice: Hugging Face capability detection, manual metadata
+  correction, and clear default-chat fallback warnings.
 
 ## Recommended Order
 

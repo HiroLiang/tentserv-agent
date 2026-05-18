@@ -13,8 +13,8 @@ use tentgent_kernel::{
             },
             usecases::{
                 ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
-                ModelListResult, StdModelCatalogReadUseCase, StdModelHfPullUseCase,
-                StdModelLocalImportUseCase, StdModelRemoveUseCase,
+                ModelListResult, StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase,
+                StdModelHfPullUseCase, StdModelLocalImportUseCase, StdModelRemoveUseCase,
             },
         },
         runtime::ports::PythonRuntimeResolver,
@@ -96,6 +96,10 @@ impl ModelKernelComponent {
             &self.content,
             &self.server_refs,
         )
+    }
+
+    pub fn capability_update_usecase(&self) -> StdModelCapabilityUpdateUseCase<'_> {
+        StdModelCapabilityUpdateUseCase::new(&self.layout_resolver, &self.catalog)
     }
 
     pub(crate) fn catalog_store(&self) -> &FileModelCatalogStore {

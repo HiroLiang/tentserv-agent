@@ -91,6 +91,22 @@ pub struct ModelRemoveResult {
     pub outcome: ModelRemovalOutcome,
 }
 
+/// Request for correcting stored model capability metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityUpdateRequest {
+    pub layout: RuntimeLayoutInput,
+    pub selector: ModelRefSelector,
+    pub capability: ModelCapability,
+}
+
+/// Result of correcting stored model capability metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityUpdateResult {
+    pub layout: RuntimeLayout,
+    pub store: ModelStoreLayout,
+    pub model: ModelInspection,
+}
+
 /// Use-case boundary for read-only model catalog operations.
 pub trait ModelCatalogReadUseCase {
     /// Lists stored models without mutating the model store.
@@ -123,4 +139,13 @@ pub trait ModelHfPullUseCase {
 pub trait ModelRemoveUseCase {
     /// Resolves a model ref, checks server references, and removes content plus source indexes.
     fn remove_model(&self, request: ModelRemoveRequest) -> KernelResult<ModelRemoveResult>;
+}
+
+/// Use-case boundary for correcting model capability metadata.
+pub trait ModelCapabilityUpdateUseCase {
+    /// Resolves a model ref and rewrites only capability metadata.
+    fn update_model_capability(
+        &self,
+        request: ModelCapabilityUpdateRequest,
+    ) -> KernelResult<ModelCapabilityUpdateResult>;
 }

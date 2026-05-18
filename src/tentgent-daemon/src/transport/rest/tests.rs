@@ -648,6 +648,21 @@ async fn sync_store_routes_validate_requests_before_mutation() {
     let response = build_router(state.clone())
         .oneshot(
             Request::builder()
+                .method("PATCH")
+                .uri("/v1/models/abc123")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"capability":"audio"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
                 .method("POST")
                 .uri("/v1/adapters/pull")
                 .header("content-type", "application/json")
@@ -710,6 +725,47 @@ async fn models_returns_empty_catalog_for_isolated_home() {
 }
 
 #[tokio::test]
+async fn model_import_route_returns_default_capability_warning() {
+    let requested_home = unique_home("model-import-capability-warning");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let source_dir = home.join("fixtures/default-model");
+    fs::create_dir_all(&source_dir).expect("source dir");
+    fs::write(source_dir.join("model.gguf"), b"default model").expect("source model");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/models/import")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "path": path_string(&source_dir)
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["model"]["model_capabilities"],
+        serde_json::json!(["chat"])
+    );
+    assert_eq!(body["model"]["model_capability_source"], "default-chat");
+    assert_eq!(
+        body["warnings"][0],
+        "capability defaulted to chat; provide capability to classify embedding or rerank models"
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn model_import_route_stores_explicit_capability_metadata() {
     let requested_home = unique_home("model-import-capability");
     let state = rest_state_for_home(requested_home);
@@ -763,6 +819,73 @@ async fn model_import_route_stores_explicit_capability_metadata() {
     assert_eq!(
         body["models"][0]["model_capability_source"],
         "explicit-user"
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn model_import_job_records_default_capability_warning() {
+    let requested_home = unique_home("model-import-job-capability-warning");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let source_dir = home.join("fixtures/default-job-model");
+    fs::create_dir_all(&source_dir).expect("source dir");
+    fs::write(source_dir.join("model.gguf"), b"default job model").expect("source model");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/models/import/jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "path": path_string(&source_dir)
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = json_body(response).await;
+    let job_id = body["job"]["job_id"].as_str().expect("job id").to_string();
+
+    for _ in 0..50 {
+        let response = build_router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/jobs/{job_id}"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let body = json_body(response).await;
+        if body["job"]["status"] == "succeeded" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/jobs/{job_id}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["job"]["status"], "succeeded");
+    assert_eq!(
+        body["job"]["warning_summary"],
+        "capability defaulted to chat; provide capability to classify embedding or rerank models"
     );
 
     let _ = fs::remove_dir_all(home);
@@ -849,6 +972,54 @@ async fn model_import_job_preserves_explicit_capability_metadata() {
         body["models"][0]["model_capability_source"],
         "explicit-user"
     );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn model_patch_updates_capability_metadata() {
+    let requested_home = unique_home("models-capability-patch");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "9".repeat(64);
+    write_model_fixture(&home, &model_ref);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/v1/models/{}", &model_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"capability":"rerank"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["mutation"]["kind"], "update_capability");
+    assert_eq!(
+        body["model"]["model_capabilities"],
+        serde_json::json!(["rerank"])
+    );
+    assert_eq!(body["model"]["model_capability_source"], "manual-update");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/models/{}", &model_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = json_body(response).await;
+    assert_eq!(
+        body["model"]["model_capabilities"],
+        serde_json::json!(["rerank"])
+    );
+    assert_eq!(body["model"]["model_capability_source"], "manual-update");
 
     let _ = fs::remove_dir_all(home);
 }

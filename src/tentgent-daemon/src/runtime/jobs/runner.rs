@@ -2,7 +2,7 @@ use std::{future::Future, pin::Pin};
 
 use tokio::task;
 
-use super::types::{JobArtifact, JobId};
+use super::types::{JobArtifact, JobId, JobProgressUpdate};
 use super::JobRegistry;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -12,6 +12,7 @@ pub struct JobRunner;
 pub struct JobCompletion {
     pub artifact: Option<JobArtifact>,
     pub result_summary: String,
+    pub warning_summary: Option<String>,
 }
 
 impl JobCompletion {
@@ -19,11 +20,17 @@ impl JobCompletion {
         Self {
             artifact: None,
             result_summary: result_summary.into(),
+            warning_summary: None,
         }
     }
 
     pub fn with_artifact(mut self, artifact: JobArtifact) -> Self {
         self.artifact = Some(artifact);
+        self
+    }
+
+    pub fn with_warning_summary(mut self, warning_summary: impl Into<String>) -> Self {
+        self.warning_summary = Some(warning_summary.into());
         self
     }
 }
@@ -48,6 +55,15 @@ impl JobRunner {
 
             match result {
                 Ok(Ok(completion)) => {
+                    if let Some(warning_summary) = completion.warning_summary {
+                        registry.update_progress(
+                            &job_id,
+                            JobProgressUpdate {
+                                warning_summary: Some(warning_summary),
+                                ..JobProgressUpdate::default()
+                            },
+                        );
+                    }
                     registry.succeed(&job_id, completion.artifact, completion.result_summary);
                 }
                 Ok(Err(error)) => {

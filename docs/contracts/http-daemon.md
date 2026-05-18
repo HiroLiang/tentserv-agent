@@ -659,9 +659,15 @@ Successful responses return the stable inspect shape plus a mutation summary:
     "deduplicated": false,
     "store_path": "/path/to/models/store/8fac...",
     "source_index_path": "/path/to/models/by-source/local/..."
-  }
+  },
+  "warnings": [
+    "capability defaulted to chat; provide capability to classify embedding or rerank models"
+  ]
 }
 ```
+
+`warnings` is omitted when empty. Model import and pull include this warning
+when capability metadata remains `default-chat`.
 
 `mutation.kind` is `import`, `pull`, or `bind`. Adapter import and pull include
 `base_index_path` only when core writes one. Adapter bind returns the updated
@@ -1142,14 +1148,40 @@ paths; no redaction is promised in this slice.
 
 ## Store Inspect And Remove Mutations
 
-The daemon exposes safe remove parity for managed store entries:
+The daemon exposes safe metadata correction and remove parity for managed store
+entries:
 
 ```text
+PATCH /v1/models/{model_ref}
 DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
 DELETE /v1/datasets/{dataset_ref}
 DELETE /v1/servers/{server_ref}
 ```
+
+`PATCH /v1/models/{model_ref}` accepts one `capability` value and rewrites only
+model capability metadata. It sets `model_capability_source` to
+`manual-update` and does not change `model_ref`:
+
+```json
+{ "capability": "embedding" }
+```
+
+Successful model capability updates return:
+
+```json
+{
+  "model": {
+    "...": "same shape as GET /v1/models/{model_ref}"
+  },
+  "mutation": {
+    "kind": "update_capability"
+  }
+}
+```
+
+Invalid capability values return `400 bad_request`; missing models return
+`404 not_found`; ambiguous refs return `409 ambiguous_ref`.
 
 `DELETE` requests must have an empty body. Non-empty bodies return JSON `400`
 because this slice has no hidden `force`, dry-run, bulk, or cascade options.

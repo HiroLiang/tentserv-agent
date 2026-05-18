@@ -106,7 +106,13 @@ List and inspect models:
 ```bash
 tentgent model ls
 tentgent model inspect <model-ref>
+tentgent model set-capability <model-ref> embedding
 ```
+
+When no explicit capability or confident Hugging Face metadata is available,
+Tentgent keeps the backward-compatible `chat` default and prints a warning.
+Use `set-capability` to correct stored metadata later without changing
+`model_ref`.
 
 ## Chat
 
@@ -382,6 +388,11 @@ curl -sS http://127.0.0.1:8790/v1/models/pull/jobs \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{"repo_id":"owner/name","revision":null,"capability":"rerank"}'
+curl -sS http://127.0.0.1:8790/v1/models/<model-ref> \
+  -X PATCH \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"capability":"embedding"}'
 curl -sS http://127.0.0.1:8790/v1/adapters/import \
   -X POST \
   -H 'Content-Type: application/json' \

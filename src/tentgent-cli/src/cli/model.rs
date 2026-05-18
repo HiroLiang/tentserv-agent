@@ -20,9 +20,10 @@ use tentgent_kernel::features::model::infra::{
     StdModelManifestBuilder, StdModelSourceStager, StdModelStoreLayoutInitializer,
 };
 use tentgent_kernel::features::model::usecases::{
-    ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
-    ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
-    ModelRemoveUseCase, StdModelCatalogReadUseCase, StdModelHfPullUseCase,
+    ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase, ModelCatalogReadUseCase,
+    ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest, ModelListRequest,
+    ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest, ModelRemoveUseCase,
+    StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase, StdModelHfPullUseCase,
     StdModelLocalImportUseCase, StdModelRemoveUseCase,
 };
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
@@ -50,6 +51,7 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
                 })
                 .into_diagnostic()?;
             render_import_outcome("Model imported", &result.outcome);
+            render_capability_warning(&result.outcome.metadata);
         }
         ModelCommands::Pull {
             repo_id,
@@ -76,6 +78,7 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
 
             let outcome = outcome.into_diagnostic()?;
             render_import_outcome("Model pulled", &outcome.outcome);
+            render_capability_warning(&outcome.outcome.metadata);
         }
         ModelCommands::Ls => {
             let result = model
@@ -117,6 +120,28 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
                 Err(err) => return Err(explain_model_lookup_error("inspect", "REF", err)),
             };
             render_model_inspection(&inspection);
+        }
+        ModelCommands::SetCapability {
+            reference,
+            capability,
+        } => {
+            if is_help_token(&reference) {
+                print_model_subcommand_help("set-capability")?;
+                return Ok(());
+            }
+
+            let selector = parse_model_selector("set-capability", "REF", &reference)?;
+            let result = match model.capability_update_usecase().update_model_capability(
+                ModelCapabilityUpdateRequest {
+                    layout: runtime_layout_input(LayoutResolveMode::Create),
+                    selector,
+                    capability,
+                },
+            ) {
+                Ok(result) => result,
+                Err(err) => return Err(explain_model_lookup_error("set-capability", "REF", err)),
+            };
+            render_model_capability_update(&result.model);
         }
     }
 
@@ -204,6 +229,10 @@ impl CliModelKernel {
             &self.content,
             &self.server_refs,
         )
+    }
+
+    fn capability_update_usecase(&self) -> StdModelCapabilityUpdateUseCase<'_> {
+        StdModelCapabilityUpdateUseCase::new(&self.layout_resolver, &self.catalog)
     }
 
     fn auth_resolver_usecase(&self) -> StdAuthSecretResolverUseCase<'_> {
@@ -369,6 +398,31 @@ fn render_model_inspection(inspection: &ModelInspection) {
 
     println!("{table}");
     println!();
+}
+
+fn render_model_capability_update(inspection: &ModelInspection) {
+    println!(
+        "{} {} {}",
+        style("==>").cyan().bold(),
+        style("Model capability updated").bold(),
+        style(&inspection.metadata.short_ref).bold()
+    );
+
+    let mut table = base_table();
+    add_model_metadata_rows(&mut table, &inspection.metadata);
+    table.add_row(vec![
+        Cell::new("store path"),
+        Cell::new(inspection.store_path.display().to_string()),
+    ]);
+
+    println!("{table}");
+    println!();
+}
+
+fn render_capability_warning(metadata: &tentgent_kernel::features::model::domain::ModelMetadata) {
+    if let Some(warning) = metadata.capability_warning() {
+        eprintln!("{} {}", style("warning").yellow().bold(), warning);
+    }
 }
 
 fn base_table() -> Table {
@@ -696,6 +750,35 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_model_set_capability_command() {
+        let cli =
+            Cli::try_parse_from(["tentgent", "model", "set-capability", "abc123", "embedding"])
+                .expect("parse model set-capability");
+
+        match cli.command {
+            Commands::Model {
+                action:
+                    ModelCommands::SetCapability {
+                        reference,
+                        capability,
+                    },
+            } => {
+                assert_eq!(reference, "abc123");
+                assert_eq!(capability, ModelCapability::Embedding);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn model_set_capability_rejects_unknown_cli_value() {
+        let err = Cli::try_parse_from(["tentgent", "model", "set-capability", "abc123", "audio"])
+            .expect_err("parse error");
+
+        assert!(err.to_string().contains("unsupported model capability"));
     }
 
     #[test]

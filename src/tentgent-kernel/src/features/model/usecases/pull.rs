@@ -4,7 +4,11 @@ use std::path::Path;
 
 use crate::features::auth::domain::Provider;
 use crate::features::auth::usecases::AuthSecretResolverUseCase;
-use crate::features::model::domain::{HfModelPullProgress, ModelImportMethod};
+use crate::features::model::classification::classify_hf_model_capability;
+use crate::features::model::domain::{
+    HfModelMetadata, HfModelPullProgress, ModelCapability, ModelCapabilityAssignment,
+    ModelImportMethod,
+};
 use crate::features::model::ports::{
     HfModelSnapshotFetcher, HfModelSnapshotRequest, ModelCatalogStore, ModelContentStore,
     ModelIdentityGenerator, ModelManifestBuilder, ModelSourceIndexStore, ModelSourceStager,
@@ -113,6 +117,8 @@ impl ModelHfPullUseCase for StdModelHfPullUseCase<'_> {
             )));
         }
 
+        let capability_assignment =
+            resolve_hf_capability_assignment(request.capability, snapshot.metadata.as_ref());
         let outcome = self.finalizer().finalize(
             &store,
             &staged,
@@ -121,7 +127,7 @@ impl ModelHfPullUseCase for StdModelHfPullUseCase<'_> {
                 resolved_revision: snapshot.resolved_revision,
             },
             ModelImportMethod::Pull,
-            request.capability,
+            capability_assignment,
         )?;
 
         Ok(ModelHfPullResult {
@@ -150,4 +156,17 @@ fn same_path(left: &Path, right: &Path) -> bool {
     let left = left.canonicalize().unwrap_or_else(|_| left.to_path_buf());
     let right = right.canonicalize().unwrap_or_else(|_| right.to_path_buf());
     left == right
+}
+
+fn resolve_hf_capability_assignment(
+    explicit_capability: Option<ModelCapability>,
+    metadata: Option<&HfModelMetadata>,
+) -> ModelCapabilityAssignment {
+    if let Some(capability) = explicit_capability {
+        return ModelCapabilityAssignment::explicit(capability);
+    }
+
+    metadata
+        .and_then(classify_hf_model_capability)
+        .unwrap_or_else(ModelCapabilityAssignment::default_chat)
 }

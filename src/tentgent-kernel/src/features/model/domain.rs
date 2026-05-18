@@ -18,6 +18,8 @@ pub const SOURCE_DIRNAME: &str = "source";
 pub const MODEL_METADATA_FILENAME: &str = "model.toml";
 pub const MODEL_MANIFEST_FILENAME: &str = "manifest.json";
 pub const VARIANT_METADATA_FILENAME: &str = "variant.toml";
+pub const DEFAULT_CHAT_CAPABILITY_WARNING: &str =
+    "capability defaulted to chat; provide capability to classify embedding or rerank models";
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModelRef(String);
@@ -261,6 +263,14 @@ impl ModelCapabilitySource {
             Self::ManualUpdate => "manual-update",
         }
     }
+
+    pub const fn is_protected_from_auto_detection(self) -> bool {
+        matches!(self, Self::ExplicitUser | Self::ManualUpdate)
+    }
+
+    pub const fn allows_auto_detection_update(self) -> bool {
+        matches!(self, Self::DefaultChat | Self::HuggingFaceMetadata)
+    }
 }
 
 impl std::fmt::Display for ModelCapabilitySource {
@@ -271,6 +281,59 @@ impl std::fmt::Display for ModelCapabilitySource {
 
 pub const fn default_model_capability_source() -> ModelCapabilitySource {
     ModelCapabilitySource::DefaultChat
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityAssignment {
+    pub capabilities: Vec<ModelCapability>,
+    pub source: ModelCapabilitySource,
+    pub reason: Option<String>,
+    pub warning: Option<String>,
+}
+
+impl ModelCapabilityAssignment {
+    pub fn explicit(capability: ModelCapability) -> Self {
+        Self {
+            capabilities: vec![capability],
+            source: ModelCapabilitySource::ExplicitUser,
+            reason: Some("explicit user input".to_string()),
+            warning: None,
+        }
+    }
+
+    pub fn huggingface_metadata(capability: ModelCapability, reason: impl Into<String>) -> Self {
+        Self {
+            capabilities: vec![capability],
+            source: ModelCapabilitySource::HuggingFaceMetadata,
+            reason: Some(reason.into()),
+            warning: None,
+        }
+    }
+
+    pub fn default_chat() -> Self {
+        Self {
+            capabilities: default_model_capabilities(),
+            source: default_model_capability_source(),
+            reason: Some("no explicit capability or confident metadata evidence".to_string()),
+            warning: Some(DEFAULT_CHAT_CAPABILITY_WARNING.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HfModelMetadata {
+    #[serde(default)]
+    pub pipeline_tag: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub library_name: Option<String>,
+    #[serde(default)]
+    pub config_architectures: Vec<String>,
+    #[serde(default)]
+    pub tokenizer_chat_template: bool,
+    #[serde(default)]
+    pub sentence_bert_config: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -400,6 +463,14 @@ impl ModelMetadata {
 
     pub fn supports_capability(&self, capability: ModelCapability) -> bool {
         self.model_capabilities.contains(&capability)
+    }
+
+    pub fn capability_warning(&self) -> Option<&'static str> {
+        if self.model_capability_source == ModelCapabilitySource::DefaultChat {
+            Some(DEFAULT_CHAT_CAPABILITY_WARNING)
+        } else {
+            None
+        }
     }
 
     pub fn source_summary(&self) -> String {

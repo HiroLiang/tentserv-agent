@@ -105,20 +105,41 @@ Initial capability values:
 - `rerank`
 
 Existing metadata without `model_capabilities` should be read as `["chat"]`.
-New imports default to `["chat"]` when the user does not provide an explicit
-capability. Local import and Hugging Face pull accept one explicit capability
-value for this milestone: `chat`, `embedding`, or `rerank`. Explicit input
-stores exactly that one value and records `model_capability_source =
-"explicit-user"`.
+New imports default to `["chat"]` when neither explicit input nor confident
+Hugging Face metadata evidence identifies a capability. Local import and
+Hugging Face pull accept one explicit capability value: `chat`, `embedding`, or
+`rerank`. Explicit input stores exactly that one value and records
+`model_capability_source = "explicit-user"`.
 
 If content deduplication finds an existing `model_ref`, omitted capability
 input preserves the stored metadata. Explicit capability input updates the
 existing stored model metadata before returning the deduplicated outcome. This
 metadata update does not copy content and does not change `model_ref`.
 
-Hugging Face metadata auto-classification is not implemented yet. A model may
-list multiple capabilities later when source metadata, user edits, or another
-explicit update path proves that it supports more than one serving shape.
+Hugging Face pull uses compact registry and snapshot metadata as best-effort
+evidence. `feature-extraction`, `sentence-similarity`,
+`sentence-transformers`, or `sentence_bert_config.json` can classify
+`embedding`; `text-ranking`, `reranker`, `rerank`, `cross-encoder`, or
+sequence-classification paired with ranking metadata can classify `rerank`;
+`text-generation`, `conversational`, or a tokenizer `chat_template` can
+classify `chat`. Conflicting or weak evidence must not be guessed.
+
+Capability assignment precedence is:
+
+1. explicit request input (`explicit-user`)
+2. protected stored user correction (`manual-update`)
+3. confident Hugging Face metadata (`huggingface-metadata`)
+4. deduplicated existing metadata
+5. default fallback (`default-chat`)
+
+Automatic Hugging Face detection may update deduplicated metadata only when the
+existing source is `default-chat` or `huggingface-metadata`. It must not
+overwrite `explicit-user` or `manual-update` unless the current request
+explicitly provides a capability.
+
+A model may list multiple capabilities later when source metadata, user edits,
+or another explicit update path proves that it supports more than one serving
+shape.
 
 `model_capability_source` records why the current capability set was chosen:
 

@@ -14,8 +14,9 @@ use tentgent_kernel::{
     features::model::{
         domain::{HfModelPullProgress, ModelCapability, ModelRefSelector},
         usecases::{
-            ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
-            ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
+            ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase, ModelCatalogReadUseCase,
+            ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest, ModelListRequest,
+            ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
             ModelRemoveUseCase,
         },
     },
@@ -40,8 +41,9 @@ use crate::{
 };
 
 use self::dto::{
-    model_inspection_item, model_mutation_response, model_removal_item, model_summary_item,
-    ModelMutationResponse, ModelResponse, ModelsResponse,
+    model_capability_update_response, model_inspection_item, model_mutation_response,
+    model_removal_item, model_summary_item, ModelCapabilityUpdateResponse, ModelMutationResponse,
+    ModelResponse, ModelsResponse,
 };
 
 pub async fn list(State(state): State<RestState>) -> Result<Json<ModelsResponse>, RestError> {
@@ -107,6 +109,31 @@ pub async fn remove(
     Ok(Json(ModelResponse {
         model: model_removal_item(result.outcome),
     }))
+}
+
+pub async fn update_capability(
+    State(state): State<RestState>,
+    Path(reference): Path<String>,
+    Json(request): Json<ModelCapabilityUpdateRequestBody>,
+) -> Result<Json<ModelCapabilityUpdateResponse>, RestError> {
+    let selector = ModelRefSelector::parse(&reference).map_err(|err| {
+        RestError::bad_request("bad_request", format!("invalid model reference: {err}"))
+    })?;
+    let capability = parse_required_model_capability(&request.capability)?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .models()
+        .capability_update_usecase()
+        .update_model_capability(ModelCapabilityUpdateRequest {
+            layout: state.app().layout_input(LayoutResolveMode::Create),
+            selector,
+            capability,
+        })
+        .map_err(model_error)?;
+
+    Ok(Json(model_capability_update_response(result.model)))
 }
 
 pub async fn import(
@@ -252,6 +279,12 @@ pub struct ModelPullJobRequest {
     pub capability: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelCapabilityUpdateRequestBody {
+    pub capability: String,
+}
+
 fn run_model_import_job(
     state: RestState,
     layout: RuntimeLayoutInput,
@@ -271,14 +304,10 @@ fn run_model_import_job(
         })
         .map_err(|error| error.to_string())?;
 
-    let metadata = result.outcome.metadata;
-    Ok(
-        JobCompletion::new(format!("imported model {}", metadata.short_ref)).with_artifact(
-            JobArtifact::new("model")
-                .with_reference(metadata.model_ref.into_string())
-                .with_path(result.outcome.store_path.display().to_string()),
-        ),
-    )
+    Ok(job_completion_for_import_outcome(
+        "imported",
+        result.outcome,
+    ))
 }
 
 fn run_model_pull_job(
@@ -313,14 +342,7 @@ fn run_model_pull_job(
         )
         .map_err(|error| error.to_string())?;
 
-    let metadata = result.outcome.metadata;
-    Ok(
-        JobCompletion::new(format!("pulled model {}", metadata.short_ref)).with_artifact(
-            JobArtifact::new("model")
-                .with_reference(metadata.model_ref.into_string())
-                .with_path(result.outcome.store_path.display().to_string()),
-        ),
-    )
+    Ok(job_completion_for_import_outcome("pulled", result.outcome))
 }
 
 fn model_progress_update(progress: HfModelPullProgress) -> JobProgressUpdate {
@@ -341,6 +363,30 @@ fn parse_model_capability(value: Option<&str>) -> Result<Option<ModelCapability>
             })
         })
         .transpose()
+}
+
+fn parse_required_model_capability(value: &str) -> Result<ModelCapability, RestError> {
+    value
+        .parse()
+        .map_err(|err| RestError::bad_request("bad_request", format!("invalid capability: {err}")))
+}
+
+fn job_completion_for_import_outcome(
+    verb: &str,
+    outcome: tentgent_kernel::features::model::domain::ModelImportOutcome,
+) -> JobCompletion {
+    let warning = outcome.metadata.capability_warning().map(str::to_string);
+    let metadata = outcome.metadata;
+    let mut completion = JobCompletion::new(format!("{verb} model {}", metadata.short_ref))
+        .with_artifact(
+            JobArtifact::new("model")
+                .with_reference(metadata.model_ref.into_string())
+                .with_path(outcome.store_path.display().to_string()),
+        );
+    if let Some(warning) = warning {
+        completion = completion.with_warning_summary(warning);
+    }
+    completion
 }
 
 fn model_error(error: KernelError) -> RestError {

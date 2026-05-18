@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::auth::domain::{AuthEnvLoadPolicy, Provider};
@@ -7,10 +7,10 @@ use crate::features::auth::usecases::{
     AuthSecretResolution, AuthSecretResolutionRequest, AuthSecretResolverUseCase,
 };
 use crate::features::model::domain::{
-    default_model_capabilities, default_model_capability_source, HfModelPullProgress,
-    ModelCapability, ModelCapabilitySource, ModelFormat, ModelImportOutcome, ModelInspection,
-    ModelMetadata, ModelRef, ModelRefSelector, ModelRemovalOutcome, ModelSourceKind,
-    ModelStoreLayout, ModelSummary,
+    default_model_capabilities, default_model_capability_source, HfModelMetadata,
+    HfModelPullProgress, ModelCapability, ModelCapabilitySource, ModelFormat, ModelImportOutcome,
+    ModelInspection, ModelMetadata, ModelRef, ModelRefSelector, ModelRemovalOutcome,
+    ModelSourceKind, ModelStoreLayout, ModelSummary,
 };
 use crate::features::model::infra::{
     FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
@@ -30,13 +30,13 @@ use crate::foundation::layout::{
 };
 
 use super::port::{
-    ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
-    ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
-    ModelRemoveUseCase,
+    ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase, ModelCatalogReadUseCase,
+    ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest, ModelListRequest,
+    ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest, ModelRemoveUseCase,
 };
 use super::{
-    StdModelCatalogReadUseCase, StdModelHfPullUseCase, StdModelLocalImportUseCase,
-    StdModelRemoveUseCase,
+    StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase, StdModelHfPullUseCase,
+    StdModelLocalImportUseCase, StdModelRemoveUseCase,
 };
 
 #[test]
@@ -100,6 +100,15 @@ fn model_usecase_ports_cover_catalog_import_pull_and_remove_workflows() {
         .remove_model(ModelRemoveRequest { layout, selector })
         .expect("remove model");
     assert_eq!(removed.outcome.metadata.model_ref, model_ref());
+
+    let updated = usecases
+        .update_model_capability(ModelCapabilityUpdateRequest {
+            layout: layout_input("/tmp/tentgent-model-usecases"),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            capability: ModelCapability::Embedding,
+        })
+        .expect("update capability");
+    assert_eq!(updated.model.metadata.model_ref, model_ref());
 }
 
 #[test]
@@ -270,7 +279,7 @@ fn standard_hf_pull_usecase_resolves_runtime_auth_fetches_snapshot_and_imports()
     let auth_resolver = FakeAuthResolver;
     let initializer = StdModelStoreLayoutInitializer;
     let stager = StdModelSourceStager;
-    let snapshot_fetcher = FakeSnapshotFetcher;
+    let snapshot_fetcher = FakeSnapshotFetcher::default();
     let manifest_builder = StdModelManifestBuilder;
     let identity = StdModelIdentityGenerator;
     let catalog = FileModelCatalogStore;
@@ -334,6 +343,320 @@ fn standard_hf_pull_usecase_resolves_runtime_auth_fetches_snapshot_and_imports()
         ModelCapabilitySource::ExplicitUser
     );
     assert!(result.outcome.store_path.is_dir());
+}
+
+#[test]
+fn standard_hf_pull_detects_embedding_rerank_chat_and_ambiguous_metadata() {
+    let embedding_home = unique_path("model-hf-detect-embedding");
+    let embedding = pull_hf_model_for_test(
+        &embedding_home,
+        Some(HfModelMetadata {
+            pipeline_tag: Some("sentence-similarity".to_string()),
+            tags: vec!["sentence-transformers".to_string()],
+            ..HfModelMetadata::default()
+        }),
+        None,
+    );
+    assert_eq!(
+        embedding.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Embedding]
+    );
+    assert_eq!(
+        embedding.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::HuggingFaceMetadata
+    );
+    let _ = fs::remove_dir_all(embedding_home);
+
+    let rerank_home = unique_path("model-hf-detect-rerank");
+    let rerank = pull_hf_model_for_test(
+        &rerank_home,
+        Some(HfModelMetadata {
+            pipeline_tag: Some("text-ranking".to_string()),
+            tags: vec!["cross-encoder".to_string()],
+            ..HfModelMetadata::default()
+        }),
+        None,
+    );
+    assert_eq!(
+        rerank.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Rerank]
+    );
+    assert_eq!(
+        rerank.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::HuggingFaceMetadata
+    );
+    let _ = fs::remove_dir_all(rerank_home);
+
+    let chat_home = unique_path("model-hf-detect-chat");
+    let chat = pull_hf_model_for_test(
+        &chat_home,
+        Some(HfModelMetadata {
+            tokenizer_chat_template: true,
+            ..HfModelMetadata::default()
+        }),
+        None,
+    );
+    assert_eq!(
+        chat.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Chat]
+    );
+    assert_eq!(
+        chat.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::HuggingFaceMetadata
+    );
+    let _ = fs::remove_dir_all(chat_home);
+
+    let ambiguous_home = unique_path("model-hf-detect-ambiguous");
+    let ambiguous = pull_hf_model_for_test(
+        &ambiguous_home,
+        Some(HfModelMetadata {
+            pipeline_tag: Some("text-generation".to_string()),
+            tags: vec!["sentence-transformers".to_string()],
+            ..HfModelMetadata::default()
+        }),
+        None,
+    );
+    assert_eq!(
+        ambiguous.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Chat]
+    );
+    assert_eq!(
+        ambiguous.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::DefaultChat
+    );
+    assert!(ambiguous.outcome.metadata.capability_warning().is_some());
+    let _ = fs::remove_dir_all(ambiguous_home);
+}
+
+#[test]
+fn standard_hf_pull_explicit_capability_overrides_detected_metadata() {
+    let home = unique_path("model-hf-explicit-over-detected");
+    let result = pull_hf_model_for_test(
+        &home,
+        Some(HfModelMetadata {
+            pipeline_tag: Some("sentence-similarity".to_string()),
+            ..HfModelMetadata::default()
+        }),
+        Some(ModelCapability::Rerank),
+    );
+
+    assert_eq!(
+        result.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Rerank]
+    );
+    assert_eq!(
+        result.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::ExplicitUser
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn standard_hf_pull_dedup_detection_updates_only_auto_owned_metadata() {
+    let home = unique_path("model-hf-dedup-detection");
+    import_local_for_test(&home, None, b"hf model");
+
+    let detected = pull_hf_model_for_test(
+        &home,
+        Some(HfModelMetadata {
+            pipeline_tag: Some("sentence-similarity".to_string()),
+            ..HfModelMetadata::default()
+        }),
+        None,
+    );
+    assert!(detected.outcome.deduplicated);
+    assert_eq!(
+        detected.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Embedding]
+    );
+    assert_eq!(
+        detected.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::HuggingFaceMetadata
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn standard_hf_pull_dedup_detection_preserves_user_owned_metadata() {
+    let explicit_home = unique_path("model-hf-dedup-explicit-preserved");
+    import_local_for_test(&explicit_home, Some(ModelCapability::Rerank), b"hf model");
+    let explicit = pull_hf_model_for_test(
+        &explicit_home,
+        Some(HfModelMetadata {
+            pipeline_tag: Some("sentence-similarity".to_string()),
+            ..HfModelMetadata::default()
+        }),
+        None,
+    );
+    assert!(explicit.outcome.deduplicated);
+    assert_eq!(
+        explicit.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Rerank]
+    );
+    assert_eq!(
+        explicit.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::ExplicitUser
+    );
+    let _ = fs::remove_dir_all(explicit_home);
+
+    let manual_home = unique_path("model-hf-dedup-manual-preserved");
+    let imported = import_local_for_test(&manual_home, None, b"hf model");
+    update_capability_for_test(
+        &manual_home,
+        imported.outcome.metadata.short_ref.as_str(),
+        ModelCapability::Rerank,
+    );
+    let manual = pull_hf_model_for_test(
+        &manual_home,
+        Some(HfModelMetadata {
+            pipeline_tag: Some("sentence-similarity".to_string()),
+            ..HfModelMetadata::default()
+        }),
+        None,
+    );
+    assert!(manual.outcome.deduplicated);
+    assert_eq!(
+        manual.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Rerank]
+    );
+    assert_eq!(
+        manual.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::ManualUpdate
+    );
+    let _ = fs::remove_dir_all(manual_home);
+}
+
+#[test]
+fn standard_model_capability_update_rewrites_metadata_without_changing_ref() {
+    let home = unique_path("model-capability-update");
+    let imported = import_local_for_test(&home, None, b"model");
+    let original_ref = imported.outcome.metadata.model_ref.clone();
+
+    let updated = update_capability_for_test(
+        &home,
+        imported.outcome.metadata.short_ref.as_str(),
+        ModelCapability::Embedding,
+    );
+
+    assert_eq!(updated.model.metadata.model_ref, original_ref);
+    assert_eq!(
+        updated.model.metadata.model_capabilities,
+        vec![ModelCapability::Embedding]
+    );
+    assert_eq!(
+        updated.model.metadata.model_capability_source,
+        ModelCapabilitySource::ManualUpdate
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+fn pull_hf_model_for_test(
+    home: &Path,
+    metadata: Option<HfModelMetadata>,
+    capability: Option<ModelCapability>,
+) -> super::port::ModelHfPullResult {
+    let layout_resolver = FakeLayoutResolver;
+    let runtime_resolver = FakeRuntimeResolver;
+    let auth_resolver = FakeAuthResolver;
+    let initializer = StdModelStoreLayoutInitializer;
+    let stager = StdModelSourceStager;
+    let snapshot_fetcher = FakeSnapshotFetcher { metadata };
+    let manifest_builder = StdModelManifestBuilder;
+    let identity = StdModelIdentityGenerator;
+    let catalog = FileModelCatalogStore;
+    let indexes = FileModelSourceIndexStore;
+    let content = FileModelContentStore;
+    let usecase = StdModelHfPullUseCase::new(
+        &layout_resolver,
+        &runtime_resolver,
+        &auth_resolver,
+        &initializer,
+        &stager,
+        &snapshot_fetcher,
+        &manifest_builder,
+        &identity,
+        &catalog,
+        &indexes,
+        &content,
+    );
+
+    usecase
+        .pull_hf_model(
+            ModelHfPullRequest {
+                layout: layout_input(home.to_str().expect("home path")),
+                runtime: PythonRuntimeResolutionInput {
+                    project_dir: Some(home.join("python")),
+                    python_env_dir: Some(home.join("python-env")),
+                },
+                repo_id: "org/model".to_string(),
+                revision: Some("main".to_string()),
+                capability,
+                auth: AuthSecretResolutionRequest::for_secret_use(
+                    Provider::HuggingFace,
+                    AuthEnvLoadPolicy::ProcessOnly,
+                ),
+            },
+            &mut |_| {},
+        )
+        .expect("pull hf model")
+}
+
+fn import_local_for_test(
+    home: &Path,
+    capability: Option<ModelCapability>,
+    model_bytes: &[u8],
+) -> super::port::ModelLocalImportResult {
+    let source_dir = home.join("source");
+    fs::create_dir_all(&source_dir).expect("source dir");
+    fs::write(source_dir.join("model.gguf"), model_bytes).expect("source model");
+
+    let layout_resolver = FakeLayoutResolver;
+    let initializer = StdModelStoreLayoutInitializer;
+    let stager = StdModelSourceStager;
+    let manifest_builder = StdModelManifestBuilder;
+    let identity = StdModelIdentityGenerator;
+    let catalog = FileModelCatalogStore;
+    let indexes = FileModelSourceIndexStore;
+    let content = FileModelContentStore;
+    let importer = StdModelLocalImportUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &stager,
+        &manifest_builder,
+        &identity,
+        &catalog,
+        &indexes,
+        &content,
+    );
+
+    importer
+        .import_local_model(ModelLocalImportRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            source_path: source_dir,
+            capability,
+        })
+        .expect("import local model")
+}
+
+fn update_capability_for_test(
+    home: &Path,
+    reference: &str,
+    capability: ModelCapability,
+) -> super::port::ModelCapabilityUpdateResult {
+    let layout_resolver = FakeLayoutResolver;
+    let catalog = FileModelCatalogStore;
+    let updater = StdModelCapabilityUpdateUseCase::new(&layout_resolver, &catalog);
+
+    updater
+        .update_model_capability(ModelCapabilityUpdateRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector: ModelRefSelector::parse(reference).expect("selector"),
+            capability,
+        })
+        .expect("update capability")
 }
 
 struct FakeModelUseCases;
@@ -432,6 +755,28 @@ impl ModelRemoveUseCase for FakeModelUseCases {
                 metadata: metadata_fixture(),
                 store_path: store.model_dir(&model_ref()),
                 removed_index_paths: vec![store.local_index_path(&model_ref())],
+            },
+        })
+    }
+}
+
+impl ModelCapabilityUpdateUseCase for FakeModelUseCases {
+    fn update_model_capability(
+        &self,
+        request: ModelCapabilityUpdateRequest,
+    ) -> KernelResult<super::port::ModelCapabilityUpdateResult> {
+        let layout = runtime_layout(request.layout);
+        let store = ModelStoreLayout::from_models_dir(layout.models_dir.clone());
+        let metadata = metadata_fixture();
+        Ok(super::port::ModelCapabilityUpdateResult {
+            layout,
+            store: store.clone(),
+            model: ModelInspection {
+                store_path: store.model_dir(&metadata.model_ref),
+                manifest_path: store.manifest_path(&metadata.model_ref),
+                variant_source_path: store
+                    .variant_source_dir(&metadata.model_ref, metadata.primary_format),
+                metadata,
             },
         })
     }
@@ -553,7 +898,10 @@ impl AuthSecretResolverUseCase for FakeAuthResolver {
     }
 }
 
-struct FakeSnapshotFetcher;
+#[derive(Default)]
+struct FakeSnapshotFetcher {
+    metadata: Option<HfModelMetadata>,
+}
 
 impl HfModelSnapshotFetcher for FakeSnapshotFetcher {
     fn fetch_hf_snapshot(
@@ -575,6 +923,7 @@ impl HfModelSnapshotFetcher for FakeSnapshotFetcher {
             repo_id: request.repo_id,
             resolved_revision: "resolved-sha".to_string(),
             local_dir: request.destination_dir,
+            metadata: self.metadata.clone(),
         })
     }
 }

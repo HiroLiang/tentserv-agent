@@ -6,6 +6,7 @@ mod import;
 pub mod port;
 mod pull;
 mod remove;
+mod update;
 
 #[cfg(test)]
 mod tests;
@@ -13,6 +14,7 @@ mod tests;
 pub use catalog::StdModelCatalogReadUseCase;
 pub use import::StdModelLocalImportUseCase;
 pub use port::{
+    ModelCapabilityUpdateRequest, ModelCapabilityUpdateResult, ModelCapabilityUpdateUseCase,
     ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullResult, ModelHfPullUseCase,
     ModelInspectRequest, ModelInspectResult, ModelListRequest, ModelListResult,
     ModelLocalImportRequest, ModelLocalImportResult, ModelLocalImportUseCase, ModelRemoveRequest,
@@ -20,3 +22,4 @@ pub use port::{
 };
 pub use pull::StdModelHfPullUseCase;
 pub use remove::StdModelRemoveUseCase;
+pub use update::StdModelCapabilityUpdateUseCase;

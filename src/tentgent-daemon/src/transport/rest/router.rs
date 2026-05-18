@@ -77,7 +77,9 @@ fn store_routes() -> Router<RestState> {
         .route("/v1/models/pull/jobs", post(model::pull_job))
         .route(
             "/v1/models/{reference}",
-            get(model::inspect).delete(model::remove),
+            get(model::inspect)
+                .patch(model::update_capability)
+                .delete(model::remove),
         )
         .route("/v1/adapters", get(adapter::list))
         .route("/v1/adapters/import", post(adapter::import))

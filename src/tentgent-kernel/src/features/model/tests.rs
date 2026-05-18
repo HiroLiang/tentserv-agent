@@ -522,6 +522,7 @@ impl HfModelSnapshotFetcher for FakeModelPorts {
             repo_id: request.repo_id,
             resolved_revision: "resolved-sha".to_string(),
             local_dir: request.destination_dir,
+            metadata: None,
         })
     }
 }

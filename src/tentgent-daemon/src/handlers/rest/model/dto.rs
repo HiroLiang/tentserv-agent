@@ -19,6 +19,19 @@ pub struct ModelResponse {
 pub struct ModelMutationResponse {
     pub model: ModelItem,
     pub mutation: ModelMutationItem,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelCapabilityUpdateResponse {
+    pub model: ModelItem,
+    pub mutation: ModelCapabilityUpdateMutationItem,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelCapabilityUpdateMutationItem {
+    pub kind: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,6 +85,12 @@ pub fn model_mutation_response(
     outcome: ModelImportOutcome,
     kind: &'static str,
 ) -> ModelMutationResponse {
+    let warnings = outcome
+        .metadata
+        .capability_warning()
+        .map(str::to_string)
+        .into_iter()
+        .collect();
     let mutation = ModelMutationItem {
         kind,
         deduplicated: outcome.deduplicated,
@@ -81,6 +100,23 @@ pub fn model_mutation_response(
     ModelMutationResponse {
         model: model_item_from_parts(outcome.metadata, &outcome.store_path, None, None),
         mutation,
+        warnings,
+    }
+}
+
+pub fn model_capability_update_response(
+    inspection: ModelInspection,
+) -> ModelCapabilityUpdateResponse {
+    ModelCapabilityUpdateResponse {
+        model: model_item_from_parts(
+            inspection.metadata,
+            &inspection.store_path,
+            Some(&inspection.manifest_path),
+            Some(&inspection.variant_source_path),
+        ),
+        mutation: ModelCapabilityUpdateMutationItem {
+            kind: "update_capability",
+        },
     }
 }
 

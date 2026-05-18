@@ -93,6 +93,8 @@ Review target:
 
 ### M2: Detection And Correction
 
+Detailed plan: [m2-model-capability-detection-and-correction.md](./m2-model-capability-detection-and-correction.md).
+
 - Add Hugging Face metadata detection as best-effort evidence.
 - Record `huggingface-metadata` only when metadata is specific enough.
 - Add a manual metadata update path for correcting stored capabilities.

@@ -8,9 +8,9 @@ use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
 
 use super::domain::{
-    HfModelPullProgress, HfModelSourceIndex, LocalModelSourceIndex, ModelFormat, ModelImportMethod,
-    ModelInspection, ModelManifest, ModelMetadata, ModelRef, ModelRefSelector, ModelStoreLayout,
-    ModelSummary, ModelVariantMetadata,
+    HfModelMetadata, HfModelPullProgress, HfModelSourceIndex, LocalModelSourceIndex, ModelFormat,
+    ModelImportMethod, ModelInspection, ModelManifest, ModelMetadata, ModelRef, ModelRefSelector,
+    ModelStoreLayout, ModelSummary, ModelVariantMetadata,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +33,7 @@ pub struct HfModelSnapshot {
     pub repo_id: String,
     pub resolved_revision: String,
     pub local_dir: PathBuf,
+    pub metadata: Option<HfModelMetadata>,
 }
 
 /// Ensures the model-store root directories exist for mutating model operations.

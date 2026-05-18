@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 
 use serde::Deserialize;
 
-use crate::features::model::domain::HfModelPullProgress;
+use crate::features::model::domain::{HfModelMetadata, HfModelPullProgress};
 use crate::features::model::ports::{
     HfModelSnapshot, HfModelSnapshotFetcher, HfModelSnapshotRequest,
 };
@@ -115,6 +115,7 @@ impl HfModelSnapshotFetcher for StdHfModelSnapshotFetcher {
             repo_id: output.repo_id,
             resolved_revision: output.resolved_revision,
             local_dir: PathBuf::from(output.local_dir),
+            metadata: output.metadata,
         })
     }
 }
@@ -206,6 +207,8 @@ struct HfSnapshotOutput {
     repo_id: String,
     resolved_revision: String,
     local_dir: String,
+    #[serde(default)]
+    metadata: Option<HfModelMetadata>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -224,7 +227,7 @@ struct HfProgressLine {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_hf_progress_line;
+    use super::{parse_hf_progress_line, HfSnapshotOutput};
 
     #[test]
     fn parses_hf_progress_json_lines() {
@@ -244,5 +247,25 @@ mod tests {
     fn ignores_non_progress_json_lines() {
         assert!(parse_hf_progress_line(r#"{"event":"done"}"#).is_none());
         assert!(parse_hf_progress_line("not json").is_none());
+    }
+
+    #[test]
+    fn parses_snapshot_output_with_or_without_metadata() {
+        let output: HfSnapshotOutput = serde_json::from_str(
+            r#"{"repo_id":"org/model","resolved_revision":"sha","local_dir":"/tmp/model"}"#,
+        )
+        .expect("snapshot output");
+        assert!(output.metadata.is_none());
+
+        let output: HfSnapshotOutput = serde_json::from_str(
+            r#"{"repo_id":"org/model","resolved_revision":"sha","local_dir":"/tmp/model","metadata":{"pipeline_tag":"sentence-similarity","tags":["sentence-transformers"],"library_name":"sentence-transformers","config_architectures":["BertModel"],"tokenizer_chat_template":false,"sentence_bert_config":true}}"#,
+        )
+        .expect("snapshot output");
+        let metadata = output.metadata.expect("metadata");
+        assert_eq!(
+            metadata.pipeline_tag.as_deref(),
+            Some("sentence-similarity")
+        );
+        assert!(metadata.sentence_bert_config);
     }
 }
