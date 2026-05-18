@@ -1,7 +1,7 @@
 # Session Store
 
-This document defines the local session store boundary for daemon-backed TUI,
-CLI, and external chat transcript discovery and mutation.
+This document defines the local session store boundary for CLI, daemon REST,
+and external chat transcript discovery and mutation.
 
 ## Scope
 
@@ -14,6 +14,19 @@ CLI, and external chat transcript discovery and mutation.
   compaction.
 - Defer repair, search, export, message edit/delete, attachments, long-term
   memory, and semantic retrieval to later slices.
+
+## Kernel Boundary
+
+The current store implementation is file-backed, but kernel callers must treat
+the store as backend-neutral. `SessionStoreConfig::File` carries the legacy file
+layout; `SessionStoreConfig::Sql` reserves the future SQL-backed shape without
+forcing SQL implementations to invent session directories.
+
+Use case requests select a store through `SessionStoreSelection`: `DefaultFile`
+resolves the runtime layout and uses the file store, while `Explicit` passes a
+file or SQL config through directly. Store and use case ports should return
+storage locations rather than raw file paths so a SQL backend can return an
+external locator while the file backend still reports local diagnostic paths.
 
 ## Layout
 
@@ -216,4 +229,6 @@ Missing `messages.jsonl` is not fatal. Readers return an empty message list with
 a structured `messages_missing` warning.
 
 Path fields exposed by daemon APIs are local diagnostics and may reveal local
-filesystem layout. They are intended for loopback-local daemon usage.
+filesystem layout. They are intended for loopback-local daemon usage for the
+file backend; future non-file backends should expose backend names and opaque
+locators instead.

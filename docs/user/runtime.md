@@ -54,7 +54,11 @@ Environment variables are read when a process starts. Tentgent does not rewrite 
 
 ## Runtime Footprint
 
-Use `tentgent status` or `tentgent doctor` to inspect human-readable size information for the runtime home, managed Python environment, and bootstrap caches.
+Use `tentgent runtime status` or `tentgent doctor` to inspect
+human-readable runtime information. `tentgent runtime status` is scoped to the
+managed Python runtime and can be narrowed with `--profile`; `tentgent doctor`
+includes broader platform, backend, installation, and runtime footprint
+diagnostics.
 
 The managed install default for the Python environment is:
 
@@ -62,7 +66,10 @@ The managed install default for the Python environment is:
 TENTGENT_HOME/runtime/python-env
 ```
 
-The actual path shown by `status` or `doctor` may differ when `TENTGENT_PYTHON_ENV_DIR` is set. Treat this environment as required runtime state. Do not remove it unless you are intentionally repairing or reinstalling the managed Python runtime.
+The actual path shown by `runtime status` or `doctor` may differ when
+`TENTGENT_PYTHON_ENV_DIR` is set. Treat this environment as required runtime
+state. Do not remove it unless you are intentionally repairing or reinstalling
+the managed Python runtime.
 
 Package-manager installs such as Homebrew prepare this environment with:
 
@@ -84,6 +91,15 @@ Use `tentgent runtime bootstrap --print-plan` to inspect resolved runtime paths
 and selected profile extras without syncing. Direct release installers run the
 base bootstrap automatically unless `--skip-python-bootstrap` is passed.
 
+`tentgent runtime bootstrap` options are independent:
+
+- `--project` overrides the Python daemon project.
+- `--env` overrides the managed Python environment.
+- `--uv` uses an explicit uv executable.
+- `--profile` selects `base`, `local-model`, `training`, or `full`.
+- `--dry-run` asks uv to plan without syncing.
+- `--print-plan` prints the resolved bootstrap plan without syncing.
+
 Bootstrap data lives under:
 
 ```text
@@ -99,7 +115,12 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 ## Backend Status
 
 - `tentgent doctor` runs installation and runtime health checks.
-- `tentgent status` reports the current platform and backend capability state.
+- `tentgent doctor` reports platform and backend capability state.
+- `tentgent doctor` verifies `local-model`, `training`, and `full` profile
+  readiness by importing the expected Python modules from the selected managed
+  Python environment. A successful `full` bootstrap should make GGUF,
+  safetensors/PEFT, MLX on Apple Silicon macOS, and training dependencies
+  report ready.
 - `safetensors` models run through the `transformers-peft` backend when Python dependencies are installed.
 - `mlx` models run through the MLX backend only on Apple Silicon macOS.
 - `gguf` models run through `llama-cpp-python` when that dependency is installed.
@@ -113,6 +134,8 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
   default base Python runtime has been smoke-tested on Ubuntu 24.04 without
   build tools. Local-model, training, GPU, and distro-package parity remain
   dependency-gated.
+- Embedding and rerank backend capability probes are not implemented yet, so
+  they may still report unknown even when the base runtime is healthy.
 
 ## Keychain Prompts
 
@@ -123,6 +146,7 @@ This is expected for commands such as:
 - `tentgent auth hf`
 - `tentgent auth openai`
 - `tentgent auth anthropic`
+- `tentgent auth gemini`
 - `tentgent model pull <HF_REPO>`
 - `tentgent adapter pull <HF_REPO>`
 
@@ -135,3 +159,9 @@ HF_TOKEN="your token" tentgent model pull hf-internal-testing/tiny-random-gpt2 -
 ```
 
 One-shot environment variables apply only to that command and do not need `unset`.
+
+On platforms where native secret storage is unsupported or unavailable,
+Tentgent should not store provider keys in plaintext files. Use environment
+variables for repeatable headless flows. Commands that need a provider key may
+offer a one-operation prompt, and HTTP provider workflows may accept a
+per-request secret, but those values are not persistent auth setup.

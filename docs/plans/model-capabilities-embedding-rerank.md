@@ -8,13 +8,21 @@ forcing them through chat-only server flows.
 
 - Model metadata records source, primary format, detected formats, file count,
   and size.
+- Kernel model domain has a `model_capabilities` metadata field with `chat`,
+  `embedding`, and `rerank` values. Old metadata defaults to `chat`, and new
+  imports still default to `chat` until import/pull overrides are wired.
+- Kernel model domain records `model_capability_source` so callers can
+  distinguish default chat fallback, explicit user input, future Hugging Face
+  metadata detection, and manual metadata updates.
 - Format detection is layout-based: `safetensors`, `gguf`, or `mlx`.
 - Server specs distinguish local vs cloud runtimes, but local server behavior is
   chat-oriented.
 - Direct server chat and daemon chat contracts are built around `messages`,
   `max_tokens`, `temperature`, and optional `adapter_ref`.
-- There are no first-class embedding or rerank endpoints, model capability
-  fields, or compatibility checks.
+- There are no first-class embedding or rerank endpoints, CLI/HTTP capability
+  overrides, or server compatibility checks.
+- The kernel has machine-local capability state primitives, but embedding and
+  rerank workflows are not yet gated through them.
 
 ## Goals
 
@@ -35,9 +43,12 @@ forcing them through chat-only server flows.
   capability metadata.
 - Do not make adapters compatible with embedding/rerank models in the first
   pass.
-- Do not add training support for embedding/rerank models in this track.
+- Do not add embedding/rerank training execution in this track.
 - Do not claim every Hugging Face embedding or rerank architecture is supported
   immediately.
+- Do not use embedding/rerank work to invent a second machine capability model;
+  local backend readiness should come from kernel capability state in
+  [tentgent-kernel-migration.md](./tentgent-kernel-migration.md).
 
 ## Proposed Concepts
 
@@ -103,6 +114,8 @@ Review target:
 - Return vectors with stable JSON shape and input index ordering.
 - Implement one local backend path first, likely Python `sentence-transformers`
   or a transformers feature path, chosen after dependency review.
+- Gate local backend startup through kernel capability state once runtime
+  adapters and backend-gated workflow bundles are in place.
 - Add cloud provider support only if the provider mapping is straightforward and
   does not complicate the local MVP.
 
@@ -119,6 +132,8 @@ Review target:
   results back to original inputs.
 - Implement one local backend path first, likely a cross-encoder rerank model
   path.
+- Gate local backend startup through kernel capability state once runtime
+  adapters and backend-gated workflow bundles are in place.
 - Do not add session storage or transcript behavior for rerank requests.
 
 Review target:
@@ -126,12 +141,13 @@ Review target:
 - A managed rerank model can score candidate documents and return ordered
   results through the daemon.
 
-### M5: OpenAI-Compatible And TUI Follow-Up
+### M5: OpenAI-Compatible And CLI/Daemon Follow-Up
 
 - Add OpenAI-compatible `/v1/embeddings` only after native embeddings are stable.
 - Decide whether rerank needs an OpenAI-compatible route or remains Tentgent
   native.
-- Add TUI visibility for model/server capability and prevent invalid actions.
+- Add CLI and daemon REST visibility for model/server capability and prevent
+  invalid actions.
 - Add docs and command examples for embedding/rerank workflows.
 
 Review target:
@@ -147,6 +163,9 @@ Review target:
   pipeline tags, or explicit user overrides.
 - Embedding and rerank dependencies may increase runtime footprint. Keep
   dependency additions deliberate and documented.
+- Local embedding/rerank backend work should depend on kernel manifest-backed
+  runtime profile readiness instead of re-probing platform, Python, CPU, or GPU
+  state in each endpoint implementation.
 - Session context, rolling summaries, and chat streaming should not be reused
   for embedding/rerank requests.
 
@@ -158,5 +177,5 @@ Review target:
 - HTTP tests for embeddings/rerank request validation and response ordering.
 - Python runtime tests with small or mocked models before adding heavyweight
   model downloads.
-- CLI/TUI render tests so users can see model capability before starting a
+- CLI and daemon REST response tests so users can see model capability before starting a
   server.

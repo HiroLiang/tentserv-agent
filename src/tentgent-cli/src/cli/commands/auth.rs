@@ -40,6 +40,16 @@ pub enum AuthCommands {
         #[command(subcommand)]
         action: Option<AuthProviderAction>,
     },
+    /// Show, store, or remove the Gemini API key.
+    #[command(
+        name = "gemini",
+        about = "Show, store, or remove the Gemini API key.",
+        long_about = "Show, store, or remove the Gemini API key. With no action, Tentgent prints the current Gemini auth status, including .env/env override state, keychain presence, and validation status."
+    )]
+    Gemini {
+        #[command(subcommand)]
+        action: Option<AuthProviderAction>,
+    },
 }
 
 #[derive(Debug, Subcommand)]

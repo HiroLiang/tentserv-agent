@@ -1,149 +1,287 @@
-use std::{
-    env,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-};
-
+use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
 use miette::{miette, IntoDiagnostic, Result};
-use tentgent_core::runtime_assets::{
-    resolve_runtime_home, PythonRuntime, PythonRuntimeSource, RuntimeAssetError,
+use tentgent_kernel::features::runtime::domain::{
+    BootstrapProfile, BootstrapRuntimeInput, PythonRuntimeResolutionInput, RuntimeBootstrapStatus,
+    RuntimeInitState, RuntimeReadiness,
 };
+use tentgent_kernel::features::runtime::infra::{
+    StdPythonRuntimeResolver, StdRuntimeBootstrapExecutor, StdRuntimeBootstrapPlanner,
+    StdRuntimeStateProbe,
+};
+use tentgent_kernel::features::runtime::usecases::{
+    RuntimeBootstrapRequest, RuntimeBootstrapUseCase, RuntimeStateRequest, RuntimeStateUseCase,
+    StdRuntimeBootstrapUseCase, StdRuntimeStateUseCase,
+};
+use tentgent_kernel::foundation::layout::{
+    LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver,
+};
+use tentgent_kernel::foundation::platform::StdPlatformProbe;
 
-use super::commands::{RuntimeBootstrapCommand, RuntimeCommands};
+use super::commands::{RuntimeBootstrapCommand, RuntimeBootstrapProfile, RuntimeCommands};
 
 pub fn handle_runtime_command(action: RuntimeCommands) -> Result<()> {
+    let runtime = CliRuntimeKernel::new();
+
     match action {
-        RuntimeCommands::Bootstrap(command) => handle_bootstrap(command),
+        RuntimeCommands::Bootstrap(command) => handle_bootstrap(&runtime, command),
+        RuntimeCommands::Status(command) => handle_status(&runtime, command),
     }
 }
 
-fn handle_bootstrap(command: RuntimeBootstrapCommand) -> Result<()> {
-    let runtime = PythonRuntime::resolve().ok();
-    let project = resolve_project_path(command.project.as_deref(), runtime.as_ref())?;
-    let env_dir = resolve_env_path(command.env.as_deref(), runtime.as_ref())?;
-    let source = runtime
-        .as_ref()
-        .map(PythonRuntime::source)
-        .unwrap_or(PythonRuntimeSource::EnvironmentOverride);
-    let script = normalize_existing_path(resolve_bootstrap_script(&project, source));
+struct CliRuntimeKernel {
+    layout_resolver: StdRuntimeLayoutResolver,
+    platform_probe: StdPlatformProbe,
+    runtime_resolver: StdPythonRuntimeResolver,
+    bootstrap_planner: StdRuntimeBootstrapPlanner,
+    bootstrap_executor: StdRuntimeBootstrapExecutor,
+    state_probe: StdRuntimeStateProbe,
+}
 
-    if !script.is_file() {
-        return Err(miette!(
-            "runtime bootstrap script is missing at `{}`; reinstall Tentgent or pass --project/--env to inspect a valid runtime layout",
-            script.display()
-        ));
+impl CliRuntimeKernel {
+    fn new() -> Self {
+        Self {
+            layout_resolver: StdRuntimeLayoutResolver,
+            platform_probe: StdPlatformProbe,
+            runtime_resolver: StdPythonRuntimeResolver,
+            bootstrap_planner: StdRuntimeBootstrapPlanner,
+            bootstrap_executor: StdRuntimeBootstrapExecutor,
+            state_probe: StdRuntimeStateProbe,
+        }
     }
 
+    fn bootstrap_usecase(&self) -> StdRuntimeBootstrapUseCase<'_> {
+        StdRuntimeBootstrapUseCase::new(
+            &self.layout_resolver,
+            &self.platform_probe,
+            &self.runtime_resolver,
+            &self.bootstrap_planner,
+            &self.bootstrap_executor,
+        )
+    }
+
+    fn state_usecase(&self) -> StdRuntimeStateUseCase<'_> {
+        StdRuntimeStateUseCase::new(
+            &self.layout_resolver,
+            &self.runtime_resolver,
+            &self.state_probe,
+        )
+    }
+}
+
+fn handle_bootstrap(runtime: &CliRuntimeKernel, command: RuntimeBootstrapCommand) -> Result<()> {
     println!(
         "{} {}",
         style("==>").cyan().bold(),
         style("Tentgent runtime bootstrap").bold()
     );
-    println!("project: {}", project.display());
-    println!("env: {}", env_dir.display());
-    println!("script: {}", script.display());
-    println!("profile: {}", command.profile);
 
-    let mut process = Command::new(&script);
-    process
-        .arg("--project")
-        .arg(&project)
-        .arg("--env")
-        .arg(&env_dir)
-        .arg("--profile")
-        .arg(command.profile.as_str())
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+    let request = RuntimeBootstrapRequest {
+        layout: runtime_layout_input(bootstrap_layout_mode(command.print_plan)),
+        runtime: PythonRuntimeResolutionInput {
+            project_dir: command.project.clone(),
+            python_env_dir: command.env.clone(),
+        },
+        bootstrap: BootstrapRuntimeInput {
+            project_dir: command.project,
+            python_env_dir: command.env,
+            uv_path: command.uv,
+            profile: bootstrap_profile(command.profile),
+            dry_run: command.dry_run,
+            print_plan: command.print_plan,
+        },
+    };
 
-    if let Some(uv) = command.uv {
-        process.arg("--uv").arg(uv);
-    }
-    if command.dry_run {
-        process.arg("--dry-run");
-    }
-    if command.print_plan {
-        process.arg("--print-plan");
-    }
+    let result = runtime
+        .bootstrap_usecase()
+        .bootstrap_runtime(request)
+        .into_diagnostic()?;
 
-    let status = process
-        .status()
-        .into_diagnostic()
-        .map_err(|err| miette!("failed to run runtime bootstrap script: {err}"))?;
-    if !status.success() {
-        return Err(miette!("runtime bootstrap failed with status {status}"));
+    render_bootstrap_summary(&result.plan);
+
+    if result.outcome.status != RuntimeBootstrapStatus::Succeeded {
+        return Err(miette!(
+            "runtime bootstrap failed{}",
+            result
+                .outcome
+                .exit_code
+                .map(|code| format!(" with exit code {code}"))
+                .unwrap_or_default()
+        ));
     }
 
     Ok(())
 }
 
-fn resolve_project_path(
-    override_path: Option<&Path>,
-    runtime: Option<&PythonRuntime>,
-) -> Result<PathBuf> {
-    if let Some(path) = override_path {
-        return Ok(normalize_input_path(path)?);
-    }
-    let runtime = runtime.ok_or_else(|| {
-        miette!("failed to resolve Python runtime assets; pass --project to specify the packaged Python project")
-    })?;
-    Ok(runtime.project_dir().to_path_buf())
-}
+fn handle_status(
+    runtime: &CliRuntimeKernel,
+    command: super::commands::RuntimeStatusCommand,
+) -> Result<()> {
+    let selected_profile = command.profile.map(bootstrap_profile);
+    let result = runtime
+        .state_usecase()
+        .runtime_state(RuntimeStateRequest {
+            layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
+            runtime: PythonRuntimeResolutionInput {
+                project_dir: command.project,
+                python_env_dir: command.env,
+            },
+        })
+        .into_diagnostic()?;
 
-fn resolve_env_path(
-    override_path: Option<&Path>,
-    runtime: Option<&PythonRuntime>,
-) -> Result<PathBuf> {
-    if let Some(path) = override_path {
-        return Ok(normalize_input_path(path)?);
-    }
-    if let Some(runtime) = runtime {
-        return Ok(runtime.env_dir().to_path_buf());
-    }
-    Ok(resolve_runtime_home()
-        .map_err(runtime_home_error)?
-        .join("runtime/python-env"))
-}
+    println!(
+        "{} {}",
+        style("==>").cyan().bold(),
+        style("Tentgent runtime status").bold()
+    );
 
-fn runtime_home_error(error: RuntimeAssetError) -> miette::Report {
-    miette!("failed to resolve Tentgent runtime home: {error}")
-}
-
-fn normalize_input_path(path: &Path) -> Result<PathBuf> {
-    if path.is_absolute() {
-        Ok(path.to_path_buf())
+    let mut table = base_table();
+    table.add_row(vec![
+        Cell::new("runtime_home"),
+        Cell::new(result.layout.home_dir.display().to_string()),
+    ]);
+    table.add_row(vec![
+        Cell::new("python_env"),
+        Cell::new(path_with_presence(
+            &result.state.python_env_dir,
+            result.state.python.env_exists,
+        )),
+    ]);
+    table.add_row(vec![
+        Cell::new("python_binary"),
+        Cell::new(path_with_presence(
+            &result.state.python.binary_path,
+            result.state.python.binary_path.is_file(),
+        )),
+    ]);
+    table.add_row(vec![
+        Cell::new("python_version"),
+        Cell::new(result.state.python.version.as_deref().unwrap_or("unknown")),
+    ]);
+    if let Some(runtime) = result.runtime {
+        table.add_row(vec![
+            Cell::new("python_source"),
+            Cell::new(runtime.source.as_str()),
+        ]);
+        table.add_row(vec![
+            Cell::new("python_project"),
+            Cell::new(path_with_presence(
+                &runtime.project_dir,
+                runtime.pyproject_path().is_file(),
+            )),
+        ]);
     } else {
-        Ok(env::current_dir()
-            .into_diagnostic()
-            .map_err(|err| miette!("failed to resolve current directory: {err}"))?
-            .join(path))
+        table.add_row(vec![Cell::new("python_source"), Cell::new("unresolved")]);
+        table.add_row(vec![Cell::new("python_project"), Cell::new("unresolved")]);
+    }
+    table.add_row(vec![
+        Cell::new("bootstrap_dir"),
+        Cell::new(result.state.bootstrap_dir.display().to_string()),
+    ]);
+    table.add_row(vec![
+        Cell::new("uv_cache_dir"),
+        Cell::new(result.state.uv_cache_dir.display().to_string()),
+    ]);
+    add_profile_rows(&mut table, &result.state, selected_profile);
+
+    println!("{table}");
+    println!();
+    Ok(())
+}
+
+fn render_bootstrap_summary(
+    plan: &tentgent_kernel::features::runtime::domain::RuntimeBootstrapPlan,
+) {
+    println!("project: {}", plan.project_dir.display());
+    println!("env: {}", plan.python_env_dir.display());
+    println!("script: {}", plan.script_path.display());
+    println!("profile: {}", plan.profile);
+    if let Some(uv_path) = &plan.uv_path {
+        println!("uv: {}", uv_path.display());
+    }
+    if plan.dry_run {
+        println!("dry_run: true");
+    }
+    if plan.print_plan {
+        println!("print_plan: true");
     }
 }
 
-fn normalize_existing_path(path: PathBuf) -> PathBuf {
-    path.canonicalize().unwrap_or(path)
-}
-
-fn resolve_bootstrap_script(project: &Path, source: PythonRuntimeSource) -> PathBuf {
-    let packaged = project
-        .parent()
-        .map(|parent| parent.join("scripts/bootstrap-python-env.sh"));
-    if source == PythonRuntimeSource::InstalledPrefix {
-        return packaged.unwrap_or_else(development_bootstrap_script);
-    }
-    if let Some(path) = packaged {
-        if path.is_file() {
-            return path;
+fn add_profile_rows(
+    table: &mut Table,
+    state: &RuntimeInitState,
+    selected_profile: Option<BootstrapProfile>,
+) {
+    for profile in &state.profiles {
+        if !profile_matches(selected_profile, profile.profile) {
+            continue;
         }
+
+        let value = match &profile.message {
+            Some(message) => format!("{}: {message}", readiness_label(profile.readiness)),
+            None => readiness_label(profile.readiness).to_string(),
+        };
+        table.add_row(vec![
+            Cell::new(format!("profile_{}", profile.profile.as_str())),
+            Cell::new(value),
+        ]);
     }
-    development_bootstrap_script()
 }
 
-fn development_bootstrap_script() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join("scripts/bootstrap-python-env.sh")
+fn profile_matches(selected: Option<BootstrapProfile>, profile: BootstrapProfile) -> bool {
+    match selected {
+        Some(selected) => selected == profile,
+        None => true,
+    }
+}
+
+fn base_table() -> Table {
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL_CONDENSED)
+        .apply_modifier(UTF8_ROUND_CORNERS)
+        .set_header(vec!["Field", "Value"]);
+    table
+}
+
+fn path_with_presence(path: &std::path::Path, present: bool) -> String {
+    let label = if present { "present" } else { "missing" };
+    format!("{label}: {}", path.display())
+}
+
+fn readiness_label(readiness: RuntimeReadiness) -> &'static str {
+    match readiness {
+        RuntimeReadiness::Ready => "ready",
+        RuntimeReadiness::Missing => "missing",
+        RuntimeReadiness::Stale => "stale",
+        RuntimeReadiness::Unsupported => "unsupported",
+        RuntimeReadiness::Unknown => "unknown",
+    }
+}
+
+fn runtime_layout_input(mode: LayoutResolveMode) -> RuntimeLayoutInput {
+    RuntimeLayoutInput {
+        mode,
+        home_dir: None,
+        data_root_dir: None,
+    }
+}
+
+fn bootstrap_layout_mode(print_plan: bool) -> LayoutResolveMode {
+    if print_plan {
+        LayoutResolveMode::ReadOnly
+    } else {
+        LayoutResolveMode::Create
+    }
+}
+
+fn bootstrap_profile(profile: RuntimeBootstrapProfile) -> BootstrapProfile {
+    match profile {
+        RuntimeBootstrapProfile::Base => BootstrapProfile::Base,
+        RuntimeBootstrapProfile::LocalModel => BootstrapProfile::LocalModel,
+        RuntimeBootstrapProfile::Training => BootstrapProfile::Training,
+        RuntimeBootstrapProfile::Full => BootstrapProfile::Full,
+    }
 }
 
 #[cfg(test)]
@@ -151,34 +289,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn installed_prefix_script_is_project_sibling() {
-        let script = resolve_bootstrap_script(
-            Path::new("/opt/tentgent/share/tentgent/python"),
-            PythonRuntimeSource::InstalledPrefix,
-        );
-
+    fn runtime_bootstrap_profile_maps_to_kernel_profile() {
         assert_eq!(
-            script,
-            PathBuf::from("/opt/tentgent/share/tentgent/scripts/bootstrap-python-env.sh")
+            bootstrap_profile(RuntimeBootstrapProfile::Base),
+            BootstrapProfile::Base
+        );
+        assert_eq!(
+            bootstrap_profile(RuntimeBootstrapProfile::LocalModel),
+            BootstrapProfile::LocalModel
+        );
+        assert_eq!(
+            bootstrap_profile(RuntimeBootstrapProfile::Training),
+            BootstrapProfile::Training
+        );
+        assert_eq!(
+            bootstrap_profile(RuntimeBootstrapProfile::Full),
+            BootstrapProfile::Full
         );
     }
 
     #[test]
-    fn development_script_uses_repo_root() {
-        let script = resolve_bootstrap_script(
-            Path::new("/tmp/does-not-have-sibling-script/python"),
-            PythonRuntimeSource::DevelopmentSource,
-        );
-
-        assert!(script.ends_with("scripts/bootstrap-python-env.sh"));
+    fn runtime_bootstrap_print_plan_does_not_request_layout_creation() {
+        assert_eq!(bootstrap_layout_mode(true), LayoutResolveMode::ReadOnly);
+        assert_eq!(bootstrap_layout_mode(false), LayoutResolveMode::Create);
     }
 
     #[test]
-    fn relative_override_paths_are_made_absolute() {
-        let path = normalize_input_path(Path::new("python/tentgent-daemon"))
-            .expect("normalize relative path");
-
-        assert!(path.is_absolute());
-        assert!(path.ends_with("python/tentgent-daemon"));
+    fn runtime_status_profile_filter_matches_only_selected_profile() {
+        assert!(profile_matches(None, BootstrapProfile::Training));
+        assert!(profile_matches(
+            Some(BootstrapProfile::Full),
+            BootstrapProfile::Full
+        ));
+        assert!(!profile_matches(
+            Some(BootstrapProfile::Full),
+            BootstrapProfile::Training
+        ));
     }
 }

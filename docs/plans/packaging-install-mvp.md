@@ -160,7 +160,8 @@ The formula should:
 - define installed-prefix lookup for Python daemon assets
 - preserve source-tree fallback for local development
 - document environment overrides for debugging
-- expose `tentgent status` as the current diagnostic command until `doctor` exists
+- expose `tentgent doctor` as the broad diagnostic command and keep
+  `tentgent runtime status` scoped to runtime state
 
 Review target:
 
@@ -376,7 +377,7 @@ that can install, upgrade, and uninstall without touching user runtime data.
   version notes
 - keep historical alpha notes intact for release history
 - ensure README onboarding still routes through install, key setup, model
-  lifecycle, one-shot chat, server chat, daemon chat, TUI, uninstall, version
+  lifecycle, one-shot chat, server chat, daemon chat, uninstall, version
   notes, and full CLI docs
 - run release-readiness checks before tagging:
   - `cargo test --workspace`
@@ -468,7 +469,7 @@ Review target:
 - use `caveats` for next steps:
   - release-safe runtime bootstrap command from H2.5
   - `tentgent doctor`
-  - `tentgent tui`
+  - `tentgent daemon status`
 - validate the formula from the public tap path:
   - `brew update`
   - `brew audit hiroliang/tap/tentgent`
@@ -536,7 +537,7 @@ Review target:
 Review target:
 
 - a new user can install through Homebrew, configure keys, run chat/server/daemon
-  flows, enter the TUI, and uninstall without reading development docs
+  flows, and uninstall without reading development docs
 
 ### H6: Tap Update Automation
 
@@ -575,15 +576,25 @@ Review target:
 
 ### Slice 7: Signing And Notarization
 
-- Status: planned.
-- keep this as a release engineering/security slice, not part of the TUI
+- Status: moved to [apple-signed-cli-release.md](./apple-signed-cli-release.md).
+- keep this as a release engineering/security slice, not part of a UI
   implementation track
 - sign macOS binaries with a stable Developer ID Application identity and
   `com.tentserv.tentgent` signing identifier
+- define the release entitlements plist instead of relying on ad-hoc
+  development signing; include the real Apple Team ID-prefixed Keychain access
+  group if Keychain sharing or user-presence-protected items require it
 - use `--options runtime` and `--timestamp` for distribution-signed macOS
   command-line binaries
 - verify the signed binary with `codesign --verify --strict --verbose=4` and
   record the designated requirement with `codesign -dr -`
+- run an opt-in signed-binary Keychain smoke test after Developer ID signing:
+  write, read, and remove a macOS user-presence-protected provider-secret test
+  item, then confirm whether the resulting path is user-presence/Touch ID or
+  the standard login Keychain fallback
+- keep unsigned development binaries on the standard login Keychain fallback
+  path, and keep CI live Keychain/Touch ID tests opt-in so headless runners do
+  not fail due to missing local biometric state or signing entitlements
 - package macOS releases as signed `.pkg` or another artifact shape that can be
   notarized and stapled; do not rely on stapling standalone Mach-O binaries
 - submit release artifacts to Apple notarization through `notarytool` using

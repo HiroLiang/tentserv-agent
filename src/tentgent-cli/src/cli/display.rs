@@ -20,10 +20,6 @@ pub(crate) fn format_bytes(bytes: u64) -> String {
     }
 }
 
-pub(crate) fn format_optional_bytes(bytes: Option<u64>) -> String {
-    bytes.map(format_bytes).unwrap_or_else(|| "-".to_string())
-}
-
 pub(crate) fn format_size_transition(left: Option<u64>, right: Option<u64>) -> String {
     match (left, right) {
         (Some(left), Some(right)) => format!("{} -> {}", format_bytes(left), format_bytes(right)),
@@ -46,12 +42,6 @@ mod tests {
         assert_eq!(format_bytes(1536), "1.5 KiB");
         assert_eq!(format_bytes(1024_u64 * 1024), "1.0 MiB");
         assert_eq!(format_bytes(2_469_606_195), "2.3 GiB");
-    }
-
-    #[test]
-    fn formats_optional_bytes() {
-        assert_eq!(format_optional_bytes(Some(2048)), "2.0 KiB");
-        assert_eq!(format_optional_bytes(None), "-");
     }
 
     #[test]

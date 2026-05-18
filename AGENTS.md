@@ -21,13 +21,14 @@ If the current task is about agent workflows, role selection, or role-specific w
 
 ## Repository Map
 
-- `src/tentgent-core/`
-  Shared Rust core types, runtime-facing contracts, routing logic, and server
-  runtime launch helpers.
+- `src/tentgent-kernel/`
+  Shared Rust domain, infrastructure ports, runtime layout, machine capability
+  state, and feature use cases.
 - `src/tentgent-cli/`
   Rust CLI entry point.
-- `src/tentgent-http/`
-  Rust HTTP daemon entry point and route layer.
+- `src/tentgent-daemon/`
+  Rust long-running daemon application host for bootstrap, transports,
+  daemon-local runtime systems, and kernel use-case wiring.
 - `python/tentgent-daemon/`
   Standalone Python subproject that owns model runtimes, backend selection, and adapter lifecycle.
 - `python/tentgent-daemon/src/tentgent_daemon/`
@@ -45,10 +46,20 @@ If the current task is about agent workflows, role selection, or role-specific w
 - `docs/plans/archive/`
   Completed plans kept only for historical context and implementation history.
 
+Current product surface:
+
+- User-facing local work starts at the `tentgent` CLI.
+- Long-running local HTTP workflows run through `tentgent daemon` and
+  `src/tentgent-daemon/`.
+- The former terminal UI and legacy Rust `core` / `http` crates have been
+  removed. Archive docs may still mention them as history only.
+
 Key current documents:
 
 - `docs/contracts/runtime-home.md`
   Runtime-home resolution, environment-variable overrides, and standard storage roots.
+- `docs/contracts/kernel-architecture.md`
+  `tentgent-kernel` module placement, dependency direction, capability readiness, and persistence boundaries.
 - `docs/contracts/auth-secrets.md`
   Provider-secret resolution order and keychain usage rules.
 - `docs/contracts/model-store.md`
@@ -65,6 +76,8 @@ Key current documents:
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - `docs/contracts/http-daemon.md`
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
+- `docs/contracts/tentgent-daemon.md`
+  Rust daemon application host, bootstrap, transport, and runtime-state boundary.
 - `docs/contracts/training-lora.md`
   Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
 - `docs/user/README.md`
@@ -79,8 +92,9 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
-- `docs/plans/tui-session-mvp.md`
-  Future terminal UI plan for selectable workflows and coarse chat session context management.
+- `docs/plans/apple-signed-cli-release.md`
+  Next release-engineering plan for macOS CLI signing, notarization, release
+  checksums, and Homebrew tap automation.
 - `docs/plans/archive/README.md`
   Router for completed plans that should be consulted only when historical implementation context is needed.
 - `docs/plans/archive/http-daemon-mvp.md`
@@ -97,6 +111,29 @@ Key current documents:
 - Service host: `agent.tentserv.com`
 - App identifier: `com.tentserv.tentgent`
 - Environment variable prefix: `TENTGENT_`
+
+## Kernel Boundary Rule
+
+- `src/tentgent-kernel/` should avoid CLI, HTTP, daemon, or other
+  entrypoint-specific naming unless the type is explicitly an adapter boundary
+  for that entrypoint.
+- Kernel domain, port, and use-case names should describe product capabilities,
+  intents, state, and infrastructure roles rather than the caller that first
+  used them.
+- If an entrypoint needs special behavior, keep that mapping in the entrypoint
+  crate or adapter layer and pass kernel-owned intent data across the boundary.
+
+## Rust Module Structure Rule
+
+- Treat `mod.rs` and `lib.rs` as composition files. They should declare modules,
+  re-export public surface, and carry package-level documentation only.
+- Do not place feature logic, infrastructure implementations, or large test
+  bodies in `mod.rs` or `lib.rs`.
+- Follow the nearest existing package shape before adding a new file. Prefer
+  focused files such as `resolver.rs`, `store.rs`, `probe.rs`, `planner.rs`, or
+  `executor.rs` over a single broad implementation file.
+- Keep structure consistent across kernel packages: scan broadly for the local
+  pattern, then make the smallest scoped change.
 
 ## Documentation Routing Rules
 

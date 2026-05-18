@@ -2,6 +2,32 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.3.5-alpha.0
+
+`v0.3.5-alpha.0` is the CLI plus daemon REST consolidation release. It removes
+the former terminal UI surface and the legacy Rust `core` / `http` crates so
+runtime behavior flows through `tentgent-kernel`, `tentgent-cli`, and
+`tentgent-daemon`.
+
+What changed:
+
+- Removed the former terminal UI command and package.
+- Removed the legacy Rust HTTP daemon crate; `tentgent daemon` now launches the
+  daemon host directly.
+- Removed the legacy Rust core crate after dependency audit confirmed CLI and
+  daemon paths use kernel use cases.
+- Kept `runtime status` scoped to runtime initialization state and moved broad
+  platform/backend/runtime-footprint diagnostics under `doctor`.
+- Added daemon-native chat and OpenAI, Claude, and Gemini compatible adapters
+  as text-only DTO/SSE translators over the existing kernel chat use cases.
+
+Known limits:
+
+- Tools/function calling, images, and audio are rejected by compatible chat
+  adapters until kernel tool-call and multimodal support exists.
+- The next release-engineering slice is Apple Developer ID signing,
+  notarization, and GitHub Actions release automation for the CLI.
+
 ## v0.3.4-alpha.2
 
 `v0.3.4-alpha.2` is a Linux x86_64 preview release. It is not the stable
@@ -30,7 +56,10 @@ Known limits:
   base runtime bootstrap. Local-model, training, GPU, Linuxbrew, `.deb`, and
   `.rpm` support are not claimed yet.
 - Backend warnings for MLX, Transformers/PEFT, and llama-cpp are expected after
-  a base-profile bootstrap because those heavier dependencies are opt-in.
+  a base-profile bootstrap because those heavier dependencies are opt-in. After
+  `tentgent runtime bootstrap --profile full`, `tentgent doctor` should verify
+  those backend modules by import; embedding and rerank probes remain future
+  work and may still report unknown.
 
 ## v0.3.3
 
@@ -101,10 +130,9 @@ Known limits:
 
 ## v0.3.0
 
-`v0.3.0` is the stable 0.3.x baseline for the TUI alpha line and the first
-release candidate for Homebrew tap distribution. It keeps the existing local
-workflow surface while consolidating the post-alpha correctness, packaging, and
-diagnostic fixes.
+`v0.3.0` was the stable 0.3.x baseline for the former terminal UI alpha line
+and the first release candidate for Homebrew tap distribution. The current
+`v0.3.5-alpha.0` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -118,25 +146,24 @@ Added:
   directories during observational checks.
 - Release workflow safeguards so prerelease tags publish as GitHub prereleases
   and do not become latest stable releases.
-- Human-facing size display in CLI/TUI tables and runtime footprint visibility
+- Human-facing size display in CLI tables and runtime footprint visibility
   for the managed Python environment and bootstrap caches.
-- TUI chat transcript rendering with natural wrapping and transcript scrolling.
+- Historical terminal UI chat transcript rendering with natural wrapping and
+  transcript scrolling.
 - Stable install examples for `v0.3.0` ahead of the Homebrew tap formula slice.
 
 Known limits:
 
-- The TUI remains an alpha-line operator console. It is usable for workflow
-  testing and local operation, but the V2 shell/navigation redesign is still a
-  later track.
+- The terminal UI alpha line was removed in `v0.3.5-alpha.0`; no redesign track
+  remains active.
 - Homebrew tap distribution is planned next; `v0.3.0` prepares the stable tag
   and release assets that the formula will point at.
 - macOS signing and notarization are still deferred.
 
 ## v0.3.0-alpha.2
 
-`v0.3.0-alpha.2` is a bugfix preview release for the TUI alpha line. It keeps
-the alpha interaction model but fixes correctness and release issues found
-during smoke testing.
+`v0.3.0-alpha.2` was a bugfix preview release for the former terminal UI alpha
+line. The current `v0.3.5-alpha.0` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -150,46 +177,42 @@ Added:
   directories during observational checks.
 - Release workflow safeguards so prerelease tags publish as GitHub prereleases
   and do not become latest stable releases.
-- Human-facing size display in CLI/TUI tables and runtime footprint visibility
+- Human-facing size display in CLI tables and runtime footprint visibility
   for the managed Python environment and bootstrap caches.
 
 Known limits:
 
-- This is still an alpha release. The TUI is usable for workflow testing, but
-  layout, key bindings, picker flows, and action review screens may still
-  change before a stable release.
+- This terminal UI alpha line was removed in `v0.3.5-alpha.0`.
 - `latest` installers may still be managed separately from prerelease adoption;
   use the explicit `v0.3.0-alpha.2` release URL when testing this preview.
 - macOS signing and notarization are still deferred.
 
 ## v0.3.0-alpha.1
 
-`v0.3.0-alpha.1` is a TUI preview release. It makes the terminal UI useful as a
-local operator console, but it is still an alpha while the interaction model is
-being refined.
+`v0.3.0-alpha.1` was a terminal UI preview release. It is kept here for
+historical context; the current `v0.3.5-alpha.0` surface is CLI plus daemon REST
+only.
 
 Added:
 
-- `tentgent tui` operator workflows for chat, sessions, jobs, resources, stores,
+- Terminal UI operator workflows for chat, sessions, jobs, resources, stores,
   servers, and LoRA training surfaces.
-- Background daemon job records and TUI progress surfaces for long-running
+- Background daemon job records and terminal UI progress surfaces for long-running
   store/dataset actions without changing existing synchronous API behavior.
 - Picker-first server and LoRA plan creation flows with review/preview pages.
-- Guarded TUI actions for model, adapter, dataset, server, training, and session
+- Guarded terminal UI actions for model, adapter, dataset, server, training, and session
   management through existing daemon routes.
-- Compact session/server/adapter ref display in dense TUI and CLI session lists.
+- Compact session/server/adapter ref display in dense terminal UI and CLI session lists.
 - More reliable detached local server startup, including bind preflight and
   early health/process observation.
 
 Known limits:
 
-- This is an alpha release. The TUI is usable for workflow testing, but layout,
-  key bindings, picker flows, and action review screens may still change before
-  a stable release.
+- This terminal UI alpha line was removed in `v0.3.5-alpha.0`.
 - `latest` installers may still be managed separately from prerelease adoption;
   use the explicit `v0.3.0-alpha.1` release URL when testing this preview.
-- Server, training, store, and session mutations remain guarded, but the TUI UX
-  is still being tightened after real smoke tests.
+- Server, training, store, and session mutations remain guarded through CLI and
+  daemon REST paths.
 - macOS signing and notarization are still deferred.
 
 ## v0.2.0
@@ -215,8 +238,8 @@ Added:
 
 Known limits:
 
-- Provider key set/remove remains local-only through the CLI or guarded TUI
-  Keychain setup. No daemon HTTP secret mutation route exists.
+- Provider key set/remove remains local-only through the CLI Keychain setup. No
+  daemon HTTP secret mutation route exists.
 - `doctor --fix` remains CLI-only; HTTP doctor is observational.
 - `daemon start` is the primary background entry point for the HTTP daemon;
   foreground `daemon run` remains available for debugging.
@@ -267,7 +290,7 @@ Known limits:
 
 Added:
 
-- OpenAI and Anthropic keys can be verified through `auth status`.
+- OpenAI, Anthropic, and Gemini keys can be verified through `auth status`.
 - `server run openai:<model>` and `server run claude:<model>` can expose provider chat through the local `/v1/chat` surface.
 - `dataset validate`, `dataset template`, `dataset synth`, and `dataset eval` help produce and review `tentgent.chat.v1` tuning data.
 - server JSON responses preserve UTF-8 text for direct curl readability.
@@ -283,7 +306,7 @@ Known limits:
 
 Included:
 
-- provider auth key management for Hugging Face, OpenAI, and Anthropic
+- provider auth key management for Hugging Face, OpenAI, Anthropic, and Gemini
 - content-addressed model store with local import and Hugging Face pull
 - content-addressed adapter store with local import, Hugging Face pull, and train-run import
 - content-addressed dataset store with import, export, diff, remove, and canonical chat schema support

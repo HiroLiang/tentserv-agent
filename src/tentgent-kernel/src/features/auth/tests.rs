@@ -1,0 +1,464 @@
+use std::fs;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use reqwest::header::AUTHORIZATION;
+use reqwest::{Method, StatusCode};
+
+use super::domain::{
+    effective_source, normalize_secret_value, AuthEnvLoadPolicy, AuthEnvSecretOrigin,
+    AuthKeyStatus, AuthProviderMetadata, AuthProviderPreference, AuthSecretAccessPolicy,
+    AuthSecretCacheScope, AuthSecretMaterial, AuthSecretReadIntent, AuthSecretSource,
+    AuthValidationState, KeychainPresence, Provider, AUTH_SERVICE,
+};
+use super::infra::{
+    FileAuthMetadataStore, InMemoryAuthMetadataStore, ProcessSessionAuthSecretCache,
+    ReqwestAuthSecretValidator, StdAuthEnvSecretProbe, SystemKeychainAuthSecretStore,
+};
+use super::ports::{
+    AuthEnvSecretProbe, AuthKeychainSecretStore, AuthMetadataStore, AuthSecretCache,
+};
+
+#[test]
+fn providers_match_cli_env_and_keychain_contracts() {
+    assert_eq!(AUTH_SERVICE, "com.tentserv.tentgent.auth");
+    assert_eq!(
+        Provider::ALL,
+        [
+            Provider::HuggingFace,
+            Provider::OpenAI,
+            Provider::Anthropic,
+            Provider::Gemini
+        ]
+    );
+    assert_eq!(Provider::HuggingFace.display_name(), "Hugging Face");
+    assert_eq!(Provider::HuggingFace.cli_name(), "hf");
+    assert_eq!(Provider::HuggingFace.env_var(), "HF_TOKEN");
+    assert_eq!(Provider::HuggingFace.keychain_account(), "huggingface");
+    assert_eq!(Provider::OpenAI.env_var(), "OPENAI_API_KEY");
+    assert_eq!(Provider::Anthropic.env_var(), "ANTHROPIC_API_KEY");
+    assert_eq!(Provider::Gemini.env_var(), "GEMINI_API_KEY");
+    assert_eq!(Provider::Gemini.cli_name(), "gemini");
+    assert_eq!(Provider::Gemini.keychain_account(), "gemini");
+}
+
+#[test]
+fn effective_source_prefers_env_over_keychain() {
+    assert_eq!(
+        effective_source(true, KeychainPresence::Present),
+        Some(AuthSecretSource::Env)
+    );
+    assert_eq!(
+        effective_source(false, KeychainPresence::Present),
+        Some(AuthSecretSource::Keychain)
+    );
+    assert_eq!(effective_source(false, KeychainPresence::Absent), None);
+    assert_eq!(effective_source(false, KeychainPresence::Unknown), None);
+}
+
+#[test]
+fn local_status_uses_presence_without_validation() {
+    let status = AuthKeyStatus::local(Provider::OpenAI, false, KeychainPresence::Present);
+
+    assert_eq!(status.provider, Provider::OpenAI);
+    assert_eq!(status.effective_source, Some(AuthSecretSource::Keychain));
+    assert_eq!(status.validation, AuthValidationState::NotChecked);
+    assert_eq!(status.validation.summary(), "not checked");
+}
+
+#[test]
+fn secret_value_normalization_trims_and_drops_empty_values() {
+    assert_eq!(
+        normalize_secret_value("  sk-test \n".to_string()).as_deref(),
+        Some("sk-test")
+    );
+    assert_eq!(
+        normalize_secret_value("sk-test".to_string()).as_deref(),
+        Some("sk-test")
+    );
+    assert_eq!(normalize_secret_value(" \n\t ".to_string()), None);
+}
+
+#[test]
+fn provided_secret_sources_are_ephemeral_inputs() {
+    assert_eq!(AuthSecretSource::Prompt.to_string(), "prompt");
+    assert_eq!(AuthSecretSource::Request.to_string(), "request");
+    assert_eq!(
+        AuthSecretMaterial::normalized(Provider::OpenAI, AuthSecretSource::Prompt, " sk \n")
+            .expect("normalized prompt secret"),
+        AuthSecretMaterial::new(Provider::OpenAI, AuthSecretSource::Prompt, "sk")
+    );
+    assert!(
+        AuthSecretMaterial::normalized(Provider::OpenAI, AuthSecretSource::Request, " \t")
+            .is_none()
+    );
+}
+
+#[test]
+fn validation_state_exposes_summary_and_detail() {
+    let invalid = AuthValidationState::Invalid {
+        reason: "provider rejected key".to_string(),
+    };
+    let unknown = AuthValidationState::Unknown {
+        reason: "network timeout".to_string(),
+    };
+
+    assert_eq!(AuthValidationState::Missing.summary(), "missing");
+    assert_eq!(AuthValidationState::Verified.summary(), "verified");
+    assert_eq!(invalid.summary(), "invalid");
+    assert_eq!(invalid.detail(), Some("provider rejected key"));
+    assert_eq!(unknown.summary(), "unknown");
+    assert_eq!(unknown.detail(), Some("network timeout"));
+}
+
+#[test]
+fn status_policy_does_not_read_or_cache_keychain_secret() {
+    let policy = AuthSecretAccessPolicy::status_only();
+
+    assert_eq!(policy.read_intent, AuthSecretReadIntent::StatusOnly);
+    assert_eq!(policy.cache_scope, AuthSecretCacheScope::None);
+    assert!(!policy.may_read_keychain_secret());
+    assert!(!policy.should_cache_for_process());
+}
+
+#[test]
+fn secret_policies_read_keychain_and_process_session_cache() {
+    let use_policy = AuthSecretAccessPolicy::resolve_for_use();
+    let validate_policy = AuthSecretAccessPolicy::resolve_and_validate();
+
+    assert_eq!(use_policy.read_intent, AuthSecretReadIntent::ResolveForUse);
+    assert_eq!(
+        validate_policy.read_intent,
+        AuthSecretReadIntent::ResolveAndValidate
+    );
+    for policy in [use_policy, validate_policy] {
+        assert_eq!(policy.cache_scope, AuthSecretCacheScope::ProcessSession);
+        assert!(policy.may_read_keychain_secret());
+        assert!(policy.should_cache_for_process());
+    }
+}
+
+#[test]
+fn provider_preference_defaults_to_enabled_secret_use_policy() {
+    let preference = AuthProviderPreference::default_for(Provider::Anthropic);
+
+    assert_eq!(preference.provider, Provider::Anthropic);
+    assert!(preference.enabled);
+    assert_eq!(
+        preference.access_policy,
+        AuthSecretAccessPolicy::resolve_for_use()
+    );
+}
+
+#[test]
+fn process_session_cache_round_trips_secret_material() {
+    let cache = ProcessSessionAuthSecretCache::new();
+    let secret = AuthSecretMaterial::new(Provider::OpenAI, AuthSecretSource::Keychain, "sk-test");
+
+    assert!(cache
+        .load_cached_secret(Provider::OpenAI)
+        .expect("load empty cache")
+        .is_none());
+    cache
+        .save_cached_secret(secret.clone())
+        .expect("save secret");
+    assert_eq!(
+        cache
+            .load_cached_secret(Provider::OpenAI)
+            .expect("load cached secret"),
+        Some(secret)
+    );
+    cache
+        .remove_cached_secret(Provider::OpenAI)
+        .expect("remove secret");
+    assert!(cache
+        .load_cached_secret(Provider::OpenAI)
+        .expect("load after remove")
+        .is_none());
+}
+
+#[test]
+fn process_session_cache_expires_secret_material_after_ttl() {
+    let cache = ProcessSessionAuthSecretCache::with_ttl(Duration::ZERO);
+    cache
+        .save_cached_secret(AuthSecretMaterial::new(
+            Provider::OpenAI,
+            AuthSecretSource::Keychain,
+            "sk-test",
+        ))
+        .expect("save secret");
+
+    assert!(cache
+        .load_cached_secret(Provider::OpenAI)
+        .expect("load expired cache")
+        .is_none());
+}
+
+#[test]
+fn explicit_dotenv_probe_reports_secret_origin_without_using_runtime_home() {
+    let path = temp_path("auth-explicit-dotenv").join(".env");
+    fs::create_dir_all(path.parent().expect("dotenv parent")).expect("create dotenv parent");
+    fs::write(
+        &path,
+        "OPENAI_API_KEY=sk-from-dotenv\nANTHROPIC_API_KEY=\nGEMINI_API_KEY=gemini-dotenv\n",
+    )
+    .expect("write dotenv");
+
+    let secret = StdAuthEnvSecretProbe
+        .probe_env_secret(
+            Provider::OpenAI,
+            AuthEnvLoadPolicy::ExplicitDotenvOverride { path: path.clone() },
+        )
+        .expect("probe dotenv secret")
+        .expect("dotenv secret exists");
+
+    assert_eq!(secret.provider, Provider::OpenAI);
+    assert_eq!(secret.env_var, "OPENAI_API_KEY");
+    assert_eq!(
+        secret.origin,
+        AuthEnvSecretOrigin::DotenvFile { path: path.clone() }
+    );
+    assert_eq!(secret.secret(), "sk-from-dotenv");
+    assert_eq!(
+        secret.into_secret_material(),
+        AuthSecretMaterial::new(Provider::OpenAI, AuthSecretSource::Env, "sk-from-dotenv")
+    );
+
+    let empty = StdAuthEnvSecretProbe
+        .probe_env_secret(
+            Provider::Anthropic,
+            AuthEnvLoadPolicy::ExplicitDotenvOverride { path: path.clone() },
+        )
+        .expect("probe empty dotenv secret");
+    assert!(empty.is_none());
+
+    let gemini = StdAuthEnvSecretProbe
+        .probe_env_secret(
+            Provider::Gemini,
+            AuthEnvLoadPolicy::ExplicitDotenvOverride { path },
+        )
+        .expect("probe gemini dotenv secret")
+        .expect("gemini dotenv secret exists");
+    assert_eq!(gemini.env_var, "GEMINI_API_KEY");
+    assert_eq!(gemini.secret(), "gemini-dotenv");
+}
+
+#[test]
+fn in_memory_metadata_store_round_trips_non_secret_metadata() {
+    let store = InMemoryAuthMetadataStore::new();
+    let metadata = AuthProviderMetadata {
+        provider: Provider::HuggingFace,
+        keychain_presence: KeychainPresence::Present,
+        last_updated_at: Some("2026-05-16T00:00:00Z".to_string()),
+        last_validated_at: None,
+        validation: AuthValidationState::NotChecked,
+    };
+
+    assert!(store
+        .load_provider_metadata(Provider::HuggingFace)
+        .expect("load empty metadata")
+        .is_none());
+    store
+        .save_provider_metadata(&metadata)
+        .expect("save metadata");
+    assert_eq!(
+        store
+            .load_provider_metadata(Provider::HuggingFace)
+            .expect("load metadata"),
+        Some(metadata)
+    );
+    store
+        .remove_provider_metadata(Provider::HuggingFace)
+        .expect("remove metadata");
+    assert!(store
+        .load_provider_metadata(Provider::HuggingFace)
+        .expect("load removed metadata")
+        .is_none());
+}
+
+#[test]
+fn file_metadata_store_round_trips_non_secret_auth_state() {
+    let path = temp_path("auth-file-metadata").join("runtime/auth.toml");
+    let store = FileAuthMetadataStore::new(path.clone());
+    let metadata = AuthProviderMetadata {
+        provider: Provider::OpenAI,
+        keychain_presence: KeychainPresence::Unknown,
+        last_updated_at: Some("2026-05-16T03:00:00Z".to_string()),
+        last_validated_at: Some("2026-05-16T03:01:00Z".to_string()),
+        validation: AuthValidationState::Invalid {
+            reason: "provider rejected key".to_string(),
+        },
+    };
+
+    store
+        .save_provider_metadata(&metadata)
+        .expect("save file metadata");
+
+    let raw = fs::read_to_string(&path).expect("read metadata file");
+    assert!(raw.contains("schema_version = 1"));
+    assert!(!raw.contains("sk-"));
+
+    let reloaded = FileAuthMetadataStore::new(path);
+    assert_eq!(
+        reloaded
+            .load_provider_metadata(Provider::OpenAI)
+            .expect("load file metadata"),
+        Some(metadata)
+    );
+
+    reloaded
+        .remove_provider_metadata(Provider::OpenAI)
+        .expect("remove file metadata");
+    assert!(reloaded
+        .load_provider_metadata(Provider::OpenAI)
+        .expect("load removed file metadata")
+        .is_none());
+}
+
+#[test]
+fn system_keychain_store_honors_non_prompting_read_policy() {
+    let store = SystemKeychainAuthSecretStore::new();
+
+    let secret = store
+        .read_keychain_secret(Provider::OpenAI, AuthSecretAccessPolicy::status_only())
+        .expect("non-prompting read policy should not access keychain");
+
+    assert!(secret.is_none());
+}
+
+#[test]
+fn system_keychain_presence_smoke_is_opt_in_and_prints_observed_state() {
+    let store = SystemKeychainAuthSecretStore::new();
+    let provider = Provider::HuggingFace;
+
+    if std::env::var_os("TENTGENT_RUN_KEYCHAIN_TESTS").is_none() {
+        eprintln!(
+            "skipping live system keychain presence smoke test for {}; set TENTGENT_RUN_KEYCHAIN_TESTS=1 to run it",
+            provider.display_name()
+        );
+        return;
+    }
+
+    let presence = store
+        .keychain_presence(provider)
+        .expect("query live system keychain presence");
+    eprintln!(
+        "live system keychain presence for {}: {presence:?}",
+        provider.display_name()
+    );
+}
+
+#[test]
+fn reqwest_validator_builds_huggingface_bearer_request() {
+    let request = ReqwestAuthSecretValidator::validation_request(Provider::HuggingFace, "hf-test")
+        .expect("build validation request");
+
+    assert_eq!(request.method(), Method::GET);
+    assert_eq!(
+        request.url().as_str(),
+        "https://huggingface.co/api/whoami-v2"
+    );
+    assert_eq!(
+        header_str(&request, "authorization"),
+        Some("Bearer hf-test")
+    );
+}
+
+#[test]
+fn reqwest_validator_builds_openai_bearer_request() {
+    let request = ReqwestAuthSecretValidator::validation_request(Provider::OpenAI, "sk-test")
+        .expect("build validation request");
+
+    assert_eq!(request.method(), Method::GET);
+    assert_eq!(request.url().as_str(), "https://api.openai.com/v1/models");
+    assert_eq!(
+        request
+            .headers()
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok()),
+        Some("Bearer sk-test")
+    );
+}
+
+#[test]
+fn reqwest_validator_builds_anthropic_versioned_request() {
+    let request = ReqwestAuthSecretValidator::validation_request(Provider::Anthropic, "sk-ant")
+        .expect("build validation request");
+
+    assert_eq!(request.method(), Method::GET);
+    assert_eq!(
+        request.url().as_str(),
+        "https://api.anthropic.com/v1/models"
+    );
+    assert_eq!(header_str(&request, "x-api-key"), Some("sk-ant"));
+    assert_eq!(
+        header_str(&request, "anthropic-version"),
+        Some("2023-06-01")
+    );
+}
+
+#[test]
+fn reqwest_validator_builds_gemini_query_key_request() {
+    let request = ReqwestAuthSecretValidator::validation_request(Provider::Gemini, "gemini-key")
+        .expect("build validation request");
+
+    assert_eq!(request.method(), Method::GET);
+    assert_eq!(
+        request.url().as_str(),
+        "https://generativelanguage.googleapis.com/v1beta/models?key=gemini-key"
+    );
+}
+
+#[test]
+fn reqwest_validator_maps_http_status_to_validation_state() {
+    assert_eq!(
+        ReqwestAuthSecretValidator::validation_state_for_status(Provider::OpenAI, StatusCode::OK),
+        AuthValidationState::Verified
+    );
+    assert!(matches!(
+        ReqwestAuthSecretValidator::validation_state_for_status(
+            Provider::OpenAI,
+            StatusCode::UNAUTHORIZED
+        ),
+        AuthValidationState::Invalid { .. }
+    ));
+    assert!(matches!(
+        ReqwestAuthSecretValidator::validation_state_for_status(
+            Provider::Anthropic,
+            StatusCode::FORBIDDEN
+        ),
+        AuthValidationState::Invalid { .. }
+    ));
+    assert!(matches!(
+        ReqwestAuthSecretValidator::validation_state_for_status(
+            Provider::HuggingFace,
+            StatusCode::TOO_MANY_REQUESTS
+        ),
+        AuthValidationState::Unknown { .. }
+    ));
+    assert!(matches!(
+        ReqwestAuthSecretValidator::validation_state_for_status(
+            Provider::HuggingFace,
+            StatusCode::INTERNAL_SERVER_ERROR
+        ),
+        AuthValidationState::Unknown { .. }
+    ));
+}
+
+fn header_str<'a>(request: &'a reqwest::Request, name: &str) -> Option<&'a str> {
+    request
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+}
+
+fn temp_path(label: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "tentgent-kernel-auth-{label}-{}-{nanos}",
+        std::process::id()
+    ))
+}

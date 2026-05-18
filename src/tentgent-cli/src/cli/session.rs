@@ -2,28 +2,66 @@ use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, C
 use console::style;
 use miette::{miette, IntoDiagnostic};
 use serde_json::Value;
-use tentgent_core::{
-    server::{ServerInspection, ServerManager},
-    session::{
-        SessionAppendOutcome, SessionCompactionInput, SessionCompactionOutcome,
-        SessionCompactionSummary, SessionCreateRequest, SessionInspection, SessionManager,
-        SessionMessageInput, SessionMessages, SessionOptionalStringPatch, SessionRemovalOutcome,
-        SessionSummary, SessionUpdateRequest,
+use tentgent_kernel::{
+    features::{
+        server::domain::ServerInspection,
+        session::{
+            domain::{
+                SessionAppendOutcome, SessionChatContextMessage, SessionCompactionOutcome,
+                SessionCompactionSummary, SessionInspection, SessionMessageInput,
+                SessionMessageRole, SessionMessages, SessionOptionalStringPatch,
+                SessionRemovalOutcome, SessionStorageLocation, SessionSummary,
+            },
+            usecases::{
+                AppendSessionMessagesRequest, AppendSessionMessagesResult,
+                ApplySessionAppendCompactionRequest, ApplySessionCompactionRequest,
+                CreateSessionRequest, PrepareSessionCompactionRequest,
+                PrepareSessionCompactionResult, RemoveSessionRequest, SessionCatalogReadUseCase,
+                SessionCompactionUseCase, SessionMutationUseCase, SessionSummaryRequirement,
+                UpdateSessionRequest,
+            },
+        },
     },
+    foundation::layout::LayoutResolveMode,
 };
 
-use super::commands::SessionCommands;
+use super::{
+    commands::SessionCommands,
+    session_kernel::{parse_session_selector, session_store_selection, CliSessionKernel},
+};
 
 pub async fn handle_session_command(action: SessionCommands) -> miette::Result<()> {
     match action {
         SessionCommands::Ls { home } => {
-            let manager = SessionManager::open_readonly(home.as_deref()).into_diagnostic()?;
-            let sessions = manager.list().into_diagnostic()?;
-            render_session_list(&sessions);
+            let kernel = CliSessionKernel::new();
+            let usecase = kernel.session_usecase();
+            let result = usecase
+                .list_sessions(
+                    tentgent_kernel::features::session::usecases::SessionListRequest {
+                        store: session_store_selection(
+                            home.as_deref(),
+                            LayoutResolveMode::ReadOnly,
+                        ),
+                    },
+                )
+                .into_diagnostic()?;
+            render_session_list(&result.sessions);
         }
         SessionCommands::Inspect { reference, home } => {
-            let manager = SessionManager::open_readonly(home.as_deref()).into_diagnostic()?;
-            let inspection = manager.inspect(&reference).into_diagnostic()?;
+            let kernel = CliSessionKernel::new();
+            let usecase = kernel.session_usecase();
+            let inspection = usecase
+                .inspect_session(
+                    tentgent_kernel::features::session::usecases::SessionInspectRequest {
+                        store: session_store_selection(
+                            home.as_deref(),
+                            LayoutResolveMode::ReadOnly,
+                        ),
+                        selector: parse_session_selector(&reference)?,
+                    },
+                )
+                .into_diagnostic()?
+                .inspection;
             render_session_inspection("Session inspection", &inspection);
         }
         SessionCommands::Messages {
@@ -34,8 +72,21 @@ pub async fn handle_session_command(action: SessionCommands) -> miette::Result<(
             if tail == 0 {
                 return Err(miette!("--tail must be greater than zero"));
             }
-            let manager = SessionManager::open_readonly(home.as_deref()).into_diagnostic()?;
-            let messages = manager.messages(&reference, tail).into_diagnostic()?;
+            let kernel = CliSessionKernel::new();
+            let usecase = kernel.session_usecase();
+            let messages = usecase
+                .read_session_messages(
+                    tentgent_kernel::features::session::usecases::SessionMessagesRequest {
+                        store: session_store_selection(
+                            home.as_deref(),
+                            LayoutResolveMode::ReadOnly,
+                        ),
+                        selector: parse_session_selector(&reference)?,
+                        tail,
+                    },
+                )
+                .into_diagnostic()?
+                .messages;
             render_session_messages(&messages);
         }
         SessionCommands::Create {
@@ -45,17 +96,21 @@ pub async fn handle_session_command(action: SessionCommands) -> miette::Result<(
             tags,
             home,
         } => {
-            let manager = SessionManager::new_with_home(home.as_deref()).into_diagnostic()?;
-            let inspection = manager
-                .create(SessionCreateRequest {
-                    title,
-                    default_server_ref: default_server,
-                    adapter_ref: adapter,
-                    tags,
-                    messages: Vec::new(),
+            let kernel = CliSessionKernel::new();
+            let usecase = kernel.session_usecase();
+            let inspection = usecase
+                .create_session(CreateSessionRequest {
+                    store: session_store_selection(home.as_deref(), LayoutResolveMode::Create),
+                    create: tentgent_kernel::features::session::domain::SessionCreateRequest {
+                        title,
+                        default_server_ref: default_server,
+                        adapter_ref: adapter,
+                        tags,
+                        messages: Vec::new(),
+                    },
                 })
                 .into_diagnostic()?;
-            render_session_inspection("Session created", &inspection);
+            render_session_inspection("Session created", &inspection.inspection);
         }
         SessionCommands::Update {
             reference,
@@ -69,20 +124,28 @@ pub async fn handle_session_command(action: SessionCommands) -> miette::Result<(
             clear_tags,
             home,
         } => {
-            let manager = SessionManager::new_with_home(home.as_deref()).into_diagnostic()?;
-            let request = SessionUpdateRequest {
-                title: optional_patch(title, clear_title),
-                default_server_ref: optional_patch(default_server, clear_default_server),
-                adapter_ref: optional_patch(adapter, clear_adapter),
-                tags: if clear_tags {
-                    Some(Vec::new())
-                } else if tags.is_empty() {
-                    None
-                } else {
-                    Some(tags)
+            let kernel = CliSessionKernel::new();
+            let usecase = kernel.session_usecase();
+            let request = UpdateSessionRequest {
+                store: session_store_selection(home.as_deref(), LayoutResolveMode::Create),
+                selector: parse_session_selector(&reference)?,
+                update: tentgent_kernel::features::session::domain::SessionUpdateRequest {
+                    title: optional_patch(title, clear_title),
+                    default_server_ref: optional_patch(default_server, clear_default_server),
+                    adapter_ref: optional_patch(adapter, clear_adapter),
+                    tags: if clear_tags {
+                        Some(Vec::new())
+                    } else if tags.is_empty() {
+                        None
+                    } else {
+                        Some(tags)
+                    },
                 },
             };
-            let inspection = manager.update(&reference, request).into_diagnostic()?;
+            let inspection = usecase
+                .update_session(request)
+                .into_diagnostic()?
+                .inspection;
             render_session_inspection("Session updated", &inspection);
         }
         SessionCommands::Append {
@@ -94,34 +157,60 @@ pub async fn handle_session_command(action: SessionCommands) -> miette::Result<(
             home,
         } => {
             let metadata = parse_metadata_json(&metadata_json)?;
-            let manager = SessionManager::new_with_home(home.as_deref()).into_diagnostic()?;
-            let mut turn = manager
-                .begin_append_messages(
-                    &reference,
-                    vec![SessionMessageInput {
-                        role,
-                        content,
-                        server_ref: None,
-                        adapter_ref: None,
-                        metadata,
-                    }],
-                )
-                .into_diagnostic()?;
-            if let Some(input) = turn.compaction_input().into_diagnostic()? {
-                let server_ref = compaction_server
-                    .as_deref()
-                    .or_else(|| turn.default_server_ref())
-                    .ok_or_else(|| {
-                        miette!(
-                            "session append requires --compaction-server or a session default server"
-                        )
-                    })?;
-                let server = resolve_running_server(home.as_deref(), server_ref)?;
-                let summary = summarize_with_server(&server, &input).await?;
-                turn.apply_compaction_summary(summary).into_diagnostic()?;
+            let role = SessionMessageRole::parse(&role)
+                .map_err(|err| miette!("invalid session message role: {err}"))?;
+            let kernel = CliSessionKernel::new();
+            let usecase = kernel.session_usecase();
+            let store = session_store_selection(home.as_deref(), LayoutResolveMode::Create);
+            let selector = parse_session_selector(&reference)?;
+            let messages = vec![SessionMessageInput {
+                role,
+                content,
+                server_ref: None,
+                adapter_ref: None,
+                metadata,
+            }];
+            match usecase
+                .append_session_messages(AppendSessionMessagesRequest {
+                    store: store.clone(),
+                    selector: selector.clone(),
+                    messages: messages.clone(),
+                })
+                .into_diagnostic()?
+            {
+                AppendSessionMessagesResult::Appended {
+                    outcome,
+                    clear_compaction,
+                    ..
+                } => {
+                    if let Some(compaction) = clear_compaction {
+                        render_compaction_outcome(&compaction);
+                    }
+                    render_append_outcome(&outcome);
+                }
+                AppendSessionMessagesResult::CompactionRequired { requirement, .. } => {
+                    let summary = summarize_requirement_with_server(
+                        &kernel,
+                        home.as_deref(),
+                        &requirement,
+                        compaction_server.as_deref(),
+                        "session append requires --compaction-server or a session default server",
+                    )
+                    .await?;
+                    let result = usecase
+                        .apply_session_append_compaction(ApplySessionAppendCompactionRequest {
+                            store,
+                            selector,
+                            messages,
+                            summary,
+                        })
+                        .into_diagnostic()?;
+                    if let Some(compaction) = result.compaction {
+                        render_compaction_outcome(&compaction);
+                    }
+                    render_append_outcome(&result.outcome);
+                }
             }
-            let outcome = turn.append_after_compaction().into_diagnostic()?;
-            render_append_outcome(&outcome);
         }
         SessionCommands::Compact {
             reference,
@@ -130,28 +219,55 @@ pub async fn handle_session_command(action: SessionCommands) -> miette::Result<(
             instructions,
             home,
         } => {
-            let manager = SessionManager::new_with_home(home.as_deref()).into_diagnostic()?;
-            let turn = manager
-                .begin_compaction(&reference, keep_recent, instructions.clone())
-                .into_diagnostic()?;
-            let Some(input) = turn.compaction_input(instructions).into_diagnostic()? else {
-                render_compaction_outcome(&turn.no_op_outcome());
-                return Ok(());
-            };
-            let server_ref = server
-                .as_deref()
-                .or_else(|| turn.default_server_ref())
-                .ok_or_else(|| {
-                    miette!("session compact requires --server or a session default server")
-                })?;
-            let server = resolve_running_server(home.as_deref(), server_ref)?;
-            let summary = summarize_with_server(&server, &input).await?;
-            let outcome = turn.apply_summary(summary).into_diagnostic()?;
-            render_compaction_outcome(&outcome);
+            let kernel = CliSessionKernel::new();
+            let usecase = kernel.session_usecase();
+            let store = session_store_selection(home.as_deref(), LayoutResolveMode::Create);
+            let selector = parse_session_selector(&reference)?;
+            match usecase
+                .prepare_session_compaction(PrepareSessionCompactionRequest {
+                    store: store.clone(),
+                    selector: selector.clone(),
+                    keep_recent_messages: keep_recent,
+                    instructions: instructions.clone(),
+                })
+                .into_diagnostic()?
+            {
+                PrepareSessionCompactionResult::NoOp { outcome, .. } => {
+                    render_compaction_outcome(&outcome);
+                }
+                PrepareSessionCompactionResult::SummaryRequired { requirement, .. } => {
+                    let summary = summarize_requirement_with_server(
+                        &kernel,
+                        home.as_deref(),
+                        &requirement,
+                        server.as_deref(),
+                        "session compact requires --server or a session default server",
+                    )
+                    .await?;
+                    let outcome = usecase
+                        .apply_session_compaction(ApplySessionCompactionRequest {
+                            store,
+                            selector,
+                            keep_recent_messages: keep_recent,
+                            instructions,
+                            summary,
+                        })
+                        .into_diagnostic()?
+                        .outcome;
+                    render_compaction_outcome(&outcome);
+                }
+            }
         }
         SessionCommands::Rm { reference, home } => {
-            let manager = SessionManager::new_with_home(home.as_deref()).into_diagnostic()?;
-            let outcome = manager.remove(&reference).into_diagnostic()?;
+            let kernel = CliSessionKernel::new();
+            let usecase = kernel.session_usecase();
+            let outcome = usecase
+                .remove_session(RemoveSessionRequest {
+                    store: session_store_selection(home.as_deref(), LayoutResolveMode::Create),
+                    selector: parse_session_selector(&reference)?,
+                })
+                .into_diagnostic()?
+                .outcome;
             render_removal_outcome(&outcome);
         }
     }
@@ -178,29 +294,29 @@ fn parse_metadata_json(input: &str) -> miette::Result<Value> {
     Ok(value)
 }
 
-fn resolve_running_server(
+async fn summarize_requirement_with_server(
+    kernel: &CliSessionKernel,
     home: Option<&std::path::Path>,
-    reference: &str,
-) -> miette::Result<ServerInspection> {
-    let manager = ServerManager::open_readonly(home).into_diagnostic()?;
-    let inspection = manager.inspect(reference).into_diagnostic()?;
-    if !inspection.running {
-        return Err(miette!(
-            "server `{}` is not running",
-            inspection.spec.short_ref
-        ));
-    }
-    Ok(inspection)
+    requirement: &SessionSummaryRequirement,
+    server_override: Option<&str>,
+    missing_server_message: &str,
+) -> miette::Result<SessionCompactionSummary> {
+    let server_ref = server_override
+        .or(requirement.default_server_ref.as_deref())
+        .ok_or_else(|| miette!("{missing_server_message}"))?;
+    let server = kernel
+        .inspect_running_server(home, server_ref)
+        .into_diagnostic()?;
+    summarize_with_server(&server, requirement.input.prompt_messages()).await
 }
 
 async fn summarize_with_server(
     server: &ServerInspection,
-    input: &SessionCompactionInput,
+    prompt_messages: &[SessionChatContextMessage],
 ) -> miette::Result<SessionCompactionSummary> {
     let url = format!("http://{}:{}/v1/chat", server.spec.host, server.spec.port);
     let body = serde_json::json!({
-        "messages": input
-            .prompt_messages
+        "messages": prompt_messages
             .iter()
             .map(|message| serde_json::json!({
                 "role": message.role,
@@ -231,8 +347,8 @@ async fn summarize_with_server(
     }
     Ok(SessionCompactionSummary {
         content: text.to_string(),
-        server_ref: Some(server.spec.server_ref.clone()),
-        model_ref: server.spec.model_ref.clone(),
+        server_ref: Some(server.spec.server_ref.to_string()),
+        model_ref: server.spec.model_ref.as_ref().map(ToString::to_string),
         provider_model: server.spec.provider_model.clone(),
         adapter_ref: None,
     })
@@ -295,7 +411,7 @@ fn render_session_inspection(title: &str, inspection: &SessionInspection) {
     let mut table = base_table();
     table.add_row(vec![
         Cell::new("session_ref"),
-        Cell::new(&metadata.session_ref),
+        Cell::new(metadata.session_ref.as_str()),
     ]);
     table.add_row(vec![Cell::new("short_ref"), Cell::new(&metadata.short_ref)]);
     table.add_row(vec![
@@ -323,14 +439,7 @@ fn render_session_inspection(title: &str, inspection: &SessionInspection) {
         Cell::new(display_option(metadata.adapter_ref.as_deref())),
     ]);
     table.add_row(vec![Cell::new("tags"), Cell::new(metadata.tags.join(","))]);
-    table.add_row(vec![
-        Cell::new("store path"),
-        Cell::new(inspection.store_path.display().to_string()),
-    ]);
-    table.add_row(vec![
-        Cell::new("messages path"),
-        Cell::new(inspection.messages_path.display().to_string()),
-    ]);
+    add_location_rows(&mut table, &inspection.location);
     if !inspection.warnings.is_empty() {
         table.add_row(vec![
             Cell::new("warnings"),
@@ -468,9 +577,41 @@ fn render_removal_outcome(outcome: &SessionRemovalOutcome) {
     println!(
         "{} {}",
         style("removed").red().bold(),
-        outcome.inspection.store_path.display()
+        location_label(&outcome.inspection.location)
     );
     println!();
+}
+
+fn add_location_rows(table: &mut Table, location: &SessionStorageLocation) {
+    match location {
+        SessionStorageLocation::File(paths) => {
+            table.add_row(vec![
+                Cell::new("store path"),
+                Cell::new(paths.store_path.display().to_string()),
+            ]);
+            table.add_row(vec![
+                Cell::new("messages path"),
+                Cell::new(paths.messages_path.display().to_string()),
+            ]);
+        }
+        SessionStorageLocation::External { backend, locator } => {
+            table.add_row(vec![Cell::new("store backend"), Cell::new(backend)]);
+            table.add_row(vec![
+                Cell::new("store locator"),
+                Cell::new(display_option(locator.as_deref())),
+            ]);
+        }
+    }
+}
+
+fn location_label(location: &SessionStorageLocation) -> String {
+    match location {
+        SessionStorageLocation::File(paths) => paths.store_path.display().to_string(),
+        SessionStorageLocation::External { backend, locator } => locator
+            .as_ref()
+            .map(|locator| format!("{backend}:{locator}"))
+            .unwrap_or_else(|| backend.clone()),
+    }
 }
 
 fn display_option(value: Option<&str>) -> &str {

@@ -90,6 +90,7 @@ def evaluate_dataset(
     client: Any | None = None,
 ) -> DatasetEvalOutcome:
     provider = normalize_provider(provider)
+    ensure_empty_output_dir(output_dir)
     sample = load_dataset_sample(dataset_path, split=split, max_records=max_records)
     if not sample.records:
         raise DatasetProviderError("dataset eval found no JSON records to review")

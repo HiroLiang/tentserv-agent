@@ -1,6 +1,6 @@
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
-use tentgent_core::adapter::{
+use tentgent_kernel::features::adapter::domain::{
     AdapterBindOutcome, AdapterImportOutcome, AdapterInspection, AdapterMetadata,
     AdapterRemovalOutcome,
 };
@@ -64,7 +64,8 @@ pub(super) fn render_bind_outcome(outcome: &AdapterBindOutcome) {
         outcome
             .metadata
             .base_model_ref
-            .as_deref()
+            .as_ref()
+            .map(|model_ref| model_ref.as_str())
             .unwrap_or("(not bound)")
     );
 
@@ -150,7 +151,7 @@ fn base_table() -> Table {
 fn add_adapter_metadata_rows(table: &mut Table, metadata: &AdapterMetadata) {
     table.add_row(vec![
         Cell::new("adapter_ref"),
-        Cell::new(&metadata.adapter_ref),
+        Cell::new(metadata.adapter_ref.as_str()),
     ]);
     table.add_row(vec![Cell::new("short_ref"), Cell::new(&metadata.short_ref)]);
     table.add_row(vec![
@@ -163,7 +164,10 @@ fn add_adapter_metadata_rows(table: &mut Table, metadata: &AdapterMetadata) {
     ]);
 
     if let Some(base_model_ref) = &metadata.base_model_ref {
-        table.add_row(vec![Cell::new("base_model_ref"), Cell::new(base_model_ref)]);
+        table.add_row(vec![
+            Cell::new("base_model_ref"),
+            Cell::new(base_model_ref.as_str()),
+        ]);
     }
     if let Some(repo) = &metadata.base_model_source_repo {
         table.add_row(vec![Cell::new("base_model_source_repo"), Cell::new(repo)]);
@@ -180,7 +184,14 @@ fn add_adapter_metadata_rows(table: &mut Table, metadata: &AdapterMetadata) {
 
     table.add_row(vec![
         Cell::new("backend_support"),
-        Cell::new(metadata.backend_support.join(", ")),
+        Cell::new(
+            metadata
+                .backend_support
+                .iter()
+                .map(|backend| backend.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
     ]);
     table.add_row(vec![
         Cell::new("source_kind"),

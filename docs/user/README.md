@@ -2,6 +2,21 @@
 
 This directory keeps user-facing Tentgent docs out of the root README so the project entry page stays short.
 
+## Shortest Path
+
+Use the CLI for local workflows and start the daemon only when you need HTTP:
+
+```bash
+tentgent runtime bootstrap
+tentgent doctor
+tentgent auth hf set
+tentgent model pull google/gemma-3-1b-it
+tentgent chat <model-ref> --message "user:Hello"
+tentgent daemon start --host 127.0.0.1 --port 8790
+```
+
+The current tool is CLI plus daemon REST. There is no terminal UI command.
+
 ## Start Here
 
 - [install.md](./install.md)
@@ -10,8 +25,8 @@ This directory keeps user-facing Tentgent docs out of the root README so the pro
 - [version.md](./version.md)
   Current version feature list, known limits, and release expectations.
 - [commands.md](./commands.md)
-  Common commands for TUI, auth, models, adapters, datasets, chat, servers,
-  daemon, and LoRA training.
+  Common commands for auth, models, adapters, datasets, chat, servers, daemon,
+  sessions, and LoRA training.
 - [runtime.md](./runtime.md)
   Runtime home layout, environment overrides, backend support, and macOS Keychain prompts.
 

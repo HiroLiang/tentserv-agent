@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand, ValueEnum};
-use tentgent_core::train::{LoraTrainBackendRequest, LoraTrainOverrides};
+use tentgent_kernel::features::train::domain::{LoraTrainBackendRequest, LoraTrainOverrides};
 
 #[derive(Debug, Subcommand)]
 pub enum TrainCommands {

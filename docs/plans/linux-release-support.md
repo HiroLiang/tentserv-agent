@@ -236,7 +236,7 @@ Implementation verification:
 ```bash
 bash scripts/test-runtime-profiles.sh
 cargo test -p tentgent-cli runtime
-cargo test -p tentgent-core doctor
+cargo test -p tentgent-kernel doctor
 ```
 
 - Verified a source-mounted minimal `ubuntu:24.04` / `linux/amd64` container can
@@ -343,12 +343,18 @@ Review target:
 
 ### L7: Optional Linux Expansion
 
+- Prerequisite: wire kernel runtime layout and capability state into runtime
+  adapters and backend-gated workflow bundles in
+  [tentgent-kernel-migration.md](./tentgent-kernel-migration.md) before
+  advertising profile-specific Linux readiness.
 - Evaluate `aarch64-unknown-linux-gnu` after x86_64 preview usage is stable.
 - Decide whether Linux package-manager channels are worth adding.
 - Revisit glibc compatibility and minimum supported distro after more smoke
   data exists.
 - Define separate smokes for `local-model`, `training`, and `full` profiles
   before advertising local backend parity on Linux.
+- Use manifest-backed probes to decide CPU vs GPU backend availability instead
+  of inferring readiness only from OS or architecture.
 
 Review target:
 

@@ -15,9 +15,8 @@ pub use chat::ChatCommand;
 pub use daemon::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 pub use dataset::DatasetCommands;
 pub use model::ModelCommands;
-#[cfg(test)]
 pub use runtime::RuntimeBootstrapProfile;
-pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands};
+pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands, RuntimeStatusCommand};
 pub use server::{ServerCommands, ServerRunCommand};
 pub use session::SessionCommands;
 pub use train::{
@@ -26,7 +25,6 @@ pub use train::{
 };
 
 use clap::{Args, Subcommand};
-use std::path::PathBuf;
 
 #[derive(Debug, Args)]
 pub struct DoctorCommand {
@@ -35,28 +33,8 @@ pub struct DoctorCommand {
     pub fix: bool,
 }
 
-#[derive(Debug, Args)]
-pub struct TuiCommand {
-    /// Optional Tentgent runtime home override for TUI state and daemon lookup.
-    #[arg(short = 'H', long, value_name = "HOME")]
-    pub home: Option<PathBuf>,
-    /// Optional daemon HTTP URL override.
-    #[arg(long, value_name = "URL")]
-    pub daemon_url: Option<String>,
-    /// Optional daemon bearer token override.
-    #[arg(long, value_name = "TOKEN")]
-    pub token: Option<String>,
-}
-
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Show current runtime paths and Python asset resolution.
-    #[command(
-        name = "status",
-        about = "Show current runtime paths and Python asset resolution.",
-        long_about = "Show current runtime paths and Python asset resolution. This is the first packaging diagnostic surface: it reports the runtime home, Python project source, managed Python environment, and key Python entry points."
-    )]
-    Status,
     /// Run local installation and runtime health checks.
     #[command(
         name = "doctor",
@@ -64,13 +42,6 @@ pub enum Commands {
         long_about = "Run local installation and runtime health checks. Doctor checks platform, runtime-home writability, standard Tentgent directories, Python runtime assets, Python entry points, developer uv availability, and backend capability states. By default it reports findings without installing dependencies. Add --fix only for the current developer bootstrap path; release installers must not require users to preinstall uv."
     )]
     Doctor(DoctorCommand),
-    /// Open the terminal UI operator console.
-    #[command(
-        name = "tui",
-        about = "Open the terminal UI operator console.",
-        long_about = "Open the Tentgent terminal UI operator console. The TUI uses the local daemon HTTP API for live runtime workflows and shared local config/AuthManager paths for bootstrap and setup."
-    )]
-    Tui(TuiCommand),
     /// Inspect and prepare runtime support assets.
     #[command(
         name = "runtime",

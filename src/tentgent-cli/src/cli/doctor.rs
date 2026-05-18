@@ -1,13 +1,41 @@
-use std::{
-    fs,
-    process::{Command, Stdio},
-};
-
 use console::style;
-use miette::{miette, Result};
-use tentgent_core::{
-    doctor::{build_doctor_report, DoctorCheck, DoctorCheckStatus, DoctorOptions},
-    runtime_assets::PythonRuntime,
+use miette::{miette, IntoDiagnostic, Result};
+use tentgent_kernel::{
+    capabilities::{
+        infra::{FileCapabilityStateStore, StdMachineCapabilitiesProbe},
+        usecases::StdMachineCapabilitiesResolver,
+    },
+    features::{
+        doctor::{
+            domain::{
+                DoctorCheck, DoctorCheckStatus, DoctorRepairIntent, DoctorReport,
+                DoctorReportRequest,
+            },
+            infra::{
+                StdDoctorCapabilityCheckMapper, StdDoctorCommandProbe, StdDoctorPathProbe,
+                StdDoctorRepairPlanner, StdDoctorRuntimeCheckMapper,
+            },
+            usecases::{
+                DoctorCapabilityReadPolicy, DoctorCommandCheckPolicy, DoctorRepairUseCase,
+                DoctorRepairUseCaseRequest, DoctorReportUseCase, DoctorReportUseCaseRequest,
+                StdDoctorRepairUseCase, StdDoctorReportUseCase,
+            },
+        },
+        runtime::{
+            domain::{
+                BootstrapProfile, BootstrapRuntimeInput, PythonRuntimeResolutionInput,
+                RuntimeBootstrapStatus,
+            },
+            infra::{
+                StdPythonRuntimeResolver, StdRuntimeBootstrapExecutor, StdRuntimeBootstrapPlanner,
+                StdRuntimeStateProbe,
+            },
+            usecases::{
+                RuntimeBootstrapResult, StdRuntimeBootstrapUseCase, StdRuntimeStateUseCase,
+            },
+        },
+    },
+    foundation::{layout::StdRuntimeLayoutResolver, platform::StdPlatformProbe},
 };
 
 use super::{
@@ -16,11 +44,13 @@ use super::{
 };
 
 pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
-    if command.fix {
-        bootstrap_python_env()?;
-    }
+    let kernel = CliDoctorKernel::new();
+    let report = if command.fix {
+        handle_repair(&kernel)?
+    } else {
+        handle_report(&kernel)?
+    };
 
-    let report = build_doctor_report(DoctorOptions::cli());
     render_checks(&report.checks);
 
     if report.summary.fail > 0 {
@@ -30,51 +60,158 @@ pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
     Ok(())
 }
 
-fn bootstrap_python_env() -> Result<()> {
-    let runtime = PythonRuntime::resolve()
-        .map_err(|err| miette!("failed to resolve Python runtime assets: {err}"))?;
-    let parent = runtime
-        .env_dir()
-        .parent()
-        .ok_or_else(|| miette!("failed to resolve parent directory for Python env"))?;
-    fs::create_dir_all(parent).map_err(|err| {
-        miette!(
-            "failed to create Python env parent `{}`: {err}",
-            parent.display()
-        )
-    })?;
+struct CliDoctorKernel {
+    layout_resolver: StdRuntimeLayoutResolver,
+    platform_probe: StdPlatformProbe,
+    runtime_resolver: StdPythonRuntimeResolver,
+    state_probe: StdRuntimeStateProbe,
+    bootstrap_planner: StdRuntimeBootstrapPlanner,
+    bootstrap_executor: StdRuntimeBootstrapExecutor,
+    capability_state_store: FileCapabilityStateStore,
+    capability_probe: StdMachineCapabilitiesProbe,
+    path_probe: StdDoctorPathProbe,
+    command_probe: StdDoctorCommandProbe,
+    runtime_mapper: StdDoctorRuntimeCheckMapper,
+    capability_mapper: StdDoctorCapabilityCheckMapper,
+    repair_planner: StdDoctorRepairPlanner,
+}
 
+impl CliDoctorKernel {
+    fn new() -> Self {
+        Self {
+            layout_resolver: StdRuntimeLayoutResolver,
+            platform_probe: StdPlatformProbe,
+            runtime_resolver: StdPythonRuntimeResolver,
+            state_probe: StdRuntimeStateProbe,
+            bootstrap_planner: StdRuntimeBootstrapPlanner,
+            bootstrap_executor: StdRuntimeBootstrapExecutor,
+            capability_state_store: FileCapabilityStateStore,
+            capability_probe: StdMachineCapabilitiesProbe,
+            path_probe: StdDoctorPathProbe,
+            command_probe: StdDoctorCommandProbe,
+            runtime_mapper: StdDoctorRuntimeCheckMapper,
+            capability_mapper: StdDoctorCapabilityCheckMapper,
+            repair_planner: StdDoctorRepairPlanner,
+        }
+    }
+}
+
+fn handle_report(kernel: &CliDoctorKernel) -> Result<DoctorReport> {
+    let runtime_state = StdRuntimeStateUseCase::new(
+        &kernel.layout_resolver,
+        &kernel.runtime_resolver,
+        &kernel.state_probe,
+    );
+    let capabilities = StdMachineCapabilitiesResolver::new(
+        &kernel.layout_resolver,
+        &kernel.platform_probe,
+        &kernel.capability_state_store,
+        &kernel.capability_probe,
+    );
+    let report = StdDoctorReportUseCase::new(
+        &runtime_state,
+        &capabilities,
+        &kernel.path_probe,
+        &kernel.command_probe,
+        &kernel.runtime_mapper,
+        &kernel.capability_mapper,
+    );
+
+    Ok(report
+        .doctor_report(report_request(DoctorRepairIntent::ReportOnly))
+        .into_diagnostic()?
+        .report)
+}
+
+fn handle_repair(kernel: &CliDoctorKernel) -> Result<DoctorReport> {
     println!(
         "{} {}",
         style("==>").cyan().bold(),
-        style("Developer Python environment bootstrap").bold()
+        style("Tentgent doctor repair").bold()
     );
-    println!("project: {}", runtime.project_dir().display());
-    println!("env: {}", runtime.env_dir().display());
 
-    let mut process = Command::new("uv");
-    process
-        .current_dir(runtime.project_dir())
-        .env("UV_PROJECT_ENVIRONMENT", runtime.env_dir())
-        .arg("--no-config")
-        .arg("sync")
-        .arg("--project")
-        .arg(runtime.project_dir())
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+    let runtime_state = StdRuntimeStateUseCase::new(
+        &kernel.layout_resolver,
+        &kernel.runtime_resolver,
+        &kernel.state_probe,
+    );
+    let capabilities = StdMachineCapabilitiesResolver::new(
+        &kernel.layout_resolver,
+        &kernel.platform_probe,
+        &kernel.capability_state_store,
+        &kernel.capability_probe,
+    );
+    let report = StdDoctorReportUseCase::new(
+        &runtime_state,
+        &capabilities,
+        &kernel.path_probe,
+        &kernel.command_probe,
+        &kernel.runtime_mapper,
+        &kernel.capability_mapper,
+    );
+    let bootstrap = StdRuntimeBootstrapUseCase::new(
+        &kernel.layout_resolver,
+        &kernel.platform_probe,
+        &kernel.runtime_resolver,
+        &kernel.bootstrap_planner,
+        &kernel.bootstrap_executor,
+    );
+    let repair = StdDoctorRepairUseCase::new(&kernel.repair_planner, &bootstrap, &report);
+    let result = repair
+        .repair_doctor(DoctorRepairUseCaseRequest {
+            report: report_request(DoctorRepairIntent::DeveloperPythonEnv),
+            bootstrap: BootstrapRuntimeInput {
+                project_dir: None,
+                python_env_dir: None,
+                uv_path: None,
+                profile: BootstrapProfile::Base,
+                dry_run: false,
+                print_plan: false,
+            },
+        })
+        .into_diagnostic()?;
 
-    let status = process
-        .status()
-        .map_err(|err| miette!("failed to run uv for developer Python env bootstrap: {err}"))?;
-    if !status.success() {
-        return Err(miette!(
-            "developer Python env bootstrap failed with status {status}"
-        ));
+    render_repair_summary(&result.plan.steps, result.bootstrap.as_ref());
+    if let Some(bootstrap) = &result.bootstrap {
+        if bootstrap.outcome.status != RuntimeBootstrapStatus::Succeeded {
+            return Err(miette!(
+                "doctor repair bootstrap failed{}",
+                bootstrap
+                    .outcome
+                    .exit_code
+                    .map(|code| format!(" with exit code {code}"))
+                    .unwrap_or_default()
+            ));
+        }
     }
 
+    Ok(result.report)
+}
+
+fn report_request(repair: DoctorRepairIntent) -> DoctorReportUseCaseRequest {
+    DoctorReportUseCaseRequest {
+        doctor: DoctorReportRequest::local_cli().with_repair(repair),
+        runtime: PythonRuntimeResolutionInput::default(),
+        capabilities: DoctorCapabilityReadPolicy::Current,
+        commands: DoctorCommandCheckPolicy::IncludeDeveloperTools,
+    }
+}
+
+fn render_repair_summary(
+    steps: &[tentgent_kernel::features::doctor::domain::DoctorRepairStep],
+    bootstrap: Option<&RuntimeBootstrapResult>,
+) {
+    for step in steps {
+        println!("repair: {}", step.label);
+        if let Some(command) = &step.command {
+            println!("command: {command}");
+        }
+    }
+    if let Some(bootstrap) = bootstrap {
+        println!("profile: {}", bootstrap.plan.profile);
+        println!("status: {}", bootstrap.outcome.status.as_str());
+    }
     println!();
-    Ok(())
 }
 
 fn render_checks(checks: &[DoctorCheck]) {

@@ -34,6 +34,34 @@ Check the Rust workspace:
 cargo check --workspace
 ```
 
+Run Rust tests:
+
+```bash
+cargo test --workspace
+```
+
+Some kernel tests intentionally read the current machine, such as platform
+fact probing. Use `-- --show-output` when you need successful live-machine
+tests to print what they observed:
+
+```bash
+cargo test -p tentgent-kernel -- --show-output
+```
+
+CI runners may not have GPUs, CUDA, Metal, Keychain entries, Linux
+Secret Service/D-Bus session state, provider tokens, or a managed Python
+runtime. Live-machine tests should print the observed facts and treat missing
+optional local capabilities as data, not as a failure, unless the test
+explicitly provisions that dependency.
+
+The kernel keychain smoke test is opt-in because it may prompt the platform
+credential UI. To run it locally and print the observed presence state without
+printing any secret value:
+
+```bash
+TENTGENT_RUN_KEYCHAIN_TESTS=1 cargo test -p tentgent-kernel -- --show-output
+```
+
 Run Python unit tests that do not require provider network access:
 
 ```bash
@@ -47,6 +75,22 @@ Use the Makefile wrappers:
 make check
 make run-cli ARGS='--help'
 ```
+
+## Current CI/CD
+
+The repository currently has one GitHub Actions workflow:
+`.github/workflows/release.yml`.
+
+It runs on `v*.*.*` tag pushes and manual `workflow_dispatch`. The package job
+builds release artifacts on native runners for macOS Apple Silicon, macOS
+Intel, Linux x86_64, and Windows x86_64, then uploads the archives and
+checksums. The release job downloads those artifacts, prepares installer
+assets and release notes, creates or updates the GitHub Release, and verifies
+prerelease/latest release state.
+
+The current release workflow does not run `cargo fmt`, `cargo check`,
+`cargo test`, or Python unit tests before packaging. `scripts/package-local.sh`
+performs `cargo build --release --bin tentgent` as part of artifact packaging.
 
 Check release tag parsing and prerelease flag helpers:
 
@@ -88,77 +132,17 @@ make run-cli ARGS='dataset eval --help'
 make run-cli ARGS='server run --help'
 ```
 
-## TUI Development
-
-Run the terminal UI from source:
-
-```bash
-cargo run -- tui
-cargo run -- tui --home "$TENTGENT_HOME"
-```
-
-The TUI is daemon-first for live status, doctor data, and read-only operator
-navigation. It does not silently auto-start the daemon on launch; select
-`Start daemon` and press Enter to start the daemon explicitly through the shared
-detached-launch helper. The TUI derives the start host and port from the
-resolved daemon URL, including `--daemon-url`, `TENTGENT_DAEMON_URL`, config,
-metadata, or the default URL.
-
-With the daemon running, use the operator menu to browse read-only models,
-adapters, datasets, servers, sessions, train plans, and train runs. Navigator
-tail views use bounded requests for logs, metrics, and session messages.
-
-The `Models`, `Adapters`, and `Datasets` navigator screens have guarded action
-menus opened with `a`. Slice 4 actions are allowlisted daemon HTTP mutations
-only: model/adapter pull/import/remove, adapter bind, and dataset
-import/validate/template/export/diff/synth/eval/remove. They must not shell out
-to the CLI, call `/v1/auth`, read Keychain for confirmation, call server or
-training lifecycle routes, or write store files directly. DELETE actions use an
-empty body and require exact selected-ref confirmation. Provider-backed
-synth/eval actions render bounded summaries and artifact/debug paths, not raw
-provider output.
-
-Long-running TUI actions use daemon-side background jobs. Model/adapter
-pull/import, dataset import, and provider-backed dataset synth/eval start via
-explicit `/jobs` routes, then surface progress in the footer, dashboard, and
-Operator `Jobs` screen. The original synchronous daemon routes keep their old
-response shapes for CLI and existing HTTP clients. Slice 4.1 records jobs under
-runtime home and marks active jobs `interrupted` after daemon restart; it does
-not expose cancellation.
-
-Server and training lifecycle actions are TUI-only clients of existing daemon
-HTTP routes. Server start uses `POST /v1/servers/{ref}/start` with bounded
-readiness wait and is not a `/jobs` job. LoRA run start uses the existing
-training run registry; the TUI polls active runs with bounded metrics/log tail
-requests and does not mirror runs into the job registry. These flows must not
-call `/v1/auth`, read Keychain, shell out to the CLI, or show fake cancel
-controls.
-
-The `Chat` menu entry is the first TUI mutation surface. It is limited to
-existing daemon session/chat routes: `POST /v1/sessions` to create a session and
-`POST /v1/chat` to send a turn. It streams by default, refreshes persisted
-messages after completion, and never calls `PATCH /v1/sessions`, `/v1/auth`, or
-server/model lifecycle routes. TUI chat defaults to `last 2` context, can cycle
-`none` / `last 2` / `last 10` / `last 50` with `h` when the composer is not
-focused, and keeps transcript display tail separate from the context sent to
-`POST /v1/chat`.
-
-The `Resources` menu entry is read-only and local: press `r` there to run a
-bounded runtime-home disk/process scan. The normal dashboard refresh path should
-reuse the last completed resource snapshot and must not deep-scan directories,
-read Keychain, call `/v1/auth`, or issue mutation requests.
+## Daemon Development
 
 Use a token-enabled daemon when checking auth-required behavior:
 
 ```bash
 export TENTGENT_DAEMON_TOKEN='<local-token>'
 cargo run -- daemon start --host 127.0.0.1 --port 8790
-cargo run -- tui --token "$TENTGENT_DAEMON_TOKEN"
 ```
 
 `GET /healthz` remains public. `/v1/status` returns `401` without a valid bearer
-token when daemon auth is enabled, and the TUI should show that as auth
-required rather than daemon down.
+token when daemon auth is enabled.
 
 Useful daemon lifecycle commands:
 
@@ -186,7 +170,7 @@ logs/daemon.stderr.log
 Runtime footprint smoke:
 
 ```bash
-cargo run -- status
+cargo run -- runtime status
 cargo run -- doctor
 ```
 
@@ -203,6 +187,7 @@ make run-cli ARGS='auth hf'
 make run-cli ARGS='auth hf set'
 make run-cli ARGS='auth openai'
 make run-cli ARGS='auth anthropic'
+make run-cli ARGS='auth gemini'
 ```
 
 ## Model Commands
@@ -717,12 +702,6 @@ For foreground debugging, use:
 cargo run -- daemon run --host 127.0.0.1 --port 8790
 ```
 
-The low-level Rust HTTP binary has the same lifecycle metadata behavior:
-
-```bash
-cargo run -p tentgent-http --bin tentgent-http -- --host 127.0.0.1 --port 8790
-```
-
 All daemon CLI launch paths reject wildcard or non-loopback binds without
 `TENTGENT_DAEMON_TOKEN` unless `--allow-unsafe-bind` is passed explicitly.
 Detached daemon children inherit daemon configuration environment variables,
@@ -762,21 +741,18 @@ provider network validation. HTTP doctor is observational only and does not run
 `doctor --fix` behavior. Daemon shutdown requires an enabled bearer token even
 on loopback and stops only the daemon process.
 
-The `tentgent-http` crate is split by responsibility:
+The active Rust daemon host lives in `src/tentgent-daemon/`:
 
-- `src/lib.rs` is the crate root and public export surface.
-- `src/app.rs` owns daemon binding, accept-loop wiring, connection handling,
-  shared state, and request logging.
-- `src/http.rs` owns low-level HTTP parsing and response writing.
-- `src/response.rs` owns JSON, raw proxy, and error response helpers.
-- `src/dto.rs` owns daemon request and response DTOs.
-- `src/routes/` owns endpoint dispatch by capability: `status`, `store`,
-  `lifecycle`, `chat`, `diagnostics`, `openai`, and `session`.
+- `src/bootstrap/` builds daemon config, logging, runtime layout, and services.
+- `src/app/` owns shared daemon process state.
+- `src/transport/rest/` owns Axum routing, bearer-token middleware, and REST
+  transport startup.
+- `src/handlers/rest/` owns endpoint handlers split by feature.
+- `src/runtime/` owns daemon-local job and scheduler state.
 
-Python model-bound server launch helpers are core-owned in
-`src/tentgent-core/src/server_runtime.rs`. The CLI server commands and daemon
-lifecycle routes both consume that core launcher; `tentgent-http` remains the
-daemon HTTP entry point rather than the owner of runtime launching.
+Python model-bound server launch helpers are kernel-owned and exposed through
+the CLI and daemon adapters. The removed `tentgent-http` and `tentgent-core`
+crates are no longer workspace members.
 
 ## Documentation Rules
 

@@ -4,7 +4,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tentgent_core::runtime_assets::{resolve_runtime_home, PythonRuntime};
+use tentgent_kernel::{
+    features::runtime::{
+        domain::PythonRuntimeResolutionInput,
+        infra::{StdPythonRuntimeResolver, StdRuntimeStateProbe},
+        usecases::{RuntimeStateRequest, RuntimeStateUseCase, StdRuntimeStateUseCase},
+    },
+    foundation::layout::{LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver},
+};
 
 use super::display::format_bytes;
 
@@ -80,10 +87,10 @@ impl Default for ScanLimits {
 
 pub(crate) fn collect_runtime_footprint(
     runtime_home: &Path,
-    python: Option<&PythonRuntime>,
+    python_env: Option<&Path>,
 ) -> Vec<FootprintEntry> {
-    let python_env = python
-        .map(|runtime| runtime.env_dir().to_path_buf())
+    let python_env = python_env
+        .map(Path::to_path_buf)
         .unwrap_or_else(|| runtime_home.join("runtime/python-env"));
     let bootstrap_root = runtime_home.join("runtime/bootstrap");
     let bootstrap_uv_tool = bootstrap_root.join("uv");
@@ -128,11 +135,26 @@ pub(crate) fn collect_runtime_footprint(
 }
 
 pub(crate) fn collect_runtime_footprint_best_effort() -> Vec<FootprintEntry> {
-    let Ok(runtime_home) = resolve_runtime_home() else {
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let runtime_resolver = StdPythonRuntimeResolver;
+    let state_probe = StdRuntimeStateProbe;
+    let usecase = StdRuntimeStateUseCase::new(&layout_resolver, &runtime_resolver, &state_probe);
+    let Ok(result) = usecase.runtime_state(RuntimeStateRequest {
+        layout: RuntimeLayoutInput {
+            mode: LayoutResolveMode::ReadOnly,
+            home_dir: None,
+            data_root_dir: None,
+        },
+        runtime: PythonRuntimeResolutionInput::default(),
+    }) else {
         return Vec::new();
     };
-    let python = PythonRuntime::resolve().ok();
-    collect_runtime_footprint(&runtime_home, python.as_ref())
+    let python_env = result
+        .runtime
+        .as_ref()
+        .map(|runtime| runtime.env_dir.as_path())
+        .unwrap_or(result.state.python_env_dir.as_path());
+    collect_runtime_footprint(&result.layout.home_dir, Some(python_env))
 }
 
 fn resolve_uv_package_cache(runtime_home: &Path) -> PathBuf {

@@ -40,6 +40,14 @@ Use `dataset synth` to ask OpenAI or Claude to write a local dataset package. Sy
 
 Use `dataset eval <DATASET_REF|PATH>` to ask OpenAI or Claude to review local or managed dataset content before training. Evaluation is report-only: Tentgent samples records from the requested split, sends the sample and optional criteria to the provider, and writes `eval-report.json`, `eval-report.md`, `prompt.md`, and `provider-output.raw.txt` under the requested output directory.
 
+## Template Source
+
+Dataset prompt templates should live as editable Markdown under
+`src/tentgent-kernel/src/features/dataset/templates/`. Rust renderers may
+perform small placeholder substitutions, but long prompt bodies should remain in
+`.md` files so dataset generation and evaluation wording can be reviewed without
+digging through service logic.
+
 ## Training Package Shape
 
 The minimum tuning-ready package is:
@@ -180,10 +188,11 @@ The evaluator supports `--split train|valid|test|eval_cases|all`, `--max-records
 
 Use `dataset rm <DATASET_REF>` to remove one managed dataset store record and its local source index.
 
-Removal does not delete exported working copies. Future training-run registries may add reference protection before a dataset can be removed.
+Removal does not delete exported working copies. Kernel-backed dataset removal
+checks local LoRA train plans and run records before deleting managed dataset
+content. The legacy HTTP dataset routes still await the kernel migration.
 
 ## Non-Goals
 
 - no Hugging Face dataset pull
 - no training integration
-- no training-run reference protection yet

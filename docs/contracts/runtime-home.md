@@ -5,7 +5,7 @@ This document defines how Tentgent should resolve and use its daemon-managed loc
 ## Purpose
 
 - Keep models, adapters, datasets, training plans, cache, runtime sockets, and logs outside the repository by default.
-- Let the CLI and future HTTP entry point share the same persistent local state.
+- Let the CLI and daemon REST entry point share the same persistent local state.
 - Make development testing easy to isolate without changing production defaults.
 
 ## Naming
@@ -55,6 +55,8 @@ Reserved runtime files:
 - `runtime/tentgent.sock`
 - `runtime/tentgent.pid`
 - `runtime/daemon.toml`
+- `runtime/auth.toml`
+- `runtime/capabilities.toml`
 - `runtime/bootstrap/`
 - `config.toml`
 
@@ -66,17 +68,20 @@ Missing runtime-home states should be reported with stable warning codes such as
 `runtime_home_missing`, `runtime_dir_missing`, `process_path_missing`,
 `pid_path_stale`, or `process_metadata_stale`.
 
+## Auth Metadata
+
+`runtime/auth.toml` stores non-secret provider auth metadata such as keychain
+presence, validation state, and last update/validation timestamps. It must not
+contain provider secret values, daemon bearer tokens, or request-provided
+provider keys.
+
 ## Shared Config
 
-`config.toml` stores non-secret local preferences shared by the CLI and TUI.
+`config.toml` stores non-secret local preferences shared by the CLI and daemon.
 The current schema is:
 
 ```toml
 schema_version = 1
-
-[tui]
-last_section = "status"
-auto_start_daemon = false
 
 [daemon]
 url = "http://127.0.0.1:8790"

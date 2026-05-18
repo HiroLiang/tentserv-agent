@@ -7,6 +7,9 @@ Use this directory for completed plans that are no longer the active execution t
 - Keep historical plans available when implementation history matters.
 - Remove completed plans from the active plan surface in the parent folder.
 - Keep the active `docs/plans/` directory focused on unfinished or future work.
+- Archived plans preserve historical names and commands from their original
+  implementation period, including removed crates or removed UI surfaces. Do
+  not treat archive references as current product direction.
 
 ## Routing Rule
 
@@ -37,3 +40,6 @@ Use this directory for completed plans that are no longer the active execution t
   Completed OpenAI and Claude cloud provider server routing through local `tentgent server` chat.
 - [http-chat-streaming-mvp.md](./http-chat-streaming-mvp.md)
   Completed Server-Sent Events streaming for local base-model, local adapter, and cloud provider chat.
+- [tentgent-kernel-migration.md](./tentgent-kernel-migration.md)
+  Completed kernel consolidation record. The active workspace now uses
+  `tentgent-kernel` directly, with the legacy Rust core and HTTP crates removed.

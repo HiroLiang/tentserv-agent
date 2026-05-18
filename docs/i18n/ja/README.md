@@ -1,14 +1,36 @@
 # Tentgent
 
-Tentgent は Rust を主体としたローカル operator CLI で、Python daemon レイヤーを使って model runtime、adapter、LoRA training、長時間動作するローカル server、ローカル HTTP control plane を管理します。
+Tentgent はローカル AI workflow operator です。Rust CLI とローカル
+daemon REST API で、model runtime、adapter、dataset、LoRA training、
+長時間動作するローカル server、短期 working session を管理します。
 
-現在の MVP は provider key の管理、ローカル model の取得と重複排除、LoRA adapter の import / pull、dataset 管理、単発 chat、LoRA adapter training、ローカル HTTP chat、主要なローカル workflow の daemon API に対応しています。
+現在の product surface は CLI と daemon REST です。terminal UI command はありません。
 
 ## 言語
 
 - 英語 source of truth: [README.md](../../../README.md)
 - 繁體中文: [docs/i18n/zh-TW/README.md](../zh-TW/README.md)
 - 日本語: [docs/i18n/ja/README.md](./README.md)
+- 完整な英語 user docs: [docs/user/README.md](../../../docs/user/README.md)
+
+## Quick Start
+
+```bash
+brew tap hiroliang/tap
+brew install hiroliang/tap/tentgent
+tentgent runtime bootstrap
+tentgent doctor
+```
+
+最小 local workflow:
+
+```bash
+tentgent auth hf set
+tentgent model pull google/gemma-3-1b-it
+tentgent model ls
+tentgent chat <model-ref> --message "user:Hello"
+tentgent daemon start --host 127.0.0.1 --port 8790
+```
 
 ## ツールをインストール
 
@@ -69,7 +91,7 @@ install、upgrade、pinned version、local package smoke test、uninstall notes 
 
 ```bash
 tentgent doctor
-tentgent status
+tentgent runtime status
 tentgent auth status
 ```
 
@@ -79,6 +101,7 @@ provider key を system Keychain に保存:
 tentgent auth hf set
 tentgent auth openai set
 tentgent auth anthropic set
+tentgent auth gemini set
 ```
 
 環境変数または現在の process が読む `.env` も使えます:
@@ -88,6 +111,7 @@ cat > .env <<'EOF'
 HF_TOKEN=...
 OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
 EOF
 ```
 
@@ -149,7 +173,7 @@ tentgent server ps
 tentgent server stop <server-ref>
 ```
 
-Direct model-server chat は stateless です。session-aware chat には daemon を使ってください。server chat request と adapter rules は [docs/contracts/server-chat.md](../../../docs/contracts/server-chat.md) を参照してください。
+Direct model-server chat は stateless です。model-ref based native / compatible chat routes には daemon を使ってください。server chat request と adapter rules は [docs/contracts/server-chat.md](../../../docs/contracts/server-chat.md) を参照してください。
 
 ## Daemon を起動・停止
 
@@ -160,12 +184,16 @@ curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
 ```
 
-session-aware routing が必要な場合は、daemon から selected server に proxy します:
+daemon-native、OpenAI-compatible、Claude-compatible、Gemini-compatible chat routes が必要な場合:
 
 ```bash
 curl -sS http://127.0.0.1:8790/v1/chat \
   -H 'Content-Type: application/json' \
-  -d '{"server_ref":"<server-ref>","messages":[{"role":"user","content":"Hello"}],"stream":false}'
+  -d '{"model_ref":"<model-ref>","messages":[{"role":"user","content":"Hello"}],"stream":false}'
+
+curl -sS http://127.0.0.1:8790/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"<model-ref>","messages":[{"role":"user","content":"Hello"}],"stream":true}'
 ```
 
 daemon を停止:
@@ -175,14 +203,6 @@ tentgent daemon stop
 ```
 
 完整な daemon API、endpoints、response shapes、auth、error mapping は [docs/contracts/http-daemon.md](../../../docs/contracts/http-daemon.md) を参照してください。
-
-## TUI に入る
-
-```bash
-tentgent tui
-```
-
-TUI は daemon discovery、chat、jobs、resources、store、server、training、guarded setup flows のための operator console です。
 
 ## ツールを削除
 
@@ -215,6 +235,10 @@ models、adapters、datasets、sessions、servers、train records、その他 lo
 
 ## Version Notes
 
+`v0.3.5-alpha.0` は CLI plus daemon REST consolidation release です。旧
+terminal UI、legacy core、legacy HTTP crates を削除し、broad diagnostics
+を `doctor` に集約します。
+
 `v0.3.4-alpha.2` は Linux x86_64 preview release です。release tarball
 install、default base runtime bootstrap、Ubuntu 24.04 Docker smoke 済みの
 `doctor` readiness を含みます。
@@ -229,7 +253,7 @@ version feature list と known limits は [docs/user/version.md](../../../docs/u
 
 ## 完整な CLI コマンド
 
-README は最短ルートだけを載せます。完整な CLI command reference は [docs/user/commands.md](../../../docs/user/commands.md) を参照してください。TUI、auth、models、adapters、datasets、chat、servers、daemon、sessions、LoRA training を含みます。
+README は最短ルートだけを載せます。完整な CLI command reference は [docs/user/commands.md](../../../docs/user/commands.md) を参照してください。auth、models、adapters、datasets、chat、servers、daemon、sessions、LoRA training を含みます。
 
 ## API と Contracts
 

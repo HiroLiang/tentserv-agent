@@ -10,7 +10,7 @@ Tentgent treats a backend as supported only when it has:
 
 - a stable routing rule from model format to runtime backend
 - a platform capability check before long-running work starts
-- dependency diagnostics through `tentgent status` or future `tentgent doctor`
+- dependency diagnostics through `tentgent doctor`
 - predictable errors when the backend is unavailable
 - documented install expectations
 
@@ -48,7 +48,7 @@ LoRA training backend selection:
 
 Rust should enforce capability checks for:
 
-- `tentgent status`
+- `tentgent doctor`
 - `tentgent server run`
 - `tentgent server start`
 - `tentgent train lora plan create`

@@ -12,6 +12,8 @@ Use this directory for concise interface documents that define stable boundaries
 - Describe adapter-store identity, compatibility, and source-index boundaries when adapter management behavior changes.
 - Describe canonical dataset schemas when training, evaluation, or cloud dataset generation behavior changes.
 - Describe platform and backend support boundaries before runtime routing behavior depends on them.
+- Describe kernel architecture ownership and dependency direction for shared
+  behavior.
 - Keep each document focused on one interface or one boundary.
 
 ## Contract Index
@@ -32,12 +34,16 @@ Use this directory for concise interface documents that define stable boundaries
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - [http-daemon.md](./http-daemon.md)
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
+- [tentgent-daemon.md](./tentgent-daemon.md)
+  Rust daemon application host, bootstrap, transport, and runtime-state boundary.
 - [training-lora.md](./training-lora.md)
   Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
 - [runtime-home.md](./runtime-home.md)
   Runtime-home resolution, standard subdirectories, and environment-variable overrides.
 - [platform-backends.md](./platform-backends.md)
   Platform capability matrix and backend support guardrails.
+- [kernel-architecture.md](./kernel-architecture.md)
+  `tentgent-kernel` module placement, dependency direction, capability readiness, and persistence boundaries.
 
 ## Expansion Rules
 
