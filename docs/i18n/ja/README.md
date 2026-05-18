@@ -1,14 +1,36 @@
 # Tentgent
 
-Tentgent は Rust を主体としたローカル operator CLI で、Python daemon レイヤーを使って model runtime、adapter、LoRA training、長時間動作するローカル server、ローカル HTTP control plane を管理します。
+Tentgent はローカル AI workflow operator です。Rust CLI とローカル
+daemon REST API で、model runtime、adapter、dataset、LoRA training、
+長時間動作するローカル server、短期 working session を管理します。
 
-現在の MVP は provider key の管理、ローカル model の取得と重複排除、LoRA adapter の import / pull、dataset 管理、単発 chat、LoRA adapter training、ローカル HTTP chat、主要なローカル workflow の daemon API に対応しています。
+現在の product surface は CLI と daemon REST です。terminal UI command はありません。
 
 ## 言語
 
 - 英語 source of truth: [README.md](../../../README.md)
 - 繁體中文: [docs/i18n/zh-TW/README.md](../zh-TW/README.md)
 - 日本語: [docs/i18n/ja/README.md](./README.md)
+- 完整な英語 user docs: [docs/user/README.md](../../../docs/user/README.md)
+
+## Quick Start
+
+```bash
+brew tap hiroliang/tap
+brew install hiroliang/tap/tentgent
+tentgent runtime bootstrap
+tentgent doctor
+```
+
+最小 local workflow:
+
+```bash
+tentgent auth hf set
+tentgent model pull google/gemma-3-1b-it
+tentgent model ls
+tentgent chat <model-ref> --message "user:Hello"
+tentgent daemon start --host 127.0.0.1 --port 8790
+```
 
 ## ツールをインストール
 
@@ -213,9 +235,9 @@ models、adapters、datasets、sessions、servers、train records、その他 lo
 
 ## Version Notes
 
-`v0.3.5-alpha.0` は CLI plus daemon REST consolidation release です。TUI、
-legacy core、legacy HTTP crates を削除し、broad diagnostics を `doctor` に
-集約します。
+`v0.3.5-alpha.0` は CLI plus daemon REST consolidation release です。旧
+terminal UI、legacy core、legacy HTTP crates を削除し、broad diagnostics
+を `doctor` に集約します。
 
 `v0.3.4-alpha.2` は Linux x86_64 preview release です。release tarball
 install、default base runtime bootstrap、Ubuntu 24.04 Docker smoke 済みの

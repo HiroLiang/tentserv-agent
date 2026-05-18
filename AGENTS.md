@@ -46,6 +46,14 @@ If the current task is about agent workflows, role selection, or role-specific w
 - `docs/plans/archive/`
   Completed plans kept only for historical context and implementation history.
 
+Current product surface:
+
+- User-facing local work starts at the `tentgent` CLI.
+- Long-running local HTTP workflows run through `tentgent daemon` and
+  `src/tentgent-daemon/`.
+- The former terminal UI and legacy Rust `core` / `http` crates have been
+  removed. Archive docs may still mention them as history only.
+
 Key current documents:
 
 - `docs/contracts/runtime-home.md`
@@ -84,6 +92,9 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
+- `docs/plans/apple-signed-cli-release.md`
+  Next release-engineering plan for macOS CLI signing, notarization, release
+  checksums, and Homebrew tap automation.
 - `docs/plans/archive/README.md`
   Router for completed plans that should be consulted only when historical implementation context is needed.
 - `docs/plans/archive/http-daemon-mvp.md`

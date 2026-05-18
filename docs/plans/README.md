@@ -27,7 +27,8 @@ Use this directory for active or still-open implementation plans that are too la
 - [apple-signed-cli-release.md](./apple-signed-cli-release.md)
   Next release-engineering track for GitHub Actions macOS CLI signing,
   notarization, checksums, Homebrew tap updates, and tag-driven release
-  automation. This track is CLI plus daemon only; no TUI artifact is produced.
+  automation. This track is CLI plus daemon only; no terminal UI artifact is
+  produced.
 - [linux-release-support.md](./linux-release-support.md)
   Linux release/install track. The x86_64 prerelease path now has GitHub
   Release tarballs, `install.sh` support, base runtime bootstrap smoke, and
@@ -53,7 +54,8 @@ Use this directory for active or still-open implementation plans that are too la
 
 ## Deferred Plans
 
-- No TUI redesign track is active. The product surface is CLI plus daemon REST.
+- No terminal UI redesign track is active. The product surface is CLI plus
+  daemon REST.
 
 ## Archived Plans
 

@@ -5,12 +5,13 @@ This document summarizes the current user-facing version. It is not a changelog 
 ## v0.3.5-alpha.0
 
 `v0.3.5-alpha.0` is the CLI plus daemon REST consolidation release. It removes
-the TUI surface and the legacy Rust `core` / `http` crates so runtime behavior
-flows through `tentgent-kernel`, `tentgent-cli`, and `tentgent-daemon`.
+the former terminal UI surface and the legacy Rust `core` / `http` crates so
+runtime behavior flows through `tentgent-kernel`, `tentgent-cli`, and
+`tentgent-daemon`.
 
 What changed:
 
-- Removed the `tentgent tui` command and TUI package.
+- Removed the former terminal UI command and package.
 - Removed the legacy Rust HTTP daemon crate; `tentgent daemon` now launches the
   daemon host directly.
 - Removed the legacy Rust core crate after dependency audit confirmed CLI and
@@ -194,14 +195,14 @@ only.
 
 Added:
 
-- `tentgent tui` operator workflows for chat, sessions, jobs, resources, stores,
+- Terminal UI operator workflows for chat, sessions, jobs, resources, stores,
   servers, and LoRA training surfaces.
-- Background daemon job records and TUI progress surfaces for long-running
+- Background daemon job records and terminal UI progress surfaces for long-running
   store/dataset actions without changing existing synchronous API behavior.
 - Picker-first server and LoRA plan creation flows with review/preview pages.
-- Guarded TUI actions for model, adapter, dataset, server, training, and session
+- Guarded terminal UI actions for model, adapter, dataset, server, training, and session
   management through existing daemon routes.
-- Compact session/server/adapter ref display in dense TUI and CLI session lists.
+- Compact session/server/adapter ref display in dense terminal UI and CLI session lists.
 - More reliable detached local server startup, including bind preflight and
   early health/process observation.
 

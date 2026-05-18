@@ -1,14 +1,36 @@
 # Tentgent
 
-Tentgent 是以 Rust 為主的本地 operator CLI，搭配 Python daemon 層管理模型 runtime、adapter、LoRA training、長時間運行的本地 server，以及本地 HTTP control plane。
+Tentgent 是本地 AI workflow operator：Rust CLI 搭配本地 daemon REST API，
+管理模型 runtime、adapter、dataset、LoRA training、長時間運行的本地
+server，以及短期工作 session。
 
-目前 MVP 可以管理 provider key、下載並去重本地模型、匯入或下載 LoRA adapter、管理 dataset、執行單次聊天、訓練 LoRA adapter、提供本地 HTTP chat，並透過 daemon API expose 主要本地工作流程。
+目前產品介面是 CLI 加 daemon REST；沒有 terminal UI 指令。
 
 ## 語言
 
 - 英文 source of truth: [README.md](../../../README.md)
 - 繁體中文: [docs/i18n/zh-TW/README.md](./README.md)
 - 日文: [docs/i18n/ja/README.md](../ja/README.md)
+- 完整英文使用文件: [docs/user/README.md](../../../docs/user/README.md)
+
+## 快速開始
+
+```bash
+brew tap hiroliang/tap
+brew install hiroliang/tap/tentgent
+tentgent runtime bootstrap
+tentgent doctor
+```
+
+最小本地流程：
+
+```bash
+tentgent auth hf set
+tentgent model pull google/gemma-3-1b-it
+tentgent model ls
+tentgent chat <model-ref> --message "user:Hello"
+tentgent daemon start --host 127.0.0.1 --port 8790
+```
 
 ## 安裝工具
 
@@ -211,8 +233,9 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 
 ## 版本說明
 
-`v0.3.5-alpha.0` 是 CLI plus daemon REST consolidation release，移除 TUI、
-legacy core 與 legacy HTTP crates，並把 broad diagnostics 收斂到 `doctor`。
+`v0.3.5-alpha.0` 是 CLI plus daemon REST consolidation release，移除舊
+terminal UI、legacy core 與 legacy HTTP crates，並把 broad diagnostics
+收斂到 `doctor`。
 
 `v0.3.4-alpha.2` 是 Linux x86_64 preview release，包含 release tarball
 install、預設 base runtime bootstrap，以及 Ubuntu 24.04 Docker smoke 過的

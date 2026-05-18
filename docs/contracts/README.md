@@ -12,7 +12,8 @@ Use this directory for concise interface documents that define stable boundaries
 - Describe adapter-store identity, compatibility, and source-index boundaries when adapter management behavior changes.
 - Describe canonical dataset schemas when training, evaluation, or cloud dataset generation behavior changes.
 - Describe platform and backend support boundaries before runtime routing behavior depends on them.
-- Describe kernel architecture boundaries before moving core behavior into `tentgent-kernel`.
+- Describe kernel architecture ownership and dependency direction for shared
+  behavior.
 - Keep each document focused on one interface or one boundary.
 
 ## Contract Index

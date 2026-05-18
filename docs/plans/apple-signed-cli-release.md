@@ -2,7 +2,7 @@
 
 This plan defines the next release-engineering slice for signed macOS CLI
 artifacts. Tentgent is CLI plus daemon REST only; this track must not produce or
-test TUI artifacts.
+test terminal UI artifacts.
 
 ## Goal
 
@@ -40,7 +40,7 @@ logs, repository files, or `TENTGENT_HOME`.
    - `tentgent --version`
    - `tentgent doctor`
    - `tentgent runtime bootstrap --print-plan`
-   - confirm `tentgent tui` is not a valid command
+   - confirm the former terminal UI command is not valid
 10. Update the Homebrew tap through the existing checksum-driven helper or open
     a pull request for review.
 
@@ -55,7 +55,7 @@ logs, repository files, or `TENTGENT_HOME`.
 
 ## Out Of Scope
 
-- Reintroducing a TUI or GUI app.
+- Reintroducing a terminal UI or GUI app.
 - Automatic Python runtime bootstrap during Homebrew installation.
 - Heavy local-model or training runtime smoke tests in the signing workflow.
 - Public network model downloads as a required release gate.

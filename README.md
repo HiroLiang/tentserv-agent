@@ -17,11 +17,49 @@ Tentgent is local-first. Runtime data lives under `TENTGENT_HOME` by default,
 and provider secrets can come from `.env` / environment variables or the system
 keychain.
 
-## Languages
+## Languages And Docs
 
 - English source of truth: [README.md](./README.md)
 - Traditional Chinese: [docs/i18n/zh-TW/README.md](./docs/i18n/zh-TW/README.md)
 - Japanese: [docs/i18n/ja/README.md](./docs/i18n/ja/README.md)
+- Full user guide: [docs/user/README.md](./docs/user/README.md)
+- Developer guide: [docs/development/README.md](./docs/development/README.md)
+
+## Quick Start
+
+The current product surface is the `tentgent` CLI plus the local daemon REST
+API. There is no terminal UI command.
+
+```bash
+brew tap hiroliang/tap
+brew install hiroliang/tap/tentgent
+tentgent runtime bootstrap
+tentgent doctor
+```
+
+Then configure keys only for the providers you use:
+
+```bash
+tentgent auth hf set
+tentgent auth openai set
+tentgent auth anthropic set
+tentgent auth gemini set
+```
+
+Try the smallest local workflow:
+
+```bash
+tentgent model pull google/gemma-3-1b-it
+tentgent model ls
+tentgent chat <model-ref> --message "user:Hello"
+```
+
+Start the daemon when you want HTTP access:
+
+```bash
+tentgent daemon start --host 127.0.0.1 --port 8790
+curl -sS http://127.0.0.1:8790/healthz
+```
 
 ## Install The Tool
 
@@ -231,7 +269,7 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
-- `v0.3.5-alpha.0`: CLI plus daemon REST consolidation release; removes TUI, legacy core, and legacy HTTP crates, and keeps broad diagnostics under `doctor`.
+- `v0.3.5-alpha.0`: CLI plus daemon REST consolidation release; removes the former terminal UI, legacy core, and legacy HTTP crates, and keeps broad diagnostics under `doctor`.
 - `v0.3.4-alpha.2`: Linux x86_64 preview release with release tarball install, default base runtime bootstrap, and Docker-smoked `doctor` readiness on Ubuntu 24.04.
 - `v0.3.3`: adds Homebrew tap update tooling for repeatable formula URL and checksum updates after stable releases.
 - `v0.3.2`: adds `tentgent runtime bootstrap` as the package-manager friendly managed Python runtime setup entry point.

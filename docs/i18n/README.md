@@ -4,10 +4,23 @@ This directory holds localized Markdown that mirrors English source documents fr
 
 ## Available Languages
 
-- Traditional Chinese: [zh-TW/README.md](./zh-TW/README.md)
-- Japanese: [ja/README.md](./ja/README.md)
+| Language | Entry Point | Status |
+| --- | --- | --- |
+| English | [../../README.md](../../README.md) | Source of truth |
+| Traditional Chinese | [zh-TW/README.md](./zh-TW/README.md) | Localized quick start |
+| Japanese | [ja/README.md](./ja/README.md) | Localized quick start |
 
-Detailed user docs currently live in English under [docs/user/](../user/README.md); localized README files link back to those source documents when no localized counterpart exists yet.
+Detailed user docs currently live in English under
+[docs/user/](../user/README.md). Localized README files link back to those
+source documents when no localized counterpart exists yet.
+
+## Quick Navigation
+
+- Start using Tentgent: [../../README.md](../../README.md#quick-start)
+- Full command examples: [../user/commands.md](../user/commands.md)
+- Install and upgrade: [../user/install.md](../user/install.md)
+- Runtime home and diagnostics: [../user/runtime.md](../user/runtime.md)
+- Current version notes: [../user/version.md](../user/version.md)
 
 ## Rules
 
