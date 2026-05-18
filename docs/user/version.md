@@ -270,7 +270,7 @@ Known limits:
 
 Added:
 
-- OpenAI and Anthropic keys can be verified through `auth status`.
+- OpenAI, Anthropic, and Gemini keys can be verified through `auth status`.
 - `server run openai:<model>` and `server run claude:<model>` can expose provider chat through the local `/v1/chat` surface.
 - `dataset validate`, `dataset template`, `dataset synth`, and `dataset eval` help produce and review `tentgent.chat.v1` tuning data.
 - server JSON responses preserve UTF-8 text for direct curl readability.
@@ -286,7 +286,7 @@ Known limits:
 
 Included:
 
-- provider auth key management for Hugging Face, OpenAI, and Anthropic
+- provider auth key management for Hugging Face, OpenAI, Anthropic, and Gemini
 - content-addressed model store with local import and Hugging Face pull
 - content-addressed adapter store with local import, Hugging Face pull, and train-run import
 - content-addressed dataset store with import, export, diff, remove, and canonical chat schema support

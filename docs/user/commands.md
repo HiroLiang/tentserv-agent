@@ -18,6 +18,7 @@ Set provider keys:
 tentgent auth hf set
 tentgent auth openai set
 tentgent auth anthropic set
+tentgent auth gemini set
 ```
 
 Inspect or remove one provider key:
@@ -25,6 +26,8 @@ Inspect or remove one provider key:
 ```bash
 tentgent auth openai
 tentgent auth openai rm
+tentgent auth gemini
+tentgent auth gemini rm
 ```
 
 The daemon exposes read-only auth status. Provider key set/remove stays

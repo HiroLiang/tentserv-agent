@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use reqwest::{Client, Method, Request, StatusCode};
+use reqwest::{Client, Method, Request, StatusCode, Url};
 
 use crate::features::auth::domain::{AuthValidationState, Provider};
 use crate::features::auth::ports::{AuthSecretValidator, AuthValidationFuture};
@@ -12,6 +12,7 @@ const VALIDATION_TIMEOUT: Duration = Duration::from_secs(10);
 const HUGGINGFACE_VALIDATION_URL: &str = "https://huggingface.co/api/whoami-v2";
 const OPENAI_VALIDATION_URL: &str = "https://api.openai.com/v1/models";
 const ANTHROPIC_VALIDATION_URL: &str = "https://api.anthropic.com/v1/models";
+const GEMINI_VALIDATION_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const ANTHROPIC_VERSION_HEADER: &str = "anthropic-version";
 const ANTHROPIC_API_KEY_HEADER: &str = "x-api-key";
@@ -95,6 +96,7 @@ fn validation_request_with_client(
             .request(Method::GET, ANTHROPIC_VALIDATION_URL)
             .header(ANTHROPIC_API_KEY_HEADER, secret)
             .header(ANTHROPIC_VERSION_HEADER, ANTHROPIC_VERSION),
+        Provider::Gemini => client.request(Method::GET, gemini_validation_url(secret)?),
     };
 
     request.build().map_err(|err| {
@@ -103,6 +105,16 @@ fn validation_request_with_client(
             provider.display_name()
         ))
     })
+}
+
+fn gemini_validation_url(secret: &str) -> KernelResult<Url> {
+    let mut url = Url::parse(GEMINI_VALIDATION_URL).map_err(|err| {
+        KernelError::RuntimeStateUnavailable(format!(
+            "failed to parse Gemini auth validation URL: {err}"
+        ))
+    })?;
+    url.query_pairs_mut().append_pair("key", secret);
+    Ok(url)
 }
 
 fn validation_state_for_response(

@@ -143,6 +143,7 @@ This is expected for commands such as:
 - `tentgent auth hf`
 - `tentgent auth openai`
 - `tentgent auth anthropic`
+- `tentgent auth gemini`
 - `tentgent model pull <HF_REPO>`
 - `tentgent adapter pull <HF_REPO>`
 

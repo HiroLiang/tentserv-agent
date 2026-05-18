@@ -31,7 +31,7 @@ pub(crate) fn auth_providers_response() -> HttpResponse {
 pub(crate) fn auth_provider_response(provider_id: &str) -> HttpResponse {
     let Some(provider) = parse_provider(provider_id) else {
         return bad_request_response(format!(
-            "invalid auth provider `{provider_id}`; expected one of hf, openai, anthropic"
+            "invalid auth provider `{provider_id}`; expected one of hf, openai, anthropic, gemini"
         ));
     };
     let auth = match AuthManager::new() {

@@ -12,16 +12,23 @@ pub enum Provider {
     HuggingFace,
     OpenAI,
     Anthropic,
+    Gemini,
 }
 
 impl Provider {
-    pub const ALL: [Self; 3] = [Self::HuggingFace, Self::OpenAI, Self::Anthropic];
+    pub const ALL: [Self; 4] = [
+        Self::HuggingFace,
+        Self::OpenAI,
+        Self::Anthropic,
+        Self::Gemini,
+    ];
 
     pub const fn display_name(self) -> &'static str {
         match self {
             Self::HuggingFace => "Hugging Face",
             Self::OpenAI => "OpenAI",
             Self::Anthropic => "Anthropic",
+            Self::Gemini => "Gemini",
         }
     }
 
@@ -30,6 +37,7 @@ impl Provider {
             Self::HuggingFace => "hf",
             Self::OpenAI => "openai",
             Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
         }
     }
 
@@ -38,6 +46,7 @@ impl Provider {
             Self::HuggingFace => "HF_TOKEN",
             Self::OpenAI => "OPENAI_API_KEY",
             Self::Anthropic => "ANTHROPIC_API_KEY",
+            Self::Gemini => "GEMINI_API_KEY",
         }
     }
 
@@ -46,6 +55,7 @@ impl Provider {
             Self::HuggingFace => "huggingface",
             Self::OpenAI => "openai",
             Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
         }
     }
 }

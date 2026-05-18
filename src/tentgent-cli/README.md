@@ -51,6 +51,8 @@ This crate owns the `tentgent` binary and should stay focused on command-line in
   Show OpenAI key status with the same resolution rules.
 - `tentgent auth anthropic`
   Show Anthropic key status with the same resolution rules.
+- `tentgent auth gemini`
+  Show Gemini key status with the same resolution rules.
 - `tentgent model --help`
   Show model-group help.
 - `tentgent model add <PATH>`

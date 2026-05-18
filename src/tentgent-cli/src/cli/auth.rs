@@ -36,6 +36,9 @@ pub async fn handle_auth_command(subject: AuthCommands) -> miette::Result<()> {
         AuthCommands::Anthropic { action } => {
             handle_provider_action(&auth, Provider::Anthropic, action).await?
         }
+        AuthCommands::Gemini { action } => {
+            handle_provider_action(&auth, Provider::Gemini, action).await?
+        }
     }
 
     Ok(())

@@ -645,6 +645,7 @@ mod tests {
                 Provider::OpenAI => "openai",
                 Provider::Anthropic => "anthropic",
                 Provider::HuggingFace => "huggingface",
+                Provider::Gemini => "gemini",
             },
             secret: "secret".to_string(),
         }

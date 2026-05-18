@@ -88,9 +88,11 @@ async fn auth_routes_return_local_status_without_secret_values() {
     let previous_openai = std::env::var("OPENAI_API_KEY").ok();
     let previous_hf = std::env::var("HF_TOKEN").ok();
     let previous_anthropic = std::env::var("ANTHROPIC_API_KEY").ok();
+    let previous_gemini = std::env::var("GEMINI_API_KEY").ok();
     std::env::set_var("OPENAI_API_KEY", SENTINEL);
     std::env::set_var("HF_TOKEN", format!("{SENTINEL}-hf"));
     std::env::set_var("ANTHROPIC_API_KEY", format!("{SENTINEL}-anthropic"));
+    std::env::set_var("GEMINI_API_KEY", format!("{SENTINEL}-gemini"));
 
     let state = state_for(unique_home("auth-status-local"));
     let response = route_request(&get("/v1/auth"), &state).await;
@@ -99,7 +101,7 @@ async fn auth_routes_return_local_status_without_secret_values() {
 
     assert_eq!(response.status_code, 200);
     assert!(!body_text.contains(SENTINEL));
-    assert_eq!(body["providers"].as_array().expect("providers").len(), 3);
+    assert_eq!(body["providers"].as_array().expect("providers").len(), 4);
     let openai = body["providers"]
         .as_array()
         .expect("providers")
@@ -116,6 +118,15 @@ async fn auth_routes_return_local_status_without_secret_values() {
     assert_eq!(one_body["provider"]["provider"], "openai");
     assert_eq!(one_body["provider"]["validation"]["state"], "not_checked");
 
+    let gemini = body["providers"]
+        .as_array()
+        .expect("providers")
+        .iter()
+        .find(|provider| provider["provider"] == "gemini")
+        .expect("gemini");
+    assert_eq!(gemini["env_present"], true);
+    assert_eq!(gemini["effective_source"], "env");
+
     let alias = route_request(&get("/v1/auth/huggingface"), &state).await;
     let alias_body: Value = serde_json::from_slice(response_buffer(&alias)).expect("json");
     assert_eq!(alias.status_code, 400);
@@ -127,6 +138,7 @@ async fn auth_routes_return_local_status_without_secret_values() {
     restore_env("OPENAI_API_KEY", previous_openai);
     restore_env("HF_TOKEN", previous_hf);
     restore_env("ANTHROPIC_API_KEY", previous_anthropic);
+    restore_env("GEMINI_API_KEY", previous_gemini);
 }
 
 #[tokio::test]

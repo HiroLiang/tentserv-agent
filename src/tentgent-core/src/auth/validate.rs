@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, StatusCode, Url};
 
 use super::{AuthError, Provider};
 
@@ -52,6 +52,7 @@ impl KeyValidator {
             Provider::HuggingFace => self.validate_huggingface(secret).await,
             Provider::OpenAI => self.validate_openai(secret).await,
             Provider::Anthropic => self.validate_anthropic(secret).await,
+            Provider::Gemini => self.validate_gemini(secret).await,
         }
     }
 
@@ -79,6 +80,12 @@ impl KeyValidator {
             .await;
 
         Self::map_response("Anthropic", response)
+    }
+
+    async fn validate_gemini(&self, secret: &str) -> KeyValidationState {
+        let response = self.client.get(gemini_validation_url(secret)).send().await;
+
+        Self::map_response("Gemini", response)
     }
 
     async fn validate_bearer(
@@ -116,4 +123,11 @@ impl KeyValidator {
             },
         }
     }
+}
+
+fn gemini_validation_url(secret: &str) -> Url {
+    let mut url = Url::parse("https://generativelanguage.googleapis.com/v1beta/models")
+        .expect("valid Gemini validation URL");
+    url.query_pairs_mut().append_pair("key", secret);
+    url
 }

@@ -7,6 +7,7 @@ This document defines how Tentgent should resolve, store, and validate provider 
 - Hugging Face
 - OpenAI
 - Anthropic
+- Gemini
 
 ## Resolution Order
 
@@ -25,6 +26,7 @@ Use these environment variables:
 - `HF_TOKEN`
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
 
 `.env` loading is allowed for development convenience and should override process environment variables for the current Tentgent process when present.
 The default `.env` lookup is the current process working directory and its
@@ -164,6 +166,9 @@ general config into a secret-adjacent persistence surface.
 - `tentgent auth anthropic`
 - `tentgent auth anthropic set`
 - `tentgent auth anthropic rm`
+- `tentgent auth gemini`
+- `tentgent auth gemini set`
+- `tentgent auth gemini rm`
 
 The CLI auth surface composes kernel auth use cases directly. It uses
 `StdAuthStatusUseCase`, `StdAuthSecretMutationUseCase`, and
@@ -194,6 +199,7 @@ Rules:
 - Hugging Face: `GET https://huggingface.co/api/whoami-v2`
 - OpenAI: `GET https://api.openai.com/v1/models`
 - Anthropic: `GET https://api.anthropic.com/v1/models` with `anthropic-version: 2023-06-01`
+- Gemini: `GET https://generativelanguage.googleapis.com/v1beta/models?key=...`
 
 Kernel validation infra uses `reqwest` behind `AuthSecretValidator`. Unit tests
 should cover request URL/header construction and HTTP status mapping without

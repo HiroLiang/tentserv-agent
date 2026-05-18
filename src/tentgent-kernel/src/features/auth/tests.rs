@@ -24,7 +24,12 @@ fn providers_match_cli_env_and_keychain_contracts() {
     assert_eq!(AUTH_SERVICE, "com.tentserv.tentgent.auth");
     assert_eq!(
         Provider::ALL,
-        [Provider::HuggingFace, Provider::OpenAI, Provider::Anthropic]
+        [
+            Provider::HuggingFace,
+            Provider::OpenAI,
+            Provider::Anthropic,
+            Provider::Gemini
+        ]
     );
     assert_eq!(Provider::HuggingFace.display_name(), "Hugging Face");
     assert_eq!(Provider::HuggingFace.cli_name(), "hf");
@@ -32,6 +37,9 @@ fn providers_match_cli_env_and_keychain_contracts() {
     assert_eq!(Provider::HuggingFace.keychain_account(), "huggingface");
     assert_eq!(Provider::OpenAI.env_var(), "OPENAI_API_KEY");
     assert_eq!(Provider::Anthropic.env_var(), "ANTHROPIC_API_KEY");
+    assert_eq!(Provider::Gemini.env_var(), "GEMINI_API_KEY");
+    assert_eq!(Provider::Gemini.cli_name(), "gemini");
+    assert_eq!(Provider::Gemini.keychain_account(), "gemini");
 }
 
 #[test]
@@ -190,7 +198,11 @@ fn process_session_cache_expires_secret_material_after_ttl() {
 fn explicit_dotenv_probe_reports_secret_origin_without_using_runtime_home() {
     let path = temp_path("auth-explicit-dotenv").join(".env");
     fs::create_dir_all(path.parent().expect("dotenv parent")).expect("create dotenv parent");
-    fs::write(&path, "OPENAI_API_KEY=sk-from-dotenv\nANTHROPIC_API_KEY=\n").expect("write dotenv");
+    fs::write(
+        &path,
+        "OPENAI_API_KEY=sk-from-dotenv\nANTHROPIC_API_KEY=\nGEMINI_API_KEY=gemini-dotenv\n",
+    )
+    .expect("write dotenv");
 
     let secret = StdAuthEnvSecretProbe
         .probe_env_secret(
@@ -215,10 +227,20 @@ fn explicit_dotenv_probe_reports_secret_origin_without_using_runtime_home() {
     let empty = StdAuthEnvSecretProbe
         .probe_env_secret(
             Provider::Anthropic,
-            AuthEnvLoadPolicy::ExplicitDotenvOverride { path },
+            AuthEnvLoadPolicy::ExplicitDotenvOverride { path: path.clone() },
         )
         .expect("probe empty dotenv secret");
     assert!(empty.is_none());
+
+    let gemini = StdAuthEnvSecretProbe
+        .probe_env_secret(
+            Provider::Gemini,
+            AuthEnvLoadPolicy::ExplicitDotenvOverride { path },
+        )
+        .expect("probe gemini dotenv secret")
+        .expect("gemini dotenv secret exists");
+    assert_eq!(gemini.env_var, "GEMINI_API_KEY");
+    assert_eq!(gemini.secret(), "gemini-dotenv");
 }
 
 #[test]
@@ -372,6 +394,18 @@ fn reqwest_validator_builds_anthropic_versioned_request() {
     assert_eq!(
         header_str(&request, "anthropic-version"),
         Some("2023-06-01")
+    );
+}
+
+#[test]
+fn reqwest_validator_builds_gemini_query_key_request() {
+    let request = ReqwestAuthSecretValidator::validation_request(Provider::Gemini, "gemini-key")
+        .expect("build validation request");
+
+    assert_eq!(request.method(), Method::GET);
+    assert_eq!(
+        request.url().as_str(),
+        "https://generativelanguage.googleapis.com/v1beta/models?key=gemini-key"
     );
 }
 

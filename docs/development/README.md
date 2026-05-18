@@ -247,6 +247,7 @@ make run-cli ARGS='auth hf'
 make run-cli ARGS='auth hf set'
 make run-cli ARGS='auth openai'
 make run-cli ARGS='auth anthropic'
+make run-cli ARGS='auth gemini'
 ```
 
 ## Model Commands
