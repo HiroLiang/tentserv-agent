@@ -64,10 +64,10 @@ pub trait ChatPreparationUseCase {
 /// Use-case boundary for one-shot non-streaming chat generation.
 pub trait ChatCompletionUseCase {
     /// Resolves target/runtime and returns the complete generated response.
-    fn complete_chat<'a>(
-        &'a self,
+    fn complete_chat(
+        &'_ self,
         request: ChatPreparationRequest,
-    ) -> ChatUseCaseFuture<'a, ChatCompletionResult>;
+    ) -> ChatUseCaseFuture<'_, ChatCompletionResult>;
 }
 
 /// Use-case boundary for streaming chat generation.

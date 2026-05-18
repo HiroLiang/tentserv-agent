@@ -147,10 +147,10 @@ impl ChatPreparationUseCase for StdChatUseCase<'_> {
 }
 
 impl ChatCompletionUseCase for StdChatUseCase<'_> {
-    fn complete_chat<'a>(
-        &'a self,
+    fn complete_chat(
+        &'_ self,
         request: ChatPreparationRequest,
-    ) -> ChatUseCaseFuture<'a, ChatCompletionResult> {
+    ) -> ChatUseCaseFuture<'_, ChatCompletionResult> {
         Box::pin(async move {
             let prepared = self.prepare_chat(request)?;
             let response = self

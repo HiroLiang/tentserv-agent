@@ -182,10 +182,10 @@ impl ChatPreparationUseCase for FakeChatUseCase {
 }
 
 impl ChatCompletionUseCase for FakeChatUseCase {
-    fn complete_chat<'a>(
-        &'a self,
+    fn complete_chat(
+        &'_ self,
         request: ChatPreparationRequest,
-    ) -> ChatUseCaseFuture<'a, ChatCompletionResult> {
+    ) -> ChatUseCaseFuture<'_, ChatCompletionResult> {
         Box::pin(async move {
             Ok(ChatCompletionResult {
                 prepared: preparation_result(request),
