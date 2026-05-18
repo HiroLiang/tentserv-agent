@@ -1,4 +1,5 @@
 pub mod adapter;
+pub mod chat;
 pub mod dataset;
 pub mod health;
 pub mod jobs;

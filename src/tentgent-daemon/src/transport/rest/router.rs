@@ -6,7 +6,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::Level;
 
 use crate::handlers::rest::{
-    adapter, dataset, health, jobs, model, server, session, status, train,
+    adapter, chat, dataset, health, jobs, model, server, session, status, train,
 };
 
 use super::state::RestState;
@@ -15,6 +15,10 @@ pub fn build_router(state: RestState) -> Router {
     Router::new()
         .route("/healthz", get(health::healthz))
         .route("/v1/status", get(status::status))
+        .route("/v1/chat", post(chat::complete))
+        .route("/v1/chat/completions", post(chat::chat_completions))
+        .route("/v1/messages", post(chat::messages))
+        .route("/v1beta/models/{*operation}", post(chat::generate_content))
         .route("/v1/jobs", get(jobs::list))
         .route("/v1/jobs/{job_id}", get(jobs::inspect))
         .route("/v1/models", get(model::list))

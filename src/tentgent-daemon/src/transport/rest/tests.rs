@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use axum::{
     body::{to_bytes, Body},
-    http::{Request, StatusCode},
+    http::{header::CONTENT_TYPE, Request, StatusCode},
 };
 use serde_json::Value;
 use tentgent_kernel::foundation::layout::{
@@ -61,6 +61,184 @@ async fn status_reads_daemon_kernel_state() {
         .as_str()
         .expect("runtime_home")
         .contains("tentgent-daemon-rest-status"));
+}
+
+#[tokio::test]
+async fn chat_stream_returns_sse_error_for_runtime_failures() {
+    let state = rest_state("chat-stream");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/chat")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model_ref":"aaaaaaaaaaaa","messages":[{"role":"user","content":"hi"}],"stream":true}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("text/event-stream")));
+    let body = String::from_utf8(
+        to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body")
+            .to_vec(),
+    )
+    .expect("utf8");
+    assert!(body.contains("event: error"));
+    assert!(body.contains("chat_model_failed"));
+}
+
+#[tokio::test]
+async fn chat_rejects_invalid_message_role() {
+    let state = rest_state("chat-invalid-role");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/chat")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model_ref":"aaaaaaaaaaaa","messages":[{"role":"tool","content":"hi"}]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn openai_chat_completions_rejects_invalid_message_role() {
+    let state = rest_state("openai-chat-invalid-role");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/chat/completions")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model":"aaaaaaaaaaaa","messages":[{"role":"tool","content":"hi"}]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn openai_chat_completions_stream_uses_openai_sse_shape() {
+    let state = rest_state("openai-chat-stream");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/chat/completions")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model":"aaaaaaaaaaaa","messages":[{"role":"user","content":"hi"}],"stream":true}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("text/event-stream")));
+    let body = sse_body(response).await;
+    assert!(body.contains(r#""object":"chat.completion.chunk""#));
+    assert!(body.contains(r#""type":"chat_model_failed""#));
+    assert!(body.contains("data: [DONE]"));
+    assert!(!body.contains("event: error"));
+}
+
+#[tokio::test]
+async fn claude_messages_stream_uses_anthropic_sse_shape() {
+    let state = rest_state("claude-messages-stream");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/messages")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model":"aaaaaaaaaaaa","max_tokens":12,"messages":[{"role":"user","content":"hi"}],"stream":true}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = sse_body(response).await;
+    assert!(body.contains("event: message_start"));
+    assert!(body.contains("event: content_block_start"));
+    assert!(body.contains("event: error"));
+    assert!(body.contains(r#""type":"chat_model_failed""#));
+}
+
+#[tokio::test]
+async fn gemini_stream_generate_content_uses_gemini_sse_shape() {
+    let state = rest_state("gemini-stream");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1beta/models/aaaaaaaaaaaa:streamGenerateContent?alt=sse")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = sse_body(response).await;
+    assert!(body.contains(r#""error":{"code":"chat_model_failed""#));
+    assert!(!body.contains("event:"));
+}
+
+#[tokio::test]
+async fn gemini_generate_content_rejects_non_text_parts() {
+    let state = rest_state("gemini-non-text");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1beta/models/aaaaaaaaaaaa:generateContent")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"contents":[{"role":"user","parts":[{"inlineData":{"mimeType":"text/plain","data":"aGk="}}]}]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
 }
 
 #[tokio::test]
@@ -1295,6 +1473,16 @@ async fn json_body(response: axum::response::Response) -> Value {
         .await
         .expect("body");
     serde_json::from_slice(&bytes).expect("json")
+}
+
+async fn sse_body(response: axum::response::Response) -> String {
+    String::from_utf8(
+        to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body")
+            .to_vec(),
+    )
+    .expect("utf8")
 }
 
 fn rest_state(label: &str) -> RestState {

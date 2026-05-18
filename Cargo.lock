@@ -2259,6 +2259,7 @@ version = "0.3.4-alpha.2"
 dependencies = [
  "axum",
  "clap",
+ "futures-util",
  "miette",
  "serde",
  "serde_json",

@@ -122,6 +122,24 @@ The first stable REST surface is:
   summary.
 - `GET /v1/jobs/{job_id}`
   Daemon-runtime job inspection response for one persisted or in-memory job.
+- `POST /v1/chat`
+  Kernel-backed local model chat. The request selects a managed `model_ref`,
+  optional `adapter_ref`, chat messages, generation options, and optional SSE
+  streaming. Session-aware chat remains pending daemon runtime work.
+- `POST /v1/chat/completions`
+  OpenAI Chat Completions-compatible local model chat adapter. The request uses
+  `model`, `messages`, generation options, and optional `stream`; the handler
+  maps the request into the same kernel chat use cases as `/v1/chat`.
+- `POST /v1/messages`
+  Claude Messages-compatible local model chat adapter. Text-only message
+  content and optional SSE streaming are mapped into the same kernel chat use
+  cases as `/v1/chat`.
+- `POST /v1beta/models/{model}:generateContent`
+  Gemini GenerateContent-compatible local model chat adapter for text-only
+  content. `{model}` is resolved as a managed local model reference.
+- `POST /v1beta/models/{model}:streamGenerateContent`
+  Gemini streamGenerateContent-compatible SSE adapter for text-only content.
+  `{model}` is resolved as a managed local model reference.
 - `GET /v1/models`
   Kernel-backed model catalog list response.
 - `GET /v1/models/{reference}`
