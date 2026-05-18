@@ -214,6 +214,31 @@ impl std::fmt::Display for ModelCapability {
     }
 }
 
+impl std::str::FromStr for ModelCapability {
+    type Err = ModelCapabilityParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let normalized = value.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "" => Err(ModelCapabilityParseError::Empty),
+            "chat" => Ok(Self::Chat),
+            "embedding" => Ok(Self::Embedding),
+            "rerank" => Ok(Self::Rerank),
+            _ => Err(ModelCapabilityParseError::Unsupported {
+                value: value.trim().to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ModelCapabilityParseError {
+    #[error("model capability must not be blank; expected one of: chat, embedding, rerank")]
+    Empty,
+    #[error("unsupported model capability `{value}`; expected one of: chat, embedding, rerank")]
+    Unsupported { value: String },
+}
+
 pub fn default_model_capabilities() -> Vec<ModelCapability> {
     vec![ModelCapability::Chat]
 }

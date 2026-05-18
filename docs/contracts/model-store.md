@@ -105,10 +105,20 @@ Initial capability values:
 - `rerank`
 
 Existing metadata without `model_capabilities` should be read as `["chat"]`.
-New imports default to `["chat"]` until explicit import/pull overrides or
-source metadata detection are added. A model may list multiple capabilities
-when later evidence or user input proves that it supports more than one serving
-shape.
+New imports default to `["chat"]` when the user does not provide an explicit
+capability. Local import and Hugging Face pull accept one explicit capability
+value for this milestone: `chat`, `embedding`, or `rerank`. Explicit input
+stores exactly that one value and records `model_capability_source =
+"explicit-user"`.
+
+If content deduplication finds an existing `model_ref`, omitted capability
+input preserves the stored metadata. Explicit capability input updates the
+existing stored model metadata before returning the deduplicated outcome. This
+metadata update does not copy content and does not change `model_ref`.
+
+Hugging Face metadata auto-classification is not implemented yet. A model may
+list multiple capabilities later when source metadata, user edits, or another
+explicit update path proves that it supports more than one serving shape.
 
 `model_capability_source` records why the current capability set was chosen:
 
@@ -123,6 +133,10 @@ Changing capability metadata does not change `model_ref`; canonical identity is
 still content-derived from the manifest. A later metadata update may add
 `embedding` or `rerank` to an imported model when the user or source metadata
 can justify it.
+
+Capability metadata is descriptive only in this milestone. It does not imply
+that `/v1/embeddings`, `/v1/rerank`, embedding runtime ports, or rerank runtime
+ports exist.
 
 ## Hugging Face Pull Contract
 

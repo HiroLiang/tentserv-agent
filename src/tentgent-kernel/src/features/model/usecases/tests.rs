@@ -7,9 +7,10 @@ use crate::features::auth::usecases::{
     AuthSecretResolution, AuthSecretResolutionRequest, AuthSecretResolverUseCase,
 };
 use crate::features::model::domain::{
-    default_model_capabilities, default_model_capability_source, HfModelPullProgress, ModelFormat,
-    ModelImportOutcome, ModelInspection, ModelMetadata, ModelRef, ModelRefSelector,
-    ModelRemovalOutcome, ModelSourceKind, ModelStoreLayout, ModelSummary,
+    default_model_capabilities, default_model_capability_source, HfModelPullProgress,
+    ModelCapability, ModelCapabilitySource, ModelFormat, ModelImportOutcome, ModelInspection,
+    ModelMetadata, ModelRef, ModelRefSelector, ModelRemovalOutcome, ModelSourceKind,
+    ModelStoreLayout, ModelSummary,
 };
 use crate::features::model::infra::{
     FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
@@ -64,6 +65,7 @@ fn model_usecase_ports_cover_catalog_import_pull_and_remove_workflows() {
         .import_local_model(ModelLocalImportRequest {
             layout: layout.clone(),
             source_path: PathBuf::from("/tmp/source-model"),
+            capability: None,
         })
         .expect("import local model");
     assert!(!imported.outcome.deduplicated);
@@ -79,6 +81,7 @@ fn model_usecase_ports_cover_catalog_import_pull_and_remove_workflows() {
                 },
                 repo_id: "org/model".to_string(),
                 revision: Some("main".to_string()),
+                capability: None,
                 auth: AuthSecretResolutionRequest::for_secret_use(
                     Provider::HuggingFace,
                     AuthEnvLoadPolicy::ProcessOnly,
@@ -130,12 +133,21 @@ fn standard_model_usecases_import_list_inspect_and_remove_local_model() {
         .import_local_model(ModelLocalImportRequest {
             layout: layout_input(home.to_str().expect("home path")),
             source_path: source_dir.clone(),
+            capability: None,
         })
         .expect("import local model");
     assert!(!imported.outcome.deduplicated);
     assert_eq!(
         imported.outcome.metadata.source_kind,
         ModelSourceKind::Local
+    );
+    assert_eq!(
+        imported.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Chat]
+    );
+    assert_eq!(
+        imported.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::DefaultChat
     );
     assert!(imported.outcome.store_path.is_dir());
 
@@ -173,6 +185,81 @@ fn standard_model_usecases_import_list_inspect_and_remove_local_model() {
         imported.outcome.metadata.model_ref
     );
     assert!(!removed.outcome.store_path.exists());
+}
+
+#[test]
+fn standard_model_usecase_imports_local_model_with_explicit_capability_and_updates_dedup() {
+    let home = unique_path("model-local-capability-usecase");
+    let source_dir = home.join("source");
+    fs::create_dir_all(&source_dir).expect("source dir");
+    fs::write(source_dir.join("model.gguf"), b"model").expect("source model");
+
+    let layout_resolver = FakeLayoutResolver;
+    let initializer = StdModelStoreLayoutInitializer;
+    let stager = StdModelSourceStager;
+    let manifest_builder = StdModelManifestBuilder;
+    let identity = StdModelIdentityGenerator;
+    let catalog = FileModelCatalogStore;
+    let indexes = FileModelSourceIndexStore;
+    let content = FileModelContentStore;
+
+    let importer = StdModelLocalImportUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &stager,
+        &manifest_builder,
+        &identity,
+        &catalog,
+        &indexes,
+        &content,
+    );
+    let first = importer
+        .import_local_model(ModelLocalImportRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            source_path: source_dir.clone(),
+            capability: None,
+        })
+        .expect("import local model");
+    assert_eq!(
+        first.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Chat]
+    );
+
+    let second = importer
+        .import_local_model(ModelLocalImportRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            source_path: source_dir,
+            capability: Some(ModelCapability::Embedding),
+        })
+        .expect("deduplicate local model");
+    assert!(second.outcome.deduplicated);
+    assert_eq!(
+        second.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Embedding]
+    );
+    assert_eq!(
+        second.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::ExplicitUser
+    );
+
+    let reader = StdModelCatalogReadUseCase::new(&layout_resolver, &catalog);
+    let inspected = reader
+        .inspect_model(ModelInspectRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector: ModelRefSelector::parse(second.outcome.metadata.short_ref.as_str())
+                .expect("selector"),
+        })
+        .expect("inspect model");
+    assert_eq!(
+        inspected.model.metadata.model_capabilities,
+        vec![ModelCapability::Embedding]
+    );
+    assert_eq!(
+        inspected.model.metadata.model_capability_source,
+        ModelCapabilitySource::ExplicitUser
+    );
+
+    let _ = fs::remove_dir_all(home);
 }
 
 #[test]
@@ -214,6 +301,7 @@ fn standard_hf_pull_usecase_resolves_runtime_auth_fetches_snapshot_and_imports()
                 },
                 repo_id: "org/model".to_string(),
                 revision: Some("main".to_string()),
+                capability: Some(ModelCapability::Rerank),
                 auth: AuthSecretResolutionRequest::for_secret_use(
                     Provider::HuggingFace,
                     AuthEnvLoadPolicy::ProcessOnly,
@@ -236,6 +324,14 @@ fn standard_hf_pull_usecase_resolves_runtime_auth_fetches_snapshot_and_imports()
     assert_eq!(
         result.outcome.metadata.source_revision.as_deref(),
         Some("resolved-sha")
+    );
+    assert_eq!(
+        result.outcome.metadata.model_capabilities,
+        vec![ModelCapability::Rerank]
+    );
+    assert_eq!(
+        result.outcome.metadata.model_capability_source,
+        ModelCapabilitySource::ExplicitUser
     );
     assert!(result.outcome.store_path.is_dir());
 }

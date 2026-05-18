@@ -4,9 +4,9 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::features::model::domain::{
     default_model_capabilities, default_model_capability_source, detect_model_formats,
-    select_primary_model_format, HfModelSourceIndex, LocalModelSourceIndex, ModelImportMethod,
-    ModelImportOutcome, ModelMetadata, ModelSourceKind, ModelStoreLayout, ModelVariantMetadata,
-    ModelVariantStatus, SOURCE_DIRNAME,
+    select_primary_model_format, HfModelSourceIndex, LocalModelSourceIndex, ModelCapability,
+    ModelCapabilitySource, ModelImportMethod, ModelImportOutcome, ModelMetadata, ModelSourceKind,
+    ModelStoreLayout, ModelVariantMetadata, ModelVariantStatus, SOURCE_DIRNAME,
 };
 use crate::features::model::ports::{
     ModelCatalogStore, ModelContentStore, ModelIdentityGenerator, ModelManifestBuilder,
@@ -72,8 +72,9 @@ impl ModelImportFinalizer<'_> {
         staged: &StagedModelSource,
         source: ModelImportSource,
         method: ModelImportMethod,
+        explicit_capability: Option<ModelCapability>,
     ) -> KernelResult<ModelImportOutcome> {
-        let result = self.finalize_inner(store, staged, source, method);
+        let result = self.finalize_inner(store, staged, source, method, explicit_capability);
         let cleanup = self.stager.discard_staging(staged);
 
         match (result, cleanup) {
@@ -89,6 +90,7 @@ impl ModelImportFinalizer<'_> {
         staged: &StagedModelSource,
         source: ModelImportSource,
         method: ModelImportMethod,
+        explicit_capability: Option<ModelCapability>,
     ) -> KernelResult<ModelImportOutcome> {
         let manifest = self.manifest_builder.build_manifest(&staged.source_dir)?;
         let model_ref = self.identity.model_ref_for_manifest(&manifest)?;
@@ -100,7 +102,11 @@ impl ModelImportFinalizer<'_> {
         let store_path = store.model_dir(&model_ref);
 
         if self.content.model_content_exists(store, &model_ref)? {
-            let metadata = self.catalog.load_model_metadata(store, &model_ref)?;
+            let mut metadata = self.catalog.load_model_metadata(store, &model_ref)?;
+            if let Some(capability) = explicit_capability {
+                apply_explicit_capability(&mut metadata, capability);
+                self.catalog.save_model_metadata(store, &metadata)?;
+            }
             let source_index_path = self.save_source_index(store, &metadata, &source)?;
             return Ok(ModelImportOutcome {
                 metadata,
@@ -114,6 +120,8 @@ impl ModelImportFinalizer<'_> {
             .install_staged_source(store, staged, &model_ref, primary_format)?;
 
         let imported_at = imported_at_now()?;
+        let (model_capabilities, model_capability_source) =
+            capability_metadata(explicit_capability);
         let metadata = ModelMetadata {
             model_ref: model_ref.clone(),
             short_ref: model_ref.short_ref().to_string(),
@@ -125,8 +133,8 @@ impl ModelImportFinalizer<'_> {
                 .map(|path| path.display().to_string()),
             primary_format,
             detected_formats,
-            model_capabilities: default_model_capabilities(),
-            model_capability_source: default_model_capability_source(),
+            model_capabilities,
+            model_capability_source,
             file_count: manifest.file_count(),
             total_bytes: manifest.total_bytes(),
             imported_at,
@@ -198,4 +206,21 @@ fn imported_at_now() -> KernelResult<String> {
     OffsetDateTime::now_utc().format(&Rfc3339).map_err(|err| {
         KernelError::ModelStoreUnavailable(format!("format import time failed: {err}"))
     })
+}
+
+fn capability_metadata(
+    explicit_capability: Option<ModelCapability>,
+) -> (Vec<ModelCapability>, ModelCapabilitySource) {
+    match explicit_capability {
+        Some(capability) => (vec![capability], ModelCapabilitySource::ExplicitUser),
+        None => (
+            default_model_capabilities(),
+            default_model_capability_source(),
+        ),
+    }
+}
+
+fn apply_explicit_capability(metadata: &mut ModelMetadata, capability: ModelCapability) {
+    metadata.model_capabilities = vec![capability];
+    metadata.model_capability_source = ModelCapabilitySource::ExplicitUser;
 }

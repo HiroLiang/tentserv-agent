@@ -6,7 +6,7 @@ This plan defines the next execution track after one-shot chat: a long-lived `te
 
 - This plan is now completed and archived.
 - The completed LoRA runtime track now lives in [lora-server-mvp.md](./lora-server-mvp.md).
-- Packaging and install remain a separate future track in [../packaging-install-mvp.md](../packaging-install-mvp.md).
+- Packaging and install remain a separate historical track in [packaging-install-mvp.md](./packaging-install-mvp.md).
 
 ## Decision Summary
 

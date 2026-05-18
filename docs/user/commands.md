@@ -82,13 +82,24 @@ or need to resync Python dependencies after an upgrade.
 
 ## Models
 
+Import a local model:
+
+```bash
+tentgent model add /path/to/local-model
+tentgent model add ./models/bge-small --capability embedding
+```
+
 Pull models from Hugging Face:
 
 ```bash
 tentgent model pull google/gemma-3-1b-it
 tentgent model pull mlx-community/Llama-3.2-1B-Instruct-4bit
 tentgent model pull DravenBlack/gemma-3-1b-it-Q4_K_M-GGUF
+tentgent model pull BAAI/bge-reranker-base --capability rerank --revision main
 ```
+
+`--capability` accepts `chat`, `embedding`, or `rerank` and records model
+metadata only. Embedding and rerank runtime endpoints are not implemented yet.
 
 List and inspect models:
 
@@ -360,17 +371,17 @@ curl -sS http://127.0.0.1:8790/v1/models/import \
   -X POST \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
-  -d '{"path":"/absolute/path/on/daemon-host/model"}'
+  -d '{"path":"/absolute/path/on/daemon-host/model","capability":"embedding"}'
 curl -sS http://127.0.0.1:8790/v1/models/pull \
   -X POST \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
-  -d '{"repo_id":"owner/name","revision":null}'
+  -d '{"repo_id":"owner/name","revision":null,"capability":"rerank"}'
 curl -sS http://127.0.0.1:8790/v1/models/pull/jobs \
   -X POST \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
-  -d '{"repo_id":"owner/name","revision":null}'
+  -d '{"repo_id":"owner/name","revision":null,"capability":"rerank"}'
 curl -sS http://127.0.0.1:8790/v1/adapters/import \
   -X POST \
   -H 'Content-Type: application/json' \

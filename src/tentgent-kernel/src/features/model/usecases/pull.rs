@@ -121,6 +121,7 @@ impl ModelHfPullUseCase for StdModelHfPullUseCase<'_> {
                 resolved_revision: snapshot.resolved_revision,
             },
             ModelImportMethod::Pull,
+            request.capability,
         )?;
 
         Ok(ModelHfPullResult {

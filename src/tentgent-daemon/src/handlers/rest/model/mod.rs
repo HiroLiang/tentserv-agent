@@ -12,7 +12,7 @@ use tentgent_kernel::{
         usecases::AuthSecretResolutionRequest,
     },
     features::model::{
-        domain::{HfModelPullProgress, ModelRefSelector},
+        domain::{HfModelPullProgress, ModelCapability, ModelRefSelector},
         usecases::{
             ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
             ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
@@ -114,6 +114,7 @@ pub async fn import(
     Json(request): Json<ModelImportJobRequest>,
 ) -> Result<Json<ModelMutationResponse>, RestError> {
     let source_path = canonical_import_path(&request.path)?;
+    let capability = parse_model_capability(request.capability.as_deref())?;
     let result = state
         .app()
         .services()
@@ -123,6 +124,7 @@ pub async fn import(
         .import_local_model(ModelLocalImportRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             source_path,
+            capability,
         })
         .map_err(model_mutation_error)?;
 
@@ -135,6 +137,7 @@ pub async fn pull(
 ) -> Result<Json<ModelMutationResponse>, RestError> {
     let repo_id = normalize_repo_id(&request.repo_id)?;
     let revision = normalize_revision(request.revision)?;
+    let capability = parse_model_capability(request.capability.as_deref())?;
     let task_state = state.clone();
     let layout = state.app().layout_input(LayoutResolveMode::Create);
     let result = tokio::task::spawn_blocking(move || {
@@ -149,6 +152,7 @@ pub async fn pull(
                     runtime: PythonRuntimeResolutionInput::default(),
                     repo_id,
                     revision,
+                    capability,
                     auth: AuthSecretResolutionRequest::for_secret_use(
                         Provider::HuggingFace,
                         AuthEnvLoadPolicy::CwdDotenvOverride,
@@ -169,6 +173,7 @@ pub async fn import_job(
     Json(request): Json<ModelImportJobRequest>,
 ) -> Result<(StatusCode, Json<JobResponse>), RestError> {
     let source_path = canonical_import_path(&request.path)?;
+    let capability = parse_model_capability(request.capability.as_deref())?;
     let job = state.app().jobs().create(
         JobKind::model_import(),
         format!("import {}", source_path.display()),
@@ -184,7 +189,7 @@ pub async fn import_job(
         .app()
         .job_runner()
         .spawn_blocking(registry, job_id, "importing model", move |_, _| {
-            run_model_import_job(task_state, layout, source_path)
+            run_model_import_job(task_state, layout, source_path, capability)
         });
 
     Ok((
@@ -199,6 +204,7 @@ pub async fn pull_job(
 ) -> Result<(StatusCode, Json<JobResponse>), RestError> {
     let repo_id = normalize_repo_id(&request.repo_id)?;
     let revision = normalize_revision(request.revision)?;
+    let capability = parse_model_capability(request.capability.as_deref())?;
     let label = revision
         .as_deref()
         .map(|revision| format!("{repo_id}@{revision}"))
@@ -219,7 +225,9 @@ pub async fn pull_job(
         job_id,
         "starting Hugging Face model pull",
         move |registry, job_id| {
-            run_model_pull_job(task_state, layout, repo_id, revision, registry, job_id)
+            run_model_pull_job(
+                task_state, layout, repo_id, revision, capability, registry, job_id,
+            )
         },
     );
 
@@ -233,6 +241,7 @@ pub async fn pull_job(
 #[serde(deny_unknown_fields)]
 pub struct ModelImportJobRequest {
     pub path: String,
+    pub capability: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -240,12 +249,14 @@ pub struct ModelImportJobRequest {
 pub struct ModelPullJobRequest {
     pub repo_id: String,
     pub revision: Option<String>,
+    pub capability: Option<String>,
 }
 
 fn run_model_import_job(
     state: RestState,
     layout: RuntimeLayoutInput,
     source_path: std::path::PathBuf,
+    capability: Option<ModelCapability>,
 ) -> Result<JobCompletion, String> {
     let result = state
         .app()
@@ -256,6 +267,7 @@ fn run_model_import_job(
         .import_local_model(ModelLocalImportRequest {
             layout,
             source_path,
+            capability,
         })
         .map_err(|error| error.to_string())?;
 
@@ -274,6 +286,7 @@ fn run_model_pull_job(
     layout: RuntimeLayoutInput,
     repo_id: String,
     revision: Option<String>,
+    capability: Option<ModelCapability>,
     registry: JobRegistry,
     job_id: JobId,
 ) -> Result<JobCompletion, String> {
@@ -288,6 +301,7 @@ fn run_model_pull_job(
                 runtime: PythonRuntimeResolutionInput::default(),
                 repo_id,
                 revision,
+                capability,
                 auth: AuthSecretResolutionRequest::for_secret_use(
                     Provider::HuggingFace,
                     AuthEnvLoadPolicy::CwdDotenvOverride,
@@ -317,6 +331,16 @@ fn model_progress_update(progress: HfModelPullProgress) -> JobProgressUpdate {
         &progress.unit,
         progress.finished,
     )
+}
+
+fn parse_model_capability(value: Option<&str>) -> Result<Option<ModelCapability>, RestError> {
+    value
+        .map(|value| {
+            value.parse().map_err(|err| {
+                RestError::bad_request("bad_request", format!("invalid capability: {err}"))
+            })
+        })
+        .transpose()
 }
 
 fn model_error(error: KernelError) -> RestError {

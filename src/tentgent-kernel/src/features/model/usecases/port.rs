@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::features::auth::usecases::AuthSecretResolutionRequest;
 use crate::features::model::domain::{
-    HfModelPullProgress, ModelImportOutcome, ModelInspection, ModelRefSelector,
+    HfModelPullProgress, ModelCapability, ModelImportOutcome, ModelInspection, ModelRefSelector,
     ModelRemovalOutcome, ModelStoreLayout, ModelSummary,
 };
 use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput};
@@ -45,6 +45,7 @@ pub struct ModelInspectResult {
 pub struct ModelLocalImportRequest {
     pub layout: RuntimeLayoutInput,
     pub source_path: PathBuf,
+    pub capability: Option<ModelCapability>,
 }
 
 /// Result of importing a local model source.
@@ -62,6 +63,7 @@ pub struct ModelHfPullRequest {
     pub runtime: PythonRuntimeResolutionInput,
     pub repo_id: String,
     pub revision: Option<String>,
+    pub capability: Option<ModelCapability>,
     pub auth: AuthSecretResolutionRequest,
 }
 

@@ -24,7 +24,7 @@ The migration path is intentionally non-disruptive:
 ## Architecture Contract
 
 Architecture rules live in
-[kernel-architecture.md](../contracts/kernel-architecture.md). This plan
+[kernel-architecture.md](../../contracts/kernel-architecture.md). This plan
 tracks migration order and current state.
 
 The current source tree is the authority for exact files. The crate remains

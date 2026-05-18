@@ -288,6 +288,8 @@ managed refs only, never filesystem paths.
       "imported_at": "2026-04-28T00:00:00Z",
       "format": "mlx",
       "detected_formats": ["mlx"],
+      "model_capabilities": ["chat"],
+      "model_capability_source": "default-chat",
       "source_kind": "huggingface",
       "source_repo": "mlx-community/Llama-3.2-1B-Instruct-MLXTuned",
       "source_revision": "7247...",
@@ -311,6 +313,8 @@ inspect-only paths:
     "imported_at": "2026-04-28T00:00:00Z",
     "format": "mlx",
     "detected_formats": ["mlx"],
+    "model_capabilities": ["chat"],
+    "model_capability_source": "default-chat",
     "source_kind": "huggingface",
     "source_repo": "mlx-community/Llama-3.2-1B-Instruct-MLXTuned",
     "source_revision": "7247...",
@@ -625,8 +629,10 @@ usage.
 
 ```json
 { "path": "/absolute/path/on/daemon-host" }
+{ "path": "/absolute/path/on/daemon-host", "capability": "embedding" }
 { "path": "/absolute/path/on/daemon-host", "base_model_ref": "optional" }
 { "repo_id": "owner/name", "revision": null }
+{ "repo_id": "owner/name", "revision": "main", "capability": "rerank" }
 { "repo_id": "owner/name", "revision": "main", "base_model_ref": "optional" }
 { "base_model_ref": "model-ref-or-prefix" }
 ```
@@ -634,6 +640,10 @@ usage.
 Request bodies reject unknown fields. `repo_id` must be a Hugging Face repo id
 such as `owner/name`, not a URL or `/tree/...` path. Omitted or `null`
 `revision` uses the core default; blank `revision` returns JSON `400`.
+Model import and pull may include one optional `capability` value: `chat`,
+`embedding`, or `rerank`. Invalid capability values return JSON
+`400 bad_request`. The capability field updates model metadata only; it does
+not add embedding or rerank runtime endpoints.
 Omitted, `null`, or blank `base_model_ref` means no base binding for adapter
 import or pull.
 

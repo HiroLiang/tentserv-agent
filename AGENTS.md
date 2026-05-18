@@ -38,13 +38,13 @@ If the current task is about agent workflows, role selection, or role-specific w
 - `docs/user/`
   User-facing install, upgrade, version, command, runtime, and Keychain documentation.
 - `docs/plans/`
-  Active execution plans for larger runtime and backend initiatives.
+  Active roadmap for larger runtime, backend, and release initiatives.
 - `docs/development/`
   Developer-focused repository-local commands and testing notes.
 - `docs/i18n/`
   Localized Markdown that mirrors English source documents.
 - `docs/plans/archive/`
-  Completed plans kept only for historical context and implementation history.
+  Completed or superseded plans kept only for historical context and implementation history.
 
 Current product surface:
 
@@ -92,11 +92,12 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
-- `docs/plans/apple-signed-cli-release.md`
-  Next release-engineering plan for macOS CLI signing, notarization, release
-  checksums, and Homebrew tap automation.
+- `docs/plans/capability-first-release-roadmap.md`
+  Active roadmap for model capability classification, embedding and rerank
+  endpoint work, deferred audio contracts, and prerelease Apple Developer ID
+  signing.
 - `docs/plans/archive/README.md`
-  Router for completed plans that should be consulted only when historical implementation context is needed.
+  Router for completed or superseded plans that should be consulted only when historical implementation context is needed.
 - `docs/plans/archive/http-daemon-mvp.md`
   Completed service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
 - `docs/plans/archive/cloud-provider-server-mvp.md`

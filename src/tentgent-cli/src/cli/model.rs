@@ -11,8 +11,8 @@ use tentgent_kernel::features::auth::usecases::{
     AuthSecretResolutionRequest, StdAuthSecretResolverUseCase,
 };
 use tentgent_kernel::features::model::domain::{
-    HfModelPullProgress, ModelFormat, ModelImportOutcome, ModelInspection, ModelRefSelector,
-    ModelRemovalOutcome, ModelSummary,
+    HfModelPullProgress, ModelCapability, ModelFormat, ModelImportOutcome, ModelInspection,
+    ModelRefSelector, ModelRemovalOutcome, ModelSummary,
 };
 use tentgent_kernel::features::model::infra::{
     FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
@@ -40,17 +40,22 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
     let model = CliModelKernel::new();
 
     match action {
-        ModelCommands::Add { path } => {
+        ModelCommands::Add { path, capability } => {
             let result = model
                 .local_import_usecase()
                 .import_local_model(ModelLocalImportRequest {
                     layout: runtime_layout_input(LayoutResolveMode::Create),
                     source_path: path,
+                    capability,
                 })
                 .into_diagnostic()?;
             render_import_outcome("Model imported", &result.outcome);
         }
-        ModelCommands::Pull { repo_id, revision } => {
+        ModelCommands::Pull {
+            repo_id,
+            revision,
+            capability,
+        } => {
             let mut progress = PullProgress::new(&repo_id, revision.as_deref());
             let auth_resolver = model.auth_resolver_usecase();
             let outcome = model.hf_pull_usecase(&auth_resolver).pull_hf_model(
@@ -59,6 +64,7 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
                     runtime: PythonRuntimeResolutionInput::default(),
                     repo_id: repo_id.clone(),
                     revision,
+                    capability,
                     auth: AuthSecretResolutionRequest::for_secret_use(
                         Provider::HuggingFace,
                         AuthEnvLoadPolicy::CwdDotenvOverride,
@@ -315,6 +321,7 @@ fn render_model_list(models: &[ModelSummary]) {
         .set_header(vec![
             "short_ref",
             "format",
+            "capabilities",
             "source_kind",
             "source",
             "files",
@@ -325,6 +332,7 @@ fn render_model_list(models: &[ModelSummary]) {
         table.add_row(vec![
             Cell::new(&model.metadata.short_ref),
             Cell::new(model.metadata.primary_format.as_str()),
+            Cell::new(model_capabilities_label(&model.metadata.model_capabilities)),
             Cell::new(model.metadata.source_kind.as_str()),
             Cell::new(model.metadata.source_summary()),
             Cell::new(model.metadata.file_count),
@@ -513,6 +521,14 @@ fn add_model_metadata_rows(
         ),
     ]);
     table.add_row(vec![
+        Cell::new("model_capabilities"),
+        Cell::new(model_capabilities_label(&metadata.model_capabilities)),
+    ]);
+    table.add_row(vec![
+        Cell::new("model_capability_source"),
+        Cell::new(metadata.model_capability_source.as_str()),
+    ]);
+    table.add_row(vec![
         Cell::new("backend_support"),
         Cell::new(model_format_support_summary(metadata.primary_format)),
     ]);
@@ -584,6 +600,14 @@ fn model_format_support_summary(format: ModelFormat) -> String {
     }
 }
 
+fn model_capabilities_label(capabilities: &[ModelCapability]) -> String {
+    capabilities
+        .iter()
+        .map(|capability| capability.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 #[cfg(test)]
 mod tests {
     use clap::Parser as _;
@@ -605,13 +629,88 @@ mod tests {
 
         match cli.command {
             Commands::Model {
-                action: ModelCommands::Pull { repo_id, revision },
+                action:
+                    ModelCommands::Pull {
+                        repo_id,
+                        revision,
+                        capability,
+                    },
             } => {
                 assert_eq!(repo_id, "org/model");
                 assert_eq!(revision.as_deref(), Some("main"));
+                assert_eq!(capability, None);
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_model_add_capability_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "model",
+            "add",
+            "/tmp/model",
+            "--capability",
+            "embedding",
+        ])
+        .expect("parse model add");
+
+        match cli.command {
+            Commands::Model {
+                action: ModelCommands::Add { path, capability },
+            } => {
+                assert_eq!(path, std::path::PathBuf::from("/tmp/model"));
+                assert_eq!(capability, Some(ModelCapability::Embedding));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_model_pull_capability_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "model",
+            "pull",
+            "org/model",
+            "--capability",
+            "rerank",
+            "--revision",
+            "main",
+        ])
+        .expect("parse model pull");
+
+        match cli.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Pull {
+                        repo_id,
+                        revision,
+                        capability,
+                    },
+            } => {
+                assert_eq!(repo_id, "org/model");
+                assert_eq!(revision.as_deref(), Some("main"));
+                assert_eq!(capability, Some(ModelCapability::Rerank));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn model_capability_rejects_unknown_cli_value() {
+        let err = Cli::try_parse_from([
+            "tentgent",
+            "model",
+            "pull",
+            "org/model",
+            "--capability",
+            "audio",
+        ])
+        .expect_err("parse error");
+
+        assert!(err.to_string().contains("unsupported model capability"));
     }
 
     #[test]

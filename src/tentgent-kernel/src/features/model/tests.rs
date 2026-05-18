@@ -252,6 +252,21 @@ fn model_metadata_capabilities_round_trip_as_strings() {
 }
 
 #[test]
+fn model_capability_parser_accepts_known_values_and_rejects_unknown_values() {
+    assert_eq!(
+        " embedding ".parse::<ModelCapability>().expect("embedding"),
+        ModelCapability::Embedding
+    );
+    assert_eq!(
+        "RERANK".parse::<ModelCapability>().expect("rerank"),
+        ModelCapability::Rerank
+    );
+
+    let err = "audio".parse::<ModelCapability>().expect_err("parse error");
+    assert!(err.to_string().contains("unsupported model capability"));
+}
+
+#[test]
 fn huggingface_repo_escape_matches_source_index_contract() {
     assert_eq!(
         escape_huggingface_repo_id("org/model-name"),

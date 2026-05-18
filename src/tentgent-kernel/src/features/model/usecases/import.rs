@@ -69,6 +69,7 @@ impl ModelLocalImportUseCase for StdModelLocalImportUseCase<'_> {
                 original_path: request.source_path,
             },
             ModelImportMethod::Add,
+            request.capability,
         )?;
 
         Ok(ModelLocalImportResult {

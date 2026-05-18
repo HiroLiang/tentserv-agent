@@ -611,7 +611,9 @@ async fn model_pull_job_rejects_invalid_repo_id_before_starting_job() {
 
 #[tokio::test]
 async fn sync_store_routes_validate_requests_before_mutation() {
-    let state = rest_state("sync-store-route-validation");
+    let requested_home = unique_home("sync-store-route-validation");
+    let state = rest_state_for_home(requested_home.clone());
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
 
     let response = build_router(state.clone())
         .oneshot(
@@ -625,6 +627,23 @@ async fn sync_store_routes_validate_requests_before_mutation() {
         .await
         .expect("response");
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/models/pull")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"repo_id":"org/model","capability":"audio"}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
 
     let response = build_router(state.clone())
         .oneshot(
@@ -664,6 +683,8 @@ async fn sync_store_routes_validate_requests_before_mutation() {
         .await
         .expect("response");
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let _ = fs::remove_dir_all(home);
 }
 
 #[tokio::test]
@@ -684,6 +705,150 @@ async fn models_returns_empty_catalog_for_isolated_home() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["models"].as_array().expect("models").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn model_import_route_stores_explicit_capability_metadata() {
+    let requested_home = unique_home("model-import-capability");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let source_dir = home.join("fixtures/embedding-model");
+    fs::create_dir_all(&source_dir).expect("source dir");
+    fs::write(source_dir.join("model.gguf"), b"embedding model").expect("source model");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/models/import")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "path": path_string(&source_dir),
+                        "capability": "embedding"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["model"]["model_capabilities"],
+        serde_json::json!(["embedding"])
+    );
+    assert_eq!(body["model"]["model_capability_source"], "explicit-user");
+    assert_eq!(body["mutation"]["deduplicated"], false);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/models")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["models"][0]["model_capabilities"],
+        serde_json::json!(["embedding"])
+    );
+    assert_eq!(
+        body["models"][0]["model_capability_source"],
+        "explicit-user"
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn model_import_job_preserves_explicit_capability_metadata() {
+    let requested_home = unique_home("model-import-job-capability");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let source_dir = home.join("fixtures/rerank-model");
+    fs::create_dir_all(&source_dir).expect("source dir");
+    fs::write(source_dir.join("model.gguf"), b"rerank model").expect("source model");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/models/import/jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "path": path_string(&source_dir),
+                        "capability": "rerank"
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = json_body(response).await;
+    let job_id = body["job"]["job_id"].as_str().expect("job id").to_string();
+
+    for _ in 0..50 {
+        let response = build_router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/jobs/{job_id}"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let body = json_body(response).await;
+        if body["job"]["status"] == "succeeded" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/jobs/{job_id}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["job"]["status"], "succeeded");
+    assert_eq!(body["job"]["artifact"]["kind"], "model");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/models")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["models"][0]["model_capabilities"],
+        serde_json::json!(["rerank"])
+    );
+    assert_eq!(
+        body["models"][0]["model_capability_source"],
+        "explicit-user"
+    );
 
     let _ = fs::remove_dir_all(home);
 }
