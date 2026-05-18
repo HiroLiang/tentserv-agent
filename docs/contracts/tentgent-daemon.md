@@ -109,6 +109,16 @@ tiny endpoints). `transport/rest/response.rs` should stay limited to truly
 shared response primitives such as the service name and standard error shape, so
 new API groups do not grow a global DTO file.
 
+Provider-compatible chat routes are local-model facades, not cloud proxy
+routes. They accept provider-shaped request and response envelopes, then map
+text-only prompts into the kernel chat use cases. The compatible `model` value
+may be a managed model ref, a unique model-ref prefix, a stored Hugging Face
+`source_repo`, or the final repository name when it resolves uniquely. Token
+usage is reported as unknown (`null`) until the runtime returns authoritative
+counts. Tool calls, images, audio, and other multimodal parts must be rejected at
+the adapter boundary until kernel chat domain types and use cases explicitly
+support them.
+
 The first stable REST surface is:
 
 - `GET /healthz`
@@ -136,10 +146,10 @@ The first stable REST surface is:
   cases as `/v1/chat`.
 - `POST /v1beta/models/{model}:generateContent`
   Gemini GenerateContent-compatible local model chat adapter for text-only
-  content. `{model}` is resolved as a managed local model reference.
+  content. `{model}` is resolved as a managed local model reference or alias.
 - `POST /v1beta/models/{model}:streamGenerateContent`
   Gemini streamGenerateContent-compatible SSE adapter for text-only content.
-  `{model}` is resolved as a managed local model reference.
+  `{model}` is resolved as a managed local model reference or alias.
 - `GET /v1/models`
   Kernel-backed model catalog list response.
 - `GET /v1/models/{reference}`

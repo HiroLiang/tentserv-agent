@@ -49,12 +49,19 @@ pub(crate) struct OpenAiChatCompletionRequest {
     max_completion_tokens: Option<u32>,
     temperature: Option<f32>,
     stream: Option<bool>,
+    tools: Option<serde_json::Value>,
+    tool_choice: Option<serde_json::Value>,
+    functions: Option<serde_json::Value>,
+    function_call: Option<serde_json::Value>,
+    modalities: Option<Vec<String>>,
+    audio: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
 struct OpenAiMessage {
     role: String,
     content: OpenAiContent,
+    tool_calls: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +95,7 @@ struct OpenAiDelta<'a> {
 
 impl OpenAiChatCompletionRequest {
     fn into_transport(self) -> Result<ChatTransportRequest, RestError> {
+        self.reject_unsupported()?;
         Ok(ChatTransportRequest {
             model_ref: self.model,
             adapter_ref: self.adapter_ref,
@@ -100,10 +108,41 @@ impl OpenAiChatCompletionRequest {
             temperature: self.temperature,
         })
     }
+
+    fn reject_unsupported(&self) -> Result<(), RestError> {
+        if self.tools.is_some()
+            || self.tool_choice.is_some()
+            || self.functions.is_some()
+            || self.function_call.is_some()
+        {
+            return Err(RestError::bad_request(
+                "unsupported_chat_feature",
+                "OpenAI-compatible tools and function calling require kernel tool-call support",
+            ));
+        }
+        if self.audio.is_some()
+            || self
+                .modalities
+                .as_ref()
+                .is_some_and(|modalities| modalities.iter().any(|value| value != "text"))
+        {
+            return Err(RestError::bad_request(
+                "unsupported_chat_feature",
+                "OpenAI-compatible audio output requires kernel multimodal support",
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl OpenAiMessage {
     fn into_transport(self) -> Result<ChatTransportMessage, RestError> {
+        if self.tool_calls.is_some() {
+            return Err(RestError::bad_request(
+                "unsupported_chat_feature",
+                "OpenAI-compatible tool call messages require kernel tool-call support",
+            ));
+        }
         Ok(ChatTransportMessage {
             role: openai_role(&self.role)?,
             content: openai_content(self.content)?,
@@ -273,5 +312,54 @@ fn openai_finish_reason(reason: &ChatFinishReason) -> &str {
         ChatFinishReason::Cancelled => "stop",
         ChatFinishReason::Error => "error",
         ChatFinishReason::Other(_) => finish_reason_str(reason),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_stream_response_uses_openai_shape_and_unknown_usage() {
+        let body = openai_response(
+            OpenAiContext::new("gemma-alias"),
+            "hello".to_string(),
+            ChatFinishReason::Stop,
+        );
+
+        assert_eq!(body["object"], "chat.completion");
+        assert_eq!(body["model"], "gemma-alias");
+        assert_eq!(body["choices"][0]["message"]["role"], "assistant");
+        assert_eq!(body["choices"][0]["message"]["content"], "hello");
+        assert_eq!(body["choices"][0]["finish_reason"], "stop");
+        assert!(body["usage"].is_null());
+    }
+
+    #[test]
+    fn request_rejects_tools_before_kernel_mapping() {
+        let request: OpenAiChatCompletionRequest = serde_json::from_value(json!({
+            "model": "gemma-alias",
+            "messages": [{"role": "user", "content": "hi"}],
+            "tools": [{"type": "function", "function": {"name": "lookup"}}]
+        }))
+        .expect("request");
+
+        let error = request.into_transport().expect_err("tools unsupported");
+        assert!(format!("{error:?}").contains("unsupported_chat_feature"));
+    }
+
+    #[test]
+    fn request_rejects_non_text_content_parts() {
+        let request: OpenAiChatCompletionRequest = serde_json::from_value(json!({
+            "model": "gemma-alias",
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}]
+            }]
+        }))
+        .expect("request");
+
+        let error = request.into_transport().expect_err("image unsupported");
+        assert!(format!("{error:?}").contains("bad_request"));
     }
 }

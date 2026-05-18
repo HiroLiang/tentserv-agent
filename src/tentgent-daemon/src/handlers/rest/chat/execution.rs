@@ -22,7 +22,10 @@ use tentgent_kernel::{
                 ChatStreamingUseCase, ChatTargetSelection,
             },
         },
-        model::domain::ModelRefSelector,
+        model::{
+            domain::ModelRefSelector,
+            usecases::{ModelCatalogReadUseCase, ModelListRequest},
+        },
         runtime::domain::PythonRuntimeResolutionInput,
     },
     foundation::{error::KernelError, layout::LayoutResolveMode},
@@ -164,9 +167,7 @@ pub(super) fn chat_preparation_request(
     request: ChatTransportRequest,
     stream: bool,
 ) -> Result<ChatPreparationRequest, RestError> {
-    let model_selector = ModelRefSelector::parse(&request.model_ref).map_err(|err| {
-        RestError::bad_request("bad_request", format!("invalid model reference: {err}"))
-    })?;
+    let model_selector = model_selector(state, &request.model_ref)?;
     let adapter_selector = match request.adapter_ref {
         Some(value) => Some(AdapterRefSelector::parse(&value).map_err(|err| {
             RestError::bad_request("bad_request", format!("invalid adapter reference: {err}"))
@@ -195,6 +196,76 @@ pub(super) fn chat_preparation_request(
             stream,
         },
     })
+}
+
+fn model_selector(state: &RestState, value: &str) -> Result<ModelRefSelector, RestError> {
+    match ModelRefSelector::parse(value) {
+        Ok(selector) => Ok(selector),
+        Err(_) => model_alias_selector(state, value).map_err(|alias_error| alias_error.error),
+    }
+}
+
+fn model_alias_selector(
+    state: &RestState,
+    value: &str,
+) -> Result<ModelRefSelector, ModelAliasError> {
+    let alias = value.trim();
+    if alias.is_empty() {
+        return Err(ModelAliasError {
+            error: RestError::bad_request("bad_request", "model reference is empty"),
+        });
+    }
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .models()
+        .list_models(ModelListRequest {
+            layout: state.app().layout_input(LayoutResolveMode::ReadOnly),
+        })
+        .map_err(|error| ModelAliasError {
+            error: RestError::store_lookup("chat_model_failed", error.to_string()),
+        })?;
+
+    let matches = result
+        .models
+        .into_iter()
+        .filter(|model| model_alias_matches(alias, model.metadata.source_repo.as_deref()))
+        .map(|model| model.metadata.model_ref)
+        .collect::<Vec<_>>();
+
+    match matches.as_slice() {
+        [] => Err(ModelAliasError {
+            error: RestError::not_found(
+                "not_found",
+                format!("model alias `{alias}` was not found"),
+            ),
+        }),
+        [model_ref] => ModelRefSelector::parse(model_ref.as_str()).map_err(|err| ModelAliasError {
+            error: RestError::internal("chat_model_failed", err.to_string()),
+        }),
+        _ => Err(ModelAliasError {
+            error: RestError::conflict(
+                "ambiguous_ref",
+                format!("model alias `{alias}` matches multiple stored models"),
+            ),
+        }),
+    }
+}
+
+fn model_alias_matches(alias: &str, source_repo: Option<&str>) -> bool {
+    let Some(source_repo) = source_repo else {
+        return false;
+    };
+    source_repo.eq_ignore_ascii_case(alias)
+        || source_repo
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.eq_ignore_ascii_case(alias))
+}
+
+struct ModelAliasError {
+    error: RestError,
 }
 
 pub(super) fn finish_reason_str(reason: &ChatFinishReason) -> &str {
@@ -306,5 +377,21 @@ mod tests {
 
         assert_eq!(message.role, ChatRole::User);
         assert_eq!(message.content, "hello");
+    }
+
+    #[test]
+    fn model_alias_matches_huggingface_repo_or_repo_name() {
+        assert!(model_alias_matches(
+            "google/gemma-3-1b-it",
+            Some("google/gemma-3-1b-it")
+        ));
+        assert!(model_alias_matches(
+            "gemma-3-1b-it",
+            Some("google/gemma-3-1b-it")
+        ));
+        assert!(!model_alias_matches(
+            "gemma-3-4b-it",
+            Some("google/gemma-3-1b-it")
+        ));
     }
 }

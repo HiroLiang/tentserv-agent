@@ -58,6 +58,9 @@ pub(crate) struct GeminiGenerateContentRequest {
     generation_config: Option<GeminiGenerationConfig>,
     #[serde(alias = "systemInstruction")]
     system_instruction: Option<GeminiContent>,
+    tools: Option<serde_json::Value>,
+    #[serde(alias = "toolConfig")]
+    tool_config: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,6 +118,7 @@ impl GeminiOperation {
 
 impl GeminiGenerateContentRequest {
     fn into_transport(self, model_ref: String) -> Result<ChatTransportRequest, RestError> {
+        self.reject_unsupported()?;
         let mut messages = Vec::new();
         if let Some(system) = self.system_instruction {
             messages.push(ChatTransportMessage {
@@ -134,6 +138,16 @@ impl GeminiGenerateContentRequest {
             max_tokens: generation_config.max_output_tokens,
             temperature: generation_config.temperature,
         })
+    }
+
+    fn reject_unsupported(&self) -> Result<(), RestError> {
+        if self.tools.is_some() || self.tool_config.is_some() {
+            return Err(RestError::bad_request(
+                "unsupported_chat_feature",
+                "Gemini-compatible tools require kernel tool-call support",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -206,11 +220,7 @@ fn gemini_response(
             },
             "finishReason": finish_reason.map(|reason| gemini_finish_reason(&reason).to_string())
         }],
-        "usageMetadata": {
-            "promptTokenCount": 0,
-            "candidatesTokenCount": 0,
-            "totalTokenCount": 0
-        },
+        "usageMetadata": null,
         "modelVersion": context.model
     })
 }
@@ -254,5 +264,44 @@ fn gemini_finish_reason(reason: &ChatFinishReason) -> &str {
         ChatFinishReason::Cancelled => "OTHER",
         ChatFinishReason::Error => "OTHER",
         ChatFinishReason::Other(value) => value.as_str(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_stream_response_uses_gemini_shape_and_unknown_usage() {
+        let body = gemini_response(
+            GeminiContext {
+                model: "gemma-alias".to_string(),
+            },
+            Some("hello".to_string()),
+            Some(ChatFinishReason::Stop),
+        );
+
+        assert_eq!(body["modelVersion"], "gemma-alias");
+        assert_eq!(body["candidates"][0]["content"]["role"], "model");
+        assert_eq!(
+            body["candidates"][0]["content"]["parts"][0]["text"],
+            "hello"
+        );
+        assert_eq!(body["candidates"][0]["finishReason"], "STOP");
+        assert!(body["usageMetadata"].is_null());
+    }
+
+    #[test]
+    fn request_rejects_tools_before_kernel_mapping() {
+        let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+            "contents": [{"role": "user", "parts": [{"text": "hi"}]}],
+            "tools": [{"functionDeclarations": [{"name": "lookup"}]}]
+        }))
+        .expect("request");
+
+        let error = request
+            .into_transport("gemma-alias".to_string())
+            .expect_err("tools unsupported");
+        assert!(format!("{error:?}").contains("unsupported_chat_feature"));
     }
 }

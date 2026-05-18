@@ -48,6 +48,8 @@ pub(crate) struct ClaudeMessagesRequest {
     max_tokens: Option<u32>,
     temperature: Option<f32>,
     stream: Option<bool>,
+    tools: Option<serde_json::Value>,
+    tool_choice: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,6 +84,7 @@ struct ClaudeStreamMapper {
 
 impl ClaudeMessagesRequest {
     fn into_transport(self) -> Result<ChatTransportRequest, RestError> {
+        self.reject_unsupported()?;
         let mut messages = Vec::new();
         if let Some(system) = self.system {
             messages.push(ChatTransportMessage {
@@ -100,6 +103,16 @@ impl ClaudeMessagesRequest {
             max_tokens: self.max_tokens,
             temperature: self.temperature,
         })
+    }
+
+    fn reject_unsupported(&self) -> Result<(), RestError> {
+        if self.tools.is_some() || self.tool_choice.is_some() {
+            return Err(RestError::bad_request(
+                "unsupported_chat_feature",
+                "Claude-compatible tools require kernel tool-call support",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -238,10 +251,7 @@ fn claude_response(
 }
 
 fn claude_usage() -> serde_json::Value {
-    json!({
-        "input_tokens": 0,
-        "output_tokens": 0
-    })
+    serde_json::Value::Null
 }
 
 fn claude_role(role: &str) -> Result<String, RestError> {
@@ -286,5 +296,57 @@ fn claude_stop_reason(reason: &ChatFinishReason) -> &str {
         ChatFinishReason::Cancelled => "stop_sequence",
         ChatFinishReason::Error => "stop_sequence",
         ChatFinishReason::Other(value) => value.as_str(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_stream_response_uses_claude_shape_and_unknown_usage() {
+        let body = claude_response(
+            ClaudeContext::new("gemma-alias"),
+            "hello".to_string(),
+            ChatFinishReason::Stop,
+        );
+
+        assert_eq!(body["type"], "message");
+        assert_eq!(body["role"], "assistant");
+        assert_eq!(body["model"], "gemma-alias");
+        assert_eq!(body["content"][0]["type"], "text");
+        assert_eq!(body["content"][0]["text"], "hello");
+        assert_eq!(body["stop_reason"], "end_turn");
+        assert!(body["usage"].is_null());
+    }
+
+    #[test]
+    fn request_rejects_tools_before_kernel_mapping() {
+        let request: ClaudeMessagesRequest = serde_json::from_value(json!({
+            "model": "gemma-alias",
+            "max_tokens": 16,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tools": [{"name": "lookup", "input_schema": {"type": "object"}}]
+        }))
+        .expect("request");
+
+        let error = request.into_transport().expect_err("tools unsupported");
+        assert!(format!("{error:?}").contains("unsupported_chat_feature"));
+    }
+
+    #[test]
+    fn request_rejects_non_text_content_blocks() {
+        let request: ClaudeMessagesRequest = serde_json::from_value(json!({
+            "model": "gemma-alias",
+            "max_tokens": 16,
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AA=="}}]
+            }]
+        }))
+        .expect("request");
+
+        let error = request.into_transport().expect_err("image unsupported");
+        assert!(format!("{error:?}").contains("bad_request"));
     }
 }
