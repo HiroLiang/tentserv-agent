@@ -6,7 +6,8 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::Level;
 
 use crate::handlers::rest::{
-    adapter, chat, dataset, health, jobs, model, server, session, status, train,
+    adapter, auth, chat, daemon, dataset, doctor, health, jobs, model, server, session, status,
+    train,
 };
 
 use super::state::RestState;
@@ -23,6 +24,7 @@ pub fn build_router(state: RestState) -> Router {
 fn app_routes() -> Router<RestState> {
     Router::new()
         .merge(system_routes())
+        .merge(diagnostic_routes())
         .merge(chat_routes())
         .merge(job_routes())
         .merge(store_routes())
@@ -35,6 +37,17 @@ fn system_routes() -> Router<RestState> {
     Router::new()
         .route("/healthz", get(health::healthz))
         .route("/v1/status", get(status::status))
+}
+
+fn diagnostic_routes() -> Router<RestState> {
+    Router::new()
+        .route("/v1/auth", get(auth::list))
+        .route("/v1/auth/{provider}", get(auth::inspect))
+        .route("/v1/doctor", get(doctor::report))
+        .route("/v1/daemon/logs", get(daemon::logs))
+        .route("/v1/daemon/logs/stdout", get(daemon::stdout_log))
+        .route("/v1/daemon/logs/stderr", get(daemon::stderr_log))
+        .route("/v1/daemon/shutdown", post(daemon::shutdown))
 }
 
 fn chat_routes() -> Router<RestState> {

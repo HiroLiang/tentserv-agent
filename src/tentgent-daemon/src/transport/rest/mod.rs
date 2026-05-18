@@ -2,6 +2,7 @@ mod router;
 
 pub mod error;
 pub mod response;
+pub mod security;
 pub mod state;
 
 #[cfg(test)]
@@ -24,7 +25,7 @@ use tokio::net::TcpListener;
 
 use crate::{app::DaemonAppState, bootstrap::RestConfig};
 
-use self::state::RestState;
+use self::{security::daemon_token_enabled, state::RestState};
 
 pub struct RestEntrypoint {
     config: RestConfig,
@@ -47,7 +48,7 @@ impl RestEntrypoint {
                 layout: state.layout_input(LayoutResolveMode::Create),
                 host: Some(self.config.host.clone()),
                 port: Some(self.config.port),
-                token_enabled: false,
+                token_enabled: daemon_token_enabled(),
                 allow_unsafe_bind: false,
             })
             .into_diagnostic()?;
@@ -87,7 +88,7 @@ impl RestEntrypoint {
 
         let app = build_router(RestState::new(Arc::clone(&state)));
         let serve_result = axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal())
+            .with_graceful_shutdown(shutdown_signal(Arc::clone(&state)))
             .await
             .into_diagnostic();
         let clear_result = daemon
@@ -105,8 +106,22 @@ impl RestEntrypoint {
     }
 }
 
-async fn shutdown_signal() {
-    if let Err(err) = tokio::signal::ctrl_c().await {
-        tracing::warn!(error = %err, "failed to listen for ctrl-c");
+async fn shutdown_signal(state: Arc<DaemonAppState>) {
+    let mut shutdown_rx = state.subscribe_shutdown();
+    tokio::select! {
+        result = tokio::signal::ctrl_c() => {
+            if let Err(err) = result {
+                tracing::warn!(error = %err, "failed to listen for ctrl-c");
+            }
+        }
+        _ = async {
+            while shutdown_rx.changed().await.is_ok() {
+                if *shutdown_rx.borrow_and_update() {
+                    break;
+                }
+            }
+        } => {
+            tracing::info!("daemon rest transport shutdown requested");
+        }
     }
 }

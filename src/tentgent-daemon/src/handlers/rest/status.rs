@@ -8,7 +8,9 @@ use tentgent_kernel::{
     foundation::layout::LayoutResolveMode,
 };
 
-use crate::transport::rest::{error::RestError, response::SERVICE_NAME, state::RestState};
+use crate::transport::rest::{
+    error::RestError, response::SERVICE_NAME, security::daemon_token_enabled, state::RestState,
+};
 
 #[derive(Debug, Serialize)]
 pub struct StatusResponse {
@@ -66,7 +68,7 @@ fn status_response(inspection: DaemonInspection) -> StatusResponse {
             "stopped"
         },
         auth: StatusAuthItem {
-            token_enabled: false,
+            token_enabled: daemon_token_enabled(),
         },
         host: process.map(|process| process.host.clone()),
         port: process.map(|process| process.port),

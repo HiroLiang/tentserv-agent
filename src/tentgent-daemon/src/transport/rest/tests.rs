@@ -64,6 +64,140 @@ async fn status_reads_daemon_kernel_state() {
 }
 
 #[tokio::test]
+async fn auth_status_lists_gemini_provider() {
+    let state = rest_state("auth-status");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/auth")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let providers = body["providers"].as_array().expect("providers");
+    assert!(providers
+        .iter()
+        .any(|provider| provider["provider"] == "gemini"));
+}
+
+#[tokio::test]
+async fn auth_provider_rejects_invalid_provider() {
+    let state = rest_state("auth-invalid-provider");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/auth/not-real")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("gemini"));
+}
+
+#[tokio::test]
+async fn doctor_returns_observational_report() {
+    let home = unique_home("doctor-report");
+    let state = rest_state_for_home(home.clone());
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/doctor")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert!(matches!(
+        body["status"].as_str(),
+        Some("pass" | "warn" | "fail")
+    ));
+    assert!(body["summary"].is_object());
+    assert!(body["checks"].is_array());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn daemon_logs_return_metadata() {
+    let state = rest_state("daemon-logs");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/daemon/logs")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["logs"]["stdout"]["kind"], "stdout");
+    assert_eq!(body["logs"]["stderr"]["kind"], "stderr");
+}
+
+#[tokio::test]
+async fn daemon_log_content_reads_tail() {
+    let home = unique_home("daemon-log-tail");
+    let state = rest_state_for_home(home.clone());
+    fs::create_dir_all(home.join("logs")).expect("logs dir");
+    fs::write(home.join("logs/daemon.stderr.log"), "abcdef").expect("daemon stderr log");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/daemon/logs/stderr?tail_bytes=4")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["log"]["owner"], "daemon");
+    assert_eq!(body["log"]["server_ref"], Value::Null);
+    assert_eq!(body["log"]["kind"], "stderr");
+    assert_eq!(body["log"]["tail_bytes"], 4);
+    assert_eq!(body["log"]["content"], "cdef");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn daemon_log_content_rejects_invalid_tail_bytes() {
+    let state = rest_state("daemon-log-invalid-tail");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/daemon/logs/stdout?tail_bytes=0")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+}
+
+#[tokio::test]
 async fn chat_stream_returns_sse_error_for_runtime_failures() {
     let state = rest_state("chat-stream");
     let response = build_router(state)

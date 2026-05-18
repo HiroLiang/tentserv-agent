@@ -201,12 +201,13 @@ validation and without secret values:
 hf
 openai
 anthropic
+gemini
 ```
 
 Auth status endpoints may reveal whether credentials are configured, but never
-credential values. Environment-variable credentials bypass Keychain reads.
-When no env override is present, checking Keychain presence may trigger the
-platform Keychain prompt.
+credential values. Environment-variable credentials bypass Keychain reads. The
+daemon HTTP endpoint reports cached Keychain presence metadata and does not
+trigger the platform Keychain prompt.
 
 `GET /v1/auth` and `GET /v1/auth/{provider}` are diagnostic-only and must not
 accept provider secret values. Future HTTP workflows that perform provider work

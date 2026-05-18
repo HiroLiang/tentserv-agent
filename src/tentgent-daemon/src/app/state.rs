@@ -4,6 +4,7 @@ use crate::{
     runtime::{JobRegistry, MemoryCache, Scheduler},
 };
 use tentgent_kernel::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
+use tokio::sync::watch;
 
 use super::DaemonServices;
 
@@ -16,6 +17,7 @@ pub struct DaemonAppState {
     job_runner: JobRunner,
     scheduler: Scheduler,
     rest: RestConfig,
+    shutdown_tx: watch::Sender<bool>,
 }
 
 impl DaemonAppState {
@@ -26,6 +28,7 @@ impl DaemonAppState {
         rest: RestConfig,
     ) -> Self {
         let jobs = JobRegistry::from_runtime_dir(&layout.runtime_dir);
+        let (shutdown_tx, _) = watch::channel(false);
         Self {
             services,
             logging,
@@ -35,6 +38,7 @@ impl DaemonAppState {
             job_runner: JobRunner,
             scheduler: Scheduler::default(),
             rest,
+            shutdown_tx,
         }
     }
 
@@ -76,5 +80,13 @@ impl DaemonAppState {
 
     pub fn rest_config(&self) -> &RestConfig {
         &self.rest
+    }
+
+    pub fn request_shutdown(&self) {
+        let _ = self.shutdown_tx.send(true);
+    }
+
+    pub fn subscribe_shutdown(&self) -> watch::Receiver<bool> {
+        self.shutdown_tx.subscribe()
     }
 }
