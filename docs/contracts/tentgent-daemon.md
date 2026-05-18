@@ -129,18 +129,43 @@ The first stable REST surface is:
   prefix. Model DTOs expose `model_capabilities` and
   `model_capability_source` from kernel metadata so chat, embedding, and rerank
   support remains visible at the API boundary.
+- `POST /v1/models/import/jobs`
+  Starts a daemon background job that imports a local model path into the
+  kernel model store.
+- `POST /v1/models/pull/jobs`
+  Starts a daemon background job that pulls a Hugging Face model into the
+  kernel model store. The route validates the request, creates a job record,
+  returns `202 Accepted`, and reports pull progress through `/v1/jobs`.
 - `GET /v1/adapters`
   Kernel-backed adapter catalog list response.
 - `GET /v1/adapters/{reference}`
   Kernel-backed adapter inspection response for a full adapter ref or unique
   prefix. Adapter DTOs expose base-model binding hints, backend support, source
   metadata, and optional training provenance from kernel metadata.
+- `POST /v1/adapters/import/jobs`
+  Starts a daemon background job that imports a local adapter path into the
+  kernel adapter store, optionally binding it to a managed base model.
+- `POST /v1/adapters/pull/jobs`
+  Starts a daemon background job that pulls a Hugging Face adapter into the
+  kernel adapter store and reports pull progress through `/v1/jobs`.
 - `GET /v1/datasets`
   Kernel-backed dataset catalog list response.
 - `GET /v1/datasets/{reference}`
   Kernel-backed dataset inspection response for a full dataset ref or unique
   prefix. Dataset DTOs expose tuning readiness, split paths, warnings, source
   metadata, and managed source paths from kernel metadata.
+- `POST /v1/datasets/import/jobs`
+  Starts a daemon background job that imports a local dataset path into the
+  kernel dataset store.
+- `POST /v1/datasets/synth/jobs`
+  Starts a daemon background job for provider-backed dataset synthesis. Provider
+  auth and Python runtime execution happen inside the job.
+- `POST /v1/datasets/eval/jobs`
+  Starts a daemon background job for provider-backed dataset evaluation.
+- `POST /v1/train/lora/plans/{reference}/runs`
+  Starts a daemon background job for a LoRA train run from a saved plan. The job
+  creates the kernel run record, launches the detached worker, then polls the
+  run record until it reaches a terminal status.
 - `GET /v1/servers`
   Kernel-backed stored server list response with process-state observation.
 - `GET /v1/servers/{reference}`

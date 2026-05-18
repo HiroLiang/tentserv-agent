@@ -221,6 +221,30 @@ async fn jobs_reload_persisted_records_from_runtime_dir() {
 }
 
 #[tokio::test]
+async fn model_pull_job_rejects_invalid_repo_id_before_starting_job() {
+    let requested_home = unique_home("model-pull-job-invalid");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/models/pull/jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"repo_id":"https://huggingface.co/a/b"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn models_returns_empty_catalog_for_isolated_home() {
     let requested_home = unique_home("models-empty");
     let state = rest_state_for_home(requested_home);

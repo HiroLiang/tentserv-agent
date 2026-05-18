@@ -4,8 +4,8 @@ use tentgent_kernel::{
         model::ports::ModelCatalogStore,
         train::{
             infra::{
-                FileLoraTrainPlanStore, FileLoraTrainRunStore, StdLoraTrainRunRefGenerator,
-                StdTrainStoreLayoutInitializer, SystemTrainClock,
+                FileLoraTrainPlanStore, FileLoraTrainRunStore, ShellLoraTrainWorkerLauncher,
+                StdLoraTrainRunRefGenerator, StdTrainStoreLayoutInitializer, SystemTrainClock,
             },
             usecases::{StdLoraTrainPlanUseCase, StdLoraTrainRunUseCase},
         },
@@ -21,6 +21,7 @@ pub struct TrainKernelComponent {
     run_store: FileLoraTrainRunStore,
     clock: SystemTrainClock,
     run_refs: StdLoraTrainRunRefGenerator,
+    worker_launcher: ShellLoraTrainWorkerLauncher,
 }
 
 impl TrainKernelComponent {
@@ -33,6 +34,7 @@ impl TrainKernelComponent {
             run_store: FileLoraTrainRunStore::default(),
             clock: SystemTrainClock,
             run_refs: StdLoraTrainRunRefGenerator,
+            worker_launcher: ShellLoraTrainWorkerLauncher,
         }
     }
 
@@ -61,6 +63,10 @@ impl TrainKernelComponent {
             &self.clock,
             &self.run_refs,
         )
+    }
+
+    pub fn worker_launcher(&self) -> &ShellLoraTrainWorkerLauncher {
+        &self.worker_launcher
     }
 }
 

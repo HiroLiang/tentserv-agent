@@ -57,16 +57,23 @@ Initial implementation slices:
    mutation methods.
 3. Add `GET /v1/jobs` and `GET /v1/jobs/{job_id}` to the new daemon.
 4. Add a `JobRunner` for spawning background tasks and updating the registry.
-5. Move model pull jobs onto the runner as the first proof of progress mapping.
-6. Move LoRA train start onto the runner, linking `job.target.ref` to the
-   kernel `run_ref`.
+5. Move store mutation jobs onto the runner as the first proof of progress
+   mapping.
+6. Move LoRA train runs onto the runner, linking job state to the kernel run
+   record and worker lifecycle.
 
 Current state:
 
 - Job runtime types and in-memory registry mutation methods are in place.
 - Job records persist under the daemon runtime jobs directory.
 - Read-only `GET /v1/jobs` and `GET /v1/jobs/{job_id}` routes are in place.
-- Background runner execution remains open.
+- Background runner execution is in place for blocking job tasks.
+- Model import/pull, adapter import/pull, dataset import/synthesis/evaluation,
+  and LoRA train run start routes create job records before doing long-running
+  work.
+- Hugging Face pulls map download progress into job progress. Dataset synth/eval
+  jobs expose runtime start/completion and bounded progress output. LoRA train
+  jobs launch the worker and poll the kernel run record until terminal status.
 
 ## Session Manager
 
@@ -114,8 +121,12 @@ hide background work.
 Examples:
 
 - `POST /v1/models/pull/jobs`
+- `POST /v1/models/import/jobs`
 - `POST /v1/adapters/pull/jobs`
+- `POST /v1/adapters/import/jobs`
 - `POST /v1/datasets/import/jobs`
+- `POST /v1/datasets/synth/jobs`
+- `POST /v1/datasets/eval/jobs`
 - `POST /v1/train/lora/plans/{ref}/runs`
 - `POST /v1/sessions/{ref}/compact/jobs`
 

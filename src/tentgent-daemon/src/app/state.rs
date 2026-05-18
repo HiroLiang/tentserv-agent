@@ -1,5 +1,6 @@
 use crate::{
     bootstrap::{LoggingRuntime, RestConfig},
+    runtime::JobRunner,
     runtime::{JobRegistry, MemoryCache, Scheduler},
 };
 use tentgent_kernel::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
@@ -12,6 +13,7 @@ pub struct DaemonAppState {
     layout: RuntimeLayout,
     cache: MemoryCache,
     jobs: JobRegistry,
+    job_runner: JobRunner,
     scheduler: Scheduler,
     rest: RestConfig,
 }
@@ -30,6 +32,7 @@ impl DaemonAppState {
             layout,
             cache: MemoryCache::default(),
             jobs,
+            job_runner: JobRunner,
             scheduler: Scheduler::default(),
             rest,
         }
@@ -61,6 +64,10 @@ impl DaemonAppState {
 
     pub fn jobs(&self) -> &JobRegistry {
         &self.jobs
+    }
+
+    pub fn job_runner(&self) -> &JobRunner {
+        &self.job_runner
     }
 
     pub fn scheduler(&self) -> &Scheduler {

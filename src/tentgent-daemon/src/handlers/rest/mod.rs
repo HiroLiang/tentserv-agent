@@ -6,3 +6,5 @@ pub mod model;
 pub mod server;
 pub mod session;
 pub mod status;
+mod store_jobs;
+pub mod train;

@@ -10,7 +10,7 @@ use crate::{
     transport::rest::{error::RestError, state::RestState},
 };
 
-use self::dto::{job_item, JobResponse, JobsResponse};
+pub use self::dto::{job_item, JobResponse, JobsResponse};
 
 pub async fn list(State(state): State<RestState>) -> Json<JobsResponse> {
     Json(JobsResponse {
