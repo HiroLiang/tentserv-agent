@@ -12,15 +12,47 @@ use crate::handlers::rest::{
 use super::state::RestState;
 
 pub fn build_router(state: RestState) -> Router {
+    app_routes().with_state(state).layer(
+        TraceLayer::new_for_http()
+            .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+            .on_request(DefaultOnRequest::new().level(Level::INFO))
+            .on_response(DefaultOnResponse::new().level(Level::INFO)),
+    )
+}
+
+fn app_routes() -> Router<RestState> {
+    Router::new()
+        .merge(system_routes())
+        .merge(chat_routes())
+        .merge(job_routes())
+        .merge(store_routes())
+        .merge(train_routes())
+        .merge(server_routes())
+        .merge(session_routes())
+}
+
+fn system_routes() -> Router<RestState> {
     Router::new()
         .route("/healthz", get(health::healthz))
         .route("/v1/status", get(status::status))
+}
+
+fn chat_routes() -> Router<RestState> {
+    Router::new()
         .route("/v1/chat", post(chat::complete))
         .route("/v1/chat/completions", post(chat::chat_completions))
         .route("/v1/messages", post(chat::messages))
         .route("/v1beta/models/{*operation}", post(chat::generate_content))
+}
+
+fn job_routes() -> Router<RestState> {
+    Router::new()
         .route("/v1/jobs", get(jobs::list))
         .route("/v1/jobs/{job_id}", get(jobs::inspect))
+}
+
+fn store_routes() -> Router<RestState> {
+    Router::new()
         .route("/v1/models", get(model::list))
         .route("/v1/models/import/jobs", post(model::import_job))
         .route("/v1/models/pull/jobs", post(model::pull_job))
@@ -43,6 +75,10 @@ pub fn build_router(state: RestState) -> Router {
             "/v1/datasets/{reference}",
             get(dataset::inspect).delete(dataset::remove),
         )
+}
+
+fn train_routes() -> Router<RestState> {
+    Router::new()
         .route(
             "/v1/train/lora/plans",
             get(train::list_plans).post(train::create_plan),
@@ -67,16 +103,32 @@ pub fn build_router(state: RestState) -> Router {
             "/v1/train/lora/runs/{reference}/logs/raw",
             get(train::raw_log),
         )
-        .route("/v1/servers", get(server::list))
-        .route("/v1/servers/{reference}", get(server::inspect))
+}
+
+fn server_routes() -> Router<RestState> {
+    Router::new()
+        .route("/v1/servers", get(server::list).post(server::create))
+        .route(
+            "/v1/servers/{reference}",
+            get(server::inspect).delete(server::remove),
+        )
+        .route("/v1/servers/{reference}/start", post(server::start))
+        .route("/v1/servers/{reference}/stop", post(server::stop))
+        .route("/v1/servers/{reference}/health", get(server::health))
+        .route("/v1/servers/{reference}/logs", get(server::logs))
+        .route(
+            "/v1/servers/{reference}/logs/stdout",
+            get(server::stdout_log),
+        )
+        .route(
+            "/v1/servers/{reference}/logs/stderr",
+            get(server::stderr_log),
+        )
+}
+
+fn session_routes() -> Router<RestState> {
+    Router::new()
         .route("/v1/sessions", get(session::list))
         .route("/v1/sessions/{reference}", get(session::inspect))
         .route("/v1/sessions/{reference}/messages", get(session::messages))
-        .with_state(state)
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
-                .on_request(DefaultOnRequest::new().level(Level::INFO))
-                .on_response(DefaultOnResponse::new().level(Level::INFO)),
-        )
 }

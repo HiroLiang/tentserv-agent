@@ -1180,6 +1180,220 @@ async fn server_list_and_inspect_read_kernel_catalog() {
 }
 
 #[tokio::test]
+async fn server_create_prepares_kernel_spec() {
+    let requested_home = unique_home("servers-create");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "b".repeat(64);
+    write_model_fixture(&home, &model_ref);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/servers")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"runtime_ref":"{model_ref}","host":"127.0.0.1","port":8998,"lazy_load":true,"idle_seconds":30}}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    assert_eq!(body["created"], true);
+    assert_eq!(body["server"]["runtime_kind"], "local");
+    assert_eq!(
+        body["server"]["model_ref"].as_str(),
+        Some(model_ref.as_str())
+    );
+    assert_eq!(body["server"]["port"], 8998);
+    assert_eq!(body["server"]["lazy_load"], true);
+    assert_eq!(body["server"]["idle_seconds"], 30);
+    let server_ref = body["server"]["server_ref"].as_str().expect("server ref");
+    assert!(home
+        .join("servers")
+        .join(server_ref)
+        .join("server.toml")
+        .exists());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_remove_deletes_stopped_spec() {
+    let requested_home = unique_home("servers-remove");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let server_ref = "c".repeat(64);
+    let model_ref = "d".repeat(64);
+    write_server_fixture(&home, &server_ref, &model_ref);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/v1/servers/{}", &server_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["removed"]["kind"], "server");
+    assert_eq!(
+        body["removed"]["server_ref"].as_str(),
+        Some(server_ref.as_str())
+    );
+    assert!(!home.join("servers").join(&server_ref).exists());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_start_returns_conflict_for_running_server() {
+    let requested_home = unique_home("servers-start-running");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let server_ref = "d".repeat(64);
+    let model_ref = "e".repeat(64);
+    write_model_fixture(&home, &model_ref);
+    write_server_fixture(&home, &server_ref, &model_ref);
+    write_server_process_fixture(&home, &server_ref, std::process::id());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/servers/{}/start", &server_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "already_running");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_stop_returns_conflict_for_stopped_server() {
+    let requested_home = unique_home("servers-stop-stopped");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let server_ref = "e".repeat(64);
+    let model_ref = "f".repeat(64);
+    write_server_fixture(&home, &server_ref, &model_ref);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/servers/{}/stop", &server_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "not_running");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_health_reports_stopped_server_without_probe() {
+    let requested_home = unique_home("servers-health");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let server_ref = "1".repeat(64);
+    let model_ref = "2".repeat(64);
+    write_server_fixture(&home, &server_ref, &model_ref);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/servers/{}/health", &server_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["server"]["server_ref"].as_str(),
+        Some(server_ref.as_str())
+    );
+    assert_eq!(body["running"], false);
+    assert_eq!(body["reachable"], false);
+    assert_eq!(body["target_url"], "http://127.0.0.1:8999/healthz");
+    assert!(body["target_status"].is_null());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_logs_return_metadata_and_tail_content() {
+    let requested_home = unique_home("servers-logs");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let server_ref = "2".repeat(64);
+    let model_ref = "3".repeat(64);
+    write_server_fixture(&home, &server_ref, &model_ref);
+    let server_dir = home.join("servers").join(&server_ref);
+    fs::write(server_dir.join("stdout.log"), "hello").expect("stdout log");
+    fs::write(server_dir.join("stderr.log"), "alpha-beta").expect("stderr log");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/servers/{}/logs", &server_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["logs"]["stdout"]["exists"], true);
+    assert_eq!(body["logs"]["stderr"]["total_bytes"], 10);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/servers/{}/logs/stderr?tail_bytes=4",
+                    &server_ref[..12]
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["log"]["kind"], "stderr");
+    assert_eq!(body["log"]["tail_bytes"], 4);
+    assert_eq!(body["log"]["truncated"], true);
+    assert_eq!(body["log"]["content"], "beta");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn server_inspect_returns_not_found_for_missing_reference() {
     let requested_home = unique_home("servers-not-found");
     let state = rest_state_for_home(requested_home);
@@ -1638,6 +1852,19 @@ created_at = "2026-05-01T00:00:00Z"
         ),
     )
     .expect("server spec");
+}
+
+fn write_server_process_fixture(home: &std::path::Path, server_ref: &str, pid: u32) {
+    fs::write(
+        home.join("servers").join(server_ref).join("process.toml"),
+        format!(
+            r#"pid = {pid}
+launch_mode = "background"
+started_at = "2026-05-01T00:00:00Z"
+"#
+        ),
+    )
+    .expect("server process metadata");
 }
 
 fn write_session_fixture(
