@@ -87,6 +87,13 @@ jobs:
             *) echo "unexpected runner ${os}:${arch} for ${TENTGENT_TARGET}" >&2; exit 1 ;;
           esac
 
+      - name: Install Linux package dependencies
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev pkg-config
+
       - name: Package release artifact
         shell: bash
         env:

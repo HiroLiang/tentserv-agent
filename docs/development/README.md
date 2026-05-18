@@ -88,6 +88,10 @@ checksums. The release job downloads those artifacts, prepares installer
 assets and release notes, creates or updates the GitHub Release, and verifies
 prerelease/latest release state.
 
+The Linux x86_64 package job installs `libdbus-1-dev` and `pkg-config` before
+packaging because the native Linux keychain backend links `libdbus-sys` through
+the Secret Service/D-Bus stack.
+
 The current release workflow does not run `cargo fmt`, `cargo check`,
 `cargo test`, or Python unit tests before packaging. `scripts/package-local.sh`
 performs `cargo build --release --bin tentgent` as part of artifact packaging.
