@@ -12,8 +12,8 @@ use tentgent_kernel::{
         usecases::{
             DatasetCatalogReadUseCase, DatasetEvaluateRequest, DatasetEvaluationInputSelection,
             DatasetEvaluationUseCase, DatasetInspectRequest, DatasetListRequest,
-            DatasetLocalImportRequest, DatasetLocalImportUseCase, DatasetSynthesisUseCase,
-            DatasetSynthesizeRequest,
+            DatasetLocalImportRequest, DatasetLocalImportUseCase, DatasetRemoveRequest,
+            DatasetRemoveUseCase, DatasetSynthesisUseCase, DatasetSynthesizeRequest,
         },
     },
     features::runtime::domain::PythonRuntimeResolutionInput,
@@ -38,7 +38,10 @@ use crate::{
     transport::rest::{error::RestError, state::RestState},
 };
 
-use self::dto::{dataset_inspection_item, dataset_summary_item, DatasetResponse, DatasetsResponse};
+use self::dto::{
+    dataset_inspection_item, dataset_removal_item, dataset_summary_item, DatasetResponse,
+    DatasetsResponse,
+};
 
 pub async fn list(State(state): State<RestState>) -> Result<Json<DatasetsResponse>, RestError> {
     let result = state
@@ -82,6 +85,30 @@ pub async fn inspect(
 
     Ok(Json(DatasetResponse {
         dataset: dataset_inspection_item(result.dataset),
+    }))
+}
+
+pub async fn remove(
+    State(state): State<RestState>,
+    Path(reference): Path<String>,
+) -> Result<Json<DatasetResponse>, RestError> {
+    let selector = DatasetRefSelector::parse(&reference).map_err(|err| {
+        RestError::bad_request("bad_request", format!("invalid dataset reference: {err}"))
+    })?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .datasets()
+        .remove_usecase()
+        .remove_dataset(DatasetRemoveRequest {
+            layout: state.app().layout_input(LayoutResolveMode::Create),
+            selector,
+        })
+        .map_err(dataset_remove_error)?;
+
+    Ok(Json(DatasetResponse {
+        dataset: dataset_removal_item(result.outcome),
     }))
 }
 
@@ -505,5 +532,17 @@ fn dataset_error(error: KernelError) -> RestError {
             RestError::store_lookup("dataset_read_failed", message)
         }
         other => RestError::kernel("dataset_read_failed", other),
+    }
+}
+
+fn dataset_remove_error(error: KernelError) -> RestError {
+    match error {
+        KernelError::DatasetStoreUnavailable(message) if message.contains("still referenced") => {
+            RestError::conflict("dataset_in_use", message)
+        }
+        KernelError::DatasetStoreUnavailable(message) => {
+            RestError::store_lookup("dataset_remove_failed", message)
+        }
+        other => RestError::kernel("dataset_remove_failed", other),
     }
 }

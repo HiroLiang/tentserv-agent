@@ -15,7 +15,8 @@ use tentgent_kernel::{
         domain::{HfModelPullProgress, ModelRefSelector},
         usecases::{
             ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
-            ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase,
+            ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
+            ModelRemoveUseCase,
         },
     },
     features::runtime::domain::PythonRuntimeResolutionInput,
@@ -38,7 +39,9 @@ use crate::{
     transport::rest::{error::RestError, state::RestState},
 };
 
-use self::dto::{model_inspection_item, model_summary_item, ModelResponse, ModelsResponse};
+use self::dto::{
+    model_inspection_item, model_removal_item, model_summary_item, ModelResponse, ModelsResponse,
+};
 
 pub async fn list(State(state): State<RestState>) -> Result<Json<ModelsResponse>, RestError> {
     let result = state
@@ -78,6 +81,30 @@ pub async fn inspect(
 
     Ok(Json(ModelResponse {
         model: model_inspection_item(result.model),
+    }))
+}
+
+pub async fn remove(
+    State(state): State<RestState>,
+    Path(reference): Path<String>,
+) -> Result<Json<ModelResponse>, RestError> {
+    let selector = ModelRefSelector::parse(&reference).map_err(|err| {
+        RestError::bad_request("bad_request", format!("invalid model reference: {err}"))
+    })?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .models()
+        .remove_usecase()
+        .remove_model(ModelRemoveRequest {
+            layout: state.app().layout_input(LayoutResolveMode::Create),
+            selector,
+        })
+        .map_err(model_remove_error)?;
+
+    Ok(Json(ModelResponse {
+        model: model_removal_item(result.outcome),
     }))
 }
 
@@ -242,5 +269,17 @@ fn model_error(error: KernelError) -> RestError {
             RestError::store_lookup("model_read_failed", message)
         }
         other => RestError::kernel("model_read_failed", other),
+    }
+}
+
+fn model_remove_error(error: KernelError) -> RestError {
+    match error {
+        KernelError::ModelStoreUnavailable(message) if message.contains("still referenced") => {
+            RestError::conflict("model_in_use", message)
+        }
+        KernelError::ModelStoreUnavailable(message) => {
+            RestError::store_lookup("model_remove_failed", message)
+        }
+        other => RestError::kernel("model_remove_failed", other),
     }
 }

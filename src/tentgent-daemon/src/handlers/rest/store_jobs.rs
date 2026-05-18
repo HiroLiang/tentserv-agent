@@ -147,8 +147,16 @@ pub fn hf_progress_update(
             files_total: (!is_bytes).then_some(total).flatten(),
             ..JobProgressPatch::default()
         },
-        output: vec![JobOutputLine::new(JobStream::Event, stage)],
+        output: hf_progress_output(&stage, finished),
         warning_summary: None,
+    }
+}
+
+fn hf_progress_output(stage: &str, finished: bool) -> Vec<JobOutputLine> {
+    if finished && stage.eq_ignore_ascii_case("download complete") {
+        vec![JobOutputLine::new(JobStream::Event, stage)]
+    } else {
+        Vec::new()
     }
 }
 
@@ -599,4 +607,38 @@ fn stage_content(
         )
     })?;
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hf_progress_update_keeps_download_ticks_out_of_output_tail() {
+        let update = hf_progress_update(
+            "Downloading (incomplete total...)".to_string(),
+            50,
+            Some(100),
+            "bytes",
+            false,
+        );
+
+        assert_eq!(update.progress.bytes_done, Some(50));
+        assert_eq!(update.progress.bytes_total, Some(100));
+        assert_eq!(
+            update.stage.as_deref(),
+            Some("Downloading (incomplete total...)")
+        );
+        assert!(update.output.is_empty());
+    }
+
+    #[test]
+    fn hf_progress_update_records_only_terminal_download_complete_output() {
+        let update = hf_progress_update("Download complete".to_string(), 10, Some(10), "it", true);
+
+        assert_eq!(update.progress.files_done, Some(10));
+        assert_eq!(update.progress.files_total, Some(10));
+        assert_eq!(update.output.len(), 1);
+        assert_eq!(update.output[0].line, "Download complete");
+    }
 }

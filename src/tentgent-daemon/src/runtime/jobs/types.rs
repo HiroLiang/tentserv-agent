@@ -276,6 +276,14 @@ pub struct JobOutput {
 
 impl JobOutput {
     pub fn append(&mut self, line: JobOutputLine) {
+        if self
+            .tail
+            .last()
+            .map(|last| last.stream == line.stream && last.line == line.line)
+            .unwrap_or(false)
+        {
+            return;
+        }
         self.tail.push(line);
         if self.tail.len() > MAX_JOB_OUTPUT_LINES {
             let overflow = self.tail.len() - MAX_JOB_OUTPUT_LINES;
@@ -512,6 +520,19 @@ mod tests {
 
         assert_eq!(output.tail.len(), MAX_JOB_OUTPUT_LINES);
         assert_eq!(output.tail[0].line, "line 5");
+    }
+
+    #[test]
+    fn output_tail_skips_consecutive_duplicate_lines() {
+        let mut output = JobOutput::default();
+
+        output.append(JobOutputLine::new(JobStream::Event, "Downloading"));
+        output.append(JobOutputLine::new(JobStream::Event, "Downloading"));
+        output.append(JobOutputLine::new(JobStream::Event, "Download complete"));
+
+        assert_eq!(output.tail.len(), 2);
+        assert_eq!(output.tail[0].line, "Downloading");
+        assert_eq!(output.tail[1].line, "Download complete");
     }
 
     #[test]

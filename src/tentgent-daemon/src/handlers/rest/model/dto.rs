@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use serde::Serialize;
-use tentgent_kernel::features::model::domain::{ModelInspection, ModelMetadata, ModelSummary};
+use tentgent_kernel::features::model::domain::{
+    ModelInspection, ModelMetadata, ModelRemovalOutcome, ModelSummary,
+};
 
 #[derive(Debug, Serialize)]
 pub struct ModelsResponse {
@@ -46,6 +48,10 @@ pub fn model_inspection_item(inspection: ModelInspection) -> ModelItem {
         Some(&inspection.manifest_path),
         Some(&inspection.variant_source_path),
     )
+}
+
+pub fn model_removal_item(outcome: ModelRemovalOutcome) -> ModelItem {
+    model_item_from_parts(outcome.metadata, &outcome.store_path, None, None)
 }
 
 fn model_item_from_parts(

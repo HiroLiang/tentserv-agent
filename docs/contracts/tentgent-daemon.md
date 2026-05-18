@@ -129,6 +129,9 @@ The first stable REST surface is:
   prefix. Model DTOs expose `model_capabilities` and
   `model_capability_source` from kernel metadata so chat, embedding, and rerank
   support remains visible at the API boundary.
+- `DELETE /v1/models/{reference}`
+  Removes a stored model by full model ref or unique prefix after kernel
+  reference checks pass.
 - `POST /v1/models/import/jobs`
   Starts a daemon background job that imports a local model path into the
   kernel model store.
@@ -142,6 +145,9 @@ The first stable REST surface is:
   Kernel-backed adapter inspection response for a full adapter ref or unique
   prefix. Adapter DTOs expose base-model binding hints, backend support, source
   metadata, and optional training provenance from kernel metadata.
+- `DELETE /v1/adapters/{reference}`
+  Removes a stored adapter by full adapter ref or unique prefix after kernel
+  reference checks pass.
 - `POST /v1/adapters/import/jobs`
   Starts a daemon background job that imports a local adapter path into the
   kernel adapter store, optionally binding it to a managed base model.
@@ -154,6 +160,9 @@ The first stable REST surface is:
   Kernel-backed dataset inspection response for a full dataset ref or unique
   prefix. Dataset DTOs expose tuning readiness, split paths, warnings, source
   metadata, and managed source paths from kernel metadata.
+- `DELETE /v1/datasets/{reference}`
+  Removes a stored dataset by full dataset ref or unique prefix after kernel
+  reference checks pass.
 - `POST /v1/datasets/import/jobs`
   Starts a daemon background job that imports a local dataset path into the
   kernel dataset store.

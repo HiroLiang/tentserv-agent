@@ -12,7 +12,7 @@ use tentgent_kernel::{
         usecases::{
             AdapterCatalogReadUseCase, AdapterHfPullRequest, AdapterHfPullUseCase,
             AdapterInspectRequest, AdapterListRequest, AdapterLocalImportRequest,
-            AdapterLocalImportUseCase,
+            AdapterLocalImportUseCase, AdapterRemoveRequest, AdapterRemoveUseCase,
         },
     },
     features::auth::{
@@ -40,7 +40,10 @@ use crate::{
     transport::rest::{error::RestError, state::RestState},
 };
 
-use self::dto::{adapter_inspection_item, adapter_summary_item, AdapterResponse, AdaptersResponse};
+use self::dto::{
+    adapter_inspection_item, adapter_removal_item, adapter_summary_item, AdapterResponse,
+    AdaptersResponse,
+};
 
 pub async fn list(State(state): State<RestState>) -> Result<Json<AdaptersResponse>, RestError> {
     let result = state
@@ -84,6 +87,30 @@ pub async fn inspect(
 
     Ok(Json(AdapterResponse {
         adapter: adapter_inspection_item(result.adapter),
+    }))
+}
+
+pub async fn remove(
+    State(state): State<RestState>,
+    Path(reference): Path<String>,
+) -> Result<Json<AdapterResponse>, RestError> {
+    let selector = AdapterRefSelector::parse(&reference).map_err(|err| {
+        RestError::bad_request("bad_request", format!("invalid adapter reference: {err}"))
+    })?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .adapters()
+        .remove_usecase()
+        .remove_adapter(AdapterRemoveRequest {
+            layout: state.app().layout_input(LayoutResolveMode::Create),
+            selector,
+        })
+        .map_err(adapter_remove_error)?;
+
+    Ok(Json(AdapterResponse {
+        adapter: adapter_removal_item(result.outcome),
     }))
 }
 
@@ -266,5 +293,17 @@ fn adapter_error(error: KernelError) -> RestError {
             RestError::store_lookup("adapter_read_failed", message)
         }
         other => RestError::kernel("adapter_read_failed", other),
+    }
+}
+
+fn adapter_remove_error(error: KernelError) -> RestError {
+    match error {
+        KernelError::AdapterStoreUnavailable(message) if message.contains("still referenced") => {
+            RestError::conflict("adapter_in_use", message)
+        }
+        KernelError::AdapterStoreUnavailable(message) => {
+            RestError::store_lookup("adapter_remove_failed", message)
+        }
+        other => RestError::kernel("adapter_remove_failed", other),
     }
 }

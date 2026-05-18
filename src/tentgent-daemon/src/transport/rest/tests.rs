@@ -404,6 +404,50 @@ async fn model_inspect_rejects_invalid_reference() {
 }
 
 #[tokio::test]
+async fn model_remove_deletes_kernel_catalog_entry() {
+    let requested_home = unique_home("models-remove");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "d".repeat(64);
+    write_model_fixture(&home, &model_ref);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/v1/models/{}", &model_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["model"]["model_ref"].as_str(),
+        Some(model_ref.as_str())
+    );
+    assert!(!home.join("models/store").join(&model_ref).exists());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/models")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["models"].as_array().expect("models").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn adapters_returns_empty_catalog_for_isolated_home() {
     let requested_home = unique_home("adapters-empty");
     let state = rest_state_for_home(requested_home);
@@ -566,6 +610,51 @@ async fn adapter_inspect_rejects_invalid_reference() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = json_body(response).await;
     assert_eq!(body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn adapter_remove_deletes_kernel_catalog_entry() {
+    let requested_home = unique_home("adapters-remove");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let adapter_ref = "e".repeat(64);
+    let base_model_ref = "f".repeat(64);
+    write_adapter_fixture(&home, &adapter_ref, &base_model_ref);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/v1/adapters/{}", &adapter_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["adapter"]["adapter_ref"].as_str(),
+        Some(adapter_ref.as_str())
+    );
+    assert!(!home.join("adapters/store").join(&adapter_ref).exists());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/adapters")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["adapters"].as_array().expect("adapters").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
 }
 
 #[tokio::test]
@@ -775,6 +864,50 @@ async fn dataset_inspect_rejects_invalid_reference() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = json_body(response).await;
     assert_eq!(body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn dataset_remove_deletes_kernel_catalog_entry() {
+    let requested_home = unique_home("datasets-remove");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let dataset_ref = "8".repeat(64);
+    write_dataset_fixture(&home, &dataset_ref);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/v1/datasets/{}", &dataset_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["dataset"]["dataset_ref"].as_str(),
+        Some(dataset_ref.as_str())
+    );
+    assert!(!home.join("datasets/store").join(&dataset_ref).exists());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/datasets")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["datasets"].as_array().expect("datasets").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
 }
 
 #[tokio::test]

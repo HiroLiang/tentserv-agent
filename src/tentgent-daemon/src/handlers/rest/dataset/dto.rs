@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use tentgent_kernel::features::dataset::domain::{
-    DatasetInspection, DatasetMetadata, DatasetSummary,
+    DatasetInspection, DatasetMetadata, DatasetRemovalOutcome, DatasetSummary,
 };
 
 #[derive(Debug, Serialize)]
@@ -57,6 +57,10 @@ pub fn dataset_inspection_item(inspection: DatasetInspection) -> DatasetItem {
         Some(&inspection.manifest_path),
         Some(&inspection.source_path),
     )
+}
+
+pub fn dataset_removal_item(outcome: DatasetRemovalOutcome) -> DatasetItem {
+    dataset_item_from_parts(outcome.metadata, &outcome.store_path, None, None)
 }
 
 fn dataset_item_from_parts(

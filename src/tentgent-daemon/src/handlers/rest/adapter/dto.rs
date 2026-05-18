@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use tentgent_kernel::features::adapter::domain::{
-    AdapterInspection, AdapterMetadata, AdapterSummary,
+    AdapterInspection, AdapterMetadata, AdapterRemovalOutcome, AdapterSummary,
 };
 
 #[derive(Debug, Serialize)]
@@ -55,6 +55,10 @@ pub fn adapter_inspection_item(inspection: AdapterInspection) -> AdapterItem {
         Some(&inspection.manifest_path),
         Some(&inspection.source_path),
     )
+}
+
+pub fn adapter_removal_item(outcome: AdapterRemovalOutcome) -> AdapterItem {
+    adapter_item_from_parts(outcome.metadata, &outcome.store_path, None, None)
 }
 
 fn adapter_item_from_parts(
