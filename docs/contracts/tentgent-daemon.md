@@ -115,6 +115,13 @@ The first stable REST surface is:
   Lightweight process health response.
 - `GET /v1/status`
   Kernel-backed daemon status response.
+- `GET /v1/jobs`
+  Daemon-runtime job list response. Jobs expose daemon-local execution state
+  for long-running one-shot work, including status, stage, bounded progress,
+  bounded output tail, target, artifact, warnings, result summary, and error
+  summary.
+- `GET /v1/jobs/{job_id}`
+  Daemon-runtime job inspection response for one persisted or in-memory job.
 - `GET /v1/models`
   Kernel-backed model catalog list response.
 - `GET /v1/models/{reference}`
@@ -160,3 +167,27 @@ Daemon-local runtime state is allowed when it is process-scoped:
 
 Persistent state and product decisions should remain in `tentgent-kernel`
 unless the state is explicitly transport-only.
+
+The daemon runtime layer may define typed records for daemon execution state,
+such as background job status, progress, bounded output tails, affected targets,
+and produced artifacts. These types are daemon runtime models, not kernel
+feature domain. They may reference kernel-owned artifacts such as `model_ref`,
+`adapter_ref`, `dataset_ref`, `session_ref`, or LoRA `run_ref`, but product
+validation and store mutations stay behind kernel use cases.
+
+Long-running one-shot work should be represented as jobs when the caller needs
+to keep observing progress after the initial request returns. Job records should
+include enough state to restore operator visibility after navigation or process
+restart:
+
+- stable job id, kind, status, stage, and timestamps
+- target section/ref/path affected by the operation
+- produced artifact ref/path when available
+- bytes/files progress, percent, speed, and ETA when available
+- bounded redacted output tail plus optional daemon-host raw log path
+- warning, result, and error summaries
+
+The daemon session manager should coordinate session-aware chat and compaction
+above kernel session use cases. It may hold per-session locks, in-memory context
+caches, and compaction policy, but persisted session metadata and transcripts
+remain kernel session-store data.

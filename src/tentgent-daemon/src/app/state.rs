@@ -23,12 +23,13 @@ impl DaemonAppState {
         layout: RuntimeLayout,
         rest: RestConfig,
     ) -> Self {
+        let jobs = JobRegistry::from_runtime_dir(&layout.runtime_dir);
         Self {
             services,
             logging,
             layout,
             cache: MemoryCache::default(),
-            jobs: JobRegistry::default(),
+            jobs,
             scheduler: Scheduler::default(),
             rest,
         }

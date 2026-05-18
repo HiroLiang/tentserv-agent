@@ -35,6 +35,10 @@ Use this directory for active or still-open implementation plans that are too la
   state. This should become the shared readiness source for
   Linux/Windows/macOS backend gates before optional local-model, training, GPU,
   or non-chat model capabilities are advertised.
+- [tentgent-daemon-runtime.md](./tentgent-daemon-runtime.md)
+  Planned `tentgent-daemon` runtime systems for one-shot background jobs,
+  bounded progress/output visibility, session-aware daemon orchestration, and
+  chat-backed session compaction.
 - [model-capabilities-embedding-rerank.md](./model-capabilities-embedding-rerank.md)
   Planned model capability track for embedding and rerank models. Separates
   model storage format from serving capability before adding non-chat endpoints;

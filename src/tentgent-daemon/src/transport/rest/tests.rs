@@ -13,6 +13,10 @@ use tower::ServiceExt;
 use crate::{
     app::{DaemonAppState, DaemonServices},
     bootstrap::{DaemonBootstrapConfig, LoggingConfig, LoggingRuntime, RestConfig},
+    runtime::{
+        JobArtifact, JobKind, JobOutputLine, JobProgressPatch, JobProgressUpdate, JobStream,
+        JobTarget,
+    },
     transport::rest::{build_router, state::RestState},
 };
 
@@ -57,6 +61,163 @@ async fn status_reads_daemon_kernel_state() {
         .as_str()
         .expect("runtime_home")
         .contains("tentgent-daemon-rest-status"));
+}
+
+#[tokio::test]
+async fn jobs_returns_empty_registry_for_isolated_home() {
+    let requested_home = unique_home("jobs-empty");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["jobs"].as_array().expect("jobs").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn jobs_list_and_inspect_runtime_registry() {
+    let requested_home = unique_home("jobs-catalog");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let job = state.app().jobs().create(
+        JobKind::model_pull(),
+        "Pull model",
+        Some(JobTarget::new("models").with_reference("hf/repo")),
+        ["models".to_string()],
+    );
+    state.app().jobs().start(&job.job_id, "downloading");
+    state.app().jobs().update_progress(
+        &job.job_id,
+        JobProgressUpdate {
+            stage: Some("downloading config".to_string()),
+            progress: JobProgressPatch {
+                bytes_done: Some(50),
+                bytes_total: Some(100),
+                ..JobProgressPatch::default()
+            },
+            output: vec![JobOutputLine::new(
+                JobStream::Event,
+                "downloaded config.json",
+            )],
+            warning_summary: Some("slow network".to_string()),
+        },
+    );
+    state.app().jobs().succeed(
+        &job.job_id,
+        Some(JobArtifact::new("model").with_reference("abcdef123456")),
+        "model imported",
+    );
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let jobs = body["jobs"].as_array().expect("jobs");
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0]["job_id"].as_str(), Some(job.job_id.as_str()));
+    assert_eq!(jobs[0]["kind"], "model_pull");
+    assert_eq!(jobs[0]["status"], "succeeded");
+    assert_eq!(jobs[0]["target"]["section"], "models");
+    assert_eq!(jobs[0]["target"]["reference"], "hf/repo");
+    assert_eq!(jobs[0]["artifact"]["reference"], "abcdef123456");
+    assert_eq!(jobs[0]["progress"]["percent"], 50.0);
+    assert_eq!(jobs[0]["output"]["tail"][0]["stream"], "event");
+    assert_eq!(jobs[0]["warning_summary"], "slow network");
+    assert_eq!(jobs[0]["result_summary"], "model imported");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/jobs/{}", job.job_id.as_str()))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["job"]["job_id"].as_str(), Some(job.job_id.as_str()));
+    assert_eq!(body["job"]["status"], "succeeded");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn jobs_inspect_returns_not_found_for_missing_job() {
+    let requested_home = unique_home("jobs-not-found");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/jobs/job-missing")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "not_found");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn jobs_reload_persisted_records_from_runtime_dir() {
+    let requested_home = unique_home("jobs-reload");
+    let state = rest_state_for_home(requested_home.clone());
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let job = state.app().jobs().create(
+        JobKind::adapter_pull(),
+        "Pull adapter",
+        None,
+        ["adapters".to_string()],
+    );
+    state.app().jobs().succeed(
+        &job.job_id,
+        Some(JobArtifact::new("adapter").with_reference("fedcba654321")),
+        "adapter imported",
+    );
+
+    let reloaded_state = rest_state_for_home(requested_home);
+    let response = build_router(reloaded_state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/jobs/{}", job.job_id.as_str()))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["job"]["status"], "succeeded");
+    assert_eq!(body["job"]["artifact"]["reference"], "fedcba654321");
+
+    let _ = fs::remove_dir_all(home);
 }
 
 #[tokio::test]

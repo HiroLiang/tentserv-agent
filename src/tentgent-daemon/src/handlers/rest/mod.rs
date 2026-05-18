@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod dataset;
 pub mod health;
+pub mod jobs;
 pub mod model;
 pub mod server;
 pub mod session;
