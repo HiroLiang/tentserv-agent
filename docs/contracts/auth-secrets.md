@@ -94,14 +94,14 @@ persistence.
 - Auth env-secret lookup belongs behind an auth env probe. The probe may read
   process environment only, search the current working directory for `.env`, or
   use an explicit env file depending on policy.
-- HTTP/TUI/CLI status flows that do not explicitly validate or launch provider
+- CLI and daemon REST status flows that do not explicitly validate or launch provider
   work should prefer non-prompting status: report environment presence and
   recorded/cached keychain presence when available, but do not read the
   Keychain secret by default.
 - Secret-use flows such as provider validation, Hugging Face pulls, cloud
   server launch, and dataset cloud generation may read the Keychain secret.
   They may use a short process-session cache so one accepted unlock can serve
-  repeated operations in the same CLI/daemon/TUI process.
+  repeated operations in the same CLI or daemon process.
 - Process-session secret cache is memory-only, TTL-bounded, and must never be
   persisted under `TENTGENT_HOME` or config. Secret wrappers should clear their
   owned memory on drop where the Rust type can reasonably guarantee it.
@@ -117,7 +117,7 @@ persistence.
   entries. That is a signing/entitlement constraint rather than a user-facing
   setting.
 - The store must not iterate every possible biometric or unlock device, and
-  CLI/TUI/HTTP callers must not expose dynamic prompt preferences. Callers
+  CLI and daemon REST callers must not expose dynamic prompt preferences. Callers
   describe intent only: status, secret use, or validation.
 - Rust `std` does not provide a biometric API. macOS uses
   `security-framework` directly for user-presence access control; Windows and
@@ -176,24 +176,6 @@ The CLI auth surface composes kernel auth use cases directly. It uses
 `runtime/auth.toml` metadata store. CLI rendering must not manually persist
 provider auth metadata or secret values outside those use-case boundaries.
 
-## TUI Surface
-
-`tentgent tui` may expose guarded local provider setup through the same
-`AuthManager` and system Keychain path used by the CLI.
-
-Rules:
-
-- Provider key set/remove is local-only and must not add daemon HTTP mutation
-  routes.
-- Provider secrets must be masked during input.
-- Provider secrets must never be displayed, logged, serialized, or written to
-  `config.toml`.
-- Environment-variable credentials remain the effective source when present;
-  the TUI must show that env overrides keychain.
-- Removal must be confirmable and name the provider/keychain entry affected.
-- Slice 1 does not perform provider network validation by default after set or
-  remove; it shows local status.
-
 ## Validation Endpoints
 
 - Hugging Face: `GET https://huggingface.co/api/whoami-v2`
@@ -235,6 +217,6 @@ This HTTP surface is diagnostic-only:
 - If no env override exists, Keychain presence checks may trigger the platform
   Keychain prompt.
 
-Provider key mutation remains local-only through CLI or guarded TUI
-`AuthManager`/Keychain flows. Daemon HTTP secret mutation remains out of scope
-until a stricter HTTP secret mutation model is designed.
+Provider key mutation remains local-only through CLI Keychain flows. Daemon HTTP
+secret mutation remains out of scope until a stricter HTTP secret mutation model
+is designed.

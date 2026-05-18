@@ -7,27 +7,24 @@ use std::{
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
 use miette::IntoDiagnostic;
-use tentgent_core::daemon as core_daemon;
-use tentgent_http::{
-    security::{DaemonSecurityConfig, DAEMON_TOKEN_ENV_VAR},
-    DaemonHttpServer, DaemonHttpState,
+use tentgent_daemon::{
+    bootstrap_daemon_app,
+    transport::rest::security::{DaemonSecurityConfig, DAEMON_TOKEN_ENV_VAR},
+    DaemonBootstrapConfig, LoggingConfig, RestConfig,
 };
 use tentgent_kernel::{
     features::daemon::{
         domain::{
-            daemon_url, DaemonBind, DaemonInspection as KernelDaemonInspection,
-            DaemonProcessMetadata as KernelDaemonProcessMetadata,
-            DaemonWarning as KernelDaemonWarning, DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT,
+            daemon_url, DaemonInspection, DaemonWarning, DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT,
         },
         infra::{
             daemon_runtime_layout_input as daemon_layout, StdDaemonKernel,
             DEFAULT_DAEMON_PROBE_TIMEOUT,
         },
         usecases::{
-            DaemonClearProcessRequest, DaemonDetachedStartRequest, DaemonDetachedStartUseCase,
-            DaemonInspectionMode, DaemonLifecycleUseCase, DaemonPrepareRunRequest,
-            DaemonReadinessToken, DaemonRecordProcessStartRequest, DaemonStatusRequest,
-            DaemonStatusUseCase, DaemonStopRequest,
+            DaemonDetachedStartRequest, DaemonDetachedStartUseCase, DaemonInspectionMode,
+            DaemonLifecycleUseCase, DaemonReadinessToken, DaemonStatusRequest, DaemonStatusUseCase,
+            DaemonStopRequest,
         },
     },
     foundation::layout::LayoutResolveMode,
@@ -37,8 +34,6 @@ use super::commands::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 
 const DAEMON_URL_ENV_VAR: &str = "TENTGENT_DAEMON_URL";
 const DAEMON_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
-type DaemonInspection = core_daemon::DaemonInspection;
-type DaemonWarning = core_daemon::DaemonWarning;
 
 pub(crate) fn daemon_status_with_cleanup(home: Option<&Path>) -> miette::Result<DaemonInspection> {
     let kernel = StdDaemonKernel::new(DEFAULT_DAEMON_PROBE_TIMEOUT).into_diagnostic()?;
@@ -49,7 +44,7 @@ pub(crate) fn daemon_status_with_cleanup(home: Option<&Path>) -> miette::Result<
             mode: DaemonInspectionMode::CleanupStale,
         })
         .into_diagnostic()?;
-    Ok(core_daemon_inspection(status.inspection))
+    Ok(status.inspection)
 }
 
 pub async fn handle_daemon_command(action: DaemonCommands) -> miette::Result<()> {
@@ -74,8 +69,7 @@ pub async fn handle_daemon_command(action: DaemonCommands) -> miette::Result<()>
                     layout: daemon_layout(home, LayoutResolveMode::Create),
                 })
                 .into_diagnostic()?;
-            let inspection = core_daemon_inspection(outcome.inspection);
-            render_daemon_stop(outcome.stopped_pid, &inspection);
+            render_daemon_stop(outcome.stopped_pid, &outcome.inspection);
         }
     }
 
@@ -83,64 +77,33 @@ pub async fn handle_daemon_command(action: DaemonCommands) -> miette::Result<()>
 }
 
 async fn run_daemon(command: DaemonRunCommand) -> miette::Result<()> {
-    let kernel = StdDaemonKernel::new(DEFAULT_DAEMON_PROBE_TIMEOUT).into_diagnostic()?;
-    let daemon = kernel.usecase();
-    let security = DaemonSecurityConfig::from_env();
-    let prepared = daemon
-        .prepare_run(DaemonPrepareRunRequest {
-            layout: daemon_layout(command.home.clone(), LayoutResolveMode::Create),
-            host: command.host,
-            port: command.port,
-            token_enabled: security.token_enabled(),
-            allow_unsafe_bind: command.allow_unsafe_bind,
-        })
-        .into_diagnostic()?;
-    for warning in &prepared.bind_warnings {
-        println!("{} {}", style("warning").yellow().bold(), warning);
-    }
-    let server = DaemonHttpServer::bind(prepared.bind.host.clone(), prepared.bind.port).await?;
-    let pid = std::process::id();
-    let recorded = daemon
-        .record_process_start(DaemonRecordProcessStartRequest {
-            layout: daemon_layout(
-                Some(prepared.layout.home_dir.clone()),
-                LayoutResolveMode::ReadOnly,
-            ),
-            pid,
-            bind: DaemonBind {
-                host: server.host().to_string(),
-                port: server.port(),
-            },
-        })
-        .into_diagnostic()?;
-    let kernel_inspection = recorded.inspection;
-    let inspection = core_daemon_inspection(kernel_inspection.clone());
+    let mut rest = RestConfig::from_parts(true, command.host, command.port);
+    rest.allow_unsafe_bind = command.allow_unsafe_bind;
+    let app = bootstrap_daemon_app(DaemonBootstrapConfig {
+        home: command.home,
+        logging: LoggingConfig {
+            enabled: true,
+            env_filter: None,
+        },
+        rest,
+    })?;
+    let home_dir = app.state().layout().home_dir.clone();
+    let rest = app.state().rest_config().clone();
 
-    render_daemon_inspection("Daemon started", &inspection);
+    println!(
+        "{} {}",
+        style("==>").cyan().bold(),
+        style("Daemon starting").bold()
+    );
+    println!("{} {}", style("home").cyan().bold(), home_dir.display());
     println!(
         "{} listening on {}; try GET /healthz or GET /v1/status.",
         style("http").green().bold(),
-        server.bind_label()
+        daemon_url(&rest.host, rest.port)
     );
     println!("{} press Ctrl-C to stop.", style("note").yellow().bold());
-    let home_dir = inspection.home_dir.clone();
 
-    let serve_result = tokio::select! {
-        result = server.serve(DaemonHttpState::with_security(kernel_inspection, security)) => Some(result),
-        signal = tokio::signal::ctrl_c() => {
-            signal.into_diagnostic()?;
-            None
-        }
-    };
-    daemon
-        .clear_process_if_matches(DaemonClearProcessRequest {
-            layout: daemon_layout(Some(home_dir), LayoutResolveMode::ReadOnly),
-            expected_pid: Some(pid),
-        })
-        .into_diagnostic()?;
-    if let Some(result) = serve_result {
-        result?;
-    }
+    app.run_until_shutdown().await?;
     println!("{} daemon stopped.", style("==>").cyan().bold());
 
     Ok(())
@@ -249,7 +212,7 @@ pub(crate) async fn start_daemon_detached(
 
     Ok(DetachedDaemonStartOutcome {
         daemon_url: result.daemon_url,
-        inspection: core_daemon_inspection(result.inspection),
+        inspection: result.inspection,
         launched_pid: result.launched_pid,
         stdout_log_path: result.stdout_log_path,
         stderr_log_path: result.stderr_log_path,
@@ -257,44 +220,6 @@ pub(crate) async fn start_daemon_detached(
         bind_warnings: result.bind_warnings,
         already_running: result.already_running,
     })
-}
-
-fn core_daemon_inspection(inspection: KernelDaemonInspection) -> DaemonInspection {
-    DaemonInspection {
-        home_dir: inspection.home_dir,
-        runtime_dir: inspection.runtime_dir,
-        log_dir: inspection.log_dir,
-        process_path: inspection.process_path,
-        pid_path: inspection.pid_path,
-        stdout_log_path: inspection.stdout_log_path,
-        stderr_log_path: inspection.stderr_log_path,
-        running: inspection.running,
-        process: inspection.process.map(core_daemon_process_metadata),
-        warnings: inspection
-            .warnings
-            .into_iter()
-            .map(core_daemon_warning)
-            .collect(),
-    }
-}
-
-fn core_daemon_process_metadata(
-    process: KernelDaemonProcessMetadata,
-) -> core_daemon::DaemonProcessMetadata {
-    core_daemon::DaemonProcessMetadata {
-        pid: process.pid,
-        host: process.host,
-        port: process.port,
-        started_at: process.started_at,
-    }
-}
-
-fn core_daemon_warning(warning: KernelDaemonWarning) -> DaemonWarning {
-    DaemonWarning {
-        code: warning.code,
-        message: warning.message,
-        path: warning.path,
-    }
 }
 
 fn read_daemon_token_from_env() -> Option<String> {

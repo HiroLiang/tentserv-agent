@@ -24,17 +24,15 @@ Use this directory for active or still-open implementation plans that are too la
   project-owned Homebrew tap distribution path: stable release readiness, tag
   assets, tap formula, install/upgrade/uninstall smoke, docs, and tap update
   automation.
+- [apple-signed-cli-release.md](./apple-signed-cli-release.md)
+  Next release-engineering track for GitHub Actions macOS CLI signing,
+  notarization, checksums, Homebrew tap updates, and tag-driven release
+  automation. This track is CLI plus daemon only; no TUI artifact is produced.
 - [linux-release-support.md](./linux-release-support.md)
   Linux release/install track. The x86_64 prerelease path now has GitHub
   Release tarballs, `install.sh` support, base runtime bootstrap smoke, and
   user-facing preview docs. Optional expansion remains open for Linux arm64,
   distro packages, and heavier runtime profiles.
-- [tentgent-kernel-migration.md](./tentgent-kernel-migration.md)
-  Planned `tentgent-kernel` migration for unified runtime layout, application
-  use cases, filesystem store boundaries, and the machine-local capability
-  state. This should become the shared readiness source for
-  Linux/Windows/macOS backend gates before optional local-model, training, GPU,
-  or non-chat model capabilities are advertised.
 - [tentgent-daemon-runtime.md](./tentgent-daemon-runtime.md)
   Planned `tentgent-daemon` runtime systems for one-shot background jobs,
   bounded progress/output visibility, session-aware daemon orchestration, and
@@ -43,31 +41,19 @@ Use this directory for active or still-open implementation plans that are too la
   Planned model capability track for embedding and rerank models. Separates
   model storage format from serving capability before adding non-chat endpoints;
   local backend work should use kernel capability-state gates.
-- [tui-v2-optimization.md](./tui-v2-optimization.md)
-  Deferred TUI interaction redesign plan. The `v0.3.0-alpha.1` TUI is treated
-  as an archived baseline, not a UX contract.
-- [tui-session-mvp.md](./tui-session-mvp.md)
-  Historical daemon-first terminal UI MVP plan for local status, store, server,
-  session, dataset, and training workflows. It remains as the detailed alpha
-  implementation record and routing document. Visual draft:
-  [tui/design/README.md](./tui/design/README.md).
-
 ## Recommended Order
 
-1. Start the `tentgent-kernel` migration with the crate shell, runtime layout,
-   and app-context bundles.
-2. Wire capability state into backend-gated workflow bundles before
-   profile-specific backend readiness claims.
-3. Use capability state to decide whether Linux optional expansion should
-   continue now or wait for preview feedback.
-4. Plan and implement model capabilities for embedding and rerank models.
-5. Redesign the TUI shell using `v0.3.0-alpha.1` as an archived baseline.
+1. Run the Apple signed CLI release track so macOS artifacts are Developer ID
+   signed, notarized, checked, and tap-update ready.
+2. Continue Linux optional expansion only after preview feedback and runtime
+   profile readiness are clear.
+3. Plan and implement model capabilities for embedding and rerank models.
+4. Keep kernel capability state as the backend-readiness source for any new
+   model/runtime feature.
 
 ## Deferred Plans
 
-- macOS Developer ID signing and notarization remain deferred inside
-  [packaging-install-mvp.md](./packaging-install-mvp.md) until the unsigned
-  project-owned tap flow is stable.
+- No TUI redesign track is active. The product surface is CLI plus daemon REST.
 
 ## Archived Plans
 

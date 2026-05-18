@@ -392,7 +392,7 @@ fn missing_runtime_hint(runtime: &PythonRuntimeLayout) -> &'static str {
             "run `tentgent runtime bootstrap`, then run `tentgent doctor` to verify the managed runtime"
         }
         PythonRuntimeSource::DevelopmentSource | PythonRuntimeSource::EnvironmentOverride => {
-            "run `tentgent doctor --fix` during development or `tentgent status` to inspect runtime asset paths"
+            "run `tentgent doctor --fix` during development or `tentgent runtime status` to inspect runtime asset paths"
         }
     }
 }

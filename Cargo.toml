@@ -2,9 +2,7 @@
 resolver = "2"
 members = [
     "src/tentgent-kernel",
-    "src/tentgent-core",
     "src/tentgent-cli",
-    "src/tentgent-http",
     "src/tentgent-daemon",
 ]
 default-members = ["src/tentgent-cli"]
@@ -12,7 +10,7 @@ default-members = ["src/tentgent-cli"]
 [workspace.package]
 edition = "2021"
 rust-version = "1.81"
-version = "0.3.4-alpha.2"
+version = "0.3.5-alpha.0"
 license = "Apache-2.0"
 
 [workspace.dependencies]
@@ -20,7 +18,6 @@ axum = "0.8"
 clap = { version = "4.5", features = ["derive"] }
 comfy-table = "7"
 console = "0.16"
-crossterm = "0.29"
 directories = "6"
 dotenvy = "0.15"
 futures-util = "0.3"
@@ -28,7 +25,6 @@ hex = "0.4"
 indicatif = "0.18"
 keyring = { version = "3.6", default-features = false }
 miette = { version = "7", features = ["fancy"] }
-ratatui = "0.29"
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
 rpassword = "7"
 security-framework = { version = "3.7", features = ["OSX_10_15"] }
@@ -44,7 +40,6 @@ tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-unicode-width = "0.2"
 walkdir = "2"
 zeroize = "1"
 

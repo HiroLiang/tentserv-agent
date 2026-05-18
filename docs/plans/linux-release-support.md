@@ -236,7 +236,7 @@ Implementation verification:
 ```bash
 bash scripts/test-runtime-profiles.sh
 cargo test -p tentgent-cli runtime
-cargo test -p tentgent-core doctor
+cargo test -p tentgent-kernel doctor
 ```
 
 - Verified a source-mounted minimal `ubuntu:24.04` / `linux/amd64` container can

@@ -1,7 +1,7 @@
 # Session Store
 
-This document defines the local session store boundary for daemon-backed TUI,
-CLI, and external chat transcript discovery and mutation.
+This document defines the local session store boundary for CLI, daemon REST,
+and external chat transcript discovery and mutation.
 
 ## Scope
 

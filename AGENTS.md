@@ -21,21 +21,14 @@ If the current task is about agent workflows, role selection, or role-specific w
 
 ## Repository Map
 
-- `src/tentgent-core/`
-  Shared Rust core types, runtime-facing contracts, routing logic, and server
-  runtime launch helpers.
 - `src/tentgent-kernel/`
-  Migration landing zone for unified runtime layout, foundation primitives,
-  machine capability state, and feature use cases. Read
-  `docs/contracts/kernel-architecture.md` before moving behavior into this
-  crate.
+  Shared Rust domain, infrastructure ports, runtime layout, machine capability
+  state, and feature use cases.
 - `src/tentgent-cli/`
   Rust CLI entry point.
 - `src/tentgent-daemon/`
   Rust long-running daemon application host for bootstrap, transports,
   daemon-local runtime systems, and kernel use-case wiring.
-- `src/tentgent-http/`
-  Legacy Rust HTTP daemon entry point and route layer.
 - `python/tentgent-daemon/`
   Standalone Python subproject that owns model runtimes, backend selection, and adapter lifecycle.
 - `python/tentgent-daemon/src/tentgent_daemon/`
@@ -91,8 +84,6 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
-- `docs/plans/tui-session-mvp.md`
-  Future terminal UI plan for selectable workflows and coarse chat session context management.
 - `docs/plans/archive/README.md`
   Router for completed plans that should be consulted only when historical implementation context is needed.
 - `docs/plans/archive/http-daemon-mvp.md`
@@ -112,7 +103,7 @@ Key current documents:
 
 ## Kernel Boundary Rule
 
-- `src/tentgent-kernel/` should avoid CLI, HTTP, TUI, daemon, or other
+- `src/tentgent-kernel/` should avoid CLI, HTTP, daemon, or other
   entrypoint-specific naming unless the type is explicitly an adapter boundary
   for that entrypoint.
 - Kernel domain, port, and use-case names should describe product capabilities,

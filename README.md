@@ -84,7 +84,7 @@ Check the local runtime and provider key state:
 
 ```bash
 tentgent doctor
-tentgent status
+tentgent runtime status
 tentgent auth status
 ```
 
@@ -94,6 +94,7 @@ Configure provider keys through the system keychain:
 tentgent auth hf set
 tentgent auth openai set
 tentgent auth anthropic set
+tentgent auth gemini set
 ```
 
 Or use environment variables / `.env` for the current process:
@@ -103,6 +104,7 @@ cat > .env <<'EOF'
 HF_TOKEN=...
 OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
 EOF
 ```
 
@@ -164,7 +166,9 @@ tentgent server ps
 tentgent server stop <server-ref>
 ```
 
-Direct model-server chat is stateless. Use the daemon in the next section for session-aware chat. For server chat request and adapter rules, see [docs/contracts/server-chat.md](./docs/contracts/server-chat.md).
+Direct model-server chat is stateless. Use the daemon in the next section for
+model-ref based native and compatibility chat routes. For server chat request
+and adapter rules, see [docs/contracts/server-chat.md](./docs/contracts/server-chat.md).
 
 ## Start And Stop The Daemon
 
@@ -175,12 +179,18 @@ curl -sS http://127.0.0.1:8790/healthz
 curl -sS http://127.0.0.1:8790/v1/status
 ```
 
-Use daemon chat when you want session-aware routing through a selected server:
+Use daemon chat when you want the local daemon to run the same text-only chat
+use case through native, OpenAI-compatible, Claude-compatible, or
+Gemini-compatible request shapes:
 
 ```bash
 curl -sS http://127.0.0.1:8790/v1/chat \
   -H 'Content-Type: application/json' \
-  -d '{"server_ref":"<server-ref>","messages":[{"role":"user","content":"Hello"}],"stream":false}'
+  -d '{"model_ref":"<model-ref>","messages":[{"role":"user","content":"Hello"}],"stream":false}'
+
+curl -sS http://127.0.0.1:8790/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"<model-ref>","messages":[{"role":"user","content":"Hello"}],"stream":true}'
 ```
 
 Stop the daemon:
@@ -190,14 +200,6 @@ tentgent daemon stop
 ```
 
 For the full daemon API, endpoint list, response shapes, auth behavior, and error mapping, see [docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md).
-
-## Enter The TUI
-
-```bash
-tentgent tui
-```
-
-The TUI is an operator console for daemon discovery, chat, jobs, resources, stores, servers, training, and guarded setup flows.
 
 ## Remove The Tool
 
@@ -229,20 +231,21 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.3.5-alpha.0`: CLI plus daemon REST consolidation release; removes TUI, legacy core, and legacy HTTP crates, and keeps broad diagnostics under `doctor`.
 - `v0.3.4-alpha.2`: Linux x86_64 preview release with release tarball install, default base runtime bootstrap, and Docker-smoked `doctor` readiness on Ubuntu 24.04.
 - `v0.3.3`: adds Homebrew tap update tooling for repeatable formula URL and checksum updates after stable releases.
 - `v0.3.2`: adds `tentgent runtime bootstrap` as the package-manager friendly managed Python runtime setup entry point.
 - `v0.3.1`: macOS installer hotfix that ad-hoc signs release binaries and clears quarantine metadata after install.
-- `v0.3.0`: stable 0.3.x baseline for the TUI alpha line, session context fixes, daemon/server boundaries, release safety, size display, runtime footprint visibility, and improved transcript rendering.
+- `v0.3.0`: stable 0.3.x baseline for session context fixes, daemon/server boundaries, release safety, size display, runtime footprint visibility, and improved transcript rendering.
 - `v0.3.0-alpha.2`: bugfix preview for session context, rolling summaries, daemon/server boundaries, prerelease safety, size display, and runtime footprint visibility.
-- `v0.3.0-alpha.1`: TUI preview release with operator console workflows for chat, jobs, resources, store actions, server/training actions, picker-based create flows, session delete, and compact ref display.
-- `v0.2.0`: local HTTP daemon parity expansion with store, dataset, server, chat, training, diagnostics, bounded session APIs, and a first TUI setup surface.
+- `v0.3.0-alpha.1`: historical terminal UI preview release. The current tool is CLI plus daemon only.
+- `v0.2.0`: local HTTP daemon parity expansion with store, dataset, server, chat, training, diagnostics, and bounded session APIs.
 
 See [docs/user/version.md](./docs/user/version.md) for version notes, feature lists, and known limits.
 
 ## Full CLI Command Reference
 
-The README intentionally shows the shortest path. See [docs/user/commands.md](./docs/user/commands.md) for the complete CLI command reference covering TUI, auth, models, adapters, datasets, chat, servers, daemon, sessions, and LoRA training.
+The README intentionally shows the shortest path. See [docs/user/commands.md](./docs/user/commands.md) for the complete CLI command reference covering auth, models, adapters, datasets, chat, servers, daemon, sessions, and LoRA training.
 
 ## API And Contracts
 

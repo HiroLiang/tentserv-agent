@@ -14,8 +14,6 @@ pub const DEFAULT_DAEMON_PORT: u16 = 8790;
 pub struct TentgentConfig {
     pub schema_version: u32,
     #[serde(default)]
-    pub tui: TuiConfig,
-    #[serde(default)]
     pub daemon: DaemonConfig,
 }
 
@@ -23,23 +21,7 @@ impl Default for TentgentConfig {
     fn default() -> Self {
         Self {
             schema_version: CONFIG_SCHEMA_VERSION,
-            tui: TuiConfig::default(),
             daemon: DaemonConfig::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TuiConfig {
-    pub last_section: String,
-    pub auto_start_daemon: bool,
-}
-
-impl Default for TuiConfig {
-    fn default() -> Self {
-        Self {
-            last_section: "status".to_string(),
-            auto_start_daemon: false,
         }
     }
 }

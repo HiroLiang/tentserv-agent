@@ -49,7 +49,7 @@ impl RestEntrypoint {
                 host: Some(self.config.host.clone()),
                 port: Some(self.config.port),
                 token_enabled: daemon_token_enabled(),
-                allow_unsafe_bind: false,
+                allow_unsafe_bind: self.config.allow_unsafe_bind,
             })
             .into_diagnostic()?;
         for warning in prepared.bind_warnings {

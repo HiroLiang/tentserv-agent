@@ -61,7 +61,7 @@ pub struct DatasetLocalImportResult {
     pub outcome: DatasetImportOutcome,
 }
 
-/// Validation target selected by CLI, HTTP, or TUI callers.
+/// Validation target selected by CLI, daemon REST, or future entrypoint callers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DatasetValidationTargetSelection {
     LocalPath(PathBuf),

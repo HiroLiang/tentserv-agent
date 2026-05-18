@@ -5,7 +5,7 @@ This document defines how Tentgent should resolve and use its daemon-managed loc
 ## Purpose
 
 - Keep models, adapters, datasets, training plans, cache, runtime sockets, and logs outside the repository by default.
-- Let the CLI and future HTTP entry point share the same persistent local state.
+- Let the CLI and daemon REST entry point share the same persistent local state.
 - Make development testing easy to isolate without changing production defaults.
 
 ## Naming
@@ -77,15 +77,11 @@ provider keys.
 
 ## Shared Config
 
-`config.toml` stores non-secret local preferences shared by the CLI and TUI.
+`config.toml` stores non-secret local preferences shared by the CLI and daemon.
 The current schema is:
 
 ```toml
 schema_version = 1
-
-[tui]
-last_section = "status"
-auto_start_daemon = false
 
 [daemon]
 url = "http://127.0.0.1:8790"

@@ -37,3 +37,6 @@ Use this directory for completed plans that are no longer the active execution t
   Completed OpenAI and Claude cloud provider server routing through local `tentgent server` chat.
 - [http-chat-streaming-mvp.md](./http-chat-streaming-mvp.md)
   Completed Server-Sent Events streaming for local base-model, local adapter, and cloud provider chat.
+- [tentgent-kernel-migration.md](./tentgent-kernel-migration.md)
+  Completed kernel consolidation record. The active workspace now uses
+  `tentgent-kernel` directly, with the legacy Rust core and HTTP crates removed.

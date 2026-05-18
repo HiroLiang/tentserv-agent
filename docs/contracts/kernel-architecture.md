@@ -1,11 +1,11 @@
 # Kernel Architecture
 
-This contract defines the internal shape of `src/tentgent-kernel` while the
-project migrates behavior out of `tentgent-core`.
+This contract defines the internal shape of `src/tentgent-kernel` after the
+legacy `tentgent-core` and `tentgent-http` crates were removed.
 
-The current kernel is intentionally incremental. It should make package
-boundaries and shared data objects obvious first, then move behavior one
-coherent bundle at a time.
+The kernel is the shared behavior owner for CLI and daemon REST entrypoints.
+Entrypoints should parse input, render output, and map transport DTOs without
+rebuilding product orchestration.
 
 ## Top-Level Shape
 
@@ -25,8 +25,8 @@ Rules:
 - `capabilities` contains shared readiness vocabulary. It is not a user-facing
   feature package.
 - `features/*` maps to product areas and command families.
-- CLI, HTTP, and TUI stay as input/rendering layers. They should not gain new
-  ad hoc path, probe, or backend readiness logic while the migration is active.
+- CLI and daemon REST stay as input/rendering layers. They should not gain new
+  ad hoc path, probe, or backend readiness logic.
 
 ## Current Package Shape
 
@@ -58,7 +58,7 @@ Do not put these in `domain.rs`:
 - environment-variable lookup
 - process spawning
 - backend probing
-- CLI/HTTP/TUI rendering
+- CLI or daemon REST rendering
 - hidden dependency injection
 
 ## Foundation
@@ -127,14 +127,14 @@ older cached capability files should be treated as stale by use cases.
 `capabilities/usecases/port.rs` defines use-case-level ports for:
 
 - resolving current or refreshed capability snapshots for callers without
-  making CLI, HTTP, or TUI assemble layout and platform probes themselves
+  making CLI or daemon REST assemble layout and platform probes themselves
 - enforcing backend and runtime-profile readiness without exposing checker
   details to feature packages
 
 `capabilities/usecases/` owns orchestration implementations and their local
 request/response structs. For example, `resolver.rs` keeps
 `MachineCapabilitiesInput` and `MachineCapabilitiesSnapshot` next to
-`StdMachineCapabilitiesResolver`. CLI, HTTP, and TUI should call use cases
+`StdMachineCapabilitiesResolver`. CLI and daemon REST should call use cases
 instead of assembling layout, platform, cache, and probe steps themselves.
 
 Use the term capability state for the data and cache. Do not add a separate
@@ -251,7 +251,7 @@ not resolve auth, bootstrap Python, or choose CLI progress rendering.
 - removing stored models after server-reference checks
 
 Standard model use cases should compose foundation layout, runtime resolution,
-auth secret resolution, and model infra ports. CLI, HTTP, and TUI should call
+auth secret resolution, and model infra ports. CLI and daemon REST should call
 these use cases instead of rebuilding model-store orchestration directly.
 
 `features/adapter/domain.rs` owns pure adapter-store names and compatibility
@@ -312,7 +312,7 @@ rendering.
 
 Standard adapter use cases should compose foundation layout, runtime
 resolution, auth secret resolution, model catalog reads, and adapter infra
-ports. CLI, HTTP, TUI, training, and server preflight callers should call these
+ports. CLI, daemon REST, training, and server preflight callers should call these
 use cases instead of rebuilding adapter-store orchestration directly.
 Current standard adapter use cases live in focused sibling files under
 `features/adapter/usecases/`: catalog reads, local import, Hugging Face pull,
@@ -348,7 +348,7 @@ migration bundle moves.
 - checking train plans/runs that block dataset removal
 
 Dataset ports should receive resolved layout/runtime/auth inputs from use
-cases. They should not resolve runtime-home, prompt for auth, decide CLI/HTTP
+cases. They should not resolve runtime-home, prompt for auth, decide CLI/daemon REST
 rendering, silently bootstrap Python dependencies, or duplicate train-reference
 policy in frontends.
 
@@ -366,7 +366,7 @@ validation, manifest diffing, Markdown template rendering, train plan/run
 reference checks, and dataset synth/eval helper execution through an already
 selected Python runtime. Runtime clients may build helper argv and parse helper
 JSON/progress output, but they must not resolve auth, bootstrap Python, call
-providers directly, or decide CLI/HTTP rendering.
+providers directly, or decide CLI/daemon REST rendering.
 
 `features/dataset/usecases/port.rs` defines workflow boundaries for:
 
@@ -384,7 +384,7 @@ providers directly, or decide CLI/HTTP rendering.
   reference guards
 
 Standard dataset use cases should compose foundation layout, runtime
-resolution, auth secret resolution, and dataset infra ports. CLI, HTTP, TUI,
+resolution, auth secret resolution, and dataset infra ports. CLI, daemon REST,
 and training callers should call these use cases instead of rebuilding
 dataset-store orchestration directly.
 Current standard dataset use cases live in focused sibling files under
@@ -411,7 +411,7 @@ in chat infra or use cases once the chat migration bundle moves.
 - executing a prepared chat request through a selected Python runtime client
 
 Chat ports should receive resolved layout/runtime data from use cases. They
-should not resolve runtime-home, decide CLI/HTTP rendering, silently bootstrap
+should not resolve runtime-home, decide CLI/daemon REST rendering, silently bootstrap
 Python dependencies, or duplicate model/adapter catalog orchestration in
 frontends.
 
@@ -431,8 +431,8 @@ servers, choose session context, or write chat transcripts.
 - running streaming chat generation while forwarding normalized stream events
   through a caller-provided sink
 
-Chat use cases should be the shared orchestration surface for CLI, HTTP, and
-future TUI callers. Frontends should parse input and render output, while chat
+Chat use cases should be the shared orchestration surface for CLI and daemon
+REST callers. Frontends should parse input and render output, while chat
 use cases own model/adapter/runtime composition. Session transcript reads,
 compaction, and writes should remain in session-specific workflows that call the
 chat use cases with already selected context messages.
@@ -458,7 +458,7 @@ transcript state:
 
 It must not read or write session files, acquire locks, generate refs, inspect
 server or adapter stores, call chat models for summaries, proxy HTTP, or render
-CLI/HTTP/TUI output. Those jobs belong in session infra/use cases, chat use
+CLI or daemon REST output. Those jobs belong in session infra/use cases, chat use
 cases, server/adapter use cases, or frontend layers when the session migration
 bundle moves.
 
@@ -508,7 +508,7 @@ The current standard session use case composes the layout resolver, file/SQL
 neutral session store, lock manager, clock, identity generator, server/adapter
 reference resolvers, and summary generator. Shared compaction and chat-context
 planning rules live in `features/session/usecases/common.rs`, while
-`StdSessionUseCase` owns the workflow sequencing that CLI, HTTP, and future TUI
+`StdSessionUseCase` owns the workflow sequencing that CLI and daemon REST
 entrypoints should call.
 The Rust CLI session commands and `chat --session` path are wired through
 `StdSessionUseCase`; CLI-specific adapters resolve server and adapter refs
@@ -528,7 +528,7 @@ as command-level orchestration.
 It must not resolve runtime-home, read environment variables, create
 directories, read or write process metadata, inspect process liveness, spawn
 foreground or detached daemon processes, probe HTTP readiness, validate bearer
-tokens, or render CLI/HTTP/TUI output. Those jobs belong in daemon infra,
+tokens, or render CLI or daemon REST output. Those jobs belong in daemon infra,
 daemon use cases, HTTP security, or frontend layers once the daemon migration
 bundle moves.
 
@@ -545,10 +545,10 @@ bundle moves.
 
 Daemon ports should receive resolved runtime layout, explicit bind data, and
 explicit token/auth state from use cases. They should not resolve runtime-home,
-read daemon token environment variables, decide CLI/HTTP rendering, or couple
+read daemon token environment variables, decide CLI/daemon REST rendering, or couple
 kernel code to the HTTP route layer.
 Daemon async port futures are `Send`, and daemon port traits are `Sync`, so
-CLI/TUI entrypoints can spawn detached-start work without rebuilding adapters.
+CLI entrypoints can spawn detached-start work without rebuilding adapters.
 
 `features/daemon/infra/` owns the standard filesystem, local-process,
 bind-safety, detached-launch, readiness-probe, and clock adapters for those
@@ -557,7 +557,7 @@ unsafe binds without DNS resolution, launches detached child commands with
 stdout/stderr log files, and probes `/healthz` plus optional authenticated
 `/v1/status`. It must not parse CLI flags, read daemon token environment
 variables, own HTTP route handling, or render daemon status.
-`StdDaemonKernel` is the owned standard adapter bundle used by CLI and HTTP
+`StdDaemonKernel` is the owned standard adapter bundle used by CLI and daemon REST
 entrypoints so they do not duplicate daemon use-case wiring.
 
 `features/daemon/usecases/port.rs` defines workflow boundaries for:
@@ -570,7 +570,7 @@ entrypoints so they do not duplicate daemon use-case wiring.
 - starting or reusing a detached daemon process and waiting for readiness
 
 Daemon use cases should compose foundation layout resolution, daemon infra
-ports, explicit daemon-token presence, and readiness probes. CLI, HTTP, and TUI
+ports, explicit daemon-token presence, and readiness probes. CLI and daemon REST
 entrypoints should call these use cases instead of rebuilding daemon metadata,
 bind-safety, process-control, and readiness orchestration directly. Use case
 requests may carry a redacted readiness token for optional `/v1/status` probes,
@@ -579,9 +579,9 @@ values.
 The current `StdDaemonUseCase` composes layout resolution, daemon state store,
 process probe/control, bind safety, detached launching, readiness probing, and
 clock ports for status, foreground lifecycle, and detached startup workflows.
-The Rust CLI daemon command path, TUI daemon status refresh, low-level
-`tentgent-http` binary, and HTTP status route use this kernel use case surface.
-HTTP route handling remains outside the daemon kernel package.
+The Rust CLI daemon command path and `tentgent-daemon` REST transport use this
+kernel use case surface. HTTP route handling remains outside the daemon kernel
+package.
 
 `features/server/domain.rs` owns pure model-bound server names and durable
 state:
@@ -596,7 +596,7 @@ state:
 
 It must not read model stores, write specs, inspect process liveness, resolve
 auth secrets, build Python commands, launch servers, probe HTTP health, or
-render CLI/HTTP responses. Those jobs belong in server infra, server use cases,
+render CLI/daemon REST responses. Those jobs belong in server infra, server use cases,
 runtime infra, auth use cases, or frontend layers.
 
 `features/server/ports.rs` defines narrow boundaries for:
@@ -609,7 +609,7 @@ runtime infra, auth use cases, or frontend layers.
 
 Server ports should receive resolved layout, runtime target, and selector
 inputs from use cases. They should not resolve runtime-home, validate Keychain
-state, decide CLI/HTTP rendering, silently bootstrap Python, or duplicate model
+state, decide CLI/daemon REST rendering, silently bootstrap Python, or duplicate model
 catalog orchestration in frontends.
 
 `features/server/infra/` owns the standard filesystem and local-process
@@ -631,11 +631,9 @@ cases and must never be persisted in server specs or process metadata.
   stopping running server processes
 
 Standard server use cases compose foundation layout, model catalog reads,
-server infra ports, and pure server identity rules. The Rust CLI server
-command now composes these kernel server use cases directly for spec creation,
-catalog reads, process state, and Python server launch. HTTP server lifecycle
-routes are still migration callers until they switch from the legacy core
-`ServerManager` to this kernel package.
+server infra ports, and pure server identity rules. The Rust CLI server command
+and daemon server lifecycle routes compose these kernel server use cases for
+spec creation, catalog reads, process state, and Python server launch.
 
 `features/train/domain.rs` owns pure LoRA training names and planning rules:
 
@@ -646,7 +644,7 @@ routes are still migration callers until they switch from the legacy core
 - pure override application and automatic profile defaults
 
 It must not read model or dataset catalogs, inspect files, write plan/run
-records, spawn Python, import adapters, or render CLI/HTTP output. Those jobs
+records, spawn Python, import adapters, or render CLI/daemon REST output. Those jobs
 belong in train infra, train use cases, runtime infra, and frontend layers.
 
 `features/train/ports.rs` defines narrow boundaries for:
@@ -674,11 +672,10 @@ generation, and detached worker launch.
 - listing/inspecting runs and reading bounded metrics/raw-log tails
 
 Standard train use cases compose foundation layout/platform, model and dataset
-catalog reads, train infra ports, and train planning rules. CLI should call
-these use cases for plan/run state instead of using `tentgent-core` managers.
-Foreground CLI execution may still own progress rendering while using train
-use cases for durable state and adapter use cases for successful run imports.
-HTTP train routes remain on the legacy path until the CLI migration is complete.
+catalog reads, train infra ports, and train planning rules. CLI and daemon REST
+should call these use cases for plan/run state. Foreground CLI execution may
+still own progress rendering while using train use cases for durable state and
+adapter use cases for successful run imports.
 
 `features/runtime/ports.rs` defines narrow boundaries for:
 
@@ -690,9 +687,7 @@ HTTP train routes remain on the legacy path until the CLI migration is complete.
 - executing runtime bootstrap from an explicit plan
 - probing runtime initialization/readiness state
 
-Runtime infra and use cases are still migration work; old `tentgent-core`
-runtime helpers remain the behavior owner until their callers move. Current
-runtime infra owns the standard Python runtime resolver, executable path
+Runtime infra owns the standard Python runtime resolver, executable path
 resolver, bootstrap planner/executor, and read-only runtime state probe.
 
 `features/runtime/usecases/port.rs` defines orchestration boundaries for:
@@ -704,7 +699,7 @@ resolver, bootstrap planner/executor, and read-only runtime state probe.
 
 Standard runtime use cases live in focused sibling files under
 `features/runtime/usecases/`. They assemble foundation layout/platform ports
-with runtime infra ports; CLI, HTTP, and doctor callers should depend on these
+with runtime infra ports; CLI, daemon REST, and doctor callers should depend on these
 use cases instead of directly composing runtime infra.
 
 `features/doctor/domain.rs` owns pure diagnostic report names and rules:
@@ -731,7 +726,7 @@ runtime or execute repair steps directly.
 
 `features/doctor/usecases/port.rs` defines workflow boundaries for:
 
-- building a doctor report for local CLI, HTTP, or TUI callers without letting
+- building a doctor report for local CLI or daemon REST callers without letting
   those frontends assemble path, command, runtime, and capability checks
 - running an explicit repair flow that delegates mutation to runtime use cases
   and returns a fresh doctor report
@@ -815,7 +810,7 @@ HTTP client, while the package boundary remains `AuthSecretValidator`.
 - `mutation.rs`: local set/remove flows for Keychain secrets, non-secret
   metadata, and process cache.
 - `validation.rs`: provider validation orchestration and metadata updates.
-- `port.rs`: use-case-level traits for CLI, HTTP, TUI, and future server
+- `port.rs`: use-case-level traits for CLI, daemon REST, and future server
   preflight callers.
 
 Auth use cases may move secrets in memory, but they must not render, log,
@@ -825,9 +820,8 @@ The Rust CLI auth command now composes these kernel auth use cases directly.
 The Rust CLI adapter command now composes kernel adapter infra and use cases
 directly for local imports, Hugging Face pulls, catalog reads, binding, and
 removal.
-HTTP auth status, TUI auth setup, and core runtime provider-secret callers are
-still migration callers until their entry points are switched to the same
-kernel package.
+Daemon auth status, CLI auth setup, and runtime provider-secret callers use the
+same kernel package.
 
 ## Dependency Direction
 
@@ -904,9 +898,9 @@ runs.
 When persistence moves into kernel, product-specific stores should live in the
 owning package. Shared low-level file helpers can live under `foundation/fs`.
 
-## Migration Rule
+## Extension Rule
 
-During migration, `tentgent-core` remains the behavior owner. New kernel code
-should only add structure or move a coherent bundle with tests. Do not add new
-ad hoc path, probe, or manager logic to old core when the matching kernel
-package already exists.
+New behavior should enter the owning kernel feature package first, with tests,
+then be exposed by CLI or daemon REST adapters. Do not add new ad hoc path,
+probe, manager, or orchestration logic to entrypoint crates when the matching
+kernel package already exists.

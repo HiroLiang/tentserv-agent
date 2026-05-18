@@ -19,6 +19,10 @@ struct Args {
     #[arg(long)]
     rest_disabled: bool,
 
+    /// Allow binding to non-loopback or wildcard hosts without a daemon token.
+    #[arg(long)]
+    allow_unsafe_bind: bool,
+
     #[arg(long, value_name = "FILTER")]
     log_filter: Option<String>,
 }
@@ -32,7 +36,8 @@ async fn main() -> miette::Result<()> {
             enabled: true,
             env_filter: args.log_filter,
         },
-        rest: RestConfig::from_parts(!args.rest_disabled, args.host, args.port),
+        rest: RestConfig::from_parts(!args.rest_disabled, args.host, args.port)
+            .with_allow_unsafe_bind(args.allow_unsafe_bind),
     };
 
     bootstrap_daemon_app(config)?.run_until_shutdown().await

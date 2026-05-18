@@ -39,6 +39,7 @@ pub struct RestConfig {
     pub enabled: bool,
     pub host: String,
     pub port: u16,
+    pub allow_unsafe_bind: bool,
 }
 
 impl RestConfig {
@@ -47,7 +48,13 @@ impl RestConfig {
             enabled,
             host: host.unwrap_or_else(|| DEFAULT_DAEMON_HOST.to_string()),
             port: port.unwrap_or(DEFAULT_DAEMON_PORT),
+            allow_unsafe_bind: false,
         }
+    }
+
+    pub fn with_allow_unsafe_bind(mut self, allow_unsafe_bind: bool) -> Self {
+        self.allow_unsafe_bind = allow_unsafe_bind;
+        self
     }
 }
 

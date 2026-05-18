@@ -1,30 +1,30 @@
 # HTTP Daemon
 
-This document defines the first stable HTTP daemon boundary for the Rust
-`tentgent-http` entry point and `tentgent daemon` lifecycle commands.
+This document defines the stable HTTP daemon boundary for the Rust
+`tentgent-daemon` app host and `tentgent daemon` lifecycle commands.
 
 ## Scope
 
 - Bind locally by default through `127.0.0.1`.
 - Serve JSON responses for daemon-owned routes and errors.
-- Pass through model-bound server chat response bodies and content types from
-  `POST /v1/chat`, including Server-Sent Events.
-- Expose a limited OpenAI-style chat-completions compatibility route at
-  `POST /v1/chat/completions`.
+- Expose native model chat at `POST /v1/chat`, including Server-Sent Events.
+- Expose limited OpenAI, Claude, and Gemini compatible chat routes that translate
+  DTO and SSE shapes only.
 - Expose daemon health, status, read-only store discovery, controlled server
   lifecycle mutations, store import/pull mutations, deterministic dataset
   tooling, cloud dataset tooling, LoRA train-plan management, auth status,
-  doctor diagnostics, daemon shutdown control, chat proxying, log diagnostics,
+  doctor diagnostics, daemon shutdown control, chat, log diagnostics,
   session discovery, and explicit session mutation.
 - Keep loopback-local daemon development usable without auth, while requiring a
   token or explicit unsafe flag for non-loopback and wildcard binds.
 
 ## Version Source
 
-HTTP daemon responses should use the shared Rust version source:
+HTTP daemon responses should use the active Rust daemon package version from
+the workspace package version:
 
 ```text
-tentgent_core::VERSION
+env!("CARGO_PKG_VERSION")
 ```
 
 Do not scatter independent package-version constants across HTTP handlers.
@@ -47,8 +47,7 @@ Rules:
 
 - daemon-owned success and error responses must use
   `Content-Type: application/json; charset=utf-8`
-- chat proxy responses preserve the selected model-bound server status, body,
-  and content type
+- chat responses are daemon-owned JSON or Server-Sent Events
 - unknown routes return a JSON `404`
 - unsupported methods return a JSON `405`
 - invalid requests return a JSON `400`
@@ -101,8 +100,8 @@ wildcard/non-loopback  no             no, unless --allow-unsafe-bind
 wildcard/non-loopback  yes            yes, with warning
 ```
 
-`--allow-unsafe-bind` is available on all daemon CLI launch paths and the
-low-level `tentgent-http` binary. It is intended only for explicit local-network
+`--allow-unsafe-bind` is available on daemon CLI launch paths and the
+`tentgent-daemon` binary. It is intended only for explicit local-network
 experiments; this MVP is not a public-service security model and does not add
 TLS, CORS, multi-user auth, keychain token storage, or per-endpoint permissions.
 
@@ -118,7 +117,7 @@ Detached launch readiness is based on public `GET /healthz`. If
 the bearer token, but a `401` status is reported as an auth warning rather than
 a failed start after `/healthz` succeeds.
 
-Client and future TUI daemon URL discovery should use this order:
+Client daemon URL discovery should use this order:
 
 1. explicit `--daemon-url`
 2. `TENTGENT_DAEMON_URL`
@@ -264,8 +263,8 @@ returns `409 daemon_token_required` or `401 unauthorized`.
 
 Read-only store endpoints use the daemon runtime home passed to
 `tentgent daemon start --home <PATH>`, `tentgent daemon run --home <PATH>`, or
-`tentgent-http --home <PATH>`. Store specific directory overrides still win when
-set:
+`tentgent-daemon --home <PATH>`. Store specific directory overrides still win
+when set:
 
 - `TENTGENT_MODELS_DIR`
 - `TENTGENT_ADAPTERS_DIR`
@@ -725,9 +724,8 @@ return `202` with:
 Job `status` values are `queued`, `running`, `succeeded`, `failed`, and
 `interrupted`; `canceled` is reserved for a future cancel contract. Slice 4.1
 does not expose a cancel route, so `cancellable` is always `false`. Job records
-are persisted under the resolved runtime home. Active jobs survive TUI
-navigation and TUI process exit, but daemon restart marks previously queued or
-running jobs as terminal `interrupted` instead of resuming them.
+are persisted under the resolved runtime home. Daemon restart marks previously
+queued or running jobs as terminal `interrupted` instead of resuming them.
 
 Job records must not contain daemon tokens, provider secrets, raw provider
 output, or unbounded logs. `/v1/jobs*` follows the same daemon bearer-token auth
@@ -1337,17 +1335,16 @@ removing its stored spec. The response is:
 }
 ```
 
-## Chat Proxy
+## Native Chat
 
-`POST /v1/chat` proxies a chat request to an already-running model-bound server.
-The request body follows [server-chat.md](./server-chat.md) and adds one optional
-daemon-only selector plus optional session context fields:
+`POST /v1/chat` invokes kernel chat use cases directly. The daemon chooses the
+use case from the request stream flag: omitted or `false` uses `complete_chat`;
+`true` uses `stream_chat`. The REST layer does not merge these lower-level
+use cases.
 
 ```json
 {
-  "server_ref": "25ee5888595d",
-  "session_ref": "abcdefabcdef",
-  "max_session_messages": 50,
+  "model_ref": "d98392263ae1",
   "messages": [
     {
       "role": "user",
@@ -1363,99 +1360,48 @@ daemon-only selector plus optional session context fields:
 
 Selection rules:
 
-- when `server_ref` is present, it may be a full ref or unique short prefix and
-  must resolve to a running server
-- when `session_ref` is present and `server_ref` is absent, the session
-  `default_server_ref` is tried before the existing single-running-server policy
-- when `server_ref` is absent, exactly one server must be running
-- the daemon removes `server_ref` before forwarding the request to the selected
-  server's `POST /v1/chat`
-- the daemon does not auto-start stopped servers
-- session `adapter_ref` is used only when request `adapter_ref` is absent or
-  null
+- `model_ref` is required and may be a full ref, unique short prefix, source
+  repo alias, or source repo basename alias.
+- `adapter_ref` is optional and may be a full ref or unique short prefix.
+- supported message roles are `system`, `user`, and `assistant`.
+- messages are text-only; tools, images, audio, and tool-call transcript roles
+  are not accepted in this slice.
 
-When `session_ref` is absent, non-streaming responses preserve the selected
-server status code, response body, and `Content-Type`. When `session_ref` is
-present, successful non-streaming target responses must include string field
-`text`; the daemon appends the request messages and assistant text to the
-session before returning the original target response body.
+Non-streaming success responses are daemon JSON:
 
-When `session_ref` is absent, streaming responses preserve Server-Sent Event
-bytes from the selected server. When `session_ref` is present, the daemon
-transforms the SSE stream, accumulates assistant deltas, appends the transcript,
-then emits the final `done` event.
+```json
+{
+  "text": "Hello",
+  "finish_reason": "stop",
+  "model_ref": "d98392263ae1...",
+  "adapter_ref": null
+}
+```
+
+Streaming success responses are native Server-Sent Events:
 
 ```text
 Content-Type: text/event-stream; charset=utf-8
 Cache-Control: no-cache
+
+event: delta
+data: {"delta":"H"}
+
+event: done
+data: {"finish_reason":"stop"}
 ```
 
-Daemon-owned chat selection and proxy errors are JSON:
+Daemon-owned native chat errors are JSON before streaming starts and SSE `error`
+events after streaming starts:
 
-- invalid JSON or invalid `server_ref` shape returns `400 bad_request`
-- missing explicit `server_ref` returns `404 not_found`
-- ambiguous explicit `server_ref` returns `409 ambiguous_ref`
-- selected stopped server returns `409 server_not_running`
-- no running server returns `409 no_running_server`
-- multiple running servers without `server_ref` returns `409 ambiguous_server`
-- target connection or transport failures return `502 server_proxy_failed`
-  with a hint to inspect `GET /v1/servers/{server_ref}/health`
-- invalid session refs return `404 not_found` or `409 ambiguous_ref`
-- selected raw session history with `tool` messages returns
-  `409 session_context_unsupported`
-- oversized selected session history returns `409 session_context_too_large`
-- session lock timeout returns `409 session_busy`
-- stale session metadata refs return `409 session_invalid`
+- invalid JSON, unknown fields, empty prompts, empty content, or unsupported
+  roles return `400 bad_request`
+- missing models return `404 not_found`
+- ambiguous model aliases or refs return `409 ambiguous_ref`
+- model, adapter, runtime, and Python execution failures map to daemon JSON or
+  SSE error codes with no provider secrets or raw unbounded logs
 
-If the selected server returns its own chat error, the daemon passes through that
-status, body, and content type unchanged.
-
-Session-aware chat treats request `messages` as the new turn, not as a full
-transcript replay. `max_session_messages` is a prior-context budget, default
-`50`, min `0`, max `1000`; current request messages are not counted and are
-forwarded in full. If prior history is within budget, it is forwarded raw in
-original order. If prior history exceeds budget, the daemon generates a
-request-scoped `system` summary for omitted prior messages, then forwards
-`summary + recent raw prior messages + current request messages`. The summary
-is not written to `messages.jsonl`. Selected history is capped at 1 MiB.
-The session lock is held while context is read, the model-bound request runs,
-and the final successful turn is appended. Failed target calls, target errors,
-transport failures, malformed upstream responses, interrupted streams, and
-append failures are not partially recorded. If append fails after streaming
-headers were sent, the daemon emits a terminal SSE error instead of a successful
-final marker.
-
-Before request-context planning, daemon-managed session chat may perform a
-best-effort rolling persisted context rewrite. If the pre-existing transcript is
-over 20 messages or over 128 KiB of message content, older history can be
-rewritten into one persisted `system` summary plus recent raw messages. The
-rolling summary is capped at 32 KiB and is identified by metadata:
-
-```json
-{"kind":"session_summary","summary_scope":"rolling_context","summary_version":1}
-```
-
-This rolling rewrite is skipped on summary failure when the hard storage cap is
-not at risk. Request-scoped summaries remain non-persisted and are generated
-after any successful rolling rewrite.
-
-Persisted session transcripts are capped at 50 messages. Before session-aware
-chat contacts the target server, the daemon dynamically compacts older persisted
-messages when the successful current turn would exceed the cap:
-
-```text
-summary + recent pre-existing messages + current request messages + assistant <= 50
-```
-
-Current request messages and the assistant reply are protected and are never
-summarized by the same operation, but they count toward the cap. If the protected
-turn alone exceeds the cap, the daemon returns `400 session_turn_too_large`. If
-compaction fails, chat fails before target contact; for streaming, this is before
-the first SSE chunk is emitted. Persisted compaction is the only chat-time path
-that rewrites `messages.jsonl`; request-scoped summaries only rebuild the
-proxied request context.
-
-## OpenAI-Style Chat Completions
+## Compatible Chat Adapters
 
 `POST /v1/chat/completions` is a limited compatibility route for local clients
 that already send the OpenAI Chat Completions wire shape. Success responses are
@@ -1465,9 +1411,7 @@ Request body:
 
 ```json
 {
-  "model": "25ee5888595d",
-  "session_ref": "abcdefabcdef",
-  "max_session_messages": 50,
+  "model": "d98392263ae1",
   "messages": [
     {
       "role": "user",
@@ -1481,28 +1425,29 @@ Request body:
 }
 ```
 
-In this daemon compatibility route, `model` selects a Tentgent server reference
-or unique short prefix. It is not a provider model name. The selected server must
-already be running; the daemon does not auto-start stopped servers.
+In this daemon compatibility route, `model` selects the Tentgent `model_ref` or
+model alias. It is not a remote provider model name.
 
 MVP limits:
 
-- `messages[].content` must be a string
-- supported roles are `system`, `user`, and `assistant`
-- unsupported OpenAI request fields are ignored
-- `session_ref`, `max_session_messages`, and `adapter_ref` are Tentgent
-  extension fields; SDK users may need an extra-body mechanism to pass them
-- multimodal content, tools/function calling, model-name routing, session
-  auto-creation, and OpenAI-compatible error objects are out of scope
+- OpenAI `messages[].content` may be a string or text-only content parts.
+- OpenAI roles `developer` and `system` map to kernel `system`; `user` and
+  `assistant` map directly.
+- `adapter_ref` is a Tentgent extension field; SDK users may need an extra-body
+  mechanism to pass it.
+- OpenAI tools/function calling, tool-call messages, non-text content parts,
+  audio, and non-text modalities return `400 unsupported_chat_feature`.
+- OpenAI-compatible error objects are out of scope; daemon-owned errors keep the
+  daemon JSON shape.
 
-Non-streaming success responses map target `{ "text": "..." }` payloads into:
+Non-streaming success responses map kernel chat text into:
 
 ```json
 {
   "id": "chatcmpl-...",
   "object": "chat.completion",
   "created": 1770000000,
-  "model": "25ee-full-server-ref",
+  "model": "d98392263ae1",
   "choices": [
     {
       "index": 0,
@@ -1516,24 +1461,43 @@ Non-streaming success responses map target `{ "text": "..." }` payloads into:
 }
 ```
 
-Streaming success responses transform Tentgent server SSE into OpenAI-style
+Streaming success responses transform kernel stream events into OpenAI-style
 chunks and end with `data: [DONE]`:
 
 ```text
 Content-Type: text/event-stream; charset=utf-8
 Cache-Control: no-cache
 
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1770000000,"model":"25ee-full-server-ref","choices":[{"index":0,"delta":{"content":"H"},"finish_reason":null}]}
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1770000000,"model":"d98392263ae1","choices":[{"index":0,"delta":{"content":"H"},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1770000000,"model":"25ee-full-server-ref","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1770000000,"model":"d98392263ae1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
 
 data: [DONE]
 ```
 
-With `session_ref`, the OpenAI-compatible route uses the same session context and
-append semantics as native chat. `model` remains required and still selects the
-Tentgent server; session `default_server_ref` does not replace it. The final
-stop chunk and `[DONE]` are emitted only after session append succeeds.
+Claude-compatible messages are exposed at:
+
+```text
+POST /v1/messages
+```
+
+The request accepts `model`, `system`, `messages`, `max_tokens`, `temperature`,
+`stream`, `adapter_ref`, and text-only Claude content blocks. Claude tools and
+non-text blocks return `400 unsupported_chat_feature` or `400 bad_request`.
+Streaming emits Anthropic-style `message_start`, `content_block_delta`, and
+`message_stop` events.
+
+Gemini-compatible content generation is exposed at:
+
+```text
+POST /v1beta/models/{model}:generateContent
+POST /v1beta/models/{model}:streamGenerateContent
+```
+
+The request accepts `contents`, `systemInstruction`, `generationConfig`,
+`adapter_ref`, and text-only parts. Gemini tools and non-text parts return
+`400 unsupported_chat_feature` or `400 bad_request`. Streaming uses Gemini-style
+SSE data frames.
 
 ## Log Diagnostics
 

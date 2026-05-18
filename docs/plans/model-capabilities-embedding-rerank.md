@@ -141,12 +141,13 @@ Review target:
 - A managed rerank model can score candidate documents and return ordered
   results through the daemon.
 
-### M5: OpenAI-Compatible And TUI Follow-Up
+### M5: OpenAI-Compatible And CLI/Daemon Follow-Up
 
 - Add OpenAI-compatible `/v1/embeddings` only after native embeddings are stable.
 - Decide whether rerank needs an OpenAI-compatible route or remains Tentgent
   native.
-- Add TUI visibility for model/server capability and prevent invalid actions.
+- Add CLI and daemon REST visibility for model/server capability and prevent
+  invalid actions.
 - Add docs and command examples for embedding/rerank workflows.
 
 Review target:
@@ -176,5 +177,5 @@ Review target:
 - HTTP tests for embeddings/rerank request validation and response ordering.
 - Python runtime tests with small or mocked models before adding heavyweight
   model downloads.
-- CLI/TUI render tests so users can see model capability before starting a
+- CLI and daemon REST response tests so users can see model capability before starting a
   server.

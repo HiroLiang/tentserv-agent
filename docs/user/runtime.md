@@ -54,10 +54,10 @@ Environment variables are read when a process starts. Tentgent does not rewrite 
 
 ## Runtime Footprint
 
-Use `tentgent runtime status`, `tentgent status`, or `tentgent doctor` to inspect
+Use `tentgent runtime status` or `tentgent doctor` to inspect
 human-readable runtime information. `tentgent runtime status` is scoped to the
-managed Python runtime and can be narrowed with `--profile`; `tentgent status`
-and `tentgent doctor` include broader platform, backend, and installation
+managed Python runtime and can be narrowed with `--profile`; `tentgent doctor`
+includes broader platform, backend, installation, and runtime footprint
 diagnostics.
 
 The managed install default for the Python environment is:
@@ -66,7 +66,10 @@ The managed install default for the Python environment is:
 TENTGENT_HOME/runtime/python-env
 ```
 
-The actual path shown by `status` or `doctor` may differ when `TENTGENT_PYTHON_ENV_DIR` is set. Treat this environment as required runtime state. Do not remove it unless you are intentionally repairing or reinstalling the managed Python runtime.
+The actual path shown by `runtime status` or `doctor` may differ when
+`TENTGENT_PYTHON_ENV_DIR` is set. Treat this environment as required runtime
+state. Do not remove it unless you are intentionally repairing or reinstalling
+the managed Python runtime.
 
 Package-manager installs such as Homebrew prepare this environment with:
 
@@ -112,7 +115,7 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 ## Backend Status
 
 - `tentgent doctor` runs installation and runtime health checks.
-- `tentgent status` reports the current platform and backend capability state.
+- `tentgent doctor` reports platform and backend capability state.
 - `tentgent doctor` verifies `local-model`, `training`, and `full` profile
   readiness by importing the expected Python modules from the selected managed
   Python environment. A successful `full` bootstrap should make GGUF,

@@ -31,7 +31,7 @@ tentgent auth gemini rm
 ```
 
 The daemon exposes read-only auth status. Provider key set/remove stays
-local-only through the CLI or guarded TUI Keychain setup flows:
+local-only through the CLI:
 
 ```bash
 curl -sS http://127.0.0.1:8790/v1/auth \
@@ -42,77 +42,6 @@ curl -sS http://127.0.0.1:8790/v1/auth/openai \
 
 Daemon auth status reports local env/keychain presence only. It does not print
 secrets and does not call provider validation endpoints.
-
-## TUI
-
-Open the local terminal operator console:
-
-```bash
-tentgent tui
-tentgent tui --home /path/to/tentgent-home
-tentgent tui --daemon-url http://127.0.0.1:8790
-```
-
-The TUI uses daemon HTTP for live status, doctor data, and read-only operator
-navigation. It uses shared local code only for bootstrap config, daemon
-discovery, explicit daemon start, and guarded Keychain-backed provider setup.
-
-When the daemon is down, select `Start daemon` and press Enter to start a local
-daemon through the same detached-launch helper as `tentgent daemon start`. The
-start host and port come from the configured daemon host/port, so
-`--daemon-url http://127.0.0.1:8791` starts `127.0.0.1:8791` rather than the
-default port.
-
-When the daemon is running, the TUI can browse models, adapters, datasets,
-servers, sessions, train plans, and train runs in read-only navigator screens.
-Server logs, session message tails, train run metrics, and train run logs are
-bounded read-only views.
-
-In the `Models`, `Adapters`, and `Datasets` screens, press `a` to open guarded
-store actions. These forms call existing daemon HTTP routes for model/adapter
-pull/import/remove, adapter bind, and dataset import/validate/template/export/
-diff/synth/eval/remove. Destructive remove actions require typing the selected
-short ref or full ref. Provider-backed synth/eval actions show an explicit
-network/provider-credit confirmation and do not read Keychain before submit.
-The TUI never shells out to `tentgent`, edits store files directly, or stores
-raw provider output in the UI.
-
-Long-running TUI store actions use daemon-side background jobs. Model/adapter
-pull, imports, and provider-backed dataset synth/eval can be backgrounded while
-you keep browsing. The Operator menu includes `Jobs`, and the footer/dashboard
-show active job progress. Job records are read-only and use the same daemon
-auth as other `/v1/*` routes; Slice 4.1 does not expose cancellation.
-
-The `Servers` and `Training` screens expose guarded runtime actions through
-the same daemon HTTP lifecycle routes documented below. Press `a` in `Servers`
-to create/start/stop/remove server specs. Press `a` in `Training` Plans to
-preview/create/remove LoRA plans or start a run from a selected plan. Press `A`
-from `Models` to prefill server creation from the selected model, or from
-`Datasets` to prefill LoRA plan creation from the selected dataset. Server
-start uses a bounded readiness wait and is not a background job; LoRA runs stay
-in the training run registry and are monitored with bounded metrics/log tails.
-The TUI does not expose fake cancellation.
-
-The Operator menu includes `Chat`, a session workspace over existing daemon
-session and chat routes. It can choose a running server, create or resume a
-session, stream assistant output through `POST /v1/chat`, and refresh the
-persisted session transcript. Chat defaults to sending only the last 2 persisted
-session messages as context; focus outside the composer and press `h` to cycle
-`none`, `last 2`, `last 10`, and `last 50`. The transcript display still shows a
-bounded tail separately. The TUI does not start servers, pull models, delete
-sessions, compact manually, or store transcript files itself.
-
-The Operator menu also includes `Resources`, a read-only local monitor for
-runtime-home storage, daemon/server/train process pressure, disk-free state, and
-large/stale resource warnings. Open `Resources` and press `r` to scan; normal
-dashboard refresh uses only the last completed resource snapshot and does not
-deep-scan the runtime home.
-
-Daemon URL discovery order is `--daemon-url`,
-`TENTGENT_DAEMON_URL`, `<TENTGENT_HOME>/config.toml` `[daemon].url`,
-daemon metadata, then `http://127.0.0.1:8790`. Token discovery is `--token`,
-`TENTGENT_DAEMON_TOKEN`, then no token. The TUI never stores daemon tokens or
-provider secrets in config.
 
 ## Runtime
 
@@ -307,75 +236,92 @@ Inspect, call, or stop the daemon:
 ```bash
 tentgent daemon status
 curl -sS http://127.0.0.1:8790/healthz
+
 curl -sS http://127.0.0.1:8790/v1/status \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS http://127.0.0.1:8790/v1/doctor \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
-curl -sS http://127.0.0.1:8790/v1/daemon/logs
-curl -sS 'http://127.0.0.1:8790/v1/daemon/logs/stderr?tail_bytes=4096'
-curl -sS http://127.0.0.1:8790/v1/models
-curl -sS http://127.0.0.1:8790/v1/adapters
-curl -sS http://127.0.0.1:8790/v1/datasets
-curl -sS http://127.0.0.1:8790/v1/servers
+
+curl -sS http://127.0.0.1:8790/v1/daemon/logs \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS 'http://127.0.0.1:8790/v1/daemon/logs/stderr?tail_bytes=4096' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+
+curl -sS http://127.0.0.1:8790/v1/models \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/adapters \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/datasets \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/jobs \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+
+curl -sS http://127.0.0.1:8790/v1/chat \
+  -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_ref": "<model-ref>",
+    "messages": [{"role": "user", "content": "Say hello in Traditional Chinese."}],
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "stream": false
+  }'
+
+curl -sS -N http://127.0.0.1:8790/v1/chat/completions \
+  -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "<model-ref>",
+    "messages": [{"role": "user", "content": "Say hello in Traditional Chinese."}],
+    "max_tokens": 64,
+    "temperature": 0.0,
+    "stream": true
+  }'
+
+curl -sS -N http://127.0.0.1:8790/v1/messages \
+  -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "<model-ref>",
+    "max_tokens": 64,
+    "messages": [{"role": "user", "content": "Say hello in Traditional Chinese."}],
+    "stream": true
+  }'
+
+curl -sS -N 'http://127.0.0.1:8790/v1beta/models/<model-ref>:streamGenerateContent' \
+  -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "contents": [
+      {"role": "user", "parts": [{"text": "Say hello in Traditional Chinese."}]}
+    ]
+  }'
+
 curl -sS http://127.0.0.1:8790/v1/servers \
   -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"runtime_ref":"openai:gpt-4.1-mini","host":"127.0.0.1","port":8780}'
 curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/start \
   -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"wait_ready":true,"timeout_seconds":30}'
-curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/health
-curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/logs
-curl -sS 'http://127.0.0.1:8790/v1/servers/<server-ref>/logs/stderr?tail_bytes=4096'
-curl -sS http://127.0.0.1:8790/v1/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "server_ref": "<server-ref>",
-    "session_ref": "<session-ref>",
-    "max_session_messages": 50,
-    "messages": [
-      {"role": "user", "content": "Say hello in Traditional Chinese."}
-    ],
-    "max_tokens": 64,
-    "temperature": 0.0
-  }'
-curl -sS -N http://127.0.0.1:8790/v1/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "server_ref": "<server-ref>",
-    "messages": [
-      {"role": "user", "content": "Say hello in Traditional Chinese."}
-    ],
-    "max_tokens": 64,
-    "temperature": 0.0,
-    "stream": true
-  }'
-curl -sS http://127.0.0.1:8790/v1/chat/completions \
-  -H 'Content-Type: application/json' \
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/health \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/logs \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS 'http://127.0.0.1:8790/v1/servers/<server-ref>/logs/stderr?tail_bytes=4096' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/stop \
+  -X POST \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
-  -d '{
-    "model": "<server-ref>",
-    "session_ref": "<session-ref>",
-    "messages": [
-      {"role": "user", "content": "Say hello in Traditional Chinese."}
-    ],
-    "max_tokens": 64,
-    "temperature": 0.0
-  }'
-curl -sS -N http://127.0.0.1:8790/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
-  -d '{
-    "model": "<server-ref>",
-    "messages": [
-      {"role": "user", "content": "Say hello in Traditional Chinese."}
-    ],
-    "max_tokens": 64,
-    "temperature": 0.0,
-    "stream": true
-  }'
-curl -sS http://127.0.0.1:8790/v1/servers/<server-ref>/stop -X POST
+  -d '{}'
 curl -sS http://127.0.0.1:8790/v1/daemon/shutdown \
   -X POST \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
@@ -391,22 +337,14 @@ tentgent daemon run --host 127.0.0.1 --port 8790
 ```
 
 The daemon records process metadata under `TENTGENT_HOME/runtime` and exposes
-Rust HTTP health/status, read-only store discovery, and controlled server
-lifecycle endpoints. `POST /v1/chat` proxies to an already-running model-bound
-server and preserves both JSON and streaming Server-Sent Event responses.
-`POST /v1/chat/completions` offers a limited OpenAI-style success response for
-basic chat-completion clients; its `model` field selects a Tentgent server ref
-or unique prefix, not a provider model name.
-Both daemon chat endpoints can optionally take `session_ref`; request messages
-are treated as the new turn, recent session messages are prepended as context,
-and successful assistant replies are appended to the transcript. Session
-transcripts are bounded to 50 persisted messages; older messages may be
-destructively summarized before chat continues.
-The daemon-only `server_ref` selector belongs on daemon `POST /v1/chat` requests;
-do not send it when calling the model-bound server port directly. Direct
-model-server ports also reject `session_ref` and `max_session_messages`; use the
-daemon URL for session-aware chat. Log diagnostics endpoints expose fixed
-daemon/server stdout and stderr paths for local debugging.
+Rust HTTP health/status, store discovery and mutation, controlled server
+lifecycle endpoints, background jobs, chat, sessions, and LoRA plan APIs.
+Native `/v1/chat`, OpenAI-compatible `/v1/chat/completions`,
+Claude-compatible `/v1/messages`, and Gemini-compatible
+`/v1beta/models/{model}:generateContent` adapters are DTO/SSE translators over
+the same kernel text-only chat use cases. They currently reject tools, images,
+and audio before calling the model runtime. Log diagnostics endpoints expose
+fixed daemon/server stdout and stderr paths for local debugging.
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the
 explicit `--allow-unsafe-bind` flag.
 Detached daemon children inherit daemon configuration environment variables,
@@ -458,17 +396,12 @@ curl -sS http://127.0.0.1:8790/v1/datasets/template \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{"task":"support","language":"zh-TW"}'
-curl -sS http://127.0.0.1:8790/v1/datasets/synth \
-  -X POST \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
-  -d '{"print_prompt":true,"brief":"Generate support examples in Traditional Chinese.","split":"train","count":20}'
-curl -sS http://127.0.0.1:8790/v1/datasets/synth \
+curl -sS http://127.0.0.1:8790/v1/datasets/synth/jobs \
   -X POST \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{"provider":"openai","model":"gpt-4.1-mini","output_path":"/absolute/path/on/daemon-host/generated","brief":"Generate support examples in Traditional Chinese.","split":"train","count":20,"timeout_seconds":300,"retries":1}'
-curl -sS http://127.0.0.1:8790/v1/datasets/eval \
+curl -sS http://127.0.0.1:8790/v1/datasets/eval/jobs \
   -X POST \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
@@ -512,11 +445,11 @@ Dataset validation failures return HTTP `200` with `valid:false`; HTTP `400`
 is reserved for malformed daemon requests. Dataset template returns the prompt
 body in JSON and does not write a file. Dataset export writes only to a missing
 or empty daemon-host directory. Dataset diff returns at most 500 file entries
-with `truncated:true` when the underlying diff is larger. Dataset synth/eval
-HTTP calls are synchronous provider workflows; use long client timeouts. They
-can accept direct spec or dataset content for tool integrations, but may send
-that selected content to the configured provider. Failed provider runs return
-debug artifact paths, not raw provider output.
+with `truncated:true` when the underlying diff is larger. Dataset synth/eval job
+endpoints create daemon-side background jobs. They can accept direct spec or
+dataset content for tool integrations, but may send that selected content to
+the configured provider. Failed provider runs return debug artifact paths, not
+raw provider output.
 
 Server delete removes a stopped server spec only. Stop a running server before
 deleting it. Model and adapter delete may return `409 in_use` when server specs

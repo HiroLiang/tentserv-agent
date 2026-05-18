@@ -1,7 +1,7 @@
 use super::domain::{
     default_daemon_url, resolve_daemon_token, resolve_daemon_url, DaemonConfig, DaemonEndpoint,
-    DaemonTokenSource, DaemonUrlInputs, DaemonUrlSource, TentgentConfig, TuiConfig,
-    CONFIG_SCHEMA_VERSION, DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT,
+    DaemonTokenSource, DaemonUrlInputs, DaemonUrlSource, TentgentConfig, CONFIG_SCHEMA_VERSION,
+    DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT,
 };
 
 #[test]
@@ -9,13 +9,6 @@ fn config_defaults_match_user_surface_contract() {
     let config = TentgentConfig::default();
 
     assert_eq!(config.schema_version, CONFIG_SCHEMA_VERSION);
-    assert_eq!(
-        config.tui,
-        TuiConfig {
-            last_section: "status".to_string(),
-            auto_start_daemon: false,
-        }
-    );
     assert_eq!(config.daemon, DaemonConfig { url: None });
     assert_eq!(default_daemon_url(), "http://127.0.0.1:8790");
 }

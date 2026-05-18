@@ -16,13 +16,9 @@ infrastructure, and use cases.
 ## Dependency Direction
 
 - `tentgent-daemon` depends on `tentgent-kernel`.
-- `tentgent-daemon` may temporarily call older crates only through explicit
-  migration bridges.
 - `tentgent-kernel` must not depend on `tentgent-daemon`.
 - `tentgent-cli` may launch or control the daemon process, but daemon request
   handling should live in `tentgent-daemon`.
-- `tentgent-http` is the legacy HTTP entrypoint and should be treated as a
-  migration source, not the final daemon architecture.
 - `python/tentgent-daemon` remains the Python model runtime/backend subproject
   until that lower-level adapter is redesigned.
 
