@@ -2,7 +2,8 @@ use std::path::Path;
 
 use serde::Serialize;
 use tentgent_kernel::features::adapter::domain::{
-    AdapterInspection, AdapterMetadata, AdapterRemovalOutcome, AdapterSummary,
+    AdapterBindOutcome, AdapterImportOutcome, AdapterInspection, AdapterMetadata,
+    AdapterRemovalOutcome, AdapterSummary,
 };
 
 #[derive(Debug, Serialize)]
@@ -13,6 +14,28 @@ pub struct AdaptersResponse {
 #[derive(Debug, Serialize)]
 pub struct AdapterResponse {
     pub adapter: AdapterItem,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdapterMutationResponse {
+    pub adapter: AdapterItem,
+    pub mutation: AdapterMutationItem,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdapterMutationItem {
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deduplicated: Option<bool>,
+    pub store_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_model_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_index_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_index_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub removed_base_index_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +82,49 @@ pub fn adapter_inspection_item(inspection: AdapterInspection) -> AdapterItem {
 
 pub fn adapter_removal_item(outcome: AdapterRemovalOutcome) -> AdapterItem {
     adapter_item_from_parts(outcome.metadata, &outcome.store_path, None, None)
+}
+
+pub fn adapter_import_mutation_response(
+    outcome: AdapterImportOutcome,
+    kind: &'static str,
+) -> AdapterMutationResponse {
+    let mutation = AdapterMutationItem {
+        kind,
+        deduplicated: Some(outcome.deduplicated),
+        store_path: path_string(&outcome.store_path),
+        base_model_ref: outcome
+            .metadata
+            .base_model_ref
+            .as_ref()
+            .map(ToString::to_string),
+        source_index_path: Some(path_string(&outcome.source_index_path)),
+        base_index_path: outcome.base_index_path.as_ref().map(path_string),
+        removed_base_index_path: None,
+    };
+    AdapterMutationResponse {
+        adapter: adapter_item_from_parts(outcome.metadata, &outcome.store_path, None, None),
+        mutation,
+    }
+}
+
+pub fn adapter_bind_response(outcome: AdapterBindOutcome) -> AdapterMutationResponse {
+    let mutation = AdapterMutationItem {
+        kind: "bind",
+        deduplicated: None,
+        store_path: path_string(&outcome.store_path),
+        base_model_ref: outcome
+            .metadata
+            .base_model_ref
+            .as_ref()
+            .map(ToString::to_string),
+        source_index_path: None,
+        base_index_path: Some(path_string(&outcome.base_index_path)),
+        removed_base_index_path: outcome.removed_base_index_path.as_ref().map(path_string),
+    };
+    AdapterMutationResponse {
+        adapter: adapter_item_from_parts(outcome.metadata, &outcome.store_path, None, None),
+        mutation,
+    }
 }
 
 fn adapter_item_from_parts(

@@ -1,4 +1,12 @@
-use axum::http::{header, HeaderMap};
+use axum::{
+    extract::{Request, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+    Json,
+};
+
+use super::{response::ErrorResponse, state::RestState};
 
 pub const DAEMON_TOKEN_ENV_VAR: &str = "TENTGENT_DAEMON_TOKEN";
 
@@ -12,12 +20,16 @@ impl DaemonSecurityConfig {
         Self::from_token_value(std::env::var(DAEMON_TOKEN_ENV_VAR).ok().as_deref())
     }
 
-    fn from_token_value(value: Option<&str>) -> Self {
+    pub fn from_token_value(value: Option<&str>) -> Self {
         let token = value
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.as_bytes().to_vec());
         Self { token }
+    }
+
+    pub fn disabled() -> Self {
+        Self { token: None }
     }
 
     pub fn token_enabled(&self) -> bool {
@@ -59,6 +71,52 @@ pub enum DaemonTokenAuthorizationError {
 
 pub fn daemon_token_enabled() -> bool {
     DaemonSecurityConfig::from_env().token_enabled()
+}
+
+pub async fn authorize_daemon_token(
+    State(state): State<RestState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if !state.security().token_enabled() {
+        return next.run(request).await;
+    }
+    match state.security().authorize_headers(request.headers()) {
+        Ok(()) => next.run(request).await,
+        Err(
+            DaemonTokenAuthorizationError::Missing
+            | DaemonTokenAuthorizationError::Malformed
+            | DaemonTokenAuthorizationError::Mismatch,
+        ) => unauthorized_response(),
+        Err(DaemonTokenAuthorizationError::Disabled) => next.run(request).await,
+    }
+}
+
+pub fn unauthorized_response() -> Response {
+    let mut response = error_response(
+        StatusCode::UNAUTHORIZED,
+        "unauthorized",
+        "missing or invalid daemon bearer token",
+    );
+    response
+        .headers_mut()
+        .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+    response
+}
+
+pub fn error_response(
+    status: StatusCode,
+    code: impl Into<String>,
+    message: impl Into<String>,
+) -> Response {
+    (
+        status,
+        Json(ErrorResponse {
+            error: code.into(),
+            message: message.into(),
+        }),
+    )
+        .into_response()
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {

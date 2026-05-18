@@ -8,9 +8,7 @@ use tentgent_kernel::{
     foundation::layout::LayoutResolveMode,
 };
 
-use crate::transport::rest::{
-    error::RestError, response::SERVICE_NAME, security::daemon_token_enabled, state::RestState,
-};
+use crate::transport::rest::{error::RestError, response::SERVICE_NAME, state::RestState};
 
 #[derive(Debug, Serialize)]
 pub struct StatusResponse {
@@ -54,10 +52,13 @@ pub async fn status(State(state): State<RestState>) -> Result<Json<StatusRespons
         })
         .map_err(|err| RestError::kernel("daemon_status_failed", err))?;
 
-    Ok(Json(status_response(status.inspection)))
+    Ok(Json(status_response(
+        status.inspection,
+        state.security().token_enabled(),
+    )))
 }
 
-fn status_response(inspection: DaemonInspection) -> StatusResponse {
+fn status_response(inspection: DaemonInspection, token_enabled: bool) -> StatusResponse {
     let process = inspection.process.as_ref();
     StatusResponse {
         service: SERVICE_NAME,
@@ -67,9 +68,7 @@ fn status_response(inspection: DaemonInspection) -> StatusResponse {
         } else {
             "stopped"
         },
-        auth: StatusAuthItem {
-            token_enabled: daemon_token_enabled(),
-        },
+        auth: StatusAuthItem { token_enabled },
         host: process.map(|process| process.host.clone()),
         port: process.map(|process| process.port),
         pid: process.map(|process| process.pid),

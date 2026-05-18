@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use tentgent_kernel::features::model::domain::{
-    ModelInspection, ModelMetadata, ModelRemovalOutcome, ModelSummary,
+    ModelImportOutcome, ModelInspection, ModelMetadata, ModelRemovalOutcome, ModelSummary,
 };
 
 #[derive(Debug, Serialize)]
@@ -13,6 +13,20 @@ pub struct ModelsResponse {
 #[derive(Debug, Serialize)]
 pub struct ModelResponse {
     pub model: ModelItem,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelMutationResponse {
+    pub model: ModelItem,
+    pub mutation: ModelMutationItem,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelMutationItem {
+    pub kind: &'static str,
+    pub deduplicated: bool,
+    pub store_path: String,
+    pub source_index_path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,6 +66,22 @@ pub fn model_inspection_item(inspection: ModelInspection) -> ModelItem {
 
 pub fn model_removal_item(outcome: ModelRemovalOutcome) -> ModelItem {
     model_item_from_parts(outcome.metadata, &outcome.store_path, None, None)
+}
+
+pub fn model_mutation_response(
+    outcome: ModelImportOutcome,
+    kind: &'static str,
+) -> ModelMutationResponse {
+    let mutation = ModelMutationItem {
+        kind,
+        deduplicated: outcome.deduplicated,
+        store_path: path_string(&outcome.store_path),
+        source_index_path: path_string(&outcome.source_index_path),
+    };
+    ModelMutationResponse {
+        model: model_item_from_parts(outcome.metadata, &outcome.store_path, None, None),
+        mutation,
+    }
 }
 
 fn model_item_from_parts(

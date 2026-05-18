@@ -1,7 +1,7 @@
 use axum::{
     body::Bytes,
     extract::State,
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -12,23 +12,23 @@ use tentgent_kernel::{
 };
 
 use crate::transport::rest::{
-    response::ErrorResponse,
-    security::{DaemonSecurityConfig, DaemonTokenAuthorizationError, DAEMON_TOKEN_ENV_VAR},
+    security::{
+        error_response, unauthorized_response, DaemonTokenAuthorizationError, DAEMON_TOKEN_ENV_VAR,
+    },
     state::RestState,
 };
 
 use super::dto::{DaemonShutdownItem, DaemonShutdownResponse};
 
 pub async fn shutdown(State(state): State<RestState>, headers: HeaderMap, body: Bytes) -> Response {
-    let security = DaemonSecurityConfig::from_env();
-    if !security.token_enabled() {
+    if !state.security().token_enabled() {
         return error_response(
             StatusCode::CONFLICT,
             "daemon_token_required",
             format!("daemon shutdown requires {DAEMON_TOKEN_ENV_VAR} to be enabled"),
         );
     }
-    if let Err(err) = security.authorize_headers(&headers) {
+    if let Err(err) = state.security().authorize_headers(&headers) {
         return match err {
             DaemonTokenAuthorizationError::Disabled => error_response(
                 StatusCode::CONFLICT,
@@ -95,31 +95,4 @@ fn validate_shutdown_body(body: &[u8]) -> Result<(), Response> {
             "shutdown request body must be empty or `{}` without fields",
         )),
     }
-}
-
-fn unauthorized_response() -> Response {
-    let mut response = error_response(
-        StatusCode::UNAUTHORIZED,
-        "unauthorized",
-        "missing or invalid daemon bearer token",
-    );
-    response
-        .headers_mut()
-        .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
-    response
-}
-
-fn error_response(
-    status: StatusCode,
-    code: impl Into<String>,
-    message: impl Into<String>,
-) -> Response {
-    (
-        status,
-        Json(ErrorResponse {
-            error: code.into(),
-            message: message.into(),
-        }),
-    )
-        .into_response()
 }

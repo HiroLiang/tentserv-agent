@@ -3,8 +3,9 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value;
 use tentgent_kernel::features::session::domain::{
-    SessionFilePaths, SessionInspection, SessionMessage, SessionMessages, SessionStorageLocation,
-    SessionSummary, SessionWarning,
+    SessionAppendOutcome, SessionAppendedMessage, SessionCompactionOutcome, SessionFilePaths,
+    SessionInspection, SessionMessage, SessionMessages, SessionRemovalOutcome,
+    SessionStorageLocation, SessionSummary, SessionWarning,
 };
 
 #[derive(Debug, Serialize)]
@@ -14,6 +15,30 @@ pub struct SessionsResponse {
 
 #[derive(Debug, Serialize)]
 pub struct SessionResponse {
+    pub session: SessionInspectionItem,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionCreateResponse {
+    pub session: SessionInspectionItem,
+    pub created: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionAppendResponse {
+    pub session: SessionMutationSessionItem,
+    pub appended: Vec<SessionAppendedMessageItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionCompactResponse {
+    pub session: SessionMutationSessionItem,
+    pub compacted: SessionCompactedItem,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionRemoveResponse {
+    pub removed: SessionRemovedItem,
     pub session: SessionInspectionItem,
 }
 
@@ -61,6 +86,38 @@ pub struct SessionInspectionItem {
 pub struct SessionRefItem {
     pub session_ref: String,
     pub short_ref: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionMutationSessionItem {
+    pub session_ref: String,
+    pub short_ref: String,
+    pub message_count: usize,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionAppendedMessageItem {
+    pub index: usize,
+    pub role: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionCompactedItem {
+    pub compacted: bool,
+    pub source_message_count: usize,
+    pub replaced_message_count: usize,
+    pub kept_recent_messages: usize,
+    pub summary_index: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionRemovedItem {
+    pub kind: &'static str,
+    pub session_ref: String,
+    pub short_ref: String,
+    pub store_path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -141,6 +198,53 @@ pub fn session_messages_item(messages: SessionMessages) -> SessionMessagesRespon
     }
 }
 
+pub fn session_append_response(outcome: SessionAppendOutcome) -> SessionAppendResponse {
+    SessionAppendResponse {
+        session: SessionMutationSessionItem {
+            session_ref: outcome.metadata.session_ref.into_string(),
+            short_ref: outcome.metadata.short_ref,
+            message_count: outcome.metadata.message_count,
+            updated_at: outcome.metadata.updated_at,
+        },
+        appended: outcome
+            .appended
+            .into_iter()
+            .map(session_appended_message_item)
+            .collect(),
+    }
+}
+
+pub fn session_compact_response(outcome: SessionCompactionOutcome) -> SessionCompactResponse {
+    SessionCompactResponse {
+        session: SessionMutationSessionItem {
+            session_ref: outcome.metadata.session_ref.into_string(),
+            short_ref: outcome.metadata.short_ref,
+            message_count: outcome.metadata.message_count,
+            updated_at: outcome.metadata.updated_at,
+        },
+        compacted: SessionCompactedItem {
+            compacted: outcome.compacted,
+            source_message_count: outcome.source_message_count,
+            replaced_message_count: outcome.replaced_message_count,
+            kept_recent_messages: outcome.kept_recent_messages,
+            summary_index: outcome.summary_index,
+        },
+    }
+}
+
+pub fn session_remove_response(outcome: SessionRemovalOutcome) -> SessionRemoveResponse {
+    let removed = SessionRemovedItem {
+        kind: "session",
+        session_ref: outcome.inspection.metadata.session_ref.to_string(),
+        short_ref: outcome.inspection.metadata.short_ref.clone(),
+        store_path: store_path_string(outcome.inspection.location.clone()),
+    };
+    SessionRemoveResponse {
+        session: session_inspection_item(outcome.inspection),
+        removed,
+    }
+}
+
 fn session_message_item(message: SessionMessage) -> SessionMessageItem {
     SessionMessageItem {
         index: message.index,
@@ -150,6 +254,14 @@ fn session_message_item(message: SessionMessage) -> SessionMessageItem {
         server_ref: message.server_ref,
         adapter_ref: message.adapter_ref,
         metadata: message.metadata,
+    }
+}
+
+fn session_appended_message_item(message: SessionAppendedMessage) -> SessionAppendedMessageItem {
+    SessionAppendedMessageItem {
+        index: message.index,
+        role: message.role.to_string(),
+        created_at: message.created_at,
     }
 }
 

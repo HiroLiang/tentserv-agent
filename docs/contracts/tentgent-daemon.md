@@ -160,6 +160,12 @@ The first stable REST surface is:
 - `DELETE /v1/models/{reference}`
   Removes a stored model by full model ref or unique prefix after kernel
   reference checks pass.
+- `POST /v1/models/import`
+  Synchronously imports a local model path into the kernel model store and
+  returns the model inspect DTO plus mutation metadata.
+- `POST /v1/models/pull`
+  Synchronously pulls a Hugging Face model into the kernel model store. This is
+  a compatibility surface for clients that do not need daemon job progress.
 - `POST /v1/models/import/jobs`
   Starts a daemon background job that imports a local model path into the
   kernel model store.
@@ -176,6 +182,13 @@ The first stable REST surface is:
 - `DELETE /v1/adapters/{reference}`
   Removes a stored adapter by full adapter ref or unique prefix after kernel
   reference checks pass.
+- `POST /v1/adapters/import`
+  Synchronously imports a local adapter path into the kernel adapter store,
+  optionally binding it to a managed base model.
+- `POST /v1/adapters/pull`
+  Synchronously pulls a Hugging Face adapter into the kernel adapter store.
+- `POST /v1/adapters/{reference}/bind`
+  Rebinds an existing managed adapter to a managed local base model.
 - `POST /v1/adapters/import/jobs`
   Starts a daemon background job that imports a local adapter path into the
   kernel adapter store, optionally binding it to a managed base model.
@@ -191,6 +204,16 @@ The first stable REST surface is:
 - `DELETE /v1/datasets/{reference}`
   Removes a stored dataset by full dataset ref or unique prefix after kernel
   reference checks pass.
+- `POST /v1/datasets/import`
+  Synchronously imports a local dataset path into the kernel dataset store.
+- `POST /v1/datasets/validate`
+  Validates a local path or managed dataset without provider access.
+- `POST /v1/datasets/template`
+  Renders a deterministic dataset generation template without writing files.
+- `POST /v1/datasets/{reference}/export`
+  Copies a managed dataset source tree to an absolute output path.
+- `POST /v1/datasets/{reference}/diff`
+  Diffs a managed dataset against another managed dataset or local path.
 - `POST /v1/datasets/import/jobs`
   Starts a daemon background job that imports a local dataset path into the
   kernel dataset store.
@@ -243,6 +266,16 @@ The first stable REST surface is:
 - `GET /v1/sessions/{reference}/messages`
   Kernel-backed recent transcript response. The optional `tail` query parameter
   defaults to 200 and is capped at 1000 messages.
+- `POST /v1/sessions`
+  Creates a file-backed session with optional metadata and initial messages.
+- `PATCH /v1/sessions/{reference}`
+  Updates session metadata such as title, default server, adapter, and tags.
+- `POST /v1/sessions/{reference}/messages`
+  Appends transcript messages, using the session compaction flow when required.
+- `POST /v1/sessions/{reference}/compact`
+  Runs manual destructive compaction for older transcript messages.
+- `DELETE /v1/sessions/{reference}`
+  Permanently removes one session directory.
 
 ## Runtime Boundary
 

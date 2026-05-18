@@ -740,11 +740,12 @@ The daemon exposes provider-free dataset tooling over HTTP:
 ```text
 POST /v1/datasets/validate
 POST /v1/datasets/template
-POST /v1/datasets/synth
-POST /v1/datasets/eval
 POST /v1/datasets/{dataset_ref}/export
 POST /v1/datasets/{dataset_ref}/diff
 ```
+
+Provider-backed dataset synth and eval are job-only routes in this slice:
+`POST /v1/datasets/synth/jobs` and `POST /v1/datasets/eval/jobs`.
 
 All path fields are absolute paths on the daemon host filesystem, not the HTTP
 client machine. Path fields may expose local filesystem layout and are intended

@@ -1,4 +1,5 @@
 use axum::{
+    middleware,
     routing::{get, post},
     Router,
 };
@@ -10,10 +11,10 @@ use crate::handlers::rest::{
     train,
 };
 
-use super::state::RestState;
+use super::{security::authorize_daemon_token, state::RestState};
 
 pub fn build_router(state: RestState) -> Router {
-    app_routes().with_state(state).layer(
+    app_routes(state.clone()).with_state(state).layer(
         TraceLayer::new_for_http()
             .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
             .on_request(DefaultOnRequest::new().level(Level::INFO))
@@ -21,9 +22,18 @@ pub fn build_router(state: RestState) -> Router {
     )
 }
 
-fn app_routes() -> Router<RestState> {
+fn app_routes(state: RestState) -> Router<RestState> {
     Router::new()
-        .merge(system_routes())
+        .route("/healthz", get(health::healthz))
+        .merge(v1_routes().route_layer(middleware::from_fn_with_state(
+            state,
+            authorize_daemon_token,
+        )))
+}
+
+fn v1_routes() -> Router<RestState> {
+    Router::new()
+        .route("/v1/status", get(status::status))
         .merge(diagnostic_routes())
         .merge(chat_routes())
         .merge(job_routes())
@@ -31,12 +41,6 @@ fn app_routes() -> Router<RestState> {
         .merge(train_routes())
         .merge(server_routes())
         .merge(session_routes())
-}
-
-fn system_routes() -> Router<RestState> {
-    Router::new()
-        .route("/healthz", get(health::healthz))
-        .route("/v1/status", get(status::status))
 }
 
 fn diagnostic_routes() -> Router<RestState> {
@@ -67,6 +71,8 @@ fn job_routes() -> Router<RestState> {
 fn store_routes() -> Router<RestState> {
     Router::new()
         .route("/v1/models", get(model::list))
+        .route("/v1/models/import", post(model::import))
+        .route("/v1/models/pull", post(model::pull))
         .route("/v1/models/import/jobs", post(model::import_job))
         .route("/v1/models/pull/jobs", post(model::pull_job))
         .route(
@@ -74,16 +80,24 @@ fn store_routes() -> Router<RestState> {
             get(model::inspect).delete(model::remove),
         )
         .route("/v1/adapters", get(adapter::list))
+        .route("/v1/adapters/import", post(adapter::import))
+        .route("/v1/adapters/pull", post(adapter::pull))
         .route("/v1/adapters/import/jobs", post(adapter::import_job))
         .route("/v1/adapters/pull/jobs", post(adapter::pull_job))
+        .route("/v1/adapters/{reference}/bind", post(adapter::bind))
         .route(
             "/v1/adapters/{reference}",
             get(adapter::inspect).delete(adapter::remove),
         )
         .route("/v1/datasets", get(dataset::list))
+        .route("/v1/datasets/validate", post(dataset::validate))
+        .route("/v1/datasets/template", post(dataset::template))
+        .route("/v1/datasets/import", post(dataset::import))
         .route("/v1/datasets/import/jobs", post(dataset::import_job))
         .route("/v1/datasets/synth/jobs", post(dataset::synth_job))
         .route("/v1/datasets/eval/jobs", post(dataset::eval_job))
+        .route("/v1/datasets/{reference}/export", post(dataset::export))
+        .route("/v1/datasets/{reference}/diff", post(dataset::diff))
         .route(
             "/v1/datasets/{reference}",
             get(dataset::inspect).delete(dataset::remove),
@@ -141,7 +155,16 @@ fn server_routes() -> Router<RestState> {
 
 fn session_routes() -> Router<RestState> {
     Router::new()
-        .route("/v1/sessions", get(session::list))
-        .route("/v1/sessions/{reference}", get(session::inspect))
-        .route("/v1/sessions/{reference}/messages", get(session::messages))
+        .route("/v1/sessions", get(session::list).post(session::create))
+        .route(
+            "/v1/sessions/{reference}",
+            get(session::inspect)
+                .patch(session::update)
+                .delete(session::remove),
+        )
+        .route(
+            "/v1/sessions/{reference}/messages",
+            get(session::messages).post(session::append_messages),
+        )
+        .route("/v1/sessions/{reference}/compact", post(session::compact))
 }

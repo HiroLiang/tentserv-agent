@@ -40,7 +40,8 @@ use crate::{
 };
 
 use self::dto::{
-    model_inspection_item, model_removal_item, model_summary_item, ModelResponse, ModelsResponse,
+    model_inspection_item, model_mutation_response, model_removal_item, model_summary_item,
+    ModelMutationResponse, ModelResponse, ModelsResponse,
 };
 
 pub async fn list(State(state): State<RestState>) -> Result<Json<ModelsResponse>, RestError> {
@@ -106,6 +107,61 @@ pub async fn remove(
     Ok(Json(ModelResponse {
         model: model_removal_item(result.outcome),
     }))
+}
+
+pub async fn import(
+    State(state): State<RestState>,
+    Json(request): Json<ModelImportJobRequest>,
+) -> Result<Json<ModelMutationResponse>, RestError> {
+    let source_path = canonical_import_path(&request.path)?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .models()
+        .local_import_usecase()
+        .import_local_model(ModelLocalImportRequest {
+            layout: state.app().layout_input(LayoutResolveMode::Create),
+            source_path,
+        })
+        .map_err(model_mutation_error)?;
+
+    Ok(Json(model_mutation_response(result.outcome, "import")))
+}
+
+pub async fn pull(
+    State(state): State<RestState>,
+    Json(request): Json<ModelPullJobRequest>,
+) -> Result<Json<ModelMutationResponse>, RestError> {
+    let repo_id = normalize_repo_id(&request.repo_id)?;
+    let revision = normalize_revision(request.revision)?;
+    let task_state = state.clone();
+    let layout = state.app().layout_input(LayoutResolveMode::Create);
+    let result = tokio::task::spawn_blocking(move || {
+        task_state
+            .app()
+            .services()
+            .kernel()
+            .model_hf_pull_usecase()
+            .pull_hf_model(
+                ModelHfPullRequest {
+                    layout,
+                    runtime: PythonRuntimeResolutionInput::default(),
+                    repo_id,
+                    revision,
+                    auth: AuthSecretResolutionRequest::for_secret_use(
+                        Provider::HuggingFace,
+                        AuthEnvLoadPolicy::CwdDotenvOverride,
+                    ),
+                },
+                &mut |_| {},
+            )
+    })
+    .await
+    .map_err(|err| RestError::internal("pull_failed", format!("model pull task failed: {err}")))?
+    .map_err(model_mutation_error)?;
+
+    Ok(Json(model_mutation_response(result.outcome, "pull")))
 }
 
 pub async fn import_job(
@@ -281,5 +337,17 @@ fn model_remove_error(error: KernelError) -> RestError {
             RestError::store_lookup("model_remove_failed", message)
         }
         other => RestError::kernel("model_remove_failed", other),
+    }
+}
+
+fn model_mutation_error(error: KernelError) -> RestError {
+    match error {
+        KernelError::ModelStoreUnavailable(message) => {
+            RestError::store_lookup("store_mutation_failed", message)
+        }
+        KernelError::RuntimeStateUnavailable(message) => {
+            RestError::conflict("provider_runtime_failed", message)
+        }
+        other => RestError::kernel("store_mutation_failed", other),
     }
 }

@@ -10,9 +10,10 @@ use tentgent_kernel::{
     features::adapter::{
         domain::{AdapterRefSelector, HfAdapterPullProgress},
         usecases::{
-            AdapterCatalogReadUseCase, AdapterHfPullRequest, AdapterHfPullUseCase,
-            AdapterInspectRequest, AdapterListRequest, AdapterLocalImportRequest,
-            AdapterLocalImportUseCase, AdapterRemoveRequest, AdapterRemoveUseCase,
+            AdapterBindRequest, AdapterBindUseCase, AdapterCatalogReadUseCase,
+            AdapterHfPullRequest, AdapterHfPullUseCase, AdapterInspectRequest, AdapterListRequest,
+            AdapterLocalImportRequest, AdapterLocalImportUseCase, AdapterRemoveRequest,
+            AdapterRemoveUseCase,
         },
     },
     features::auth::{
@@ -41,7 +42,8 @@ use crate::{
 };
 
 use self::dto::{
-    adapter_inspection_item, adapter_removal_item, adapter_summary_item, AdapterResponse,
+    adapter_bind_response, adapter_import_mutation_response, adapter_inspection_item,
+    adapter_removal_item, adapter_summary_item, AdapterMutationResponse, AdapterResponse,
     AdaptersResponse,
 };
 
@@ -112,6 +114,101 @@ pub async fn remove(
     Ok(Json(AdapterResponse {
         adapter: adapter_removal_item(result.outcome),
     }))
+}
+
+pub async fn import(
+    State(state): State<RestState>,
+    Json(request): Json<AdapterImportJobRequest>,
+) -> Result<Json<AdapterMutationResponse>, RestError> {
+    let source_path = canonical_import_path(&request.path)?;
+    let base_model_selector =
+        normalize_optional_model_ref(request.base_model_ref, "base_model_ref")?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .adapters()
+        .local_import_usecase(state.app().services().kernel().models().catalog_store())
+        .import_local_adapter(AdapterLocalImportRequest {
+            layout: state.app().layout_input(LayoutResolveMode::Create),
+            source_path,
+            base_model_selector,
+        })
+        .map_err(adapter_mutation_error)?;
+
+    Ok(Json(adapter_import_mutation_response(
+        result.outcome,
+        "import",
+    )))
+}
+
+pub async fn pull(
+    State(state): State<RestState>,
+    Json(request): Json<AdapterPullJobRequest>,
+) -> Result<Json<AdapterMutationResponse>, RestError> {
+    let repo_id = normalize_repo_id(&request.repo_id)?;
+    let revision = normalize_revision(request.revision)?;
+    let base_model_selector =
+        normalize_optional_model_ref(request.base_model_ref, "base_model_ref")?;
+    let task_state = state.clone();
+    let layout = state.app().layout_input(LayoutResolveMode::Create);
+    let result = tokio::task::spawn_blocking(move || {
+        task_state
+            .app()
+            .services()
+            .kernel()
+            .adapter_hf_pull_usecase()
+            .pull_hf_adapter(
+                AdapterHfPullRequest {
+                    layout,
+                    runtime: PythonRuntimeResolutionInput::default(),
+                    repo_id,
+                    revision,
+                    base_model_selector,
+                    auth: AuthSecretResolutionRequest::for_secret_use(
+                        Provider::HuggingFace,
+                        AuthEnvLoadPolicy::CwdDotenvOverride,
+                    ),
+                },
+                &mut |_| {},
+            )
+    })
+    .await
+    .map_err(|err| RestError::internal("pull_failed", format!("adapter pull task failed: {err}")))?
+    .map_err(adapter_mutation_error)?;
+
+    Ok(Json(adapter_import_mutation_response(
+        result.outcome,
+        "pull",
+    )))
+}
+
+pub async fn bind(
+    State(state): State<RestState>,
+    Path(reference): Path<String>,
+    Json(request): Json<AdapterBindBody>,
+) -> Result<Json<AdapterMutationResponse>, RestError> {
+    let adapter_selector = AdapterRefSelector::parse(&reference).map_err(|err| {
+        RestError::bad_request("bad_request", format!("invalid adapter reference: {err}"))
+    })?;
+    let base_model_selector =
+        normalize_optional_model_ref(Some(request.base_model_ref), "base_model_ref")?.ok_or_else(
+            || RestError::bad_request("bad_request", "base_model_ref must not be blank"),
+        )?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .adapters()
+        .bind_usecase(state.app().services().kernel().models().catalog_store())
+        .bind_adapter(AdapterBindRequest {
+            layout: state.app().layout_input(LayoutResolveMode::Create),
+            adapter_selector,
+            base_model_selector,
+        })
+        .map_err(adapter_mutation_error)?;
+
+    Ok(Json(adapter_bind_response(result.outcome)))
 }
 
 pub async fn import_job(
@@ -204,6 +301,12 @@ pub struct AdapterPullJobRequest {
     pub repo_id: String,
     pub revision: Option<String>,
     pub base_model_ref: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdapterBindBody {
+    pub base_model_ref: String,
 }
 
 fn run_adapter_import_job(
@@ -305,5 +408,20 @@ fn adapter_remove_error(error: KernelError) -> RestError {
             RestError::store_lookup("adapter_remove_failed", message)
         }
         other => RestError::kernel("adapter_remove_failed", other),
+    }
+}
+
+fn adapter_mutation_error(error: KernelError) -> RestError {
+    match error {
+        KernelError::AdapterStoreUnavailable(message) => {
+            RestError::store_lookup("adapter_mutation_failed", message)
+        }
+        KernelError::ModelStoreUnavailable(message) => {
+            RestError::store_lookup("model_read_failed", message)
+        }
+        KernelError::RuntimeStateUnavailable(message) => {
+            RestError::conflict("provider_runtime_failed", message)
+        }
+        other => RestError::kernel("adapter_mutation_failed", other),
     }
 }

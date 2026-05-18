@@ -17,7 +17,7 @@ use crate::{
         JobArtifact, JobKind, JobOutputLine, JobProgressPatch, JobProgressUpdate, JobStream,
         JobTarget,
     },
-    transport::rest::{build_router, state::RestState},
+    transport::rest::{build_router, security::DaemonSecurityConfig, state::RestState},
 };
 
 #[tokio::test]
@@ -61,6 +61,59 @@ async fn status_reads_daemon_kernel_state() {
         .as_str()
         .expect("runtime_home")
         .contains("tentgent-daemon-rest-status"));
+}
+
+#[tokio::test]
+async fn daemon_token_protects_v1_routes_but_not_healthz() {
+    let requested_home = unique_home("daemon-token");
+    let state = rest_state_for_home_with_security(
+        requested_home,
+        DaemonSecurityConfig::from_token_value(Some("secret")),
+    );
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/status")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        response
+            .headers()
+            .get("www-authenticate")
+            .and_then(|value| value.to_str().ok()),
+        Some("Bearer")
+    );
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/status")
+                .header("authorization", "Bearer secret")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let _ = fs::remove_dir_all(home);
 }
 
 #[tokio::test]
@@ -554,6 +607,63 @@ async fn model_pull_job_rejects_invalid_repo_id_before_starting_job() {
     assert_eq!(body["error"], "bad_request");
 
     let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn sync_store_routes_validate_requests_before_mutation() {
+    let state = rest_state("sync-store-route-validation");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/models/pull")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"repo_id":"https://huggingface.co/a/b"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/adapters/pull")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"repo_id":"https://huggingface.co/a/b"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/datasets/import")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"path":"relative"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/adapters/not-hex/bind")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"base_model_ref":"aaaaaaaaaaaa"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -1106,6 +1216,175 @@ async fn dataset_list_and_inspect_read_kernel_catalog() {
         dataset["managed_source_path"].as_str(),
         Some(expected_managed_source_path.as_str())
     );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn dataset_deterministic_routes_validate_template_export_and_diff() {
+    let requested_home = unique_home("datasets-deterministic-tools");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let source_dir = home.join("fixtures/source-dataset");
+    fs::create_dir_all(&source_dir).expect("source dataset");
+    fs::write(source_dir.join("train.jsonl"), sample_dataset_record()).expect("train jsonl");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/datasets/validate")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"path":"{}"}}"#,
+                    path_string(&source_dir)
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["valid"], true);
+    assert_eq!(body["source"]["kind"], "path");
+    assert_eq!(body["records"], 1);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/datasets/template")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"task":"chat","language":"en"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["task"], "chat");
+    assert!(body["content"]
+        .as_str()
+        .expect("content")
+        .contains("train.jsonl"));
+
+    let first_ref = "9".repeat(64);
+    let second_ref = "a".repeat(64);
+    write_dataset_fixture(&home, &first_ref);
+    write_dataset_fixture(&home, &second_ref);
+    let manifest =
+        r#"{"files":[{"relative_path":"train.jsonl","size_bytes":111,"sha256":"same"}]}"#;
+    fs::write(
+        home.join("datasets/store")
+            .join(&first_ref)
+            .join("manifest.json"),
+        manifest,
+    )
+    .expect("first manifest");
+    fs::write(
+        home.join("datasets/store")
+            .join(&second_ref)
+            .join("manifest.json"),
+        manifest,
+    )
+    .expect("second manifest");
+    fs::write(
+        home.join("datasets/store")
+            .join(&first_ref)
+            .join("source/train.jsonl"),
+        sample_dataset_record(),
+    )
+    .expect("first source");
+    fs::write(
+        home.join("datasets/store")
+            .join(&second_ref)
+            .join("source/train.jsonl"),
+        sample_dataset_record(),
+    )
+    .expect("second source");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/datasets/{}/diff", &first_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"right_dataset_ref":"{}"}}"#,
+                    &second_ref[..12]
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["left"]["short_ref"], &first_ref[..12]);
+    assert_eq!(body["right"]["short_ref"], &second_ref[..12]);
+    assert_eq!(body["diff"]["summary"]["unchanged"], 1);
+
+    let export_dir = home.join("exports/dataset");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/datasets/{}/export", &first_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"output_path":"{}"}}"#,
+                    path_string(&export_dir)
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["dataset"]["dataset_ref"].as_str(),
+        Some(first_ref.as_str())
+    );
+    assert!(export_dir.join("train.jsonl").is_file());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn dataset_sync_import_stores_local_dataset() {
+    let requested_home = unique_home("dataset-sync-import");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let source_dir = home.join("fixtures/importable-dataset");
+    fs::create_dir_all(&source_dir).expect("source dataset");
+    fs::write(source_dir.join("train.jsonl"), sample_dataset_record()).expect("train jsonl");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/datasets/import")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"path":"{}"}}"#,
+                    path_string(&source_dir)
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["mutation"]["kind"], "import");
+    assert_eq!(body["dataset"]["tuning_ready"], true);
+    let dataset_ref = body["dataset"]["dataset_ref"]
+        .as_str()
+        .expect("dataset ref");
+    assert!(home
+        .join("datasets/store")
+        .join(dataset_ref)
+        .join("source/train.jsonl")
+        .is_file());
 
     let _ = fs::remove_dir_all(home);
 }
@@ -1816,6 +2095,114 @@ async fn session_inspect_rejects_invalid_reference() {
     assert_eq!(body["error"], "bad_request");
 }
 
+#[tokio::test]
+async fn session_write_routes_create_update_append_compact_and_remove() {
+    let requested_home = unique_home("sessions-write");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/sessions")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"title":"Draft","tags":["smoke"],"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    assert_eq!(body["created"], true);
+    assert_eq!(body["session"]["title"], "Draft");
+    assert_eq!(body["session"]["message_count"], 2);
+    let session_ref = body["session"]["session_ref"]
+        .as_str()
+        .expect("session ref")
+        .to_string();
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/v1/sessions/{}", &session_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"title":"Renamed","tags":["updated"]}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["session"]["title"], "Renamed");
+    assert_eq!(body["session"]["tags"], serde_json::json!(["updated"]));
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/sessions/{}/messages", &session_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"messages":[{"role":"user","content":"third","metadata":{"topic":"rest"}}]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["session"]["message_count"], 3);
+    assert_eq!(body["appended"][0]["index"], 2);
+    assert_eq!(body["appended"][0]["role"], "user");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/sessions/{}/compact", &session_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"keep_recent_messages":3}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["compacted"]["compacted"], false);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/v1/sessions/{}", &session_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["removed"]["kind"], "session");
+    assert!(!home.join("sessions").join(&session_ref).exists());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/sessions/{}", &session_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let _ = fs::remove_dir_all(home);
+}
+
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
@@ -1841,6 +2228,10 @@ fn rest_state(label: &str) -> RestState {
 }
 
 fn rest_state_for_home(home: PathBuf) -> RestState {
+    rest_state_for_home_with_security(home, DaemonSecurityConfig::disabled())
+}
+
+fn rest_state_for_home_with_security(home: PathBuf, security: DaemonSecurityConfig) -> RestState {
     let config = DaemonBootstrapConfig {
         home: Some(home.clone()),
         logging: LoggingConfig {
@@ -1863,7 +2254,7 @@ fn rest_state_for_home(home: PathBuf) -> RestState {
         layout,
         RestConfig::default(),
     );
-    RestState::new(std::sync::Arc::new(state))
+    RestState::with_security(std::sync::Arc::new(state), security)
 }
 
 fn unique_home(label: &str) -> PathBuf {
@@ -2043,6 +2434,10 @@ fn session_message(role: &str, content: &str) -> String {
     format!(
         r#"{{"schema":"tentgent.session.message.v1","role":"{role}","content":"{content}","created_at":"2026-05-01T00:00:00Z","metadata":{{}}}}"#
     )
+}
+
+fn sample_dataset_record() -> &'static str {
+    r#"{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":"Hi"}]}"#
 }
 
 fn path_string(path: impl AsRef<std::path::Path>) -> String {
