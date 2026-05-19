@@ -746,6 +746,95 @@ async fn jobs_inspect_returns_not_found_for_missing_job() {
 }
 
 #[tokio::test]
+async fn jobs_cancel_marks_active_job_canceled() {
+    let requested_home = unique_home("jobs-cancel");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let job = state
+        .app()
+        .jobs()
+        .create(JobKind::model_pull(), "Pull model", None, Vec::new());
+    state.app().jobs().start(&job.job_id, "downloading");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/jobs/{}/cancel", job.job_id.as_str()))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["job"]["status"], "canceled");
+    assert_eq!(body["job"]["stage"], "canceled");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn jobs_delete_rejects_active_and_removes_terminal_job() {
+    let requested_home = unique_home("jobs-delete");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let active = state
+        .app()
+        .jobs()
+        .create(JobKind::model_pull(), "Pull model", None, Vec::new());
+    let terminal =
+        state
+            .app()
+            .jobs()
+            .create(JobKind::adapter_pull(), "Pull adapter", None, Vec::new());
+    state
+        .app()
+        .jobs()
+        .succeed(&terminal.job_id, None, "adapter imported");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/v1/jobs/{}", active.job_id.as_str()))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/v1/jobs/{}", terminal.job_id.as_str()))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["job"]["job_id"], terminal.job_id.as_str());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/jobs/{}", terminal.job_id.as_str()))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn jobs_reload_persisted_records_from_runtime_dir() {
     let requested_home = unique_home("jobs-reload");
     let state = rest_state_for_home(requested_home.clone());

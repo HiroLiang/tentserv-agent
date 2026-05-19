@@ -75,7 +75,8 @@ fn rerank_routes() -> Router<RestState> {
 fn job_routes() -> Router<RestState> {
     Router::new()
         .route("/v1/jobs", get(jobs::list))
-        .route("/v1/jobs/{job_id}", get(jobs::inspect))
+        .route("/v1/jobs/{job_id}", get(jobs::inspect).delete(jobs::delete))
+        .route("/v1/jobs/{job_id}/cancel", post(jobs::cancel))
 }
 
 fn store_routes() -> Router<RestState> {

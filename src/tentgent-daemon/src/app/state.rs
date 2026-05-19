@@ -35,7 +35,7 @@ impl DaemonAppState {
             layout,
             cache: MemoryCache::default(),
             jobs,
-            job_runner: JobRunner,
+            job_runner: JobRunner::default(),
             scheduler: Scheduler::default(),
             rest,
             shutdown_tx,

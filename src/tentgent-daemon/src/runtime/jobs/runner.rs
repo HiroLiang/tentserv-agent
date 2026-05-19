@@ -4,9 +4,12 @@ use tokio::task;
 
 use super::types::{JobArtifact, JobId, JobProgressUpdate};
 use super::JobRegistry;
+use super::{InFlightJobKind, InFlightJobRegistry};
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct JobRunner;
+#[derive(Debug, Clone, Default)]
+pub struct JobRunner {
+    in_flight: InFlightJobRegistry,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobCompletion {
@@ -36,6 +39,22 @@ impl JobCompletion {
 }
 
 impl JobRunner {
+    pub fn new(in_flight: InFlightJobRegistry) -> Self {
+        Self { in_flight }
+    }
+
+    pub fn in_flight(&self) -> &InFlightJobRegistry {
+        &self.in_flight
+    }
+
+    pub fn abort(&self, job_id: &JobId) -> bool {
+        self.in_flight.abort(job_id)
+    }
+
+    pub fn abort_all(&self) -> Vec<super::InFlightJob> {
+        self.in_flight.abort_all()
+    }
+
     pub fn spawn_blocking<F>(
         &self,
         registry: JobRegistry,
@@ -46,7 +65,9 @@ impl JobRunner {
         F: FnOnce(JobRegistry, JobId) -> Result<JobCompletion, String> + Send + 'static,
     {
         let start_stage = start_stage.into();
-        tokio::spawn(async move {
+        let in_flight = self.in_flight.clone();
+        let tracked_job_id = job_id.clone();
+        let handle = tokio::spawn(async move {
             registry.start(&job_id, start_stage);
             let blocking_registry = registry.clone();
             let blocking_job_id = job_id.clone();
@@ -73,7 +94,13 @@ impl JobRunner {
                     registry.fail(&job_id, format!("job task failed: {error}"));
                 }
             }
+            in_flight.remove(&job_id);
         });
+        self.in_flight.register(
+            tracked_job_id,
+            InFlightJobKind::BlockingTask,
+            handle.abort_handle(),
+        );
     }
 
     pub fn spawn_async<F>(
@@ -92,7 +119,9 @@ impl JobRunner {
             + 'static,
     {
         let start_stage = start_stage.into();
-        tokio::spawn(async move {
+        let in_flight = self.in_flight.clone();
+        let tracked_job_id = job_id.clone();
+        let handle = tokio::spawn(async move {
             registry.start(&job_id, start_stage);
             let result = task(registry.clone(), job_id.clone()).await;
 
@@ -104,7 +133,13 @@ impl JobRunner {
                     registry.fail(&job_id, error);
                 }
             }
+            in_flight.remove(&job_id);
         });
+        self.in_flight.register(
+            tracked_job_id,
+            InFlightJobKind::AsyncTask,
+            handle.abort_handle(),
+        );
     }
 }
 
@@ -117,7 +152,8 @@ mod tests {
     async fn runner_marks_blocking_task_success() {
         let registry = JobRegistry::new();
         let job = registry.create(JobKind::model_pull(), "Pull model", None, Vec::new());
-        JobRunner.spawn_blocking(
+        let runner = JobRunner::default();
+        runner.spawn_blocking(
             registry.clone(),
             job.job_id.clone(),
             "starting",
@@ -135,7 +171,8 @@ mod tests {
     async fn runner_marks_blocking_task_failure() {
         let registry = JobRegistry::new();
         let job = registry.create(JobKind::model_pull(), "Pull model", None, Vec::new());
-        JobRunner.spawn_blocking(
+        let runner = JobRunner::default();
+        runner.spawn_blocking(
             registry.clone(),
             job.job_id.clone(),
             "starting",
@@ -147,5 +184,22 @@ mod tests {
         let job = registry.get(&job.job_id).expect("job");
         assert_eq!(job.status, crate::runtime::JobStatus::Failed);
         assert_eq!(job.error_summary.as_deref(), Some("failed"));
+    }
+
+    #[tokio::test]
+    async fn runner_tracks_in_flight_jobs() {
+        let registry = JobRegistry::new();
+        let job = registry.create(JobKind::model_pull(), "Pull model", None, Vec::new());
+        let runner = JobRunner::default();
+        runner.spawn_async(registry, job.job_id.clone(), "starting", move |_, _| {
+            Box::pin(async {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                Ok(JobCompletion::new("done"))
+            })
+        });
+
+        assert!(runner.in_flight().is_active(&job.job_id));
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        assert!(!runner.in_flight().is_active(&job.job_id));
     }
 }

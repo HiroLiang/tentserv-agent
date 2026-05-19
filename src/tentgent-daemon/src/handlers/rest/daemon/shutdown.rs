@@ -8,6 +8,7 @@ use axum::{
 use serde_json::Value;
 use tentgent_kernel::{
     features::daemon::usecases::{DaemonInspectionMode, DaemonStatusRequest, DaemonStatusUseCase},
+    features::job::{infra::FileJobWorkspaceStore, ports::JobWorkspacePort},
     foundation::layout::LayoutResolveMode,
 };
 
@@ -56,6 +57,13 @@ pub async fn shutdown(State(state): State<RestState>, headers: HeaderMap, body: 
         .ok()
         .and_then(|status| status.inspection.process.map(|process| process.pid));
 
+    state.app().job_runner().abort_all();
+    state
+        .app()
+        .jobs()
+        .interrupt_active("daemon shutdown requested");
+    let _ = FileJobWorkspaceStore::from_runtime_dir(state.app().layout().runtime_dir.clone())
+        .sweep_workspaces(&state.app().jobs().list());
     state.app().request_shutdown();
 
     (

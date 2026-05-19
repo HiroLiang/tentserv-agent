@@ -54,6 +54,9 @@ pub enum KernelError {
     #[error("session store is unavailable: {0}")]
     SessionStoreUnavailable(String),
 
+    #[error("job store is unavailable: {0}")]
+    JobStoreUnavailable(String),
+
     #[error("train store is unavailable: {0}")]
     TrainStoreUnavailable(String),
 

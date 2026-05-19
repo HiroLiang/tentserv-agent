@@ -8,6 +8,7 @@ pub mod daemon;
 pub mod dataset;
 pub mod doctor;
 pub mod embedding;
+pub mod job;
 pub mod model;
 pub mod rerank;
 pub mod runtime;
