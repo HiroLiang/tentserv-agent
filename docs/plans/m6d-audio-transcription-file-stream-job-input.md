@@ -263,7 +263,7 @@ Docs:
 - `docs/user/commands.md`
 - `docs/user/model-fixtures.md`
 - `docs/user/version.md`
-- `docs/plans/m6c-through-m6h-media-runtime-roadmap.md`
+- `docs/plans/capability-first-release-roadmap.md`
 
 ## Verification
 

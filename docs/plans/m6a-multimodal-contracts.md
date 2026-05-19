@@ -207,9 +207,9 @@ chat, embedding, rerank, and metadata-only media fixture guide.
 - M6D adds the audio transcription file-stream job input through the functional
   endpoint while keeping workspace chunk operations internal.
 - M6E and later should stage audio CLI and large-file hardening, vision chat,
-  image/audio generation, video workflows, and media server decisions as
-  described in
-  [m6c-through-m6h-media-runtime-roadmap.md](./m6c-through-m6h-media-runtime-roadmap.md).
+  image/audio generation, video workflows, and media server decisions in the
+  main
+  [capability-first-release-roadmap.md](./capability-first-release-roadmap.md).
 - Stable contract docs move only when each workflow is approved for
   implementation.
 - User docs may keep media fixtures only when they are clearly marked as

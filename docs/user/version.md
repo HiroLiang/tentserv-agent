@@ -27,6 +27,10 @@ What changed:
   direct Python server `/v1/rerank` for `--capability rerank` server specs.
 - Added one-shot CLI `tentgent embed` and `tentgent rerank` commands for local
   embedding and rerank smoke tests without starting the daemon.
+- Added foreground CLI `tentgent transcribe` for local file-to-file audio
+  transcription with `text`, `json`, `vtt`, and `srt` output formats. The
+  command fails if the requested output file already exists and does not create
+  daemon jobs.
 - Added endpoint-family gates so chat routes require `chat` models and
   embedding/rerank routes require matching model capabilities before runtime
   dispatch.
@@ -41,8 +45,9 @@ Known limits:
 
 - Tools/function calling, images, and audio content are rejected by compatible
   chat adapters until kernel tool-call and multimodal chat support exists.
-- Audio transcription is daemon-job only in this slice. The foreground
-  `tentgent transcribe` CLI wrapper is planned as a follow-up.
+- Audio transcription is batch file transcription. Multipart upload/result
+  reads are transport-stream-friendly memory boundaries, not realtime model
+  streaming. Live dictation and live translation remain future work.
 - Rerank scores are raw backend scores; compare them within one request/model
   family rather than across unrelated models.
 - The next release-engineering slice is Apple Developer ID signing,

@@ -48,22 +48,24 @@ one pass without a staged breakdown.
 - [m6b-kernel-job-workspace-foundation.md](./m6b-kernel-job-workspace-foundation.md)
   M6B refactor slice: kernel-owned job workspace ports, chunk IO, result files,
   cleanup, and daemon runtime wiring before media model execution.
-- [m6c-through-m6h-media-runtime-roadmap.md](./m6c-through-m6h-media-runtime-roadmap.md)
-  M6C audio transcription completion notes plus follow-up M6 slices for audio
-  file-stream job input, audio CLI and large-file hardening, vision chat,
-  image/audio generation, video, and media server decisions.
+- [m6c-audio-transcription-daemon-mvp.md](./m6c-audio-transcription-daemon-mvp.md)
+  M6C implementation record for daemon audio transcription path jobs, Python
+  runtime wiring, output formats, doctor guidance, and smoke-test evidence.
 - [m6d-audio-transcription-file-stream-job-input.md](./m6d-audio-transcription-file-stream-job-input.md)
   Implemented M6D slice for the canonical
   `POST /v1/audio/transcriptions/job` file-stream job endpoint, result
   readiness semantics, and internal workspace persistence.
+- [m6e-audio-transcription-cli-and-large-file-hardening.md](./m6e-audio-transcription-cli-and-large-file-hardening.md)
+  Implemented M6E slice for foreground `tentgent transcribe`, output
+  behavior, large-file guardrails, and audio CLI documentation.
 
 ## Recommended Order
 
-1. Finish M6B kernel job workspace refactor before adding media workers.
-2. Implement M6C daemon audio transcription on top of the kernel job workspace.
-3. Continue M6E-and-later only after each workflow's API/output contract is
+1. Continue with M6F-and-later planning in
+   [capability-first-release-roadmap.md](./capability-first-release-roadmap.md).
+2. Continue each later workflow only after its API/output contract is
    stable.
-4. Run Apple Developer ID signing and notarization on prerelease artifacts
+3. Run Apple Developer ID signing and notarization on prerelease artifacts
    before beta or release candidate tags.
 
 ## Deferred Plans

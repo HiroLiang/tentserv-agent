@@ -144,7 +144,11 @@ def _result_text(raw_result: dict[str, Any]) -> str:
     return str(value).strip()
 
 
-def _segments(raw_result: dict[str, Any]) -> list[tuple[float, float, str]]:
+def _segments(
+    raw_result: dict[str, Any],
+    *,
+    require_timestamps: bool = False,
+) -> list[tuple[float, float, str]]:
     chunks = raw_result.get("chunks")
     if isinstance(chunks, list) and chunks:
         segments: list[tuple[float, float, str]] = []
@@ -154,13 +158,32 @@ def _segments(raw_result: dict[str, Any]) -> list[tuple[float, float, str]]:
             text = str(chunk.get("text", "")).strip()
             if not text:
                 continue
-            start, end = _timestamp_pair(chunk.get("timestamp"))
+            timestamp = chunk.get("timestamp")
+            if require_timestamps and not _has_timestamp_pair(timestamp):
+                raise ValueError(
+                    "audio transcription subtitle output requires segment timestamps, "
+                    "but at least one result chunk did not include start and end times"
+                )
+            start, end = _timestamp_pair(timestamp)
             segments.append((start, end, text))
         if segments:
             return segments
+    if require_timestamps:
+        raise ValueError(
+            "audio transcription subtitle output requires segment timestamps, "
+            "but the runtime result did not include timestamp chunks"
+        )
 
     text = _result_text(raw_result)
     return [(0.0, 0.001, text)] if text else []
+
+
+def _has_timestamp_pair(value: object) -> bool:
+    if isinstance(value, (tuple, list)) and len(value) >= 2:
+        return value[0] is not None and value[1] is not None
+    if isinstance(value, dict):
+        return value.get("start") is not None and value.get("end") is not None
+    return False
 
 
 def _timestamp_pair(value: object) -> tuple[float, float]:
@@ -188,7 +211,7 @@ def _timestamp_seconds(value: object, fallback: float) -> float:
 
 def _render_vtt(raw_result: dict[str, Any]) -> str:
     lines = ["WEBVTT", ""]
-    for start, end, text in _segments(raw_result):
+    for start, end, text in _segments(raw_result, require_timestamps=True):
         lines.append(f"{_format_vtt_timestamp(start)} --> {_format_vtt_timestamp(end)}")
         lines.append(text)
         lines.append("")
@@ -197,7 +220,10 @@ def _render_vtt(raw_result: dict[str, Any]) -> str:
 
 def _render_srt(raw_result: dict[str, Any]) -> str:
     lines: list[str] = []
-    for index, (start, end, text) in enumerate(_segments(raw_result), start=1):
+    for index, (start, end, text) in enumerate(
+        _segments(raw_result, require_timestamps=True),
+        start=1,
+    ):
         lines.append(str(index))
         lines.append(f"{_format_srt_timestamp(start)} --> {_format_srt_timestamp(end)}")
         lines.append(text)

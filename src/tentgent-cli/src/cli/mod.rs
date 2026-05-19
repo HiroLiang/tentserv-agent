@@ -19,6 +19,7 @@ mod server;
 mod session;
 mod session_kernel;
 mod train;
+mod transcribe;
 
 use clap::{CommandFactory, Parser};
 use commands::Commands;
@@ -42,6 +43,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Model { action } => model::handle_model_command(action)?,
         Commands::Embed(command) => embed::handle_embed_command(command).await?,
         Commands::Rerank(command) => rerank::handle_rerank_command(command).await?,
+        Commands::Transcribe(command) => transcribe::handle_transcribe_command(command).await?,
         Commands::Server { action } => server::handle_server_command(action).await?,
         Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
@@ -126,6 +128,54 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_transcribe_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "transcribe",
+            "audio.mp3",
+            "--model-ref",
+            "abc123",
+            "--output",
+            "transcript.txt",
+            "--format",
+            "vtt",
+            "--language",
+            "en",
+            "--timestamps",
+            "--home",
+            "/tmp/tentgent",
+        ])
+        .expect("parse transcribe command");
+
+        match cli.command {
+            Commands::Transcribe(command) => {
+                assert_eq!(command.input_path, std::path::Path::new("audio.mp3"));
+                assert_eq!(command.model_ref, "abc123");
+                assert_eq!(
+                    command.output.as_deref(),
+                    Some(std::path::Path::new("transcript.txt"))
+                );
+                assert_eq!(command.format, "vtt");
+                assert_eq!(command.language.as_deref(), Some("en"));
+                assert_eq!(
+                    command.home.as_deref(),
+                    Some(std::path::Path::new("/tmp/tentgent"))
+                );
+                assert!(command.timestamps);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn transcribe_requires_model_ref() {
+        let err = Cli::try_parse_from(["tentgent", "transcribe", "audio.mp3"])
+            .expect_err("missing model ref");
+
+        assert!(err.to_string().contains("--model-ref"));
     }
 
     #[test]

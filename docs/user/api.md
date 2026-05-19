@@ -135,6 +135,15 @@ Multipart fields:
 | `timestamps` | no | boolean text | `true`, `false`, `1`, `0`, `yes`, `no`, `on`, or `off`. |
 | `output_filename` | no | text | File name only, not a path. |
 
+`file` must appear exactly once. Audio transcription treats one request as one
+logical audio input and one job. Send multiple audio files as multiple jobs, or
+merge them before upload when a single transcript over a combined recording is
+intended.
+
+`vtt` and `srt` are subtitle formats. They require segment-level timestamps
+from the selected backend; if the runtime cannot produce segment timings, the
+job fails instead of writing untimed subtitles.
+
 `curl` example:
 
 ```bash
@@ -149,6 +158,11 @@ part. `file=@/absolute/path/audio.mp3` is only curl shorthand for "read this
 local file and send its bytes"; it is not a path-based API contract. The daemon
 stores those received bytes in the job workspace and then passes the internal
 workspace file path to the runtime worker.
+
+The upload body is transport-stream friendly: clients may stream the multipart
+request body, and the daemon writes the file part to disk instead of treating
+the client's local path as input. This is an I/O and memory boundary, not a
+promise that the selected model performs realtime or partial-file inference.
 
 Response:
 
@@ -186,6 +200,11 @@ Result route behavior:
 | Job canceled | `409` | `job_canceled` |
 | Job succeeded but artifact missing | `404` | `result_not_found` |
 | Result ready | `200` | Transcript bytes with `Content-Type`, `Content-Disposition`, `x-tentgent-next-cursor`, `x-tentgent-result-done`, and `x-tentgent-chunks-read`. |
+
+Result reads are also transport-bounded: clients can read from `cursor` in
+batches instead of requiring one full result read. Future large artifact routes
+may stream response bodies or support range reads under workflow-owned routes;
+they should not expose generic workspace or chunk internals.
 
 Compatibility route:
 

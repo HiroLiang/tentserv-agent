@@ -223,33 +223,141 @@ Review target:
 
 ### M6C And Later: Media Runtime Workflows
 
-Detailed plan:
-[m6c-through-m6h-media-runtime-roadmap.md](./m6c-through-m6h-media-runtime-roadmap.md).
+M6C implementation record:
+[m6c-audio-transcription-daemon-mvp.md](./m6c-audio-transcription-daemon-mvp.md).
 
-M6B intentionally does not execute models. The follow-up M6 slices should stage
-the native workflow work in this order:
+M6B intentionally does not execute models. Keep the M6C-and-later plan in this
+roadmap and update it as decisions change.
 
-- M6C: daemon audio transcription jobs using `audio-transcription` models,
-  kernel job workspaces, transcript output formats, and feature-specific result
-  retrieval. This slice is implemented and smoke-tested.
-- M6D: audio transcription file-stream job input through the functional
-  `POST /v1/audio/transcriptions/job` route, while workspace chunks remain
-  internal. This slice is implemented. Detailed plan:
+#### M6C: Daemon Audio Transcription Jobs
+
+Status: implemented and smoke-tested.
+
+- Add daemon-managed audio transcription jobs for `audio-transcription`
+  safetensors ASR models.
+- Use kernel job workspaces for input/result state.
+- Support transcript output formats: `text`, `json`, `vtt`, and `srt`.
+- Expose feature-owned result reads instead of generic workspace routes.
+
+#### M6D: Audio Transcription File Upload Jobs
+
+Status: implemented.
+
+- Canonical API: `POST /v1/audio/transcriptions/job`.
+- Callers send multipart `file` bytes; `curl -F file=@audio.mp3` is only
+  client-side file reading shorthand, not a path-based API contract.
+- The daemon persists received bytes into a job workspace, then passes the
+  daemon-internal workspace path to the worker.
+- Result route:
+  `GET /v1/audio/transcriptions/job/{job_id}/result?cursor=0&max_chunks=32`.
+- Result reads report `result_pending`, terminal job errors,
+  `result_not_found`, or ready transcript bytes.
+- Detailed plan:
   [m6d-audio-transcription-file-stream-job-input.md](./m6d-audio-transcription-file-stream-job-input.md).
-- M6E: CLI foreground file-to-output wrapper for transcription plus audio
-  large-file decode/window hardening.
-- M6F: vision chat with explicit typed image-plus-text DTOs and
-  text/JSON/Markdown outputs.
-- M6G: image generation jobs that turn prompts into `png` or `jpg` result
-  files.
-- M6H: audio speech jobs that turn text into `wav` or later approved audio
-  result files.
-- M6I: video understanding jobs that sample frames/clips from complete logical
-  video files without loading whole videos into memory.
-- M6J: video generation artifact decision and, if approved, job-only playable
-  video outputs.
-- M6K: media serving and runtime stream proxy decision for long-lived
-  capability-native server routes versus durable job workflows.
+
+#### M6E: Audio Transcription CLI And Large-File Hardening
+
+Status: implemented.
+
+- Add `tentgent transcribe /path/audio.mp3 --model-ref <model> --output transcript.txt --format text`.
+- Foreground mode is not a hidden durable job.
+- With `--output`, write only to the requested path and print a short
+  completion message.
+- Without `--output`, allow stdout for `text` and `json`; require `--output`
+  for `vtt` and `srt`.
+- Add `language`, `timestamps`, output-format, input-path, and output-path
+  validation.
+- Improve large-file safety and user guidance for ffmpeg, media format support,
+  decode failures, timeout expectations, and memory/disk pressure. Treat the
+  root cause as media decode and model time-window handling, not arbitrary
+  byte-chunk ingestion.
+- Do not add `--detach`; users can rerun foreground CLI failures, while durable
+  audio jobs remain a daemon API workflow.
+- Detailed plan:
+  [m6e-audio-transcription-cli-and-large-file-hardening.md](./m6e-audio-transcription-cli-and-large-file-hardening.md).
+
+#### M6F: Vision Chat Image Input
+
+Status: planned.
+
+- Add native `vision-chat` typed image-plus-text requests.
+- Do not reuse the text-only chat DTO for image inputs.
+- Primary public file input should be multipart image bytes. Trusted local path
+  input may exist only as a local/debug variant.
+- Candidate APIs: `POST /v1/vision/chat` for bounded synchronous requests and
+  `POST /v1/vision/chat/job` for slower or larger requests.
+- Outputs: `text`, `json`, or `md`.
+- Compatible OpenAI/Claude/Gemini multimodal DTOs wait until the native typed
+  DTO is stable.
+
+#### M6G: Image Generation Jobs
+
+Status: planned.
+
+- Add `image-generation` artifact jobs.
+- Canonical API: `POST /v1/images/generations/job`.
+- Result/file APIs return generated `png` or `jpg` files through
+  workflow-owned routes, not workspace/spool routes.
+- First slice is text-to-image only with validated prompt, dimensions, seed,
+  and output format.
+- Reference image, mask, image-to-image, and inpainting are later sub-slices.
+
+#### M6H: Audio Speech Jobs
+
+Status: planned.
+
+- Add `audio-speech` artifact jobs for text-to-speech.
+- Canonical API: `POST /v1/audio/speech/job`.
+- First output format should be `wav`; `flac` can follow if supported.
+- `mp3` waits until encoder dependency and licensing boundaries are approved.
+- Voice/language selection must be model-aware and fail early when unsupported.
+- Realtime speech streaming is out of scope for this slice.
+
+#### M6I: Video Understanding
+
+Status: planned, contract first.
+
+- Add video plus prompt to text/JSON/Markdown understanding jobs only after the
+  payload and result contract is approved.
+- Candidate API: `POST /v1/video/understanding/job`.
+- Primary input should be multipart video bytes, with trusted local path only
+  as a local/debug fallback if kept.
+- Workers must decode/sample frames or clips with bounds such as `fps`, max
+  frame count, max pixels, and timeout.
+- Do not load whole videos into memory.
+- Keep this contract-only if no practical small local model/runtime fixture is
+  approved.
+
+#### M6J: Video Generation Artifact Decision
+
+Status: decision slice, not implementation by default.
+
+- Decide whether local video generation belongs in this release line.
+- If approved, it must be job-only and produce playable files such as `mp4` or
+  `webm`.
+- Define encoder dependencies, hardware expectations, temporary disk usage,
+  cleanup retention, and output artifact shape before runtime work.
+- Raw frames are debug/advanced artifacts only.
+- If no-go, keep `video-generation` out of accepted capability values until a
+  later milestone.
+
+#### M6K: Media Serving And Runtime Stream Proxy Decision
+
+Status: planned decision and implementation split.
+
+- Decide which media capabilities get long-lived `tentgent server` routes and
+  which remain durable job workflows.
+- Server route families are selected by capability. Chat servers expose chat
+  routes, embedding servers expose `/v1/embeddings`, rerank servers expose
+  `/v1/rerank`, and audio transcription servers may expose
+  `/v1/audio/transcriptions`.
+- Unsupported route families should return `404` or endpoint-specific
+  unsupported errors.
+- Direct serving is for warm models and bounded requests. Long-running
+  generation, very large uploads, resumable work, and durable artifacts should
+  remain job workflows.
+- Opaque backend proxying is advanced later work and must not be the default
+  user API.
 
 Review target:
 
@@ -274,9 +382,10 @@ Review target:
 - Current alpha line: capability metadata, compatibility gates, embedding MVP,
   rerank MVP, and M6A media metadata vocabulary are implemented and documented.
 - Multimodal planning follow-up: kernel-owned job workspaces are implemented
-  before native runtime work, M6C audio transcription and M6D file-upload job
-  intake are implemented, and M6E-and-later stages the remaining media
-  workflows by CLI, output format, server, and transport shape.
+  before native runtime work; M6C audio transcription, M6D file-upload job
+  intake, and M6E foreground transcription CLI are implemented; M6F-and-later
+  stages the remaining media workflows by CLI, output format, server, and
+  transport shape.
 - Signing prerelease: Developer ID signing and notarization pipeline passes.
 - Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints
   remain explicitly deferred unless their contracts and runtime paths are

@@ -94,7 +94,12 @@ class AudioTranscriptionRuntimeTests(unittest.TestCase):
                     output_path=output_path,
                     output_format="vtt",
                 ),
-                {"text": "hello"},
+                {
+                    "text": "hello",
+                    "chunks": [
+                        {"timestamp": (0.0, 1.0), "text": "hello"},
+                    ],
+                },
             )
 
             self.assertTrue(output_path.is_file())
@@ -102,6 +107,19 @@ class AudioTranscriptionRuntimeTests(unittest.TestCase):
             self.assertEqual(result.output_path, output_path)
             self.assertEqual(result.total_bytes, len(output_path.read_bytes()))
             self.assertEqual(result.text, "hello")
+
+    def test_subtitle_output_requires_segment_timestamps(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires segment timestamps"):
+            render_audio_transcription_output({"text": "hello"}, "vtt")
+
+        with self.assertRaisesRegex(ValueError, "requires segment timestamps"):
+            render_audio_transcription_output(
+                {
+                    "text": "hello",
+                    "chunks": [{"text": "hello", "timestamp": (0.0, None)}],
+                },
+                "srt",
+            )
 
     def test_output_format_helpers_validate_values(self) -> None:
         self.assertEqual(normalize_audio_transcription_output_format("txt"), "text")

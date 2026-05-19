@@ -100,10 +100,11 @@ tentgent model pull BAAI/bge-reranker-base --capability rerank --revision main
 
 `--capability` accepts `chat`, `embedding`, `rerank`,
 `audio-transcription`, `audio-speech`, `vision-chat`, or
-`image-generation`. Chat, embedding, and rerank endpoints enforce this metadata
-before runtime dispatch. `audio-transcription` is available through the daemon
-job API for local safetensors ASR models. The remaining media capability values
-are metadata-only until their payload and runtime contracts are implemented.
+`image-generation`. Chat, embedding, rerank, and audio transcription endpoints
+enforce this metadata before runtime dispatch. `audio-transcription` is
+available through `tentgent transcribe` and the daemon job API for local
+safetensors ASR models. The remaining media capability values are metadata-only
+until their payload and runtime contracts are implemented.
 
 List and inspect models:
 
@@ -165,17 +166,26 @@ REST or a direct local server so the model can stay warm.
 
 ## Audio Transcription
 
-Audio transcription currently runs through daemon jobs. Send the audio file to
-the daemon as multipart form data; the daemon stores the complete file in a job
-workspace, starts transcription, and serves result bytes through the workflow
-result route.
+Run foreground audio transcription without starting the daemon:
 
-Pull a small model and start the daemon:
+```bash
+tentgent transcribe /absolute/path/audio.mp3 \
+  --model-ref <audio-transcription-model-ref> \
+  --output transcript.txt \
+  --format text
+```
+
+With `--output`, the command writes only to the requested file and prints a
+short completion message. It fails if the output file already exists. Without
+`--output`, `text` and `json` formats print to stdout. `vtt` and `srt` are
+subtitle formats and require `--output`; they also require backend segment
+timestamps.
+
+Pull a small model before running local transcription:
 
 ```bash
 tentgent runtime bootstrap --profile local-model
 tentgent model pull openai/whisper-tiny.en --capability audio-transcription
-tentgent daemon start --host 127.0.0.1 --port 8790
 ```
 
 MP3 and other compressed audio files require `ffmpeg` on `PATH` because the
@@ -189,6 +199,14 @@ brew install ffmpeg
 does not block non-media commands, but local audio/video file jobs should treat
 the warning as required setup. The doctor warning prints an install hint for
 the current operating system.
+
+For HTTP integrations, send the audio file to the daemon as multipart form
+data; the daemon stores the complete file in a job workspace, starts
+transcription, and serves result bytes through the workflow result route:
+
+```bash
+tentgent daemon start --host 127.0.0.1 --port 8790
+```
 
 Start a transcription job:
 
@@ -218,9 +236,10 @@ curl -sS \
 Supported output formats are `text`, `json`, `vtt`, and `srt`. Reading the
 result before completion returns `result_pending`; inspect `/v1/jobs/<job-id>`
 for progress or terminal error details. Workspace chunks and temporary files
-are internal details. A foreground `tentgent transcribe` CLI wrapper is planned
-for the next media slice. For the complete HTTP contract, including byte-array
-multipart upload semantics, see [api.md](./api.md).
+are internal details. The multipart upload and result reads are
+transport-stream-friendly memory boundaries, not realtime model inference. For
+the complete HTTP contract, including byte-array multipart upload semantics,
+see [api.md](./api.md).
 
 ## Server
 

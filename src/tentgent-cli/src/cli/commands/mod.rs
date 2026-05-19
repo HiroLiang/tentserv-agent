@@ -10,6 +10,7 @@ mod runtime;
 mod server;
 mod session;
 mod train;
+mod transcribe;
 
 pub use adapter::AdapterCommands;
 pub use auth::{AuthCommands, AuthProviderAction};
@@ -27,6 +28,7 @@ pub use train::{
     TrainCommands, TrainLoraCommands, TrainLoraPlanCommands, TrainLoraRunCommand,
     TrainLoraRunWorkerCommand,
 };
+pub use transcribe::TranscribeCommand;
 
 use clap::{Args, Subcommand};
 
@@ -88,6 +90,13 @@ pub enum Commands {
         long_about = "Run one-shot local rerank inference without starting the daemon. The command resolves a stored rerank-capable model, calls the Python rerank runtime once, and prints a JSON response matching daemon /v1/rerank."
     )]
     Rerank(RerankCommand),
+    /// Transcribe a local audio file with a local audio-transcription model.
+    #[command(
+        name = "transcribe",
+        about = "Transcribe a local audio file with a local audio-transcription model.",
+        long_about = "Transcribe a local audio file in the foreground without starting the daemon. The command resolves a stored audio-transcription model, calls the Python audio runtime once, and writes text, JSON, WebVTT, or SRT output. With --output it writes only to the requested file and fails if that file already exists."
+    )]
+    Transcribe(TranscribeCommand),
     /// Inspect and manage adapters, including LoRA selection and switching.
     #[command(
         name = "adapter",
