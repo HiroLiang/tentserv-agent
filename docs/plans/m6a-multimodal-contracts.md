@@ -62,7 +62,7 @@ Rules:
   workflow, but it must not reuse text-only chat message contracts until media
   content parts are explicit.
 - `image-generation`: text, optional reference image, or mask input to image
-  artifact output.
+  result output.
 
 ## Transport Shapes
 
@@ -89,13 +89,13 @@ Candidate fits:
 - long audio transcription
 - image generation
 - video understanding
-- any workflow that writes result artifacts for later retrieval
+- any workflow that writes result chunks or files for later retrieval
 
 The job contract should model:
 
-- input artifact refs
+- input spool state
 - status and progress
-- output artifact refs
+- result spool state and read cursors
 - expiration and cleanup
 - structured failure state
 
@@ -124,22 +124,24 @@ Rules:
   semantics, or payload validation.
 - Treat it as a runtime tunnel with explicit resource and lifecycle limits.
 
-## M6B Decision
+## M6B Direction
 
-M6B should implement the media artifact and async job boundary before realtime
-duplex streaming or an opaque raw stream proxy.
+M6B should implement a job-scoped media spool before realtime duplex streaming,
+an opaque raw stream proxy, or a managed media artifact catalog.
 
 Rationale:
 
-- It gives audio, image, and future video workflows one shared place for input
-  artifact refs, output artifact refs, size limits, retention, and cleanup.
+- It gives audio, image, and future video workflows one shared place for
+  job-local input chunks, result chunks, size limits, retention, and cleanup.
 - It keeps long-running media generation out of ordinary request/response
   paths.
+- It avoids creating permanent media objects for high-frequency tool calls
+  unless a later explicit promote/save feature is approved.
 - It does not prevent a later WebSocket/WebRTC or opaque stream proxy, but it
   avoids treating raw chunk forwarding as the main model-serving contract.
 
 Recommended M6C first native endpoint candidate: `audio-transcription`, with a
-small Whisper fixture and a non-realtime file/artifact request path.
+small Whisper fixture and a non-realtime job spool request path.
 
 ## Candidate HF Smoke Models
 
@@ -166,12 +168,14 @@ chat, embedding, rerank, and metadata-only media fixture guide.
 - Decide `vision-chat` is a separate first-class capability in model metadata.
 - Leave video naming deferred until transport and artifact behavior are clearer.
 
-### 2. Payload And Artifact Decisions
+### 2. Payload And Spool Decisions
 
 - Decide whether media inputs are inline base64, multipart uploads, file paths,
-  artifact refs, or a combination.
-- Prefer artifact refs for larger audio, image, and video payloads.
-- Define how local daemon storage owns temporary media and result files.
+  job spool refs, or a combination.
+- Prefer job-scoped input/result spools for larger audio, image, and video
+  payloads.
+- Define how local daemon storage owns temporary media and result files without
+  creating a model/dataset-like media catalog.
 - Define cleanup and size-limit rules before runtime implementation.
 
 ### 3. Transport Decision Matrix
@@ -196,7 +200,7 @@ chat, embedding, rerank, and metadata-only media fixture guide.
 
 ### 6. Follow-Up Plan Split
 
-- M6B should define async media jobs and artifact refs.
+- M6B should define job-scoped media input/result spools and cleanup rules.
 - M6C should become the first native runtime endpoint after the contract is
   stable.
 - Stable contract docs move only when M6B/M6C is approved for implementation.
@@ -212,7 +216,7 @@ chat, embedding, rerank, and metadata-only media fixture guide.
 
 ## Review Target
 
-- M6B is selected as async media jobs and artifact refs.
+- M6B is selected as job-scoped media spooling with TTL, quota, and cleanup.
 - M6C can choose the first native runtime endpoint from a clear matrix of
   native workflows, transport shapes, and HF smoke fixtures.
 - No runtime code or user-facing claims are added before the contract boundary is

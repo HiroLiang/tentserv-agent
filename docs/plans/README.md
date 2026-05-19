@@ -45,11 +45,14 @@ one pass without a staged breakdown.
   Implemented M6A slice: metadata-only multimodal capability vocabulary,
   transport shape decisions, opaque proxy boundary, and small Hugging Face smoke
   fixtures.
+- [m6b-job-spool-media-workflows.md](./m6b-job-spool-media-workflows.md)
+  Planned M6B slice: job-scoped input/result spooling, cleanup, quota, and
+  cursor-based result reads before media model runtime execution.
 
 ## Recommended Order
 
-1. Define M6B async media jobs and artifact refs before adding audio, image, or
-   video runtime execution.
+1. Implement M6B job-scoped media spooling before adding audio, image, or video
+   runtime execution.
 2. Run Apple Developer ID signing and notarization on prerelease artifacts
    before beta or release candidate tags.
 

@@ -177,7 +177,7 @@ Detailed plan: [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md).
   evidence.
 - Split media capability names by workflow instead of using one broad value.
 - Identified small Hugging Face smoke models for each candidate workflow.
-- Chose async media jobs and artifact refs as the M6B runtime boundary.
+- Chose job-scoped input/result spooling as the M6B runtime boundary.
 - Kept the opaque proxy contract separate from native capability contracts: it
   may forward bytes or chunks without parsing model-specific payloads, but it
   should not imply validation, compatibility gates, transcript state, or
@@ -188,21 +188,34 @@ Detailed plan: [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md).
 Review target:
 
 - M6A has a precise native multimodal metadata vocabulary plus an explicit
-  decision that M6B starts with media jobs/artifacts, not an opaque streaming
+  decision that M6B starts with job-scoped spooling, not an opaque streaming
   proxy.
 
-### M6B: Media Runtime Boundary
+### M6B: Job Spool Boundary
 
-- Convert the approved M6A async media job and artifact direction into one
-  implementable slice.
+Detailed plan:
+[m6b-job-spool-media-workflows.md](./m6b-job-spool-media-workflows.md).
+
+- Add daemon-owned job spool infrastructure for large binary input/output.
+- Use `job_id` as the user-visible handle instead of creating a managed
+  `media_ref` catalog.
+- Support path input and upload input by chunking bytes into a job-local input
+  spool.
+- Support result chunks and cursor-based reads so streaming and download
+  workflows can share one output path.
+- Add TTL, quota, startup cleanup, periodic cleanup, and explicit cleanup rules
+  to protect SSD usage.
+- Make daemon stop interrupt active spool jobs and run one retention-aware GC
+  sweep.
+- Keep future CLI media model commands simple: users provide an input file and
+  output path while the CLI hides job/spool details by default.
 - Keep opaque stream proxy work separate from native media endpoint contracts.
-- Move stable interface text into `docs/contracts/` only when implementation is
-  approved.
+- Leave model runtime execution to M6C.
 
 Review target:
 
-- The first media runtime boundary is small enough to implement and verify
-  without committing to every audio, image, and video workflow at once.
+- Clients and future workflow workers can use job-scoped input/result spools
+  before any audio, image, or video model endpoint exists.
 
 ### M7: Apple Developer ID Signing
 
@@ -221,7 +234,7 @@ Review target:
 
 - Current alpha line: capability metadata, compatibility gates, embedding MVP,
   rerank MVP, and M6A media metadata vocabulary are implemented and documented.
-- Multimodal planning follow-up: async media jobs and artifact refs are defined
+- Multimodal planning follow-up: job-scoped media spooling is implemented
   before native runtime work starts.
 - Signing prerelease: Developer ID signing and notarization pipeline passes.
 - Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints
@@ -236,5 +249,7 @@ Review target:
 - Server tests for incompatible model and endpoint combinations.
 - HTTP tests for embedding and rerank request validation and response ordering.
 - Metadata tests for explicit-only M6A media capability values.
+- Job spool tests for path import, upload, result cursor reads, quota, cleanup,
+  and fake-worker handoff.
 - Doctor/capability-state tests for backend readiness reporting.
 - Release workflow tests or dry runs for signed macOS artifacts before beta.
