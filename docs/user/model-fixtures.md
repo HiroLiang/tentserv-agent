@@ -83,9 +83,10 @@ image-generation
 ```
 
 Only `chat`, `embedding`, and `rerank` have CLI, daemon, and direct server
-runtime paths today. `audio-transcription` has a daemon job runtime path but no
-foreground CLI wrapper yet. The remaining media values are metadata-only until
-their payload, artifact, and runtime contracts are implemented.
+runtime paths today. `audio-transcription` has a daemon file-upload job runtime
+path but no foreground CLI wrapper yet. The remaining media values are
+metadata-only until their payload, artifact, and runtime contracts are
+implemented.
 
 ## Runnable Smoke Commands
 
@@ -143,18 +144,15 @@ curl -sS http://127.0.0.1:8790/v1/rerank \
 Audio transcription daemon job:
 
 ```bash
-curl -sS http://127.0.0.1:8790/v1/audio/transcriptions/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model_ref": "<audio-transcription-model-ref>",
-    "path": "/absolute/path/audio.wav",
-    "language": "en",
-    "output_format": "text",
-    "timestamps": false
-  }'
+curl -sS http://127.0.0.1:8790/v1/audio/transcriptions/job \
+  -F model_ref=<audio-transcription-model-ref> \
+  -F output_format=text \
+  -F language=en \
+  -F timestamps=false \
+  -F file=@/absolute/path/audio.mp3
 
 curl -sS \
-  'http://127.0.0.1:8790/v1/audio/transcriptions/jobs/<job-id>/result?cursor=0&max_chunks=32' \
+  'http://127.0.0.1:8790/v1/audio/transcriptions/job/<job-id>/result?cursor=0&max_chunks=32' \
   -o transcript.txt
 ```
 

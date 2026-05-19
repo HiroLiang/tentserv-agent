@@ -27,6 +27,9 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
 - [commands.md](./commands.md)
   Common commands for auth, models, adapters, datasets, chat, servers, daemon,
   sessions, and LoRA training.
+- [api.md](./api.md)
+  User-facing daemon HTTP API reference, including request shapes, result
+  routes, job behavior, and multipart audio upload semantics.
 - [model-fixtures.md](./model-fixtures.md)
   Recommended small Hugging Face models and smoke-test commands for chat,
   embedding, rerank, audio transcription, and planned M6 media workflows.

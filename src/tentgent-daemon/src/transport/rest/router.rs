@@ -76,6 +76,14 @@ fn rerank_routes() -> Router<RestState> {
 fn audio_routes() -> Router<RestState> {
     Router::new()
         .route(
+            "/v1/audio/transcriptions/job",
+            post(audio::create_transcription_job_from_upload),
+        )
+        .route(
+            "/v1/audio/transcriptions/job/{job_id}/result",
+            get(audio::transcription_job_result),
+        )
+        .route(
             "/v1/audio/transcriptions/jobs",
             post(audio::create_transcription_job),
         )

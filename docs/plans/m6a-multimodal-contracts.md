@@ -204,8 +204,8 @@ chat, embedding, rerank, and metadata-only media fixture guide.
   rules.
 - M6C implements daemon audio transcription jobs on top of the kernel job
   workspace contract.
-- M6D should add media file intake and upload foundation while keeping
-  workspace chunk operations internal.
+- M6D adds the audio transcription file-stream job input through the functional
+  endpoint while keeping workspace chunk operations internal.
 - M6E and later should stage audio CLI and large-file hardening, vision chat,
   image/audio generation, video workflows, and media server decisions as
   described in

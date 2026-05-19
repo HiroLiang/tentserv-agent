@@ -23,6 +23,7 @@ keychain.
 - Traditional Chinese: [docs/i18n/zh-TW/README.md](./docs/i18n/zh-TW/README.md)
 - Japanese: [docs/i18n/ja/README.md](./docs/i18n/ja/README.md)
 - Full user guide: [docs/user/README.md](./docs/user/README.md)
+- HTTP API reference: [docs/user/api.md](./docs/user/api.md)
 - Developer guide: [docs/development/README.md](./docs/development/README.md)
 
 ## Quick Start

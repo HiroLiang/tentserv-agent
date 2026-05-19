@@ -694,7 +694,10 @@ async fn audio_transcription_job_accepts_path_request() {
     let body = json_body(response).await;
     let job_id = body["job"]["job_id"].as_str().expect("job id").to_string();
     assert_eq!(body["job"]["kind"], "audio_transcription");
-    assert_eq!(body["job"]["status"], "queued");
+    assert!(matches!(
+        body["job"]["status"].as_str(),
+        Some("queued" | "running")
+    ));
     assert_eq!(body["job"]["target"]["section"], "audio");
     assert_eq!(body["job"]["target"]["reference"], model_ref);
     assert_eq!(
@@ -715,6 +718,268 @@ async fn audio_transcription_job_accepts_path_request() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn audio_transcription_job_accepts_multipart_upload_request() {
+    let requested_home = unique_home("audio-transcription-upload-job");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "e".repeat(64);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["audio-transcription"]);
+    let boundary = "tentgent-audio-upload-boundary";
+    let body = multipart_body(
+        boundary,
+        &[
+            MultipartPart::text("model_ref", &model_ref),
+            MultipartPart::text("language", "en"),
+            MultipartPart::text("output_format", "text"),
+            MultipartPart::text("output_filename", "uploaded.txt"),
+            MultipartPart::text("timestamps", "false"),
+            MultipartPart::file(
+                "file",
+                "input file.mp3",
+                "audio/mpeg",
+                b"not real mp3 bytes",
+            ),
+        ],
+    );
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/audio/transcriptions/job")
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = json_body(response).await;
+    let job_id = body["job"]["job_id"].as_str().expect("job id").to_string();
+    assert_eq!(body["job"]["kind"], "audio_transcription");
+    assert!(matches!(
+        body["job"]["status"].as_str(),
+        Some("queued" | "running")
+    ));
+    assert_eq!(body["job"]["target"]["section"], "audio");
+    assert_eq!(body["job"]["target"]["reference"], model_ref);
+    assert!(body["job"]["target"]["path"]
+        .as_str()
+        .expect("target path")
+        .ends_with("/input/input_file.mp3"));
+    assert_eq!(body["job"]["workspace"]["input"]["state"], "done");
+    assert_eq!(body["job"]["workspace"]["input"]["done"], true);
+    assert_eq!(body["job"]["workspace"]["input"]["chunk_count"], 1);
+    assert_eq!(
+        body["job"]["workspace"]["input"]["original_filename"],
+        "input file.mp3"
+    );
+    assert_eq!(
+        body["job"]["workspace"]["input"]["media_type"],
+        "audio/mpeg"
+    );
+
+    for _ in 0..50 {
+        let Some(job) = state
+            .app()
+            .jobs()
+            .get(&crate::runtime::JobId::new(job_id.clone()))
+        else {
+            break;
+        };
+        if job.status.is_terminal() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn audio_transcription_upload_job_rejects_missing_file() {
+    let requested_home = unique_home("audio-transcription-upload-missing-file");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "f".repeat(64);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["audio-transcription"]);
+    let boundary = "tentgent-audio-upload-missing-file-boundary";
+    let body = multipart_body(boundary, &[MultipartPart::text("model_ref", &model_ref)]);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/audio/transcriptions/job")
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("`file` is required"));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn audio_transcription_upload_job_validates_multipart_fields() {
+    for (label, parts, expected_message) in [
+        (
+            "blank-model-ref",
+            vec![
+                MultipartPart::text("model_ref", "   "),
+                MultipartPart::file("file", "audio.wav", "audio/wav", b"audio bytes"),
+            ],
+            "`model_ref` is required",
+        ),
+        (
+            "bad-output-format",
+            vec![
+                MultipartPart::text("model_ref", "a".repeat(64).as_str()),
+                MultipartPart::text("output_format", "docx"),
+                MultipartPart::file("file", "audio.wav", "audio/wav", b"audio bytes"),
+            ],
+            "unsupported audio transcription output format",
+        ),
+        (
+            "duplicate-file",
+            vec![
+                MultipartPart::text("model_ref", "a".repeat(64).as_str()),
+                MultipartPart::file("file", "audio-one.wav", "audio/wav", b"one"),
+                MultipartPart::file("file", "audio-two.wav", "audio/wav", b"two"),
+            ],
+            "`file` must appear exactly once",
+        ),
+        (
+            "duplicate-model-ref",
+            vec![
+                MultipartPart::text("model_ref", "a".repeat(64).as_str()),
+                MultipartPart::text("model_ref", "b".repeat(64).as_str()),
+                MultipartPart::file("file", "audio.wav", "audio/wav", b"audio bytes"),
+            ],
+            "`model_ref` must not be provided more than once",
+        ),
+    ] {
+        let requested_home = unique_home(&format!("audio-transcription-upload-{label}"));
+        let state = rest_state_for_home(requested_home);
+        let home = state.app().layout().home_dir.canonicalize().expect("home");
+        write_safetensors_model_fixture_with_capabilities(
+            &home,
+            &"a".repeat(64),
+            &["audio-transcription"],
+        );
+        let boundary = format!("tentgent-audio-upload-{label}");
+        let response = build_router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/audio/transcriptions/job")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(multipart_body(&boundary, &parts)))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{label}");
+        let body = json_body(response).await;
+        assert_eq!(body["error"], "bad_request", "{label}");
+        assert!(
+            body["message"]
+                .as_str()
+                .expect("message")
+                .contains(expected_message),
+            "{label}: {body}"
+        );
+
+        let _ = fs::remove_dir_all(home);
+    }
+}
+
+#[tokio::test]
+async fn audio_transcription_result_reports_pending_for_active_job() {
+    let requested_home = unique_home("audio-transcription-result-pending");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let job = state.app().jobs().create(
+        JobKind::audio_transcription(),
+        "transcribe fixture",
+        None,
+        Vec::<String>::new(),
+    );
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/audio/transcriptions/job/{}/result",
+                    job.job_id
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "result_pending");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn audio_transcription_result_reports_failed_terminal_job() {
+    let requested_home = unique_home("audio-transcription-result-failed");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let job = state.app().jobs().create(
+        JobKind::audio_transcription(),
+        "transcribe fixture",
+        None,
+        Vec::<String>::new(),
+    );
+    state.app().jobs().fail(&job.job_id, "audio runtime failed");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/audio/transcriptions/job/{}/result",
+                    job.job_id
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "job_failed");
 
     let _ = fs::remove_dir_all(home);
 }
@@ -784,7 +1049,7 @@ async fn audio_transcription_result_reads_workspace_chunks() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/v1/audio/transcriptions/jobs/{}/result?cursor=0&max_chunks=1",
+                    "/v1/audio/transcriptions/job/{}/result?cursor=0&max_chunks=1",
                     job.job_id
                 ))
                 .body(Body::empty())
@@ -3443,6 +3708,65 @@ fn session_message(role: &str, content: &str) -> String {
 
 fn sample_dataset_record() -> &'static str {
     r#"{"schema":"tentgent.chat.v1","messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":"Hi"}]}"#
+}
+
+struct MultipartPart {
+    name: String,
+    filename: Option<String>,
+    content_type: Option<String>,
+    body: Vec<u8>,
+}
+
+impl MultipartPart {
+    fn text(name: impl Into<String>, body: impl AsRef<str>) -> Self {
+        Self {
+            name: name.into(),
+            filename: None,
+            content_type: None,
+            body: body.as_ref().as_bytes().to_vec(),
+        }
+    }
+
+    fn file(
+        name: impl Into<String>,
+        filename: impl Into<String>,
+        content_type: impl Into<String>,
+        body: impl AsRef<[u8]>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            filename: Some(filename.into()),
+            content_type: Some(content_type.into()),
+            body: body.as_ref().to_vec(),
+        }
+    }
+}
+
+fn multipart_body(boundary: &str, parts: &[MultipartPart]) -> Vec<u8> {
+    let mut body = Vec::new();
+    for part in parts {
+        body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+        match part.filename.as_deref() {
+            Some(filename) => body.extend_from_slice(
+                format!(
+                    "Content-Disposition: form-data; name=\"{}\"; filename=\"{}\"\r\n",
+                    part.name, filename
+                )
+                .as_bytes(),
+            ),
+            None => body.extend_from_slice(
+                format!("Content-Disposition: form-data; name=\"{}\"\r\n", part.name).as_bytes(),
+            ),
+        }
+        if let Some(content_type) = part.content_type.as_deref() {
+            body.extend_from_slice(format!("Content-Type: {content_type}\r\n").as_bytes());
+        }
+        body.extend_from_slice(b"\r\n");
+        body.extend_from_slice(&part.body);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    body
 }
 
 fn path_string(path: impl AsRef<std::path::Path>) -> String {

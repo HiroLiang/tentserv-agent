@@ -232,8 +232,10 @@ the native workflow work in this order:
 - M6C: daemon audio transcription jobs using `audio-transcription` models,
   kernel job workspaces, transcript output formats, and feature-specific result
   retrieval. This slice is implemented and smoke-tested.
-- M6D: media file intake and upload foundation where path/upload routes expose
-  workflow capabilities, while workspace chunks remain internal.
+- M6D: audio transcription file-stream job input through the functional
+  `POST /v1/audio/transcriptions/job` route, while workspace chunks remain
+  internal. This slice is implemented. Detailed plan:
+  [m6d-audio-transcription-file-stream-job-input.md](./m6d-audio-transcription-file-stream-job-input.md).
 - M6E: CLI foreground file-to-output wrapper for transcription plus audio
   large-file decode/window hardening.
 - M6F: vision chat with explicit typed image-plus-text DTOs and
@@ -272,9 +274,9 @@ Review target:
 - Current alpha line: capability metadata, compatibility gates, embedding MVP,
   rerank MVP, and M6A media metadata vocabulary are implemented and documented.
 - Multimodal planning follow-up: kernel-owned job workspaces are implemented
-  before native runtime work, M6C audio transcription is implemented, and
-  M6D-and-later stages the remaining media workflows by API, upload, CLI,
-  output format, server, and transport shape.
+  before native runtime work, M6C audio transcription and M6D file-upload job
+  intake are implemented, and M6E-and-later stages the remaining media
+  workflows by CLI, output format, server, and transport shape.
 - Signing prerelease: Developer ID signing and notarization pipeline passes.
 - Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints
   remain explicitly deferred unless their contracts and runtime paths are

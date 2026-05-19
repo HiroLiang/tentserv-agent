@@ -178,8 +178,7 @@ DELETE /v1/jobs/{job_id}
 Starting detached/background work belongs to a feature endpoint:
 
 ```text
-POST /v1/audio/transcriptions/jobs
-POST /v1/audio/transcriptions/upload/jobs
+POST /v1/audio/transcriptions/job
 POST /v1/images/generations/jobs
 ```
 
@@ -187,7 +186,7 @@ Result retrieval should be owned by the workflow that understands the output
 format:
 
 ```text
-GET /v1/audio/transcriptions/jobs/{job_id}/result
+GET /v1/audio/transcriptions/job/{job_id}/result
 GET /v1/images/generations/jobs/{job_id}/files
 GET /v1/images/generations/jobs/{job_id}/files/{file_id}
 ```

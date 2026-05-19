@@ -31,9 +31,10 @@ What changed:
   embedding/rerank routes require matching model capabilities before runtime
   dispatch.
 - Added the first media daemon workflow:
-  `POST /v1/audio/transcriptions/jobs` creates a background transcription job
-  for local `audio-transcription` safetensors ASR models, and
-  `GET /v1/audio/transcriptions/jobs/{job_id}/result` reads transcript result
+  `POST /v1/audio/transcriptions/job` accepts multipart audio file upload,
+  creates a background transcription job for local `audio-transcription`
+  safetensors ASR models, and
+  `GET /v1/audio/transcriptions/job/{job_id}/result` reads transcript result
   bytes from the job workspace.
 
 Known limits:
@@ -41,8 +42,7 @@ Known limits:
 - Tools/function calling, images, and audio content are rejected by compatible
   chat adapters until kernel tool-call and multimodal chat support exists.
 - Audio transcription is daemon-job only in this slice. The foreground
-  `tentgent transcribe` CLI wrapper and multipart upload route are planned
-  follow-ups.
+  `tentgent transcribe` CLI wrapper is planned as a follow-up.
 - Rerank scores are raw backend scores; compare them within one request/model
   family rather than across unrelated models.
 - The next release-engineering slice is Apple Developer ID signing,

@@ -248,20 +248,19 @@ DELETE /v1/jobs/{job_id}
 Starting detached/background work belongs to feature endpoints:
 
 ```text
-POST /v1/audio/transcriptions/jobs
-POST /v1/audio/transcriptions/upload/jobs
-POST /v1/audio/speech/jobs
-POST /v1/images/generations/jobs
-POST /v1/vision/chat/jobs
+POST /v1/audio/transcriptions/job
+POST /v1/audio/speech/job
+POST /v1/images/generations/job
+POST /v1/vision/chat/job
 ```
 
 Result retrieval belongs to the feature endpoint that understands output
 formats:
 
 ```text
-GET /v1/audio/transcriptions/jobs/{job_id}/result
-GET /v1/images/generations/jobs/{job_id}/files
-GET /v1/images/generations/jobs/{job_id}/files/{file_id}
+GET /v1/audio/transcriptions/job/{job_id}/result
+GET /v1/images/generations/job/{job_id}/files
+GET /v1/images/generations/job/{job_id}/files/{file_id}
 ```
 
 There must not be public `/v1/spool/*` routes. User-facing APIs should say

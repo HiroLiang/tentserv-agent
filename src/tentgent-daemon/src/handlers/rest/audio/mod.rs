@@ -5,7 +5,7 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Multipart, Path, Query, State},
     http::{
         header::{CONTENT_DISPOSITION, CONTENT_TYPE},
         HeaderValue, StatusCode,
@@ -41,13 +41,77 @@ use crate::{
     handlers::rest::jobs::{job_item, JobResponse},
     runtime::{
         JobArtifact, JobCompletion, JobId, JobKind, JobOutputLine, JobProgressPatch,
-        JobProgressUpdate, JobRegistry, JobStream, JobTarget,
+        JobProgressUpdate, JobRegistry, JobStatus, JobStream, JobTarget,
     },
     transport::rest::{error::RestError, state::RestState},
 };
+use tokio::io::AsyncWriteExt;
 
 const DEFAULT_RESULT_MAX_CHUNKS: usize = 32;
 const MAX_RESULT_CHUNKS: usize = 256;
+const MAX_UPLOAD_METADATA_FIELD_BYTES: usize = 8 * 1024;
+
+pub async fn create_transcription_job_from_upload(
+    State(state): State<RestState>,
+    multipart: Multipart,
+) -> Result<(StatusCode, Json<JobResponse>), RestError> {
+    let job = state.app().jobs().create(
+        JobKind::audio_transcription(),
+        "transcribe uploaded audio",
+        Some(JobTarget::new("audio")),
+        Vec::<String>::new(),
+    );
+    let job_id = job.job_id.clone();
+    let registry = state.app().jobs().clone();
+    let store = FileJobWorkspaceStore::from_runtime_dir(state.app().layout().runtime_dir.clone());
+    let workspace = match store.open_workspace(&job_id) {
+        Ok(workspace) => workspace,
+        Err(error) => {
+            registry.fail(&job_id, format!("audio upload workspace failed: {error}"));
+            return Err(RestError::kernel("audio_upload_failed", error));
+        }
+    };
+    registry.update_progress(
+        &job_id,
+        JobProgressUpdate {
+            stage: Some("receiving audio input".to_string()),
+            output: vec![JobOutputLine::new(
+                JobStream::Event,
+                "receiving audio upload",
+            )],
+            ..JobProgressUpdate::default()
+        },
+    );
+
+    let request = match parse_uploaded_transcription_request(
+        &state,
+        &job_id,
+        &workspace.workspace_dir,
+        multipart,
+    )
+    .await
+    {
+        Ok(request) => request,
+        Err(error) => {
+            registry.fail(&job_id, error.summary);
+            return Err(error.error);
+        }
+    };
+
+    registry.update_target(
+        &job_id,
+        JobTarget::new("audio")
+            .with_reference(request.model_label.clone())
+            .with_path(request.input_path.display().to_string()),
+    );
+    spawn_transcription_worker(state.clone(), job_id.clone(), request);
+
+    let job = state.app().jobs().get(&job_id).unwrap_or(job);
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(JobResponse { job: job_item(job) }),
+    ))
+}
 
 pub async fn create_transcription_job(
     State(state): State<RestState>,
@@ -73,6 +137,19 @@ pub async fn create_transcription_job(
         Vec::<String>::new(),
     );
     let job_id = job.job_id.clone();
+    spawn_transcription_worker(state, job_id, request);
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(JobResponse { job: job_item(job) }),
+    ))
+}
+
+fn spawn_transcription_worker(
+    state: RestState,
+    job_id: JobId,
+    request: ParsedAudioTranscriptionJobRequest,
+) {
     let registry = state.app().jobs().clone();
     let task_state = state.clone();
     let layout = state.app().layout_input(LayoutResolveMode::Create);
@@ -86,11 +163,6 @@ pub async fn create_transcription_job(
             run_audio_transcription_job(task_state, layout, request, handle, registry, job_id)
         },
     );
-
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(JobResponse { job: job_item(job) }),
-    ))
 }
 
 pub async fn transcription_job_result(
@@ -133,6 +205,34 @@ pub async fn transcription_job_result(
 
     if read.chunks_read == 0 && !read.done {
         if job.status.is_terminal() {
+            match job.status {
+                JobStatus::Failed => {
+                    return Err(RestError::conflict(
+                        "job_failed",
+                        format!(
+                            "audio transcription job `{job_id}` failed before producing a result; inspect `/v1/jobs/{job_id}` for details"
+                        ),
+                    ));
+                }
+                JobStatus::Interrupted => {
+                    return Err(RestError::conflict(
+                        "job_interrupted",
+                        format!(
+                            "audio transcription job `{job_id}` was interrupted before producing a result"
+                        ),
+                    ));
+                }
+                JobStatus::Canceled => {
+                    return Err(RestError::conflict(
+                        "job_canceled",
+                        format!(
+                            "audio transcription job `{job_id}` was canceled before producing a result"
+                        ),
+                    ));
+                }
+                JobStatus::Succeeded => {}
+                JobStatus::Queued | JobStatus::Running => {}
+            }
             return Err(RestError::not_found(
                 "result_not_found",
                 format!("audio transcription result for job `{job_id}` was not found"),
@@ -182,6 +282,10 @@ struct ParsedAudioTranscriptionJobRequest {
     model_label: String,
     model_selector: ModelRefSelector,
     input_path: PathBuf,
+    input_original_filename: Option<String>,
+    input_media_type: String,
+    input_chunk_count: u64,
+    input_state: String,
     output_format: AudioTranscriptionOutputFormat,
     output_filename: String,
     language: Option<String>,
@@ -204,16 +308,329 @@ impl ParsedAudioTranscriptionJobRequest {
             .map_err(|error| RestError::bad_request("bad_request", error.to_string()))?;
         let output_filename = result_filename(request.output_filename, output_format)?;
         let language = optional_trimmed_string(request.language);
+        let input_original_filename = input_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(str::to_string);
+        let input_media_type = audio_media_type(&input_path).to_string();
 
         Ok(Self {
             model_label,
             model_selector,
             input_path,
+            input_original_filename,
+            input_media_type,
+            input_chunk_count: 0,
+            input_state: "path".to_string(),
             output_format,
             output_filename,
             language,
             timestamps: request.timestamps.unwrap_or(false),
         })
+    }
+}
+
+#[derive(Debug, Default)]
+struct UploadTranscriptionFields {
+    model_ref: Option<String>,
+    language: Option<String>,
+    output_format: Option<String>,
+    output_filename: Option<String>,
+    timestamps: Option<bool>,
+    file: Option<UploadedAudioFile>,
+}
+
+#[derive(Debug)]
+struct UploadedAudioFile {
+    path: PathBuf,
+    original_filename: Option<String>,
+    media_type: String,
+    chunk_count: u64,
+}
+
+struct AudioUploadError {
+    error: RestError,
+    summary: String,
+}
+
+impl AudioUploadError {
+    fn bad_request(message: impl Into<String>) -> Self {
+        let message = message.into();
+        Self {
+            error: RestError::bad_request("bad_request", message.clone()),
+            summary: message,
+        }
+    }
+
+    fn internal(code: &'static str, message: impl Into<String>) -> Self {
+        let message = message.into();
+        Self {
+            error: RestError::internal(code, message.clone()),
+            summary: message,
+        }
+    }
+}
+
+async fn parse_uploaded_transcription_request(
+    state: &RestState,
+    job_id: &JobId,
+    workspace_dir: &StdPath,
+    mut multipart: Multipart,
+) -> Result<ParsedAudioTranscriptionJobRequest, AudioUploadError> {
+    let mut fields = UploadTranscriptionFields::default();
+
+    while let Some(field) = multipart.next_field().await.map_err(|error| {
+        AudioUploadError::bad_request(format!("invalid multipart request: {error}"))
+    })? {
+        let name = field
+            .name()
+            .ok_or_else(|| AudioUploadError::bad_request("multipart field is missing a name"))?
+            .to_string();
+        match name.as_str() {
+            "file" => {
+                if fields.file.is_some() {
+                    return Err(AudioUploadError::bad_request(
+                        "`file` must appear exactly once",
+                    ));
+                }
+                fields.file = Some(write_uploaded_audio_file(workspace_dir, field).await?);
+            }
+            "model_ref" => {
+                set_text_field(&mut fields.model_ref, "model_ref", field).await?;
+            }
+            "language" => {
+                set_text_field(&mut fields.language, "language", field).await?;
+            }
+            "output_format" => {
+                set_text_field(&mut fields.output_format, "output_format", field).await?;
+            }
+            "output_filename" => {
+                set_text_field(&mut fields.output_filename, "output_filename", field).await?;
+            }
+            "timestamps" => {
+                let value = read_text_field("timestamps", field).await?;
+                if fields.timestamps.is_some() {
+                    return Err(AudioUploadError::bad_request(
+                        "`timestamps` must not be provided more than once",
+                    ));
+                }
+                fields.timestamps = Some(parse_bool_field("timestamps", &value)?);
+            }
+            _ => {
+                return Err(AudioUploadError::bad_request(format!(
+                    "unsupported audio transcription multipart field `{name}`"
+                )));
+            }
+        }
+    }
+
+    let model_label = optional_trimmed_string(fields.model_ref)
+        .ok_or_else(|| AudioUploadError::bad_request("`model_ref` is required"))?;
+    let model_selector = model_selector(state, &model_label).map_err(|error| AudioUploadError {
+        error,
+        summary: format!("audio model `{model_label}` could not be resolved"),
+    })?;
+    let file = fields
+        .file
+        .ok_or_else(|| AudioUploadError::bad_request("`file` is required"))?;
+    let output_format = fields
+        .output_format
+        .as_deref()
+        .unwrap_or(AudioTranscriptionOutputFormat::Text.as_str())
+        .parse::<AudioTranscriptionOutputFormat>()
+        .map_err(|error| AudioUploadError::bad_request(error.to_string()))?;
+    let output_filename =
+        result_filename(fields.output_filename, output_format).map_err(|error| {
+            AudioUploadError {
+                error,
+                summary: "invalid audio transcription output filename".to_string(),
+            }
+        })?;
+    let request = ParsedAudioTranscriptionJobRequest {
+        model_label,
+        model_selector,
+        input_path: file.path,
+        input_original_filename: file.original_filename,
+        input_media_type: file.media_type,
+        input_chunk_count: file.chunk_count,
+        input_state: "done".to_string(),
+        output_format,
+        output_filename,
+        language: optional_trimmed_string(fields.language),
+        timestamps: fields.timestamps.unwrap_or(false),
+    };
+
+    let store = FileJobWorkspaceStore::from_runtime_dir(state.app().layout().runtime_dir.clone());
+    let workspace = store
+        .finalize_stream(
+            job_id,
+            JobStreamKind::Input,
+            input_stream_summary(&request).map_err(|error| {
+                AudioUploadError::internal(
+                    "audio_upload_failed",
+                    format!(
+                        "failed to inspect uploaded audio input `{}`: {error}",
+                        request.input_path.display()
+                    ),
+                )
+            })?,
+        )
+        .map_err(|error| AudioUploadError::internal("audio_upload_failed", error.to_string()))?;
+    state.app().jobs().update_workspace(job_id, workspace);
+
+    Ok(request)
+}
+
+async fn set_text_field(
+    slot: &mut Option<String>,
+    name: &'static str,
+    field: axum::extract::multipart::Field<'_>,
+) -> Result<(), AudioUploadError> {
+    if slot.is_some() {
+        return Err(AudioUploadError::bad_request(format!(
+            "`{name}` must not be provided more than once"
+        )));
+    }
+    *slot = Some(read_text_field(name, field).await?);
+    Ok(())
+}
+
+async fn read_text_field(
+    name: &'static str,
+    mut field: axum::extract::multipart::Field<'_>,
+) -> Result<String, AudioUploadError> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = field.chunk().await.map_err(|error| {
+        AudioUploadError::bad_request(format!("invalid `{name}` field: {error}"))
+    })? {
+        let next_len = bytes.len().saturating_add(chunk.len());
+        if next_len > MAX_UPLOAD_METADATA_FIELD_BYTES {
+            return Err(AudioUploadError::bad_request(format!(
+                "`{name}` must be at most {MAX_UPLOAD_METADATA_FIELD_BYTES} bytes"
+            )));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    String::from_utf8(bytes).map_err(|error| {
+        AudioUploadError::bad_request(format!("`{name}` must be valid UTF-8: {error}"))
+    })
+}
+
+async fn write_uploaded_audio_file(
+    workspace_dir: &StdPath,
+    mut field: axum::extract::multipart::Field<'_>,
+) -> Result<UploadedAudioFile, AudioUploadError> {
+    let original_filename = field.file_name().map(str::to_string);
+    let media_type = field.content_type().map(str::to_string).unwrap_or_else(|| {
+        original_filename
+            .as_deref()
+            .map(|name| audio_media_type(StdPath::new(name)).to_string())
+            .unwrap_or_else(|| "application/octet-stream".to_string())
+    });
+    let filename = safe_upload_filename(original_filename.as_deref());
+    let input_dir = workspace_dir.join("input");
+    tokio::fs::create_dir_all(&input_dir)
+        .await
+        .map_err(|error| {
+            AudioUploadError::internal(
+                "audio_upload_failed",
+                format!("create `{}` failed: {error}", input_dir.display()),
+            )
+        })?;
+    let final_path = input_dir.join(&filename);
+    let partial_path = input_dir.join(format!("{filename}.part"));
+    let mut file = tokio::fs::File::create(&partial_path)
+        .await
+        .map_err(|error| {
+            AudioUploadError::internal(
+                "audio_upload_failed",
+                format!("create `{}` failed: {error}", partial_path.display()),
+            )
+        })?;
+    let mut chunk_count = 0u64;
+    let mut total_bytes = 0u64;
+
+    while let Some(chunk) = field.chunk().await.map_err(|error| {
+        AudioUploadError::bad_request(format!("invalid `file` upload stream: {error}"))
+    })? {
+        if chunk.is_empty() {
+            continue;
+        }
+        total_bytes = total_bytes.saturating_add(chunk.len() as u64);
+        chunk_count = chunk_count.saturating_add(1);
+        file.write_all(&chunk).await.map_err(|error| {
+            AudioUploadError::internal(
+                "audio_upload_failed",
+                format!("write `{}` failed: {error}", partial_path.display()),
+            )
+        })?;
+    }
+    file.flush().await.map_err(|error| {
+        AudioUploadError::internal(
+            "audio_upload_failed",
+            format!("flush `{}` failed: {error}", partial_path.display()),
+        )
+    })?;
+    drop(file);
+
+    if total_bytes == 0 {
+        let _ = tokio::fs::remove_file(&partial_path).await;
+        return Err(AudioUploadError::bad_request("`file` must not be empty"));
+    }
+
+    tokio::fs::rename(&partial_path, &final_path)
+        .await
+        .map_err(|error| {
+            AudioUploadError::internal(
+                "audio_upload_failed",
+                format!(
+                    "replace `{}` with `{}` failed: {error}",
+                    partial_path.display(),
+                    final_path.display()
+                ),
+            )
+        })?;
+
+    Ok(UploadedAudioFile {
+        path: final_path,
+        original_filename,
+        media_type,
+        chunk_count,
+    })
+}
+
+fn parse_bool_field(name: &'static str, value: &str) -> Result<bool, AudioUploadError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" | "" => Ok(false),
+        _ => Err(AudioUploadError::bad_request(format!(
+            "`{name}` must be a boolean value"
+        ))),
+    }
+}
+
+fn safe_upload_filename(original_filename: Option<&str>) -> String {
+    let candidate = original_filename
+        .and_then(|name| StdPath::new(name).file_name())
+        .and_then(|name| name.to_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or("audio-input");
+    let sanitized = candidate
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let sanitized = sanitized.trim_matches('.').trim_matches('_');
+    if sanitized.is_empty() {
+        "audio-input".to_string()
+    } else {
+        sanitized.to_string()
     }
 }
 
@@ -229,7 +646,7 @@ fn run_audio_transcription_job(
     let workspace = store
         .open_workspace(&job_id)
         .map_err(|error| error.to_string())?;
-    let input_summary = input_stream_summary(&request.input_path).map_err(|error| {
+    let input_summary = input_stream_summary(&request).map_err(|error| {
         format!(
             "failed to inspect audio input `{}`: {error}",
             request.input_path.display()
@@ -356,20 +773,19 @@ fn run_audio_transcription_job(
     ))
 }
 
-fn input_stream_summary(path: &StdPath) -> Result<JobWorkspaceStreamSummary, std::io::Error> {
-    let metadata = fs::metadata(path)?;
+fn input_stream_summary(
+    request: &ParsedAudioTranscriptionJobRequest,
+) -> Result<JobWorkspaceStreamSummary, std::io::Error> {
+    let metadata = fs::metadata(&request.input_path)?;
     Ok(JobWorkspaceStreamSummary {
-        state: "path".to_string(),
+        state: request.input_state.clone(),
         done: true,
         failed: false,
-        chunk_count: 0,
+        chunk_count: request.input_chunk_count,
         total_bytes: metadata.len(),
         sha256: None,
-        media_type: Some(audio_media_type(path).to_string()),
-        original_filename: path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .map(str::to_string),
+        media_type: Some(request.input_media_type.clone()),
+        original_filename: request.input_original_filename.clone(),
     })
 }
 

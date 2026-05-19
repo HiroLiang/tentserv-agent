@@ -129,6 +129,13 @@ impl JobRegistry {
         self.mutate(job_id, |job| job.update_workspace(workspace, now_string()))
     }
 
+    pub fn update_target(&self, job_id: &JobId, target: JobTarget) -> Option<JobItem> {
+        self.mutate(job_id, |job| {
+            job.target = Some(target);
+            job.timing.updated_at = now_string();
+        })
+    }
+
     pub fn succeed(
         &self,
         job_id: &JobId,

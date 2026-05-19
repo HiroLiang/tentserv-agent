@@ -42,14 +42,16 @@ All async media workflow routes return a normal job response:
 }
 ```
 
-Result bytes are read through:
+Feature-specific result bytes are read through:
 
 ```text
-GET /v1/<workflow>/jobs/{job_id}/result?cursor=0&max_chunks=32
+GET /v1/<workflow>/job/{job_id}/result?cursor=0&max_chunks=32
 ```
 
 Feature-specific result routes may use raw bytes plus cursor headers. Workflow
 routes choose the result media type and file extension by `output_format`.
+Generic job registry operations stay under plural `/v1/jobs/{job_id}` for
+inspection, cancelation, and deletion.
 
 Common request fields:
 
@@ -96,6 +98,8 @@ Common CLI behavior:
 - Text-like results may print to stdout when `--output` is omitted.
 - Binary results require `--output` unless a command-specific default path is
   accepted.
+- When `--output` is provided, CLI commands write only to that path and print a
+  short completion message instead of duplicating the result to the terminal.
 - Default output file names derive from the input stem or prompt slug.
 - Foreground CLI commands should run as one-shot commands and should not appear
   in `tentgent jobs ls`.
@@ -168,38 +172,103 @@ Deferred from M6C:
 - Bounded-memory audio decoding/windowing beyond the current Transformers ASR
   pipeline behavior.
 
-## M6D: Media File Intake And Upload Foundation
+## M6D: Audio Transcription File-Stream Job Input
 
-Goal: add upload-capable workflow intake without exposing low-level workspace
-chunk APIs.
+Status: implemented.
 
-Daemon API pattern:
+Detailed plan:
+[m6d-audio-transcription-file-stream-job-input.md](./m6d-audio-transcription-file-stream-job-input.md).
+
+Goal: replace the planning-level upload split with the product API shape for
+audio transcription jobs: the function endpoint itself accepts an audio file
+stream, persists it into a job workspace, starts daemon-managed work after the
+file is complete, and returns a `job_id`.
+
+Canonical daemon API:
 
 ```text
-POST /v1/<workflow>/jobs
-POST /v1/<workflow>/upload/jobs
+POST /v1/audio/transcriptions/job
+GET /v1/audio/transcriptions/job/{job_id}/result?cursor=0&max_chunks=32
 ```
 
-Rules:
+Generic job operations:
 
-- `POST /jobs` accepts daemon-host absolute path requests.
-- `POST /upload/jobs` accepts multipart file upload plus workflow fields.
+```text
+GET /v1/jobs/{job_id}
+POST /v1/jobs/{job_id}/cancel
+DELETE /v1/jobs/{job_id}
+```
+
+Request shape:
+
+- The canonical create route accepts `multipart/form-data`.
+- The `file` part is the audio input stream.
+- Form fields include `model_ref`, `output_format`, optional `language`,
+  optional `timestamps`, and optional `output_filename`.
+- The existing path-based M6C route is a local-daemon convenience/debug input
+  and should either become a JSON variant of the same singular route or remain
+  a temporary alpha compatibility route until release cleanup.
+
+Execution rules:
+
 - The daemon may write upload bytes into ordered workspace chunks while the
   HTTP request body is arriving, but it assembles or declares one logical input
   file before batch workers run.
-- Public job APIs expose job status, cancel/delete, and workflow result reads.
-  They do not expose chunk write/read/list endpoints.
+- The daemon creates the job, owns the workspace, and starts the worker/thread.
+  Users never create, list, read, or delete input chunks directly.
+- The batch ASR worker starts only after the logical input file is complete.
 - Slow uploads keep the job in an intake/queued state. Missing bytes, timeout,
   or client disconnect marks the job interrupted or failed and leaves the
   workspace for the retention buffer.
+- Public APIs expose only job status, cancel/delete, and workflow result reads.
+- The result route must be explicit before the transcript is ready:
+  `result_pending` for intake/queued/running jobs, terminal status errors for
+  failed/interrupted/canceled jobs, `result_not_found` for succeeded jobs with
+  missing artifacts, and result bytes for succeeded jobs with artifacts.
 - GC must retain completed, interrupted, canceled, and failed workspaces for
   the configured buffer window before cleanup.
 
+Implementation steps:
+
+1. Rename/add canonical singular audio routes in the Rust REST router:
+   `POST /v1/audio/transcriptions/job` and
+   `GET /v1/audio/transcriptions/job/{job_id}/result`.
+2. Add multipart request parsing for the create route. Validate one `file`
+   part, required `model_ref`, supported `output_format`, and bounded metadata
+   field sizes.
+3. Stream the multipart file part into the kernel job workspace as internal
+   ordered chunks or a temporary workspace input file. Do not expose chunk IDs.
+4. Finalize the workspace input stream and declare one logical input file only
+   after the upload completes.
+5. Create/update the job with an intake/queued/running progression that makes
+   the status understandable while upload and worker execution happen.
+6. Start the audio transcription worker after the logical input file is ready.
+   Reuse the existing M6C runtime path by passing the workspace input file path
+   to the audio transcription use case.
+7. Tighten result route error mapping for pending, terminal failure, missing
+   artifact, and ready artifact states.
+8. Add daemon REST tests for multipart success, missing file, invalid fields,
+   upload interruption/failure mapping where practical, pending result, and
+   result retrieval.
+9. Update user docs and fixtures so users see the single functional job
+   endpoint, not upload/spool/chunk operations.
+
 Review target:
 
-- A workflow can accept a large uploaded file, persist it through the job
-  workspace, run after upload completion, and return the same result behavior
-  as a path request.
+- A caller can send an audio file stream to
+  `POST /v1/audio/transcriptions/job`, receive a `job_id`, inspect or cancel
+  the job through `/v1/jobs/{job_id}`, and read transcript bytes only after the
+  daemon-managed job succeeds.
+
+Completion notes:
+
+- Implemented the canonical multipart route and singular result route.
+- Kept the M6C plural JSON path route as temporary undocumented alpha/debug
+  compatibility.
+- Result reads now return `result_pending`, terminal job errors,
+  `result_not_found`, or ready bytes according to job/result state.
+- User-facing docs now show file upload instead of path JSON as the primary
+  workflow.
 
 ## M6E: Audio Transcription CLI And Large-File Hardening
 
@@ -232,6 +301,8 @@ Rules:
 - `transcribe --detach` may create a daemon job, return a `job_id`, and rely on
   job inspect/cancel/delete helpers.
 - `--format` maps to daemon `output_format`.
+- If `--output` is provided, write the result to that path and print only a
+  completion message such as `transcription written: transcript.txt`.
 - If `--output` is omitted for `text` or `json`, print to stdout.
 - For `vtt` and `srt`, prefer requiring `--output` unless stdout behavior is
   explicitly useful.
@@ -262,8 +333,7 @@ Daemon API:
 
 ```text
 POST /v1/vision/chat
-POST /v1/vision/chat/jobs
-POST /v1/vision/chat/upload/jobs
+POST /v1/vision/chat/job
 ```
 
 Typed content request:
@@ -429,8 +499,7 @@ Do not add this capability until payload and result semantics are approved.
 Daemon API:
 
 ```text
-POST /v1/video/understanding/jobs
-POST /v1/video/understanding/upload/jobs
+POST /v1/video/understanding/job
 ```
 
 Request:
@@ -542,7 +611,7 @@ Recommended order:
 1. Finish M6B kernel job workspace refactor and cleanup gaps that block
    workflow workers.
 2. Implement M6C daemon audio transcription.
-3. Add M6D media file intake and upload foundation.
+3. Add M6D audio transcription file-stream job input.
 4. Add M6E audio transcription CLI and large-file hardening.
 5. Add M6F vision chat image input.
 6. Add M6G image generation.

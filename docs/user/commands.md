@@ -165,9 +165,10 @@ REST or a direct local server so the model can stay warm.
 
 ## Audio Transcription
 
-Audio transcription currently runs through daemon jobs. The daemon reads a
-local audio file path, writes the transcript into a kernel job workspace, and
-serves result bytes through the workflow result route.
+Audio transcription currently runs through daemon jobs. Send the audio file to
+the daemon as multipart form data; the daemon stores the complete file in a job
+workspace, starts transcription, and serves result bytes through the workflow
+result route.
 
 Pull a small model and start the daemon:
 
@@ -192,15 +193,12 @@ the current operating system.
 Start a transcription job:
 
 ```bash
-curl -sS http://127.0.0.1:8790/v1/audio/transcriptions/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model_ref": "<audio-transcription-model-ref>",
-    "path": "/absolute/path/audio.wav",
-    "language": "en",
-    "output_format": "text",
-    "timestamps": false
-  }'
+curl -sS http://127.0.0.1:8790/v1/audio/transcriptions/job \
+  -F model_ref=<audio-transcription-model-ref> \
+  -F output_format=text \
+  -F language=en \
+  -F timestamps=false \
+  -F file=@/absolute/path/audio.mp3
 ```
 
 Omit `language` for English-only Whisper checkpoints such as
@@ -213,12 +211,16 @@ Inspect the job and read result bytes:
 curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
 
 curl -sS \
-  'http://127.0.0.1:8790/v1/audio/transcriptions/jobs/<job-id>/result?cursor=0&max_chunks=32' \
+  'http://127.0.0.1:8790/v1/audio/transcriptions/job/<job-id>/result?cursor=0&max_chunks=32' \
   -o transcript.txt
 ```
 
-Supported output formats are `text`, `json`, `vtt`, and `srt`. A foreground
-`tentgent transcribe` CLI wrapper is planned for the next media slice.
+Supported output formats are `text`, `json`, `vtt`, and `srt`. Reading the
+result before completion returns `result_pending`; inspect `/v1/jobs/<job-id>`
+for progress or terminal error details. Workspace chunks and temporary files
+are internal details. A foreground `tentgent transcribe` CLI wrapper is planned
+for the next media slice. For the complete HTTP contract, including byte-array
+multipart upload semantics, see [api.md](./api.md).
 
 ## Server
 

@@ -150,10 +150,11 @@ Media models have two dependency classes:
   `safetensors`, and PEFT support used by local safetensors chat,
   embedding, rerank, and `audio-transcription` models.
 - Media file decoding dependencies are system tools on `PATH`. Current
-  `audio-transcription` path jobs use the Transformers ASR pipeline, which
-  expects `ffmpeg` for MP3, M4A, AAC, Ogg, WebM, MP4, and most compressed
-  audio/video containers. Plain WAV/FLAC inputs may still pass through the
-  same decoder path, so install `ffmpeg` before running local media jobs.
+  `audio-transcription` jobs store the uploaded file in a daemon workspace and
+  pass that file path to the Transformers ASR pipeline, which expects `ffmpeg`
+  for MP3, M4A, AAC, Ogg, WebM, MP4, and most compressed audio/video
+  containers. Plain WAV/FLAC inputs may still pass through the same decoder
+  path, so install `ffmpeg` before running local media jobs.
 
 `tentgent doctor` reports `media decoder ffmpeg` as a warning when the decoder
 is missing and prints the primary install command for the current operating
