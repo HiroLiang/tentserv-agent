@@ -36,6 +36,9 @@ pub enum KernelError {
     #[error("embedding runtime is unavailable: {0}")]
     EmbeddingRuntimeUnavailable(String),
 
+    #[error("rerank runtime is unavailable: {0}")]
+    RerankRuntimeUnavailable(String),
+
     #[error("daemon store is unavailable: {0}")]
     DaemonStoreUnavailable(String),
 

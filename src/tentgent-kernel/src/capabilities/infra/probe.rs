@@ -145,14 +145,6 @@ fn backend_capability(
             message: Some("training is unsupported on this operating system".to_string()),
             next_step: None,
         },
-        BackendKind::Rerank => BackendCapability {
-            backend,
-            state: CapabilityState::Unknown,
-            message: Some("backend capability is not part of the current probe set".to_string()),
-            next_step: Some(
-                "refresh capability state after backend support is implemented".to_string(),
-            ),
-        },
         _ if !python_env_dir.is_dir() => BackendCapability {
             backend,
             state: CapabilityState::Missing,
@@ -211,7 +203,7 @@ fn backend_modules(backend: BackendKind) -> Vec<&'static str> {
         BackendKind::Mlx => vec!["mlx", "mlx_lm"],
         BackendKind::Training => training_modules(),
         BackendKind::Embedding => vec!["safetensors", "peft", "transformers", "torch"],
-        BackendKind::Rerank => Vec::new(),
+        BackendKind::Rerank => vec!["safetensors", "transformers", "torch"],
     }
 }
 
@@ -220,9 +212,9 @@ fn backend_bootstrap_hint(backend: BackendKind) -> &'static str {
         BackendKind::CpuGguf
         | BackendKind::SafetensorsPeft
         | BackendKind::Mlx
-        | BackendKind::Embedding => "run `tentgent runtime bootstrap --profile local-model`",
+        | BackendKind::Embedding
+        | BackendKind::Rerank => "run `tentgent runtime bootstrap --profile local-model`",
         BackendKind::Training => "run `tentgent runtime bootstrap --profile training`",
-        BackendKind::Rerank => "backend support is not implemented yet",
     }
 }
 

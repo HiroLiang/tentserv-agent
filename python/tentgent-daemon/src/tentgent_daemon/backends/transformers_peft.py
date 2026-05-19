@@ -6,11 +6,12 @@ from dataclasses import dataclass
 from threading import Thread
 from typing import Any
 
-from .base import ChatBackend, ChatResult, EmbeddingBackend, EmbeddingResult
+from .base import ChatBackend, ChatResult, EmbeddingBackend, EmbeddingResult, RerankBackend
 from ..runtime.adapters import StoredAdapterRecord
 from ..runtime.chat import ChatRequest, Message
 from ..runtime.embedding import EmbeddingRequest
 from ..runtime.profile_deps import missing_profile_dependency
+from ..runtime.rerank import RerankRequest, RerankResult, ranked_scores
 from ..runtime.records import StoredModelRecord
 
 
@@ -20,6 +21,7 @@ class TransformersPeftDeps:
     PeftModel: Any
     AutoModel: Any
     AutoModelForCausalLM: Any
+    AutoModelForSequenceClassification: Any
     AutoTokenizer: Any
     TextIteratorStreamer: Any
 
@@ -267,6 +269,74 @@ class TransformersPeftEmbeddingBackend(EmbeddingBackend):
         return self._tokenizer, self._model
 
 
+class TransformersPeftRerankBackend(RerankBackend):
+    def __init__(self) -> None:
+        self._deps = _load_transformers_peft_deps()
+        self._record: StoredModelRecord | None = None
+        self._tokenizer: Any | None = None
+        self._model: Any | None = None
+        self._device = _detect_device(self._deps.torch)
+
+    def load(self, record: StoredModelRecord) -> None:
+        load_path = str(record.variant_source_path)
+        tokenizer = self._deps.AutoTokenizer.from_pretrained(
+            load_path,
+            trust_remote_code=True,
+        )
+        model = self._deps.AutoModelForSequenceClassification.from_pretrained(
+            load_path,
+            trust_remote_code=True,
+        )
+        model.to(self._device)
+        model.eval()
+
+        self._record = record
+        self._tokenizer = tokenizer
+        self._model = model
+
+    def rerank(self, request: RerankRequest) -> RerankResult:
+        tokenizer, model = self._require_loaded()
+        encoded = tokenizer(
+            [request.query] * len(request.documents),
+            list(request.documents),
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        encoded = {key: value.to(self._device) for key, value in encoded.items()}
+
+        with self._deps.torch.inference_mode():
+            outputs = model(**encoded)
+
+        logits = outputs.logits
+        if len(logits.shape) == 1:
+            scores_tensor = logits
+        elif logits.shape[-1] == 1:
+            scores_tensor = logits.squeeze(-1)
+        else:
+            scores_tensor = logits[:, -1]
+        scores = scores_tensor.detach().float().cpu().tolist()
+        return ranked_scores(scores, request.top_n)
+
+    def release(self) -> None:
+        self._record = None
+        self._tokenizer = None
+        self._model = None
+
+        torch = self._deps.torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+
+    def _require_loaded(self) -> tuple[Any, Any]:
+        if self._record is None or self._tokenizer is None or self._model is None:
+            raise RuntimeError(
+                "Transformers rerank backend is not loaded yet; call load() before rerank()."
+            )
+        return self._tokenizer, self._model
+
+
 def _load_transformers_peft_deps() -> TransformersPeftDeps:
     try:
         from peft import PeftModel
@@ -274,6 +344,7 @@ def _load_transformers_peft_deps() -> TransformersPeftDeps:
         from transformers import (
             AutoModel,
             AutoModelForCausalLM,
+            AutoModelForSequenceClassification,
             AutoTokenizer,
             TextIteratorStreamer,
         )
@@ -287,6 +358,7 @@ def _load_transformers_peft_deps() -> TransformersPeftDeps:
         PeftModel=PeftModel,
         AutoModel=AutoModel,
         AutoModelForCausalLM=AutoModelForCausalLM,
+        AutoModelForSequenceClassification=AutoModelForSequenceClassification,
         AutoTokenizer=AutoTokenizer,
         TextIteratorStreamer=TextIteratorStreamer,
     )

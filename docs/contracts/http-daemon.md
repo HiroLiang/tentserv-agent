@@ -9,6 +9,7 @@ This document defines the stable HTTP daemon boundary for the Rust
 - Serve JSON responses for daemon-owned routes and errors.
 - Expose native model chat at `POST /v1/chat`, including Server-Sent Events.
 - Expose native local embeddings at `POST /v1/embeddings`.
+- Expose native local rerank at `POST /v1/rerank`.
 - Expose limited OpenAI, Claude, and Gemini compatible chat routes that translate
   DTO and SSE shapes only.
 - Expose daemon health, status, read-only store discovery, controlled server
@@ -1315,9 +1316,9 @@ background mode. `{server_ref}` accepts a full server ref or unique short prefix
 Cloud server starts validate launch-time provider auth from env/keychain and
 never persist secrets in the server spec or response.
 Local server starts verify that the selected model advertises the server
-capability before launching the Python runtime. Local embedding server specs
-are launchable for embedding-capable models; rerank server capabilities are not
-launchable until the rerank runtime endpoint exists.
+capability before launching the Python runtime. Local embedding and rerank
+server specs are launchable for safetensors models that advertise the matching
+capability.
 
 The body is optional. Omit it or send `{}` to preserve the original response
 shape. Send `wait_ready` to ask the daemon to poll the target server's
@@ -1510,6 +1511,59 @@ Daemon-owned embedding errors are JSON:
 - ambiguous model aliases or refs return `409 ambiguous_ref`
 - runtime dependency, executable, and Python execution failures return
   `500 embedding_runtime_unavailable` or `500 embedding_runtime_failed`
+
+## Native Rerank
+
+`POST /v1/rerank` invokes the kernel rerank use case directly. It does not read
+or write sessions and does not use chat prompts or transcript storage.
+
+Request body:
+
+```json
+{
+  "model_ref": "d98392263ae1",
+  "query": "refund policy",
+  "documents": ["candidate one", "candidate two"],
+  "top_n": 1
+}
+```
+
+`query` must be a non-empty string. `documents` must be a non-empty string
+array. `top_n` is optional and must be between `1` and the number of documents.
+
+Selection rules:
+
+- `model_ref` is required and may be a full ref, unique short prefix, source
+  repo alias, or source repo basename alias.
+- selected models must advertise `rerank`; chat-only and embedding-only models
+  return `400 unsupported_target` before runtime dispatch.
+- the first implemented local backend is safetensors through the
+  `transformers-peft` local-model Python profile using sequence classification.
+- GGUF, MLX, cloud provider, and embedding backend paths are not part of this
+  endpoint.
+
+Success responses are sorted by descending score and preserve original document
+indexes:
+
+```json
+{
+  "model_ref": "d98392263ae1...",
+  "data": [
+    {"index": 1, "score": 0.91},
+    {"index": 0, "score": 0.22}
+  ]
+}
+```
+
+Daemon-owned rerank errors are JSON:
+
+- invalid JSON, unknown fields, empty input, or unsupported input shape return
+  `400 bad_request`
+- non-rerank models return `400 unsupported_target`
+- missing models return `404 not_found`
+- ambiguous model aliases or refs return `409 ambiguous_ref`
+- runtime dependency, executable, and Python execution failures return
+  `500 rerank_runtime_unavailable` or `500 rerank_runtime_failed`
 
 ## Compatible Chat Adapters
 

@@ -76,6 +76,8 @@ Key current documents:
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - `docs/contracts/server-embedding.md`
   Direct Python server embedding request shape and capability routing.
+- `docs/contracts/server-rerank.md`
+  Direct Python server rerank request shape and capability routing.
 - `docs/contracts/http-daemon.md`
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
 - `docs/contracts/tentgent-daemon.md`

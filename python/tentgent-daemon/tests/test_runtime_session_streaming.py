@@ -9,6 +9,7 @@ from unittest.mock import patch
 from tentgent_daemon.runtime.adapters import StoredAdapterRecord
 from tentgent_daemon.runtime.chat import Message
 from tentgent_daemon.runtime.records import StoredModelRecord
+from tentgent_daemon.runtime.rerank import RerankResult, RerankScore
 from tentgent_daemon.runtime.router import BackendKind
 from tentgent_daemon.server.config import ServerConfig
 from tentgent_daemon.server.session import ChatRequestPayload, RuntimeSession
@@ -49,6 +50,22 @@ class FakeEmbeddingBackend:
     def embed(self, request: object):
         self.requests.append(request)
         return type("EmbeddingResult", (), {"vectors": [[0.1, 0.2], [0.3, 0.4]]})()
+
+
+class FakeRerankBackend:
+    def __init__(self) -> None:
+        self.loaded_records: list[StoredModelRecord] = []
+        self.requests: list[object] = []
+
+    def load(self, record: StoredModelRecord) -> None:
+        self.loaded_records.append(record)
+
+    def release(self) -> None:
+        return
+
+    def rerank(self, request: object) -> RerankResult:
+        self.requests.append(request)
+        return RerankResult(data=(RerankScore(index=1, score=0.9),))
 
 
 class RuntimeSessionStreamingTests(unittest.TestCase):
@@ -113,6 +130,22 @@ class RuntimeSessionStreamingTests(unittest.TestCase):
         self.assertTrue(snapshot.loaded)
         self.assertEqual(snapshot.startup_mode, "eager")
 
+    def test_local_rerank_request_loads_rerank_backend(self) -> None:
+        backend = FakeRerankBackend()
+        with patched_local_rerank_runtime(backend):
+            session = RuntimeSession(rerank_config())
+            results = session.rerank("query", ("first", "second"), 1)
+
+        self.assertEqual(results, (RerankScore(index=1, score=0.9),))
+        self.assertEqual(len(backend.loaded_records), 1)
+        self.assertEqual(len(backend.requests), 1)
+        self.assertEqual(backend.requests[0].query, "query")
+        self.assertEqual(backend.requests[0].documents, ("first", "second"))
+        self.assertEqual(backend.requests[0].top_n, 1)
+        snapshot = session.snapshot()
+        self.assertTrue(snapshot.loaded)
+        self.assertEqual(snapshot.startup_mode, "eager")
+
 
 @contextmanager
 def patched_local_runtime(
@@ -152,6 +185,23 @@ def patched_local_embedding_runtime(
         yield
 
 
+@contextmanager
+def patched_local_rerank_runtime(
+    backend: FakeRerankBackend,
+) -> Iterator[None]:
+    with patch(
+        "tentgent_daemon.server.session.load_model_record",
+        return_value=fake_rerank_record(),
+    ), patch(
+        "tentgent_daemon.server.session.resolve_rerank_backend",
+        return_value=BackendKind.TRANSFORMERS_PEFT,
+    ), patch(
+        "tentgent_daemon.server.session.create_rerank_backend",
+        return_value=backend,
+    ):
+        yield
+
+
 def local_config() -> ServerConfig:
     return ServerConfig(
         server_ref="server-ref",
@@ -173,6 +223,22 @@ def embedding_config() -> ServerConfig:
         server_ref="server-ref",
         runtime_kind="local",
         capability="embedding",
+        model_ref="model-ref",
+        provider=None,
+        provider_model=None,
+        host="127.0.0.1",
+        port=8780,
+        home=Path("/tmp/tentgent-local-session-stream-test"),
+        lazy_load=False,
+        idle_seconds=None,
+    )
+
+
+def rerank_config() -> ServerConfig:
+    return ServerConfig(
+        server_ref="server-ref",
+        runtime_kind="local",
+        capability="rerank",
         model_ref="model-ref",
         provider=None,
         provider_model=None,
@@ -217,6 +283,27 @@ def fake_embedding_record() -> StoredModelRecord:
         primary_format="safetensors",
         detected_formats=("safetensors",),
         model_capabilities=("embedding",),
+        file_count=1,
+        total_bytes=1,
+        imported_at="2026-04-29T00:00:00Z",
+        store_path=root,
+        manifest_path=root / "manifest.json",
+        variant_source_path=root / "variants" / "safetensors" / "source",
+    )
+
+
+def fake_rerank_record() -> StoredModelRecord:
+    root = Path("/tmp/tentgent-local-session-stream-test/model")
+    return StoredModelRecord(
+        model_ref="model-ref",
+        short_ref="model",
+        source_kind="local",
+        source_repo=None,
+        source_revision=None,
+        source_path=None,
+        primary_format="safetensors",
+        detected_formats=("safetensors",),
+        model_capabilities=("rerank",),
         file_count=1,
         total_bytes=1,
         imported_at="2026-04-29T00:00:00Z",

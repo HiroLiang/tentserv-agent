@@ -62,6 +62,10 @@ fn runtime_entrypoints_match_python_project_scripts() {
         "tentgent-embed-once"
     );
     assert_eq!(
+        RuntimeEntrypoint::RerankOnce.script_name(),
+        "tentgent-rerank-once"
+    );
+    assert_eq!(
         RuntimeEntrypoint::HfSnapshot.script_name(),
         "tentgent-hf-snapshot"
     );

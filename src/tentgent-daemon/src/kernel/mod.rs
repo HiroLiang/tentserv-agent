@@ -38,6 +38,7 @@ use tentgent_kernel::{
         },
         embedding::usecases::StdEmbeddingUseCase,
         model::usecases::StdModelHfPullUseCase,
+        rerank::usecases::StdRerankUseCase,
         server::{
             domain::ServerRefSelector,
             usecases::{ServerInspectRequest, ServerSpecUseCase, StdServerUseCase},
@@ -173,6 +174,10 @@ impl KernelComponents {
 
     pub fn embedding_usecase(&self) -> StdEmbeddingUseCase<'_> {
         StdEmbeddingUseCase::new(&self.runtime, &self.models, &self.runtime)
+    }
+
+    pub fn rerank_usecase(&self) -> StdRerankUseCase<'_> {
+        StdRerankUseCase::new(&self.runtime, &self.models, &self.runtime)
     }
 
     pub fn server_usecase(&self) -> StdServerUseCase<'_> {

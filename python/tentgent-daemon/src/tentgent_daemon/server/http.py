@@ -14,6 +14,7 @@ from .chat_api import (
 from .config import ServerConfig
 from .embedding_api import decode_embedding_request, handle_parsed_embedding_request
 from .health import build_health_payload
+from .rerank_api import decode_rerank_request, handle_parsed_rerank_request
 from .session import ChatRequestPayload, RuntimeSession
 from .sse import SSE_CACHE_CONTROL, SSE_CONTENT_TYPE, encode_sse_event
 
@@ -79,6 +80,21 @@ class TentgentRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
             self._handle_embeddings()
+            return
+        if self.path == "/v1/rerank":
+            if not self.config.is_rerank:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {
+                        "error": "unsupported_target",
+                        "message": (
+                            f"server capability `{self.config.capability}` "
+                            "does not serve POST /v1/rerank"
+                        ),
+                    },
+                )
+                return
+            self._handle_rerank()
             return
 
         self._write_json(
@@ -212,6 +228,49 @@ class TentgentRequestHandler(BaseHTTPRequestHandler):
             return
 
         status, payload = handle_parsed_embedding_request(request, self.session)
+        self._write_json(status, payload)
+
+    def _handle_rerank(self) -> None:
+        content_length = self.headers.get("Content-Length")
+        if content_length is None:
+            self._write_json(
+                HTTPStatus.LENGTH_REQUIRED,
+                {
+                    "error": "length_required",
+                    "message": "Content-Length is required for POST /v1/rerank",
+                },
+            )
+            return
+
+        try:
+            body_length = int(content_length)
+        except ValueError:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {
+                    "error": "invalid_content_length",
+                    "message": "Content-Length must be an integer",
+                },
+            )
+            return
+
+        raw_body = self.rfile.read(body_length)
+        try:
+            request = decode_rerank_request(raw_body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_json", "message": str(exc)},
+            )
+            return
+        except ValueError as exc:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_request", "message": str(exc)},
+            )
+            return
+
+        status, payload = handle_parsed_rerank_request(request, self.session)
         self._write_json(status, payload)
 
     def _write_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:

@@ -11,8 +11,10 @@ from time import monotonic
 from tentgent_daemon.backends import (
     ChatBackend,
     EmbeddingBackend,
+    RerankBackend,
     create_backend,
     create_embedding_backend,
+    create_rerank_backend,
 )
 from tentgent_daemon.providers import (
     ProviderChatClient,
@@ -27,8 +29,14 @@ from tentgent_daemon.runtime.adapters import (
 )
 from tentgent_daemon.runtime.chat import ChatRequest, Message
 from tentgent_daemon.runtime.embedding import EmbeddingRequest
+from tentgent_daemon.runtime.rerank import RerankRequest, RerankScore
 from tentgent_daemon.runtime.records import StoredModelRecord, load_model_record
-from tentgent_daemon.runtime.router import BackendKind, resolve_backend, resolve_embedding_backend
+from tentgent_daemon.runtime.router import (
+    BackendKind,
+    resolve_backend,
+    resolve_embedding_backend,
+    resolve_rerank_backend,
+)
 
 from .config import ServerConfig
 
@@ -60,6 +68,7 @@ class RuntimeSession:
         self._backend_kind: BackendKind | None = None
         self._backend: ChatBackend | None = None
         self._embedding_backend: EmbeddingBackend | None = None
+        self._rerank_backend: RerankBackend | None = None
         self._provider_client: ProviderChatClient | None = None
         if config.is_cloud:
             if not config.is_chat:
@@ -82,6 +91,10 @@ class RuntimeSession:
                 _require_model_capability(self._record, "embedding")
                 self._backend_kind = resolve_embedding_backend(self._record)
                 self._embedding_backend = create_embedding_backend(self._backend_kind)
+            elif config.is_rerank:
+                _require_model_capability(self._record, "rerank")
+                self._backend_kind = resolve_rerank_backend(self._record)
+                self._rerank_backend = create_rerank_backend(self._backend_kind)
             else:
                 raise NotImplementedError(
                     f"server capability `{config.capability}` is not implemented yet"
@@ -195,6 +208,33 @@ class RuntimeSession:
             self._mark_activity_locked()
             return vectors
 
+    def rerank(
+        self,
+        query: str,
+        documents: tuple[str, ...],
+        top_n: int | None,
+    ) -> tuple[RerankScore, ...]:
+        with self._lock:
+            if not self._config.is_rerank:
+                raise NotImplementedError(
+                    f"server capability `{self._config.capability}` does not serve rerank requests"
+                )
+            if self._config.is_cloud:
+                raise NotImplementedError("cloud rerank server runtimes are not implemented yet")
+
+            self._release_if_idle_locked()
+            self._ensure_loaded_locked()
+            assert self._rerank_backend is not None
+            request = RerankRequest(
+                model_ref=_require_local_model_ref(self._config),
+                query=query,
+                documents=documents,
+                top_n=top_n,
+            )
+            result = self._rerank_backend.rerank(request).data
+            self._mark_activity_locked()
+            return result
+
     def _stream_generate_local(
         self,
         request: ChatRequest,
@@ -234,6 +274,9 @@ class RuntimeSession:
         if self._config.is_embedding:
             assert self._embedding_backend is not None
             self._embedding_backend.load(self._record)
+        elif self._config.is_rerank:
+            assert self._rerank_backend is not None
+            self._rerank_backend.load(self._record)
         else:
             assert self._backend is not None
             self._backend.load(self._record)
@@ -259,6 +302,9 @@ class RuntimeSession:
         if self._config.is_embedding:
             assert self._embedding_backend is not None
             self._embedding_backend.release()
+        elif self._config.is_rerank:
+            assert self._rerank_backend is not None
+            self._rerank_backend.release()
         else:
             assert self._backend is not None
             self._backend.release()

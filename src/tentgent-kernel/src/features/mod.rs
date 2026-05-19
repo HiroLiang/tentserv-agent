@@ -9,6 +9,7 @@ pub mod dataset;
 pub mod doctor;
 pub mod embedding;
 pub mod model;
+pub mod rerank;
 pub mod runtime;
 pub mod server;
 pub mod session;

@@ -52,9 +52,6 @@ def main() -> int:
         raise SystemExit("--provider and --provider-model are required for cloud server runtimes")
     if args.runtime_kind == "cloud" and args.capability != "chat":
         raise SystemExit("cloud server runtimes support only --capability chat")
-    if args.capability == "rerank":
-        raise SystemExit("--capability rerank is not implemented yet")
-
     config = ServerConfig(
         server_ref=args.server_ref,
         runtime_kind=args.runtime_kind,

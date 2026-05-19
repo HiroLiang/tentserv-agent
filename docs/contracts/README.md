@@ -34,6 +34,8 @@ Use this directory for concise interface documents that define stable boundaries
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - [server-embedding.md](./server-embedding.md)
   Direct Python server embedding request shape and capability routing.
+- [server-rerank.md](./server-rerank.md)
+  Direct Python server rerank request shape and capability routing.
 - [http-daemon.md](./http-daemon.md)
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
 - [tentgent-daemon.md](./tentgent-daemon.md)

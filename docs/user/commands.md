@@ -132,6 +132,31 @@ tentgent chat <model-ref> \
   --max-tokens 128
 ```
 
+Run one-shot embedding inference without starting the daemon:
+
+```bash
+tentgent embed <embedding-model-ref> \
+  --input "first text" \
+  --input "second text" \
+  --pretty
+```
+
+Run one-shot rerank inference without starting the daemon:
+
+```bash
+tentgent rerank <rerank-model-ref> \
+  --query "refund policy" \
+  --document "first candidate text" \
+  --document "second candidate text" \
+  --top-n 1 \
+  --pretty
+```
+
+`tentgent embed` and `tentgent rerank` print JSON with the resolved `model_ref`
+and a `data` array matching daemon `/v1/embeddings` and `/v1/rerank` responses.
+They are useful for scripts and smoke tests. For repeated traffic, use daemon
+REST or a direct local server so the model can stay warm.
+
 ## Server
 
 Launch a long-lived local server:
@@ -141,8 +166,8 @@ tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 ```
 
 Server launch defaults to `--capability chat` and requires a chat-capable model.
-Use `--capability embedding` for a local safetensors embedding model. Rerank
-servers are rejected until the rerank runtime endpoint ships.
+Use `--capability embedding` for a local safetensors embedding model and
+`--capability rerank` for a local safetensors rerank model.
 
 Call the server:
 
@@ -176,7 +201,21 @@ curl -s http://127.0.0.1:8781/v1/embeddings \
   -d '{"input":["first text","second text"]}'
 ```
 
-Chat servers reject `/v1/embeddings`, and embedding servers reject `/v1/chat`.
+Launch and call a direct local rerank server:
+
+```bash
+tentgent server run <rerank-model-ref> \
+  --capability rerank \
+  --host 127.0.0.1 \
+  --port 8782 \
+  --lazy-load
+
+curl -s http://127.0.0.1:8782/v1/rerank \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"refund policy","documents":["first text","second text"],"top_n":1}'
+```
+
+Servers reject endpoint families that do not match their launch capability.
 
 Stream a local base-model response with Server-Sent Events:
 
@@ -327,6 +366,17 @@ curl -sS http://127.0.0.1:8790/v1/embeddings \
     "input": ["first text", "second text"]
   }'
 
+curl -sS http://127.0.0.1:8790/v1/rerank \
+  -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_ref": "<rerank-model-ref>",
+    "query": "refund policy",
+    "documents": ["first text", "second text"],
+    "top_n": 1
+  }'
+
 curl -sS -N http://127.0.0.1:8790/v1/messages \
   -X POST \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
@@ -386,11 +436,13 @@ tentgent daemon run --host 127.0.0.1 --port 8790
 The daemon records process metadata under `TENTGENT_HOME/runtime` and exposes
 Rust HTTP health/status, store discovery and mutation, controlled server
 lifecycle endpoints, background jobs, chat, sessions, and LoRA plan APIs.
-Native `/v1/chat`, native `/v1/embeddings`, OpenAI-compatible
+Native `/v1/chat`, native `/v1/embeddings`, native `/v1/rerank`,
+OpenAI-compatible
 `/v1/chat/completions`, Claude-compatible `/v1/messages`, and Gemini-compatible
 `/v1beta/models/{model}:generateContent` adapters are DTO/SSE translators over
 kernel use cases. Chat routes currently reject tools, images, and audio before
-calling the model runtime. Embedding requests do not create or mutate sessions.
+calling the model runtime. Embedding and rerank requests do not create or mutate
+sessions.
 Log diagnostics endpoints expose fixed daemon/server stdout and stderr paths for
 local debugging.
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the

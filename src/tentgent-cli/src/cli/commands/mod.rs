@@ -3,7 +3,9 @@ mod auth;
 mod chat;
 mod daemon;
 mod dataset;
+mod embed;
 mod model;
+mod rerank;
 mod runtime;
 mod server;
 mod session;
@@ -14,7 +16,9 @@ pub use auth::{AuthCommands, AuthProviderAction};
 pub use chat::ChatCommand;
 pub use daemon::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 pub use dataset::DatasetCommands;
+pub use embed::EmbedCommand;
 pub use model::ModelCommands;
+pub use rerank::RerankCommand;
 pub use runtime::RuntimeBootstrapProfile;
 pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands, RuntimeStatusCommand};
 pub use server::{ServerCommands, ServerRunCommand};
@@ -69,6 +73,21 @@ pub enum Commands {
         long_about = "Run a one-shot chat request through the Python runtime harness. Tentgent resolves the stored model reference, routes to the appropriate backend, and forwards generation to the Python subproject. With no --message entries, Tentgent prompts once for a user message."
     )]
     Chat(ChatCommand),
+    /// Run one-shot local embedding inference.
+    #[command(
+        name = "embed",
+        visible_alias = "embedding",
+        about = "Run one-shot local embedding inference.",
+        long_about = "Run one-shot local embedding inference without starting the daemon. The command resolves a stored embedding-capable model, calls the Python embedding runtime once, and prints a JSON response matching daemon /v1/embeddings."
+    )]
+    Embed(EmbedCommand),
+    /// Run one-shot local rerank inference.
+    #[command(
+        name = "rerank",
+        about = "Run one-shot local rerank inference.",
+        long_about = "Run one-shot local rerank inference without starting the daemon. The command resolves a stored rerank-capable model, calls the Python rerank runtime once, and prints a JSON response matching daemon /v1/rerank."
+    )]
+    Rerank(RerankCommand),
     /// Inspect and manage adapters, including LoRA selection and switching.
     #[command(
         name = "adapter",

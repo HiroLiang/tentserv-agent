@@ -1,0 +1,74 @@
+# Server Rerank
+
+This document defines the direct Python server rerank request contract.
+
+## Endpoint
+
+`POST /v1/rerank`
+
+Request body:
+
+```json
+{
+  "query": "refund policy",
+  "documents": ["candidate one", "candidate two"],
+  "top_n": 1
+}
+```
+
+`query` must be a non-empty string. `documents` must be a non-empty string
+array. `top_n` is optional and must be between `1` and the number of documents.
+Unknown fields, blank strings, and non-string documents return
+`400 invalid_request`.
+
+Responses are JSON encoded as UTF-8:
+
+```json
+{
+  "model_ref": "resolved-model-ref",
+  "data": [
+    {"index": 1, "score": 0.91},
+    {"index": 0, "score": 0.22}
+  ]
+}
+```
+
+The response is sorted by descending score and preserves each document's
+original zero-based index. Ties use the original index as the deterministic
+tie-breaker.
+
+## Capability Routing
+
+Direct model-server rerank is stateless. The Python server runtime does not
+read or write Tentgent session files and does not accept daemon session fields.
+
+The process serves exactly one endpoint family:
+
+- `--capability chat` serves `POST /v1/chat` and rejects `POST /v1/rerank`
+  with `400 unsupported_target`.
+- `--capability embedding` serves `POST /v1/embeddings` and rejects
+  `POST /v1/rerank` with `400 unsupported_target`.
+- `--capability rerank` serves `POST /v1/rerank` and rejects `POST /v1/chat`
+  and `POST /v1/embeddings` with `400 unsupported_target`.
+
+Cloud provider direct servers currently support only `chat`.
+
+## Backend Status
+
+The first rerank backend is `transformers-peft` for managed safetensors models.
+It loads `AutoTokenizer` and `AutoModelForSequenceClassification`, scores
+query/document pairs with scalar logits, and returns raw backend scores.
+
+GGUF, MLX, cloud provider, and embedding backend paths are not implemented for
+rerank in this contract.
+
+## Error Mapping
+
+- `400 invalid_request`
+  Request shape is invalid.
+- `400 unsupported_target`
+  The request reached a server process for a different endpoint family.
+- `501 not_implemented`
+  The selected runtime path is recognized but not implemented.
+- `500 rerank_failed`
+  Backend execution failed after request validation.

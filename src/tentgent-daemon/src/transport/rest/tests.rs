@@ -557,6 +557,74 @@ async fn embeddings_reject_non_embedding_models_before_runtime() {
 }
 
 #[tokio::test]
+async fn rerank_rejects_invalid_input_without_session_writes() {
+    let requested_home = unique_home("rerank-invalid-input");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/rerank")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model_ref":"aaaaaaaaaaaa","query":"q","documents":[]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(fs::read_dir(home.join("sessions"))
+        .expect("sessions dir")
+        .next()
+        .is_none());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn rerank_rejects_non_rerank_models_before_runtime() {
+    for (label, capability, model_ref) in [
+        ("chat", "chat", "6".repeat(64)),
+        ("embedding", "embedding", "7".repeat(64)),
+    ] {
+        let requested_home = unique_home(&format!("rerank-route-{label}"));
+        let state = rest_state_for_home(requested_home);
+        let home = state.app().layout().home_dir.canonicalize().expect("home");
+        write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &[capability]);
+
+        let response = build_router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/rerank")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(
+                        r#"{{"model_ref":"{model_ref}","query":"q","documents":["doc"]}}"#
+                    )))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = json_body(response).await;
+        assert_eq!(body["error"], "unsupported_target");
+        let message = body["message"].as_str().expect("message");
+        assert!(message.contains("rerank endpoint"));
+        assert!(message.contains("requires model capability `rerank`"));
+        assert!(message.contains(capability));
+
+        let _ = fs::remove_dir_all(home);
+    }
+}
+
+#[tokio::test]
 async fn jobs_returns_empty_registry_for_isolated_home() {
     let requested_home = unique_home("jobs-empty");
     let state = rest_state_for_home(requested_home);
@@ -2160,6 +2228,39 @@ async fn server_create_prepares_embedding_server_spec() {
     assert_eq!(response.status(), StatusCode::CREATED);
     let body = json_body(response).await;
     assert_eq!(body["server"]["capability"], "embedding");
+    assert_eq!(
+        body["server"]["model_ref"].as_str(),
+        Some(model_ref.as_str())
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_create_prepares_rerank_server_spec() {
+    let requested_home = unique_home("servers-create-rerank");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "6".repeat(64);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["rerank"]);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/servers")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"runtime_ref":"{model_ref}","capability":"rerank","host":"127.0.0.1","port":8999}}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    assert_eq!(body["server"]["capability"], "rerank");
     assert_eq!(
         body["server"]["model_ref"].as_str(),
         Some(model_ref.as_str())

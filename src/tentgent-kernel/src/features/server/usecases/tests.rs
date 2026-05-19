@@ -341,6 +341,112 @@ fn standard_server_usecase_prepares_embedding_specs() {
     );
 }
 
+#[test]
+fn standard_server_usecase_prepares_rerank_specs() {
+    let fixture = Fixture::new("rerank");
+    fixture.write_model_capabilities(vec![ModelCapability::Rerank]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let prepared = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            runtime_ref: fixture.model_ref.short_ref().to_string(),
+            capability: ServerCapability::Rerank,
+            host: None,
+            port: Some(8782),
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect("prepare rerank server");
+
+    assert!(prepared.outcome.created);
+    assert_eq!(
+        prepared.outcome.inspection.spec.capability,
+        ServerCapability::Rerank
+    );
+    assert_eq!(
+        prepared.outcome.inspection.spec.model_ref.as_ref(),
+        Some(&fixture.model_ref)
+    );
+
+    let selector = ServerRefSelector::parse(prepared.outcome.inspection.spec.short_ref.clone())
+        .expect("selector");
+    let startable = servers
+        .resolve_for_start(ServerResolveForStartRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            selector,
+        })
+        .expect("rerank server runtime is implemented");
+    assert_eq!(
+        startable.inspection.spec.capability,
+        ServerCapability::Rerank
+    );
+}
+
+#[test]
+fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
+    for (label, server_capability, model_capability) in [
+        (
+            "embedding-gguf",
+            ServerCapability::Embedding,
+            ModelCapability::Embedding,
+        ),
+        (
+            "rerank-gguf",
+            ServerCapability::Rerank,
+            ModelCapability::Rerank,
+        ),
+    ] {
+        let fixture = Fixture::new(label);
+        fixture.write_model_format_capabilities(ModelFormat::Gguf, vec![model_capability]);
+        let layout_resolver = StdRuntimeLayoutResolver;
+        let initializer = StdServerStoreLayoutInitializer;
+        let model_catalog = FileModelCatalogStore;
+        let identity = StdServerIdentityGenerator;
+        let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+        let controller = StaticProcessController;
+        let clock = StaticClock;
+        let servers = StdServerUseCase::new(
+            &layout_resolver,
+            &initializer,
+            &model_catalog,
+            &identity,
+            &catalog,
+            &controller,
+            &clock,
+        );
+
+        let err = servers
+            .prepare_server(ServerPrepareRequest {
+                layout: fixture.layout_input(LayoutResolveMode::Create),
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: server_capability,
+                host: None,
+                port: Some(8782),
+                lazy_load: false,
+                idle_seconds: None,
+            })
+            .expect_err("unsupported non-chat format");
+
+        assert!(err.to_string().contains("does not support `gguf`"));
+    }
+}
+
 struct Fixture {
     home: PathBuf,
     data: PathBuf,
@@ -380,6 +486,14 @@ impl Fixture {
     }
 
     fn write_model_capabilities(&self, capabilities: Vec<ModelCapability>) {
+        self.write_model_format_capabilities(ModelFormat::Safetensors, capabilities);
+    }
+
+    fn write_model_format_capabilities(
+        &self,
+        format: ModelFormat,
+        capabilities: Vec<ModelCapability>,
+    ) {
         let layout = StdRuntimeLayoutResolver
             .resolve(self.layout_input(LayoutResolveMode::Create))
             .expect("layout");
@@ -394,8 +508,8 @@ impl Fixture {
                     source_repo: None,
                     source_revision: None,
                     source_path: Some("/tmp/model".to_string()),
-                    primary_format: ModelFormat::Safetensors,
-                    detected_formats: vec![ModelFormat::Safetensors],
+                    primary_format: format,
+                    detected_formats: vec![format],
                     model_capabilities: capabilities,
                     model_capability_source: default_model_capability_source(),
                     file_count: 1,

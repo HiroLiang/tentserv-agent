@@ -24,6 +24,7 @@ def build_health_payload(config: ServerConfig, session: RuntimeSession) -> dict[
         "slice": "cloud-runtime-session",
         "chat_ready": config.is_chat,
         "embedding_ready": config.is_embedding,
+        "rerank_ready": config.is_rerank,
         "model_loaded": snapshot.loaded,
         "startup_mode": snapshot.startup_mode,
         "idle_policy": snapshot.idle_policy,

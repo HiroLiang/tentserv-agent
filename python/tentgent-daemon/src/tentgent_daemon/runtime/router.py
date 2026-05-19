@@ -34,3 +34,12 @@ def resolve_embedding_backend(record: StoredModelRecord) -> BackendKind:
     raise ValueError(
         f"unsupported primary_format `{record.primary_format}` for embedding model `{record.model_ref}`"
     )
+
+
+def resolve_rerank_backend(record: StoredModelRecord) -> BackendKind:
+    if record.primary_format == "safetensors":
+        return BackendKind.TRANSFORMERS_PEFT
+
+    raise ValueError(
+        f"unsupported primary_format `{record.primary_format}` for rerank model `{record.model_ref}`"
+    )

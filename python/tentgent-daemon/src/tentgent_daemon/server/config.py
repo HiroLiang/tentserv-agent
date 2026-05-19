@@ -31,6 +31,10 @@ class ServerConfig:
         return self.capability == "embedding"
 
     @property
+    def is_rerank(self) -> bool:
+        return self.capability == "rerank"
+
+    @property
     def runtime_label(self) -> str:
         if self.is_cloud:
             return f"{self.provider}:{self.provider_model}"

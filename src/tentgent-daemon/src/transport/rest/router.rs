@@ -7,8 +7,8 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::Level;
 
 use crate::handlers::rest::{
-    adapter, auth, chat, daemon, dataset, doctor, embedding, health, jobs, model, server, session,
-    status, train,
+    adapter, auth, chat, daemon, dataset, doctor, embedding, health, jobs, model, rerank, server,
+    session, status, train,
 };
 
 use super::{security::authorize_daemon_token, state::RestState};
@@ -37,6 +37,7 @@ fn v1_routes() -> Router<RestState> {
         .merge(diagnostic_routes())
         .merge(chat_routes())
         .merge(embedding_routes())
+        .merge(rerank_routes())
         .merge(job_routes())
         .merge(store_routes())
         .merge(train_routes())
@@ -65,6 +66,10 @@ fn chat_routes() -> Router<RestState> {
 
 fn embedding_routes() -> Router<RestState> {
     Router::new().route("/v1/embeddings", post(embedding::create))
+}
+
+fn rerank_routes() -> Router<RestState> {
+    Router::new().route("/v1/rerank", post(rerank::create))
 }
 
 fn job_routes() -> Router<RestState> {

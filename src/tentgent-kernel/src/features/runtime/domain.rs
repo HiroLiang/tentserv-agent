@@ -133,6 +133,7 @@ pub enum RuntimeEntrypoint {
     DatasetSynth,
     EmbeddingOnce,
     HfSnapshot,
+    RerankOnce,
     Server,
     TrainLoraRun,
 }
@@ -145,6 +146,7 @@ impl RuntimeEntrypoint {
             Self::DatasetSynth => "tentgent-dataset-synth",
             Self::EmbeddingOnce => "tentgent-embed-once",
             Self::HfSnapshot => "tentgent-hf-snapshot",
+            Self::RerankOnce => "tentgent-rerank-once",
             Self::Server => "tentgent-server",
             Self::TrainLoraRun => "tentgent-train-lora-run",
         }

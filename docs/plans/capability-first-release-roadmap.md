@@ -11,7 +11,10 @@ separate release, Linux, daemon-runtime, packaging, and model-capability plans i
 - Add explicit user control before relying on automatic model detection.
 - Build embedding and rerank as native Tentgent capabilities before broad
   OpenAI-compatible expansion.
-- Defer audio until the multimodal request and runtime contracts are specific.
+- Treat M6 as multimodal and streaming-boundary planning, not an audio-only
+  implementation slice.
+- Separate native parsed media endpoints from any opaque stream-in/stream-out
+  runtime proxy before implementation starts.
 - Run Apple Developer ID signing and notarization before beta or release
   candidate tags, not after the first stable release.
 
@@ -25,16 +28,19 @@ embedding
 rerank
 ```
 
-Audio remains a deferred capability family. Do not add one vague `audio`
-capability to persisted metadata until the contract distinguishes at least:
+Multimodal capabilities remain deferred. Do not add one vague `audio`, `media`,
+or `multimodal` capability to persisted metadata until the contract distinguishes
+the concrete workflow shape. Audio should distinguish at least:
 
 ```text
 audio-transcription
 audio-speech
 ```
 
-Future audio naming should follow the endpoint and runtime shape, not only the
-model file family.
+Future image and video names should follow the same rule: name the endpoint and
+runtime workflow, not only the model file family. An opaque runtime stream proxy,
+if added, is an escape hatch for raw byte or chunk forwarding and should not be
+stored as a normal model serving capability.
 
 ## Model Classification Rules
 
@@ -142,28 +148,43 @@ Review target:
 
 ### M5: Rerank MVP
 
-- Add native `POST /v1/rerank`.
-- Support `query`, `documents`, and optional `top_n`.
-- Return original document indexes and scores.
-- Implement one local cross-encoder rerank path first.
-- Gate backend readiness through kernel capability state.
+Detailed plan: [m5-rerank-mvp.md](./m5-rerank-mvp.md).
+
+- Status: implemented.
+- Added native `POST /v1/rerank` through daemon REST and direct local server
+  paths.
+- Added CLI one-shot `tentgent embed` and `tentgent rerank` paths for scripts
+  and smoke tests that do not need a running daemon.
+- Supported `query`, `documents`, and optional `top_n`.
+- Returned original document indexes and scores ordered by relevance.
+- Implemented the first local backend path as safetensors via the existing
+  `transformers-peft` local-model profile and sequence classification.
+- Added rerank backend readiness to kernel capability state.
 
 Review target:
 
 - A managed rerank model can score candidate documents and return ordered
   results through the daemon.
 
-### M6: Audio Planning
+### M6: Multimodal And Streaming Planning
 
-- Define audio request and response contracts before implementation.
-- Split audio capability names by workflow instead of using one broad value.
-- Decide whether audio starts with transcription, speech generation, or both.
-- Keep OpenAI-compatible audio rejected until kernel multimodal support exists.
+- Define native multimodal request and response contracts before implementation.
+- Split media capability names by workflow instead of using one broad value.
+- Consider audio transcription, speech generation, vision chat, image
+  generation, and video workflows as separate future endpoint families.
+- Decide whether the first deployable slice is a native parsed endpoint, an
+  opaque stream-in/stream-out runtime proxy, or a staged pair of both.
+- Keep the opaque proxy contract separate from native capability contracts: it
+  may forward bytes or chunks without parsing model-specific payloads, but it
+  should not imply validation, compatibility gates, transcript state, or
+  OpenAI-compatible semantics.
+- Keep OpenAI-compatible audio, image, and video routes rejected until kernel
+  multimodal support exists.
 
 Review target:
 
-- Audio has a precise contract and capability vocabulary before runtime work
-  begins.
+- M6 has a precise native multimodal vocabulary plus an explicit decision on
+  whether an opaque streaming proxy belongs in the first implementation slice.
 
 ### M7: Apple Developer ID Signing
 
@@ -180,12 +201,14 @@ Review target:
 
 ## Release Milestones
 
-- Next alpha: capability metadata overrides, display, and compatibility gates.
-- Later alpha: embedding MVP.
-- Later alpha: rerank MVP.
+- Current alpha line: capability metadata, compatibility gates, embedding MVP,
+  and rerank MVP are implemented and documented.
+- Multimodal planning follow-up: native media contracts and any opaque streaming
+  proxy boundary are explicit before runtime work starts.
 - Signing prerelease: Developer ID signing and notarization pipeline passes.
-- Beta/RC: embedding and rerank documented, audio still explicit as deferred
-  unless its contract is implemented.
+- Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints
+  remain explicitly deferred unless their contracts and runtime paths are
+  implemented.
 
 ## Verification Themes
 

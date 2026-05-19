@@ -43,8 +43,8 @@ pub trait EmbeddingModelResolver {
 /// Boundary for executing a prepared embedding request against the selected runtime.
 pub trait EmbeddingRuntimeClient {
     /// Returns embeddings for one prepared request.
-    fn embed<'a>(
-        &'a self,
+    fn embed(
+        &'_ self,
         request: EmbeddingRuntimeRequest,
-    ) -> EmbeddingPortFuture<'a, EmbeddingResponse>;
+    ) -> EmbeddingPortFuture<'_, EmbeddingResponse>;
 }

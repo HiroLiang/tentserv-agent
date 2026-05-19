@@ -23,15 +23,20 @@ What changed:
 - Added daemon-native `POST /v1/embeddings` for local safetensors embedding
   models and direct Python server `/v1/embeddings` for `--capability embedding`
   server specs.
+- Added daemon-native `POST /v1/rerank` for local safetensors rerank models and
+  direct Python server `/v1/rerank` for `--capability rerank` server specs.
+- Added one-shot CLI `tentgent embed` and `tentgent rerank` commands for local
+  embedding and rerank smoke tests without starting the daemon.
 - Added endpoint-family gates so chat routes require `chat` models and
-  embedding routes require `embedding` models before runtime dispatch.
+  embedding/rerank routes require matching model capabilities before runtime
+  dispatch.
 
 Known limits:
 
 - Tools/function calling, images, and audio are rejected by compatible chat
   adapters until kernel tool-call and multimodal support exists.
-- Rerank metadata can be stored, but `/v1/rerank` and rerank server runtime
-  paths are still deferred.
+- Rerank scores are raw backend scores; compare them within one request/model
+  family rather than across unrelated models.
 - The next release-engineering slice is Apple Developer ID signing,
   notarization, and GitHub Actions release automation for the CLI.
 

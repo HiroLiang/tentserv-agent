@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from ..runtime.chat import ChatRequest
 from ..runtime.embedding import EmbeddingRequest
+from ..runtime.rerank import RerankRequest, RerankResult
 from ..runtime.adapters import (
     AdapterExecutionNotImplementedError,
     StoredAdapterRecord,
@@ -61,4 +62,18 @@ class EmbeddingBackend:
         return None
 
     def embed(self, request: EmbeddingRequest) -> EmbeddingResult:
+        raise NotImplementedError
+
+
+class RerankBackend:
+    """Minimal backend contract for local rerank inference."""
+
+    def load(self, record: StoredModelRecord) -> None:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        """Release loaded runtime state when the server lifecycle decides to unload."""
+        return None
+
+    def rerank(self, request: RerankRequest) -> RerankResult:
         raise NotImplementedError

@@ -19,6 +19,11 @@ use tentgent_kernel::{
             infra::PythonEmbeddingOnceRuntimeClient,
             ports::{EmbeddingPortFuture, EmbeddingRuntimeClient, EmbeddingRuntimeRequest},
         },
+        rerank::{
+            domain::RerankResponse,
+            infra::PythonRerankOnceRuntimeClient,
+            ports::{RerankPortFuture, RerankRuntimeClient, RerankRuntimeRequest},
+        },
         runtime::{
             domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput, RuntimeEntrypoint},
             infra::{
@@ -192,13 +197,23 @@ impl ChatRuntimeClient for RuntimeKernelComponent {
 }
 
 impl EmbeddingRuntimeClient for RuntimeKernelComponent {
-    fn embed<'a>(
-        &'a self,
+    fn embed(
+        &'_ self,
         request: EmbeddingRuntimeRequest,
-    ) -> EmbeddingPortFuture<'a, EmbeddingResponse> {
+    ) -> EmbeddingPortFuture<'_, EmbeddingResponse> {
         Box::pin(async move {
             PythonEmbeddingOnceRuntimeClient::new(self)
                 .embed(request)
+                .await
+        })
+    }
+}
+
+impl RerankRuntimeClient for RuntimeKernelComponent {
+    fn rerank(&'_ self, request: RerankRuntimeRequest) -> RerankPortFuture<'_, RerankResponse> {
+        Box::pin(async move {
+            PythonRerankOnceRuntimeClient::new(self)
+                .rerank(request)
                 .await
         })
     }

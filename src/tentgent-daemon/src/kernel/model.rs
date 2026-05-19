@@ -23,6 +23,10 @@ use tentgent_kernel::{
                 StdModelHfPullUseCase, StdModelLocalImportUseCase, StdModelRemoveUseCase,
             },
         },
+        rerank::{
+            infra::StdRerankModelResolver,
+            ports::{RerankModelResolveRequest, RerankModelResolveResult, RerankModelResolver},
+        },
         runtime::ports::PythonRuntimeResolver,
     },
     foundation::{error::KernelResult, layout::StdRuntimeLayoutResolver},
@@ -144,5 +148,14 @@ impl EmbeddingModelResolver for ModelKernelComponent {
         request: EmbeddingModelResolveRequest,
     ) -> KernelResult<EmbeddingModelResolveResult> {
         StdEmbeddingModelResolver::new(self).resolve_embedding_model(request)
+    }
+}
+
+impl RerankModelResolver for ModelKernelComponent {
+    fn resolve_rerank_model(
+        &self,
+        request: RerankModelResolveRequest,
+    ) -> KernelResult<RerankModelResolveResult> {
+        StdRerankModelResolver::new(self).resolve_rerank_model(request)
     }
 }

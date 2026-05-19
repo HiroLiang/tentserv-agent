@@ -145,10 +145,7 @@ pub(super) fn server_runtime_command_parts(
     home_dir: &std::path::Path,
     auth: Option<&AuthSecretMaterial>,
 ) -> KernelResult<ServerRuntimeCommandParts> {
-    if spec.capability == ServerCapability::Rerank
-        || (spec.runtime_kind == ServerRuntimeKind::Cloud
-            && spec.capability != ServerCapability::Chat)
-    {
+    if spec.runtime_kind == ServerRuntimeKind::Cloud && spec.capability != ServerCapability::Chat {
         return Err(server_runtime_error(format!(
             "server capability `{}` is not implemented yet",
             spec.capability

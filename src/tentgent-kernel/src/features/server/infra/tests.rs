@@ -193,6 +193,34 @@ fn local_runtime_args_preserve_python_server_shape() {
 }
 
 #[test]
+fn local_rerank_runtime_args_are_supported() {
+    let server_ref = ServerRef::parse("e".repeat(SERVER_REF_HEX_LENGTH)).expect("server ref");
+    let model_ref = ModelRef::parse("f".repeat(64)).expect("model ref");
+    let spec = ServerSpec {
+        short_ref: server_ref.short_ref().to_string(),
+        server_ref,
+        runtime_kind: ServerRuntimeKind::Local,
+        capability: ServerCapability::Rerank,
+        model_ref: Some(model_ref),
+        provider: None,
+        provider_model: None,
+        host: "127.0.0.1".to_string(),
+        port: 8782,
+        lazy_load: false,
+        idle_seconds: None,
+        created_at: "2026-05-17T00:00:00Z".to_string(),
+    };
+
+    let parts = server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), None)
+        .expect("parts");
+
+    assert!(parts
+        .args
+        .windows(2)
+        .any(|pair| pair == ["--capability", "rerank"]));
+}
+
+#[test]
 fn cloud_runtime_args_include_provider_auth_env() {
     let server_ref = ServerRef::parse("e".repeat(SERVER_REF_HEX_LENGTH)).expect("server ref");
     let spec = ServerSpec {

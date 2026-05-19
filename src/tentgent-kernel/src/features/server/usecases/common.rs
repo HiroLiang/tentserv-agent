@@ -1,4 +1,6 @@
-use crate::features::model::domain::{ModelCapability, ModelRefSelector, ModelStoreLayout};
+use crate::features::model::domain::{
+    ModelCapability, ModelFormat, ModelRefSelector, ModelStoreLayout,
+};
 use crate::features::model::ports::ModelCatalogStore;
 use crate::features::server::domain::{
     ensure_server_model_capability, normalize_server_host, parse_server_runtime_selection,
@@ -39,12 +41,11 @@ pub(super) fn resolve_server_runtime_target(
                 &metadata.model_capabilities,
             )?;
             ensure_server_capability_implemented(capability)?;
+            let backend = server_runtime_backend_for_format(capability, metadata.primary_format)?;
 
             Ok(ServerRuntimeTarget::LocalModel {
                 model_ref: metadata.model_ref.clone(),
-                backend: super::super::domain::ServerRuntimeBackend::from_model_format(
-                    metadata.primary_format,
-                ),
+                backend,
                 capability,
             })
         }
@@ -89,6 +90,7 @@ pub(super) fn ensure_server_spec_launchable(
                 &model.metadata.model_capabilities,
             )?;
             ensure_server_capability_implemented(spec.capability)?;
+            server_runtime_backend_for_format(spec.capability, model.metadata.primary_format)?;
             Ok(())
         }
     }
@@ -179,9 +181,27 @@ fn ensure_model_compatible_with_server(
 
 fn ensure_server_capability_implemented(capability: ServerCapability) -> KernelResult<()> {
     match capability {
-        ServerCapability::Chat | ServerCapability::Embedding => Ok(()),
-        ServerCapability::Rerank => Err(KernelError::UnsupportedTarget(format!(
-            "server capability `{capability}` is not implemented yet"
-        ))),
+        ServerCapability::Chat | ServerCapability::Embedding | ServerCapability::Rerank => Ok(()),
+    }
+}
+
+fn server_runtime_backend_for_format(
+    capability: ServerCapability,
+    format: ModelFormat,
+) -> KernelResult<super::super::domain::ServerRuntimeBackend> {
+    match capability {
+        ServerCapability::Chat => {
+            Ok(super::super::domain::ServerRuntimeBackend::from_model_format(format))
+        }
+        ServerCapability::Embedding | ServerCapability::Rerank
+            if format == ModelFormat::Safetensors =>
+        {
+            Ok(super::super::domain::ServerRuntimeBackend::TransformersPeft)
+        }
+        ServerCapability::Embedding | ServerCapability::Rerank => {
+            Err(KernelError::UnsupportedTarget(format!(
+                "server capability `{capability}` does not support `{format}` model format yet"
+            )))
+        }
     }
 }

@@ -25,8 +25,9 @@ one pass without a staged breakdown.
 
 - [capability-first-release-roadmap.md](./capability-first-release-roadmap.md)
   Active roadmap after `v0.3.5-alpha.0`: model capability classification,
-  embedding and rerank endpoint work, deferred audio contracts, and Apple
-  Developer ID signing before beta or release candidate tags.
+  embedding and rerank endpoint work, deferred multimodal and streaming-boundary
+  planning, and Apple Developer ID signing before beta or release candidate
+  tags.
 - [m2-model-capability-detection-and-correction.md](./m2-model-capability-detection-and-correction.md)
   Detailed M2 slice: Hugging Face capability detection, manual metadata
   correction, and clear default-chat fallback warnings.
@@ -36,17 +37,16 @@ one pass without a staged breakdown.
 - [m4-embedding-mvp.md](./m4-embedding-mvp.md)
   Implemented M4 slice: native embedding endpoint, embedding runtime port,
   first backend path, and endpoint-family isolation from chat sessions.
+- [m5-rerank-mvp.md](./m5-rerank-mvp.md)
+  Implemented M5 slice: native rerank endpoint, rerank runtime port, first local
+  cross-encoder backend path, CLI one-shot embedding/rerank helpers, and
+  endpoint-family isolation from chat sessions.
 
 ## Recommended Order
 
-1. Add explicit model capability metadata and classification controls.
-2. Use Hugging Face metadata as best-effort evidence, with user override as the
-   authority.
-3. Gate servers and endpoints by model capability before adding non-chat
-   runtime paths.
-4. Implement rerank MVP.
-5. Define audio contracts before implementing audio runtime support.
-6. Run Apple Developer ID signing and notarization on prerelease artifacts
+1. Define the M6 native multimodal contracts and opaque streaming proxy boundary
+   before implementing media runtime support.
+2. Run Apple Developer ID signing and notarization on prerelease artifacts
    before beta or release candidate tags.
 
 ## Deferred Plans

@@ -42,7 +42,9 @@ The process serves exactly one endpoint family:
   with `400 unsupported_target`.
 - `--capability embedding` serves `POST /v1/embeddings` and rejects
   `POST /v1/chat` with `400 unsupported_target`.
-- `--capability rerank` is not implemented.
+- `--capability rerank` serves `POST /v1/rerank` and rejects
+  `POST /v1/embeddings` with `400 unsupported_target`; see
+  [server-rerank.md](./server-rerank.md).
 
 Cloud provider direct servers currently support only `chat`.
 

@@ -10,7 +10,9 @@ mod daemon;
 mod dataset;
 mod display;
 mod doctor;
+mod embed;
 mod model;
+mod rerank;
 mod runtime;
 mod runtime_footprint;
 mod server;
@@ -38,6 +40,8 @@ pub async fn run() -> miette::Result<()> {
         Commands::Chat(command) => chat::handle_chat_command(command).await?,
         Commands::Dataset { action } => dataset::handle_dataset_command(action).await?,
         Commands::Model { action } => model::handle_model_command(action)?,
+        Commands::Embed(command) => embed::handle_embed_command(command).await?,
+        Commands::Rerank(command) => rerank::handle_rerank_command(command).await?,
         Commands::Server { action } => server::handle_server_command(action).await?,
         Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
@@ -57,6 +61,72 @@ mod tests {
         app::Cli,
         commands::{Commands, DaemonCommands},
     };
+
+    #[test]
+    fn parses_embed_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "embed",
+            "abc123",
+            "--input",
+            "hello",
+            "--input",
+            "world",
+            "--home",
+            "/tmp/tentgent",
+            "--pretty",
+        ])
+        .expect("parse embed command");
+
+        match cli.command {
+            Commands::Embed(command) => {
+                assert_eq!(command.model_ref, "abc123");
+                assert_eq!(command.inputs, ["hello", "world"]);
+                assert_eq!(
+                    command.home.as_deref(),
+                    Some(std::path::Path::new("/tmp/tentgent"))
+                );
+                assert!(command.pretty);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_rerank_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "rerank",
+            "abc123",
+            "--query",
+            "ownership",
+            "--document",
+            "Rust owns memory.",
+            "--document",
+            "Cake uses flour.",
+            "--top-n",
+            "1",
+            "--home",
+            "/tmp/tentgent",
+            "--pretty",
+        ])
+        .expect("parse rerank command");
+
+        match cli.command {
+            Commands::Rerank(command) => {
+                assert_eq!(command.model_ref, "abc123");
+                assert_eq!(command.query, "ownership");
+                assert_eq!(command.documents, ["Rust owns memory.", "Cake uses flour."]);
+                assert_eq!(command.top_n, Some(1));
+                assert_eq!(
+                    command.home.as_deref(),
+                    Some(std::path::Path::new("/tmp/tentgent"))
+                );
+                assert!(command.pretty);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
 
     #[test]
     fn parses_daemon_start() {

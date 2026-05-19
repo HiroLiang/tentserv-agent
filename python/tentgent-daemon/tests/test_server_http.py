@@ -7,11 +7,12 @@ from http import HTTPStatus
 from pathlib import Path
 
 from tentgent_daemon.runtime.adapters import AdapterBackendUnsupportedError
-from tentgent_daemon.server.embedding_api import decode_embedding_request, handle_embedding_request
 from tentgent_daemon.server.chat_api import handle_chat_request
 from tentgent_daemon.server.chat_api import stream_preflight_error_response
 from tentgent_daemon.server.config import ServerConfig
+from tentgent_daemon.server.embedding_api import decode_embedding_request, handle_embedding_request
 from tentgent_daemon.server.http import TentgentRequestHandler
+from tentgent_daemon.server.rerank_api import decode_rerank_request, handle_rerank_request
 from tentgent_daemon.server.sse import delta_event, done_event, error_event
 
 
@@ -82,6 +83,27 @@ class EmbeddingSession:
     def embed(self, inputs: tuple[str, ...]) -> list[list[float]]:
         self.inputs.append(inputs)
         return self.vectors
+
+
+class RerankItem:
+    def __init__(self, index: int, score: float) -> None:
+        self.index = index
+        self.score = score
+
+
+class RerankSession:
+    def __init__(self, items: list[RerankItem] | None = None) -> None:
+        self.items = items or [RerankItem(0, 0.5)]
+        self.requests: list[tuple[str, tuple[str, ...], int | None]] = []
+
+    def rerank(
+        self,
+        query: str,
+        documents: tuple[str, ...],
+        top_n: int | None,
+    ) -> list[RerankItem]:
+        self.requests.append((query, documents, top_n))
+        return self.items
 
 
 class ServerHttpTests(unittest.TestCase):
@@ -274,6 +296,24 @@ class ServerHttpTests(unittest.TestCase):
         self.assertEqual(status, HTTPStatus.BAD_REQUEST)
         self.assertEqual(payload["error"], "invalid_request")
 
+    def test_rerank_parser_accepts_documents_and_top_n(self) -> None:
+        request = decode_rerank_request(
+            b'{"query":"q","documents":["first","second"],"top_n":1}'
+        )
+
+        self.assertEqual(request.query, "q")
+        self.assertEqual(request.documents, ("first", "second"))
+        self.assertEqual(request.top_n, 1)
+
+    def test_rerank_parser_rejects_invalid_top_n(self) -> None:
+        status, payload = handle_rerank_request(
+            b'{"query":"q","documents":["first"],"top_n":2}',
+            session=object(),  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+        self.assertEqual(payload["error"], "invalid_request")
+
     def test_direct_embedding_serializes_numeric_vectors(self) -> None:
         body = b'{"input":["first","second"]}'
         session = EmbeddingSession([[0.1, 0.2], [0.3, 0.4]])
@@ -293,6 +333,24 @@ class ServerHttpTests(unittest.TestCase):
         self.assertEqual(payload["data"][0]["embedding"], [0.1, 0.2])
         self.assertEqual(payload["data"][1]["index"], 1)
         self.assertEqual(payload["data"][1]["embedding"], [0.3, 0.4])
+
+    def test_direct_rerank_serializes_numeric_scores(self) -> None:
+        body = b'{"query":"q","documents":["first","second"],"top_n":1}'
+        session = RerankSession([RerankItem(1, 0.9)])
+        handler = JsonWriter(
+            body,
+            session=session,
+            capability="rerank",
+            path="/v1/rerank",
+        )
+
+        handler._handle_rerank()
+
+        self.assertEqual(handler.status, HTTPStatus.OK)
+        self.assertEqual(session.requests, [("q", ("first", "second"), 1)])
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["data"][0]["index"], 1)
+        self.assertEqual(payload["data"][0]["score"], 0.9)
 
     def test_direct_server_rejects_chat_route_on_embedding_server(self) -> None:
         handler = JsonWriter(
@@ -314,6 +372,34 @@ class ServerHttpTests(unittest.TestCase):
             session=object(),
             capability="chat",
             path="/v1/embeddings",
+        )
+
+        handler.do_POST()
+
+        self.assertEqual(handler.status, HTTPStatus.BAD_REQUEST)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["error"], "unsupported_target")
+
+    def test_direct_server_rejects_embedding_route_on_rerank_server(self) -> None:
+        handler = JsonWriter(
+            b'{"input":"hi"}',
+            session=object(),
+            capability="rerank",
+            path="/v1/embeddings",
+        )
+
+        handler.do_POST()
+
+        self.assertEqual(handler.status, HTTPStatus.BAD_REQUEST)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["error"], "unsupported_target")
+
+    def test_direct_server_rejects_rerank_route_on_chat_server(self) -> None:
+        handler = JsonWriter(
+            b'{"query":"q","documents":["doc"]}',
+            session=object(),
+            capability="chat",
+            path="/v1/rerank",
         )
 
         handler.do_POST()
