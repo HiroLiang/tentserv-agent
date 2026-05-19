@@ -202,12 +202,13 @@ chat, embedding, rerank, and metadata-only media fixture guide.
 
 - M6B defines kernel job workspace ports, chunk IO, result files, and cleanup
   rules.
-- M6C should become daemon audio transcription jobs on top of the kernel job
+- M6C implements daemon audio transcription jobs on top of the kernel job
   workspace contract.
-- M6D should add the first CLI file-to-output media workflow and optional
-  generic job control helpers.
-- M6E through M6H should stage audio speech, image generation, vision chat, and
-  video/realtime decisions as described in
+- M6D should add media file intake and upload foundation while keeping
+  workspace chunk operations internal.
+- M6E and later should stage audio CLI and large-file hardening, vision chat,
+  image/audio generation, video workflows, and media server decisions as
+  described in
   [m6c-through-m6h-media-runtime-roadmap.md](./m6c-through-m6h-media-runtime-roadmap.md).
 - Stable contract docs move only when each workflow is approved for
   implementation.

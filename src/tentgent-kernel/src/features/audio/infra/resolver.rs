@@ -1,0 +1,79 @@
+use crate::features::model::domain::ModelCapability;
+use crate::features::model::usecases::{ModelCatalogReadUseCase, ModelInspectRequest};
+use crate::foundation::error::{KernelError, KernelResult};
+
+use super::super::domain::{AudioTranscriptionBackend, AudioTranscriptionRuntimeTarget};
+use super::super::ports::{
+    AudioTranscriptionModelResolveRequest, AudioTranscriptionModelResolveResult,
+    AudioTranscriptionModelResolver,
+};
+
+/// Resolves audio transcription model targets by adapting the model catalog use-case boundary.
+pub struct StdAudioTranscriptionModelResolver<'a> {
+    model_catalog: &'a dyn ModelCatalogReadUseCase,
+}
+
+impl<'a> StdAudioTranscriptionModelResolver<'a> {
+    pub fn new(model_catalog: &'a dyn ModelCatalogReadUseCase) -> Self {
+        Self { model_catalog }
+    }
+}
+
+impl AudioTranscriptionModelResolver for StdAudioTranscriptionModelResolver<'_> {
+    fn resolve_audio_transcription_model(
+        &self,
+        request: AudioTranscriptionModelResolveRequest,
+    ) -> KernelResult<AudioTranscriptionModelResolveResult> {
+        let result = self.model_catalog.inspect_model(ModelInspectRequest {
+            layout: request.layout,
+            selector: request.selector,
+        })?;
+        let metadata = &result.model.metadata;
+
+        if !metadata.supports_capability(ModelCapability::AudioTranscription) {
+            return Err(KernelError::UnsupportedTarget(format!(
+                "audio transcription endpoint requires model capability `audio-transcription`, but model `{}` advertises {}",
+                metadata.model_ref,
+                model_capabilities_label(&metadata.model_capabilities)
+            )));
+        }
+
+        let backend =
+            AudioTranscriptionBackend::from_model_format(metadata.primary_format).ok_or_else(
+                || {
+                    KernelError::UnsupportedTarget(format!(
+                        "audio transcription endpoint does not support `{}` model format yet for model `{}`",
+                        metadata.primary_format, metadata.model_ref
+                    ))
+                },
+            )?;
+        let target = AudioTranscriptionRuntimeTarget::LocalModel {
+            model_ref: metadata.model_ref.clone(),
+            backend,
+            source_repo: metadata.source_repo.clone(),
+            source_revision: metadata.source_revision.clone(),
+            model_capabilities: metadata.model_capabilities.clone(),
+        };
+
+        Ok(AudioTranscriptionModelResolveResult {
+            layout: result.layout,
+            model: result.model,
+            target,
+        })
+    }
+}
+
+fn model_capabilities_label(capabilities: &[ModelCapability]) -> String {
+    if capabilities.is_empty() {
+        return "[]".to_string();
+    }
+
+    format!(
+        "[{}]",
+        capabilities
+            .iter()
+            .map(|capability| capability.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}

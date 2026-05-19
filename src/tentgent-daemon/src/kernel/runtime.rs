@@ -1,5 +1,12 @@
 use tentgent_kernel::{
     features::{
+        audio::{
+            domain::AudioTranscriptionResponse,
+            infra::PythonAudioTranscriptionBatchRuntimeClient,
+            ports::{
+                AudioPortFuture, AudioTranscriptionRuntimeClient, AudioTranscriptionRuntimeRequest,
+            },
+        },
         chat::{
             domain::{ChatResponse, ChatStreamEvent},
             infra::PythonChatOnceRuntimeClient,
@@ -214,6 +221,19 @@ impl RerankRuntimeClient for RuntimeKernelComponent {
         Box::pin(async move {
             PythonRerankOnceRuntimeClient::new(self)
                 .rerank(request)
+                .await
+        })
+    }
+}
+
+impl AudioTranscriptionRuntimeClient for RuntimeKernelComponent {
+    fn transcribe_audio(
+        &'_ self,
+        request: AudioTranscriptionRuntimeRequest,
+    ) -> AudioPortFuture<'_, AudioTranscriptionResponse> {
+        Box::pin(async move {
+            PythonAudioTranscriptionBatchRuntimeClient::new(self)
+                .transcribe_audio(request)
                 .await
         })
     }

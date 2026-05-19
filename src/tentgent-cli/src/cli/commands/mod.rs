@@ -43,7 +43,7 @@ pub enum Commands {
     #[command(
         name = "doctor",
         about = "Run local installation and runtime health checks.",
-        long_about = "Run local installation and runtime health checks. Doctor checks platform, runtime-home writability, standard Tentgent directories, Python runtime assets, Python entry points, developer uv availability, and backend capability states. By default it reports findings without installing dependencies. Add --fix only for the current developer bootstrap path; release installers must not require users to preinstall uv."
+        long_about = "Run local installation and runtime health checks. Doctor checks platform, runtime-home writability, standard Tentgent directories, Python runtime assets, Python entry points, developer uv availability, media decoder availability, and backend capability states. By default it reports findings without installing dependencies. Add --fix only for the current developer bootstrap path; release installers must not require users to preinstall uv."
     )]
     Doctor(DoctorCommand),
     /// Inspect and prepare runtime support assets.

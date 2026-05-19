@@ -46,6 +46,10 @@ fn python_runtime_layout_derives_project_paths() {
 #[test]
 fn runtime_entrypoints_match_python_project_scripts() {
     assert_eq!(
+        RuntimeEntrypoint::AudioTranscriptionBatch.script_name(),
+        "tentgent-audio-transcribe"
+    );
+    assert_eq!(
         RuntimeEntrypoint::ChatOnce.script_name(),
         "tentgent-chat-once"
     );

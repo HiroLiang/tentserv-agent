@@ -141,6 +141,38 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 - Embedding and rerank backend probes verify the local-model `safetensors` /
   `transformers` / `torch` dependency set.
 
+## Media Runtime Dependencies
+
+Media models have two dependency classes:
+
+- Python model execution dependencies are installed by runtime profiles.
+  `local-model` covers `torch`, `transformers`, `tokenizers`,
+  `safetensors`, and PEFT support used by local safetensors chat,
+  embedding, rerank, and `audio-transcription` models.
+- Media file decoding dependencies are system tools on `PATH`. Current
+  `audio-transcription` path jobs use the Transformers ASR pipeline, which
+  expects `ffmpeg` for MP3, M4A, AAC, Ogg, WebM, MP4, and most compressed
+  audio/video containers. Plain WAV/FLAC inputs may still pass through the
+  same decoder path, so install `ffmpeg` before running local media jobs.
+
+`tentgent doctor` reports `media decoder ffmpeg` as a warning when the decoder
+is missing and prints the primary install command for the current operating
+system. On macOS:
+
+```bash
+brew install ffmpeg
+```
+
+On Debian or Ubuntu:
+
+```bash
+sudo apt install ffmpeg
+```
+
+Future `audio-speech`, `vision-chat`, `image-generation`, and video-oriented
+routes may add more capability-specific checks. Those checks should stay
+warning-level unless the user is actively running a feature that requires them.
+
 ## Keychain Prompts
 
 On macOS, Tentgent may trigger a Keychain prompt when a command needs a stored provider secret and no environment override is present.

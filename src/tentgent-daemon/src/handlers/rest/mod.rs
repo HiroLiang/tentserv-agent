@@ -1,4 +1,5 @@
 pub mod adapter;
+pub mod audio;
 pub mod auth;
 pub mod chat;
 pub mod daemon;

@@ -29,6 +29,7 @@ use tentgent_kernel::{
                 StdAdapterTrainRunImportUseCase,
             },
         },
+        audio::usecases::StdAudioTranscriptionUseCase,
         chat::usecases::StdChatUseCase,
         daemon::infra::{StdDaemonKernel, DEFAULT_DAEMON_PROBE_TIMEOUT},
         dataset::usecases::{StdDatasetEvaluationUseCase, StdDatasetSynthesisUseCase},
@@ -178,6 +179,10 @@ impl KernelComponents {
 
     pub fn rerank_usecase(&self) -> StdRerankUseCase<'_> {
         StdRerankUseCase::new(&self.runtime, &self.models, &self.runtime)
+    }
+
+    pub fn audio_transcription_usecase(&self) -> StdAudioTranscriptionUseCase<'_> {
+        StdAudioTranscriptionUseCase::new(&self.runtime, &self.models, &self.runtime)
     }
 
     pub fn server_usecase(&self) -> StdServerUseCase<'_> {

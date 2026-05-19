@@ -160,6 +160,7 @@ fn command_checks(
     match policy {
         DoctorCommandCheckPolicy::SkipOptional => Ok(Vec::new()),
         DoctorCommandCheckPolicy::IncludeDeveloperTools => {
+            let mut checks = Vec::new();
             let mut uv = command_probe.check_command(DoctorCommandCheck {
                 name: "uv dev bootstrap".to_string(),
                 category: DoctorCheckCategory::Command,
@@ -178,7 +179,90 @@ fn command_checks(
                     )
                 }
             };
-            Ok(vec![uv])
+            checks.push(uv);
+
+            let mut ffmpeg = command_probe.check_command(DoctorCommandCheck {
+                name: "media decoder ffmpeg".to_string(),
+                category: DoctorCheckCategory::Command,
+                command: "ffmpeg".to_string(),
+                args: vec!["-version".to_string()],
+                missing_status: DoctorCheckStatus::Warn,
+            })?;
+            ffmpeg.detail = match ffmpeg.status {
+                DoctorCheckStatus::Pass => format!(
+                    "available for audio/video decoding; needed for MP3, M4A, AAC, Ogg, WebM, MP4, and most compressed media inputs: {}",
+                    first_detail_line(&ffmpeg.detail)
+                ),
+                DoctorCheckStatus::Warn | DoctorCheckStatus::Fail | DoctorCheckStatus::Skipped => {
+                    format!(
+                        "needed for audio/video decoding before local audio-transcription jobs can read MP3, M4A, AAC, Ogg, WebM, MP4, and many other containers; {}; ensure ffmpeg is on PATH; probe: {}",
+                        ffmpeg_install_hint(),
+                        ffmpeg.detail
+                    )
+                }
+            };
+            checks.push(ffmpeg);
+
+            Ok(checks)
         }
+    }
+}
+
+fn first_detail_line(detail: &str) -> &str {
+    detail.lines().next().unwrap_or(detail)
+}
+
+fn ffmpeg_install_hint() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "macOS: brew install ffmpeg",
+        "linux" => {
+            "Linux: install ffmpeg with your distro package manager; Debian/Ubuntu: sudo apt install ffmpeg; Fedora: sudo dnf install ffmpeg; Arch: sudo pacman -S ffmpeg"
+        }
+        "windows" => {
+            "Windows: winget install Gyan.FFmpeg or choco install ffmpeg, then restart the terminal"
+        }
+        _ => "install ffmpeg with your system package manager",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::features::doctor::ports::DoctorCommandProbe;
+
+    struct FakeCommandProbe;
+
+    impl DoctorCommandProbe for FakeCommandProbe {
+        fn check_command(&self, request: DoctorCommandCheck) -> KernelResult<DoctorCheck> {
+            let status = match request.command.as_str() {
+                "uv" => DoctorCheckStatus::Pass,
+                "ffmpeg" => DoctorCheckStatus::Warn,
+                _ => request.missing_status,
+            };
+            Ok(DoctorCheck::with_status(
+                request.category,
+                request.name,
+                status,
+                format!("{} probe detail", request.command),
+            ))
+        }
+    }
+
+    #[test]
+    fn command_checks_explain_media_decoder_dependency() {
+        let checks = command_checks(
+            &FakeCommandProbe,
+            DoctorCommandCheckPolicy::IncludeDeveloperTools,
+        )
+        .expect("command checks");
+
+        let ffmpeg = checks
+            .iter()
+            .find(|check| check.name == "media decoder ffmpeg")
+            .expect("ffmpeg check");
+        assert_eq!(ffmpeg.status, DoctorCheckStatus::Warn);
+        assert!(ffmpeg.detail.contains("audio/video decoding"));
+        assert!(ffmpeg.detail.contains(ffmpeg_install_hint()));
+        assert!(ffmpeg.detail.contains("PATH"));
     }
 }

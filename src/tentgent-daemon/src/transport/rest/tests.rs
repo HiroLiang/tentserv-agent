@@ -5,8 +5,15 @@ use axum::{
     http::{header::CONTENT_TYPE, Request, StatusCode},
 };
 use serde_json::Value;
-use tentgent_kernel::foundation::layout::{
-    LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
+use tentgent_kernel::{
+    features::job::{
+        domain::{JobResultFile, JobWorkspaceStreamSummary},
+        infra::FileJobWorkspaceStore,
+        ports::{JobChunkPort, JobChunkWrite, JobResultPort, JobStreamKind, JobWorkspacePort},
+    },
+    foundation::layout::{
+        LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
+    },
 };
 use tower::ServiceExt;
 
@@ -622,6 +629,189 @@ async fn rerank_rejects_non_rerank_models_before_runtime() {
 
         let _ = fs::remove_dir_all(home);
     }
+}
+
+#[tokio::test]
+async fn audio_transcription_job_rejects_relative_input_path() {
+    let state = rest_state("audio-transcription-relative-path");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/audio/transcriptions/jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"model_ref":"aaaaaaaaaaaa","path":"audio.wav"}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("absolute audio file path"));
+}
+
+#[tokio::test]
+async fn audio_transcription_job_accepts_path_request() {
+    let requested_home = unique_home("audio-transcription-job");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "c".repeat(64);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["audio-transcription"]);
+    let input_path = home.join("fixtures/audio.wav");
+    fs::create_dir_all(input_path.parent().expect("parent")).expect("fixture dir");
+    fs::write(&input_path, b"not real audio").expect("audio fixture");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/audio/transcriptions/jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "model_ref": model_ref,
+                        "path": path_string(&input_path),
+                        "language": "en",
+                        "output_format": "vtt",
+                        "output_filename": "custom.vtt",
+                        "timestamps": true
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = json_body(response).await;
+    let job_id = body["job"]["job_id"].as_str().expect("job id").to_string();
+    assert_eq!(body["job"]["kind"], "audio_transcription");
+    assert_eq!(body["job"]["status"], "queued");
+    assert_eq!(body["job"]["target"]["section"], "audio");
+    assert_eq!(body["job"]["target"]["reference"], model_ref);
+    assert_eq!(
+        body["job"]["target"]["path"].as_str(),
+        Some(path_string(input_path).as_str())
+    );
+
+    for _ in 0..50 {
+        let Some(job) = state
+            .app()
+            .jobs()
+            .get(&crate::runtime::JobId::new(job_id.clone()))
+        else {
+            break;
+        };
+        if job.status.is_terminal() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn audio_transcription_result_reads_workspace_chunks() {
+    let requested_home = unique_home("audio-transcription-result");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let job = state.app().jobs().create(
+        JobKind::audio_transcription(),
+        "transcribe fixture",
+        None,
+        Vec::<String>::new(),
+    );
+    let store = FileJobWorkspaceStore::from_runtime_dir(state.app().layout().runtime_dir.clone());
+    store.open_workspace(&job.job_id).expect("workspace");
+    store
+        .write_chunk(
+            &job.job_id,
+            JobChunkWrite {
+                stream: JobStreamKind::Result,
+                index: 0,
+                bytes: b"hello transcript\n".to_vec(),
+            },
+        )
+        .expect("write chunk");
+    store
+        .commit_chunk(&job.job_id, JobStreamKind::Result, 0)
+        .expect("commit chunk");
+    let workspace = store
+        .finalize_stream(
+            &job.job_id,
+            JobStreamKind::Result,
+            JobWorkspaceStreamSummary {
+                state: "done".to_string(),
+                done: true,
+                failed: false,
+                chunk_count: 1,
+                total_bytes: 17,
+                sha256: None,
+                media_type: Some("text/plain".to_string()),
+                original_filename: Some("transcript.txt".to_string()),
+            },
+        )
+        .expect("finalize result");
+    store
+        .declare_result_file(
+            &job.job_id,
+            JobResultFile {
+                file_id: "transcript.txt".to_string(),
+                filename: "transcript.txt".to_string(),
+                media_type: Some("text/plain".to_string()),
+                format: Some("text".to_string()),
+                total_bytes: 17,
+            },
+        )
+        .expect("declare result");
+    state.app().jobs().update_workspace(&job.job_id, workspace);
+    state.app().jobs().succeed(
+        &job.job_id,
+        None,
+        "audio transcription wrote transcript.txt",
+    );
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/audio/transcriptions/jobs/{}/result?cursor=0&max_chunks=1",
+                    job.job_id
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("text/plain")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("x-tentgent-result-done")
+            .and_then(|value| value.to_str().ok()),
+        Some("true")
+    );
+    let body = sse_body(response).await;
+    assert_eq!(body, "hello transcript\n");
+
+    let _ = fs::remove_dir_all(home);
 }
 
 #[tokio::test]

@@ -30,11 +30,19 @@ What changed:
 - Added endpoint-family gates so chat routes require `chat` models and
   embedding/rerank routes require matching model capabilities before runtime
   dispatch.
+- Added the first media daemon workflow:
+  `POST /v1/audio/transcriptions/jobs` creates a background transcription job
+  for local `audio-transcription` safetensors ASR models, and
+  `GET /v1/audio/transcriptions/jobs/{job_id}/result` reads transcript result
+  bytes from the job workspace.
 
 Known limits:
 
-- Tools/function calling, images, and audio are rejected by compatible chat
-  adapters until kernel tool-call and multimodal support exists.
+- Tools/function calling, images, and audio content are rejected by compatible
+  chat adapters until kernel tool-call and multimodal chat support exists.
+- Audio transcription is daemon-job only in this slice. The foreground
+  `tentgent transcribe` CLI wrapper and multipart upload route are planned
+  follow-ups.
 - Rerank scores are raw backend scores; compare them within one request/model
   family rather than across unrelated models.
 - The next release-engineering slice is Apple Developer ID signing,

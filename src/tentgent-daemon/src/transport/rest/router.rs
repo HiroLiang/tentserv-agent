@@ -7,8 +7,8 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::Level;
 
 use crate::handlers::rest::{
-    adapter, auth, chat, daemon, dataset, doctor, embedding, health, jobs, model, rerank, server,
-    session, status, train,
+    adapter, audio, auth, chat, daemon, dataset, doctor, embedding, health, jobs, model, rerank,
+    server, session, status, train,
 };
 
 use super::{security::authorize_daemon_token, state::RestState};
@@ -38,6 +38,7 @@ fn v1_routes() -> Router<RestState> {
         .merge(chat_routes())
         .merge(embedding_routes())
         .merge(rerank_routes())
+        .merge(audio_routes())
         .merge(job_routes())
         .merge(store_routes())
         .merge(train_routes())
@@ -70,6 +71,18 @@ fn embedding_routes() -> Router<RestState> {
 
 fn rerank_routes() -> Router<RestState> {
     Router::new().route("/v1/rerank", post(rerank::create))
+}
+
+fn audio_routes() -> Router<RestState> {
+    Router::new()
+        .route(
+            "/v1/audio/transcriptions/jobs",
+            post(audio::create_transcription_job),
+        )
+        .route(
+            "/v1/audio/transcriptions/jobs/{job_id}/result",
+            get(audio::transcription_job_result),
+        )
 }
 
 fn job_routes() -> Router<RestState> {

@@ -101,8 +101,9 @@ tentgent model pull BAAI/bge-reranker-base --capability rerank --revision main
 `--capability` accepts `chat`, `embedding`, `rerank`,
 `audio-transcription`, `audio-speech`, `vision-chat`, or
 `image-generation`. Chat, embedding, and rerank endpoints enforce this metadata
-before runtime dispatch. Media capability values are metadata-only until their
-payload and runtime contracts are implemented.
+before runtime dispatch. `audio-transcription` is available through the daemon
+job API for local safetensors ASR models. The remaining media capability values
+are metadata-only until their payload and runtime contracts are implemented.
 
 List and inspect models:
 
@@ -161,6 +162,63 @@ tentgent rerank <rerank-model-ref> \
 and a `data` array matching daemon `/v1/embeddings` and `/v1/rerank` responses.
 They are useful for scripts and smoke tests. For repeated traffic, use daemon
 REST or a direct local server so the model can stay warm.
+
+## Audio Transcription
+
+Audio transcription currently runs through daemon jobs. The daemon reads a
+local audio file path, writes the transcript into a kernel job workspace, and
+serves result bytes through the workflow result route.
+
+Pull a small model and start the daemon:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent model pull openai/whisper-tiny.en --capability audio-transcription
+tentgent daemon start --host 127.0.0.1 --port 8790
+```
+
+MP3 and other compressed audio files require `ffmpeg` on `PATH` because the
+Transformers ASR pipeline uses it to decode file paths. On macOS:
+
+```bash
+brew install ffmpeg
+```
+
+`tentgent doctor` reports this as `media decoder ffmpeg`. Missing `ffmpeg`
+does not block non-media commands, but local audio/video file jobs should treat
+the warning as required setup. The doctor warning prints an install hint for
+the current operating system.
+
+Start a transcription job:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/audio/transcriptions/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_ref": "<audio-transcription-model-ref>",
+    "path": "/absolute/path/audio.wav",
+    "language": "en",
+    "output_format": "text",
+    "timestamps": false
+  }'
+```
+
+Omit `language` for English-only Whisper checkpoints such as
+`openai/whisper-tiny.en`. Use `language` with multilingual checkpoints such as
+`openai/whisper-tiny`.
+
+Inspect the job and read result bytes:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
+
+curl -sS \
+  'http://127.0.0.1:8790/v1/audio/transcriptions/jobs/<job-id>/result?cursor=0&max_chunks=32' \
+  -o transcript.txt
+```
+
+Supported output formats are `text`, `json`, `vtt`, and `srt`. A foreground
+`tentgent transcribe` CLI wrapper is planned for the next media slice.
 
 ## Server
 

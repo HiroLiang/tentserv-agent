@@ -47,6 +47,7 @@ impl From<&str> for JobId {
 pub struct JobKind(String);
 
 impl JobKind {
+    pub const AUDIO_TRANSCRIPTION: &'static str = "audio_transcription";
     pub const MODEL_PULL: &'static str = "model_pull";
     pub const MODEL_IMPORT: &'static str = "model_import";
     pub const ADAPTER_PULL: &'static str = "adapter_pull";
@@ -59,6 +60,10 @@ impl JobKind {
 
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
+    }
+
+    pub fn audio_transcription() -> Self {
+        Self::new(Self::AUDIO_TRANSCRIPTION)
     }
 
     pub fn model_pull() -> Self {

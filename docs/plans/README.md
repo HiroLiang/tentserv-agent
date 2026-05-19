@@ -49,15 +49,17 @@ one pass without a staged breakdown.
   M6B refactor slice: kernel-owned job workspace ports, chunk IO, result files,
   cleanup, and daemon runtime wiring before media model execution.
 - [m6c-through-m6h-media-runtime-roadmap.md](./m6c-through-m6h-media-runtime-roadmap.md)
-  Proposed follow-up M6 slices for audio transcription, CLI wrappers, audio
-  speech, image generation, vision chat, and video/realtime decisions.
+  M6C audio transcription completion notes plus follow-up M6 slices for media
+  upload intake, audio CLI and large-file hardening, vision chat, image/audio
+  generation, video, and media server decisions.
 
 ## Recommended Order
 
 1. Finish M6B kernel job workspace refactor before adding media workers.
 2. Implement M6C daemon audio transcription on top of the kernel job workspace.
-3. Add M6D CLI wrapper and generic job control helpers.
-4. Continue M6E-M6H only after each workflow's API/output contract is stable.
+3. Add M6D media file intake and upload foundation.
+4. Continue M6E-and-later only after each workflow's API/output contract is
+   stable.
 5. Run Apple Developer ID signing and notarization on prerelease artifacts
    before beta or release candidate tags.
 

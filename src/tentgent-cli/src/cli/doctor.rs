@@ -304,6 +304,7 @@ fn should_show_detail(check: &DoctorCheck) -> bool {
             | "python pyproject"
             | "python env"
             | "python binary"
+            | "media decoder ffmpeg"
     )
 }
 

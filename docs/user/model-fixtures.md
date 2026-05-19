@@ -1,9 +1,9 @@
 # Model Fixtures
 
 Use this guide when you want small models for local smoke tests. `chat`,
-`embedding`, and `rerank` are runnable endpoint families. M6A media capability
-values can be stored as model metadata, but they do not have runtime endpoints
-yet.
+`embedding`, `rerank`, and daemon-job `audio-transcription` are runnable
+endpoint families. Other M6 media capability values can be stored as model
+metadata, but they do not have runtime endpoints yet.
 
 ## Access Labels
 
@@ -12,6 +12,8 @@ yet.
 - `license`: read the model license before using it beyond local smoke tests.
 - `metadata-only`: Tentgent accepts this as model metadata, but no endpoint can
   run it yet.
+- `daemon-job`: run this through a daemon background job and workflow result
+  route.
 - `planned`: Tentgent does not yet accept this workflow name.
 - `internal-test`: useful for plumbing tests, not a product-quality model.
 
@@ -81,8 +83,9 @@ image-generation
 ```
 
 Only `chat`, `embedding`, and `rerank` have CLI, daemon, and direct server
-runtime paths today. The media values are metadata-only until M6B/M6C implement
-their payload, artifact, and runtime contracts.
+runtime paths today. `audio-transcription` has a daemon job runtime path but no
+foreground CLI wrapper yet. The remaining media values are metadata-only until
+their payload, artifact, and runtime contracts are implemented.
 
 ## Runnable Smoke Commands
 
@@ -137,6 +140,28 @@ curl -sS http://127.0.0.1:8790/v1/rerank \
   }'
 ```
 
+Audio transcription daemon job:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/audio/transcriptions/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_ref": "<audio-transcription-model-ref>",
+    "path": "/absolute/path/audio.wav",
+    "language": "en",
+    "output_format": "text",
+    "timestamps": false
+  }'
+
+curl -sS \
+  'http://127.0.0.1:8790/v1/audio/transcriptions/jobs/<job-id>/result?cursor=0&max_chunks=32' \
+  -o transcript.txt
+```
+
+MP3 inputs require `ffmpeg` on `PATH`. Omit `language` for English-only
+Whisper checkpoints such as `openai/whisper-tiny.en`; keep it for multilingual
+checkpoints such as `openai/whisper-tiny`.
+
 ## Current Fixture Models
 
 These rows are for local smoke tests, not product defaults.
@@ -153,16 +178,17 @@ These rows are for local smoke tests, not product defaults.
 | `rerank` | [`mixedbread-ai/mxbai-rerank-xsmall-v1`](https://huggingface.co/mixedbread-ai/mxbai-rerank-xsmall-v1) | `public` | `tentgent model pull mixedbread-ai/mxbai-rerank-xsmall-v1 --capability rerank` | Apache-2.0 reranker, about 70.8M parameters. |
 | `rerank` | [`BAAI/bge-reranker-base`](https://huggingface.co/BAAI/bge-reranker-base) | `public` | `tentgent model pull BAAI/bge-reranker-base --capability rerank` | Heavier MIT-licensed accuracy target for rerank tests. |
 
-## M6A Metadata Fixture Models
+## M6 Media Fixture Models
 
-These candidates are for metadata and contract planning. Pulling them with
+Audio transcription candidates can run through the daemon job route after
+M6C. Other candidates are for metadata and contract planning. Pulling them with
 their media `--capability` values records model intent only; it does not make
-audio, image, or video inference available yet.
+those non-transcription workflows runnable yet.
 
 | Metadata capability | Candidate | Access | Pull command | Notes |
 | --- | --- | --- | --- | --- |
-| `audio-transcription` | [`openai/whisper-tiny.en`](https://huggingface.co/openai/whisper-tiny.en) | `public`, `metadata-only` | `tentgent model pull openai/whisper-tiny.en --capability audio-transcription` | English ASR, safetensors, about 38M parameters. |
-| `audio-transcription` | [`openai/whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | `public`, `metadata-only` | `tentgent model pull openai/whisper-tiny --capability audio-transcription` | Multilingual tiny Whisper checkpoint, about 39M parameters. |
+| `audio-transcription` | [`openai/whisper-tiny.en`](https://huggingface.co/openai/whisper-tiny.en) | `public`, `daemon-job` | `tentgent model pull openai/whisper-tiny.en --capability audio-transcription` | English ASR, safetensors, about 38M parameters. |
+| `audio-transcription` | [`openai/whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | `public`, `daemon-job` | `tentgent model pull openai/whisper-tiny --capability audio-transcription` | Multilingual tiny Whisper checkpoint, about 39M parameters. |
 | `audio-speech` | [`facebook/mms-tts-eng`](https://huggingface.co/facebook/mms-tts-eng) | `public`, `license`, `metadata-only` | `tentgent model pull facebook/mms-tts-eng --capability audio-speech` | English VITS TTS, about 36M parameters; CC-BY-NC 4.0. |
 | `audio-speech` | [`suno/bark-small`](https://huggingface.co/suno/bark-small) | `public`, `metadata-only` | `tentgent model pull suno/bark-small --capability audio-speech` | MIT-licensed TTS pipeline candidate; heavier than MMS-TTS. |
 | `vision-chat` | [`HuggingFaceTB/SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) | `public`, `metadata-only` | `tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat` | Small image+text to text model for VQA/captioning contract tests. |
@@ -175,5 +201,5 @@ audio, image, or video inference available yet.
 - The current Hugging Face pull path downloads full snapshots. Some repos may
   include ONNX or extra assets that inflate local size.
 - Add allow-pattern support later if smoke fixtures become too large.
-- Keep media fixture commands marked as metadata-only until runtime support
-  exists.
+- Keep non-transcription media fixture commands marked as metadata-only until
+  runtime support exists.

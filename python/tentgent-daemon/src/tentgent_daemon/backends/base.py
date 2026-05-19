@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from ..runtime.chat import ChatRequest
 from ..runtime.embedding import EmbeddingRequest
 from ..runtime.rerank import RerankRequest, RerankResult
+from ..runtime.audio import AudioTranscriptionRequest, AudioTranscriptionResult
 from ..runtime.adapters import (
     AdapterExecutionNotImplementedError,
     StoredAdapterRecord,
@@ -76,4 +77,21 @@ class RerankBackend:
         return None
 
     def rerank(self, request: RerankRequest) -> RerankResult:
+        raise NotImplementedError
+
+
+class AudioTranscriptionBackend:
+    """Minimal backend contract for local batch audio transcription."""
+
+    def load(self, record: StoredModelRecord) -> None:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        """Release loaded runtime state when the server lifecycle decides to unload."""
+        return None
+
+    def transcribe(
+        self,
+        request: AudioTranscriptionRequest,
+    ) -> AudioTranscriptionResult:
         raise NotImplementedError

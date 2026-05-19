@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::runtime::{
     JobArtifact, JobItem, JobOutput, JobOutputLine, JobProgress, JobStatus, JobStream, JobTarget,
-    JobTiming,
+    JobTiming, JobWorkspaceStreamSummary, JobWorkspaceSummary,
 };
 
 #[derive(Debug, Serialize)]
@@ -28,6 +28,7 @@ pub struct JobItemResponse {
     pub refresh_targets: Vec<String>,
     pub progress: JobProgressResponse,
     pub output: JobOutputResponse,
+    pub workspace: Option<JobWorkspaceResponse>,
     pub timing: JobTimingResponse,
     pub warning_summary: Option<String>,
     pub result_summary: Option<String>,
@@ -73,6 +74,26 @@ pub struct JobOutputLineResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct JobWorkspaceResponse {
+    pub input: Option<JobWorkspaceStreamResponse>,
+    pub result: Option<JobWorkspaceStreamResponse>,
+    pub expires_at: Option<String>,
+    pub cleanup_state: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct JobWorkspaceStreamResponse {
+    pub state: String,
+    pub done: bool,
+    pub failed: bool,
+    pub chunk_count: u64,
+    pub total_bytes: u64,
+    pub sha256: Option<String>,
+    pub media_type: Option<String>,
+    pub original_filename: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct JobTimingResponse {
     pub queued_at: String,
     pub started_at: Option<String>,
@@ -93,6 +114,7 @@ pub fn job_item(job: JobItem) -> JobItemResponse {
         refresh_targets: job.refresh_targets,
         progress: job_progress(job.progress),
         output: job_output(job.output),
+        workspace: job.workspace.map(job_workspace),
         timing: job_timing(job.timing),
         warning_summary: job.warning_summary,
         result_summary: job.result_summary,
@@ -140,6 +162,28 @@ fn job_output_line(line: JobOutputLine) -> JobOutputLineResponse {
         stream: job_stream(line.stream).to_string(),
         line: line.line,
         timestamp: line.timestamp,
+    }
+}
+
+fn job_workspace(workspace: JobWorkspaceSummary) -> JobWorkspaceResponse {
+    JobWorkspaceResponse {
+        input: workspace.input.map(job_workspace_stream),
+        result: workspace.result.map(job_workspace_stream),
+        expires_at: workspace.expires_at,
+        cleanup_state: workspace.cleanup_state,
+    }
+}
+
+fn job_workspace_stream(stream: JobWorkspaceStreamSummary) -> JobWorkspaceStreamResponse {
+    JobWorkspaceStreamResponse {
+        state: stream.state,
+        done: stream.done,
+        failed: stream.failed,
+        chunk_count: stream.chunk_count,
+        total_bytes: stream.total_bytes,
+        sha256: stream.sha256,
+        media_type: stream.media_type,
+        original_filename: stream.original_filename,
     }
 }
 

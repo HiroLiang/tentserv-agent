@@ -221,7 +221,7 @@ Review target:
 - Kernel job/workspace ports are the shared foundation before any audio, image,
   or video model endpoint exists.
 
-### M6C-M6H: Media Runtime Workflows
+### M6C And Later: Media Runtime Workflows
 
 Detailed plan:
 [m6c-through-m6h-media-runtime-roadmap.md](./m6c-through-m6h-media-runtime-roadmap.md).
@@ -231,23 +231,28 @@ the native workflow work in this order:
 
 - M6C: daemon audio transcription jobs using `audio-transcription` models,
   kernel job workspaces, transcript output formats, and feature-specific result
-  retrieval.
-- M6D: CLI foreground file-to-output wrapper for transcription, optional
-  detached mode, and generic `jobs inspect`, `jobs cancel`, and `jobs delete`
-  helpers.
-- M6E: audio speech jobs that turn text into `wav` or later approved audio
-  result files.
-- M6F: image generation jobs that turn prompts into `png` or `jpg` result
+  retrieval. This slice is implemented and smoke-tested.
+- M6D: media file intake and upload foundation where path/upload routes expose
+  workflow capabilities, while workspace chunks remain internal.
+- M6E: CLI foreground file-to-output wrapper for transcription plus audio
+  large-file decode/window hardening.
+- M6F: vision chat with explicit typed image-plus-text DTOs and
+  text/JSON/Markdown outputs.
+- M6G: image generation jobs that turn prompts into `png` or `jpg` result
   files.
-- M6G: vision chat with explicit image-plus-text DTOs and text/JSON/Markdown
-  outputs.
-- M6H: video understanding and realtime/opaque stream proxy decision, with
-  WebSocket evaluated before WebRTC for local daemon simplicity.
+- M6H: audio speech jobs that turn text into `wav` or later approved audio
+  result files.
+- M6I: video understanding jobs that sample frames/clips from complete logical
+  video files without loading whole videos into memory.
+- M6J: video generation artifact decision and, if approved, job-only playable
+  video outputs.
+- M6K: media serving and runtime stream proxy decision for long-lived
+  capability-native server routes versus durable job workflows.
 
 Review target:
 
-- The remaining M6 work has workflow-specific API, CLI, output-format, and
-  transport decisions before runtime implementation starts.
+- The remaining M6 work has workflow-specific API, CLI, upload, output-format,
+  server, and transport decisions before runtime implementation starts.
 
 ### M7: Apple Developer ID Signing
 
@@ -266,9 +271,10 @@ Review target:
 
 - Current alpha line: capability metadata, compatibility gates, embedding MVP,
   rerank MVP, and M6A media metadata vocabulary are implemented and documented.
-- Multimodal planning follow-up: kernel-owned job workspaces are planned before
-  native runtime work starts, and M6C-M6H stages the remaining media workflows
-  by API, CLI, output format, and transport shape.
+- Multimodal planning follow-up: kernel-owned job workspaces are implemented
+  before native runtime work, M6C audio transcription is implemented, and
+  M6D-and-later stages the remaining media workflows by API, upload, CLI,
+  output format, server, and transport shape.
 - Signing prerelease: Developer ID signing and notarization pipeline passes.
 - Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints
   remain explicitly deferred unless their contracts and runtime paths are

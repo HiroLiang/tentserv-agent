@@ -6,8 +6,20 @@ from dataclasses import dataclass
 from threading import Thread
 from typing import Any
 
-from .base import ChatBackend, ChatResult, EmbeddingBackend, EmbeddingResult, RerankBackend
+from .base import (
+    AudioTranscriptionBackend,
+    ChatBackend,
+    ChatResult,
+    EmbeddingBackend,
+    EmbeddingResult,
+    RerankBackend,
+)
 from ..runtime.adapters import StoredAdapterRecord
+from ..runtime.audio import (
+    AudioTranscriptionRequest,
+    AudioTranscriptionResult,
+    write_audio_transcription_output,
+)
 from ..runtime.chat import ChatRequest, Message
 from ..runtime.embedding import EmbeddingRequest
 from ..runtime.profile_deps import missing_profile_dependency
@@ -24,6 +36,7 @@ class TransformersPeftDeps:
     AutoModelForSequenceClassification: Any
     AutoTokenizer: Any
     TextIteratorStreamer: Any
+    pipeline: Any
 
 
 class TransformersPeftChatBackend(ChatBackend):
@@ -337,6 +350,65 @@ class TransformersPeftRerankBackend(RerankBackend):
         return self._tokenizer, self._model
 
 
+class TransformersPeftAudioTranscriptionBackend(AudioTranscriptionBackend):
+    def __init__(self) -> None:
+        self._deps = _load_transformers_peft_deps()
+        self._record: StoredModelRecord | None = None
+        self._pipeline: Any | None = None
+
+    def load(self, record: StoredModelRecord) -> None:
+        self._record = record
+        self._pipeline = self._deps.pipeline(
+            "automatic-speech-recognition",
+            model=str(record.variant_source_path),
+            device=_asr_pipeline_device(self._deps.torch),
+            chunk_length_s=30,
+            stride_length_s=5,
+            trust_remote_code=True,
+        )
+
+    def transcribe(
+        self,
+        request: AudioTranscriptionRequest,
+    ) -> AudioTranscriptionResult:
+        pipe = self._require_loaded()
+        return_timestamps = request.timestamps or request.output_format in {"vtt", "srt"}
+        kwargs: dict[str, object] = {"return_timestamps": return_timestamps}
+        if request.language:
+            kwargs["generate_kwargs"] = {"language": request.language}
+        try:
+            raw_result = pipe(str(request.input_path), **kwargs)
+        except ValueError as exc:
+            if request.language and _is_english_only_language_error(exc):
+                raw_result = pipe(
+                    str(request.input_path),
+                    return_timestamps=return_timestamps,
+                )
+            else:
+                raise
+        if not isinstance(raw_result, dict):
+            raw_result = {"text": str(raw_result)}
+        return write_audio_transcription_output(request, raw_result)
+
+    def release(self) -> None:
+        self._record = None
+        self._pipeline = None
+
+        torch = self._deps.torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+
+    def _require_loaded(self) -> Any:
+        if self._record is None or self._pipeline is None:
+            raise RuntimeError(
+                "Transformers audio transcription backend is not loaded yet; "
+                "call load() before transcribe()."
+            )
+        return self._pipeline
+
+
 def _load_transformers_peft_deps() -> TransformersPeftDeps:
     try:
         from peft import PeftModel
@@ -347,6 +419,7 @@ def _load_transformers_peft_deps() -> TransformersPeftDeps:
             AutoModelForSequenceClassification,
             AutoTokenizer,
             TextIteratorStreamer,
+            pipeline,
         )
     except ModuleNotFoundError as exc:
         if exc.name in {"peft", "torch", "transformers"}:
@@ -361,6 +434,7 @@ def _load_transformers_peft_deps() -> TransformersPeftDeps:
         AutoModelForSequenceClassification=AutoModelForSequenceClassification,
         AutoTokenizer=AutoTokenizer,
         TextIteratorStreamer=TextIteratorStreamer,
+        pipeline=pipeline,
     )
 
 
@@ -370,6 +444,21 @@ def _detect_device(torch: Any) -> Any:
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
+
+
+def _asr_pipeline_device(torch: Any) -> Any:
+    if torch.cuda.is_available():
+        return 0
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return -1
+
+
+def _is_english_only_language_error(error: ValueError) -> bool:
+    message = str(error)
+    return (
+        "Cannot specify `task` or `language` for an English-only model" in message
+    )
 
 
 def _render_prompt(

@@ -43,3 +43,12 @@ def resolve_rerank_backend(record: StoredModelRecord) -> BackendKind:
     raise ValueError(
         f"unsupported primary_format `{record.primary_format}` for rerank model `{record.model_ref}`"
     )
+
+
+def resolve_audio_transcription_backend(record: StoredModelRecord) -> BackendKind:
+    if record.primary_format == "safetensors":
+        return BackendKind.TRANSFORMERS_PEFT
+
+    raise ValueError(
+        f"unsupported primary_format `{record.primary_format}` for audio transcription model `{record.model_ref}`"
+    )

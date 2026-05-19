@@ -39,6 +39,9 @@ pub enum KernelError {
     #[error("rerank runtime is unavailable: {0}")]
     RerankRuntimeUnavailable(String),
 
+    #[error("audio runtime is unavailable: {0}")]
+    AudioRuntimeUnavailable(String),
+
     #[error("daemon store is unavailable: {0}")]
     DaemonStoreUnavailable(String),
 

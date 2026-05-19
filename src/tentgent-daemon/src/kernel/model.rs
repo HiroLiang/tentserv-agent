@@ -1,5 +1,12 @@
 use tentgent_kernel::{
     features::{
+        audio::{
+            infra::StdAudioTranscriptionModelResolver,
+            ports::{
+                AudioTranscriptionModelResolveRequest, AudioTranscriptionModelResolveResult,
+                AudioTranscriptionModelResolver,
+            },
+        },
         auth::usecases::AuthSecretResolverUseCase,
         chat::{
             infra::StdChatModelResolver,
@@ -157,5 +164,14 @@ impl RerankModelResolver for ModelKernelComponent {
         request: RerankModelResolveRequest,
     ) -> KernelResult<RerankModelResolveResult> {
         StdRerankModelResolver::new(self).resolve_rerank_model(request)
+    }
+}
+
+impl AudioTranscriptionModelResolver for ModelKernelComponent {
+    fn resolve_audio_transcription_model(
+        &self,
+        request: AudioTranscriptionModelResolveRequest,
+    ) -> KernelResult<AudioTranscriptionModelResolveResult> {
+        StdAudioTranscriptionModelResolver::new(self).resolve_audio_transcription_model(request)
     }
 }
