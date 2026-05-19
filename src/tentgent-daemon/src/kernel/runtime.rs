@@ -14,6 +14,11 @@ use tentgent_kernel::{
                 DatasetSynthRuntimeRequest,
             },
         },
+        embedding::{
+            domain::EmbeddingResponse,
+            infra::PythonEmbeddingOnceRuntimeClient,
+            ports::{EmbeddingPortFuture, EmbeddingRuntimeClient, EmbeddingRuntimeRequest},
+        },
         runtime::{
             domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput, RuntimeEntrypoint},
             infra::{
@@ -181,6 +186,19 @@ impl ChatRuntimeClient for RuntimeKernelComponent {
         Box::pin(async move {
             PythonChatOnceRuntimeClient::new(self)
                 .stream_chat(request, sink)
+                .await
+        })
+    }
+}
+
+impl EmbeddingRuntimeClient for RuntimeKernelComponent {
+    fn embed<'a>(
+        &'a self,
+        request: EmbeddingRuntimeRequest,
+    ) -> EmbeddingPortFuture<'a, EmbeddingResponse> {
+        Box::pin(async move {
+            PythonEmbeddingOnceRuntimeClient::new(self)
+                .embed(request)
                 .await
         })
     }

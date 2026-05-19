@@ -1,7 +1,9 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::features::server::domain::{ServerRef, ServerRuntimeKind, ServerRuntimeTarget};
+use crate::features::server::domain::{
+    ServerCapability, ServerRef, ServerRuntimeKind, ServerRuntimeTarget,
+};
 use crate::features::server::ports::ServerIdentityGenerator;
 use crate::foundation::error::KernelResult;
 
@@ -21,7 +23,11 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
         idle_seconds: Option<u64>,
     ) -> KernelResult<ServerRef> {
         let server_ref = match target {
-            ServerRuntimeTarget::LocalModel { model_ref, .. } => {
+            ServerRuntimeTarget::LocalModel {
+                model_ref,
+                capability,
+                ..
+            } if *capability == ServerCapability::Chat => {
                 compute_server_ref(LocalServerIdentity {
                     model_ref: model_ref.as_str(),
                     host,
@@ -30,6 +36,18 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
                     idle_seconds,
                 })?
             }
+            ServerRuntimeTarget::LocalModel {
+                model_ref,
+                capability,
+                ..
+            } => compute_server_ref(LocalCapabilityServerIdentity {
+                model_ref: model_ref.as_str(),
+                capability: capability.as_str(),
+                host,
+                port,
+                lazy_load,
+                idle_seconds,
+            })?,
             ServerRuntimeTarget::CloudProvider {
                 provider,
                 provider_model,
@@ -51,6 +69,16 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
 #[derive(Debug, Serialize)]
 struct LocalServerIdentity<'a> {
     model_ref: &'a str,
+    host: &'a str,
+    port: u16,
+    lazy_load: bool,
+    idle_seconds: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct LocalCapabilityServerIdentity<'a> {
+    model_ref: &'a str,
+    capability: &'a str,
     host: &'a str,
     port: u16,
     lazy_load: bool,
@@ -90,4 +118,24 @@ pub(crate) fn local_identity_json_for_test(
         idle_seconds,
     })
     .expect("serialize local identity")
+}
+
+#[cfg(test)]
+pub(crate) fn local_capability_identity_json_for_test(
+    model_ref: &str,
+    capability: &str,
+    host: &str,
+    port: u16,
+    lazy_load: bool,
+    idle_seconds: Option<u64>,
+) -> String {
+    serde_json::to_string(&LocalCapabilityServerIdentity {
+        model_ref,
+        capability,
+        host,
+        port,
+        lazy_load,
+        idle_seconds,
+    })
+    .expect("serialize local capability identity")
 }

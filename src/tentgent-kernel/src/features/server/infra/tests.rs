@@ -11,7 +11,10 @@ use crate::features::server::ports::{
 };
 use crate::foundation::error::KernelResult;
 
-use super::identity::{local_identity_json_for_test, StdServerIdentityGenerator};
+use super::identity::{
+    local_capability_identity_json_for_test, local_identity_json_for_test,
+    StdServerIdentityGenerator,
+};
 use super::runtime::server_runtime_command_parts;
 use super::{FileServerCatalogStore, StdServerStoreLayoutInitializer};
 
@@ -35,6 +38,23 @@ fn local_identity_json_preserves_legacy_field_order() {
     assert_eq!(
         body,
         r#"{"model_ref":"abc123","host":"127.0.0.1","port":8780,"lazy_load":false,"idle_seconds":null}"#
+    );
+}
+
+#[test]
+fn embedding_identity_json_includes_capability_without_changing_chat_shape() {
+    let body = local_capability_identity_json_for_test(
+        "abc123",
+        "embedding",
+        "127.0.0.1",
+        8780,
+        false,
+        None,
+    );
+
+    assert_eq!(
+        body,
+        r#"{"model_ref":"abc123","capability":"embedding","host":"127.0.0.1","port":8780,"lazy_load":false,"idle_seconds":null}"#
     );
 }
 
@@ -153,6 +173,8 @@ fn local_runtime_args_preserve_python_server_shape() {
             spec.server_ref.as_str(),
             "--runtime-kind",
             "local",
+            "--capability",
+            "chat",
             "--host",
             "127.0.0.1",
             "--port",

@@ -98,8 +98,9 @@ tentgent model pull DravenBlack/gemma-3-1b-it-Q4_K_M-GGUF
 tentgent model pull BAAI/bge-reranker-base --capability rerank --revision main
 ```
 
-`--capability` accepts `chat`, `embedding`, or `rerank` and records model
-metadata only. Embedding and rerank runtime endpoints are not implemented yet.
+`--capability` accepts `chat`, `embedding`, or `rerank`. Chat and embedding
+endpoints enforce this metadata before runtime dispatch. Rerank metadata is
+stored for future endpoint work.
 
 List and inspect models:
 
@@ -139,8 +140,9 @@ Launch a long-lived local server:
 tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 ```
 
-Server launch currently requires a chat-capable model. Models classified only
-as `embedding` or `rerank` are rejected until their runtime endpoints ship.
+Server launch defaults to `--capability chat` and requires a chat-capable model.
+Use `--capability embedding` for a local safetensors embedding model. Rerank
+servers are rejected until the rerank runtime endpoint ships.
 
 Call the server:
 
@@ -159,6 +161,22 @@ curl -s http://127.0.0.1:8780/v1/chat \
 Direct model-server chat is stateless. Do not send `session_ref` or
 `max_session_messages` to a server port such as `8780`; those daemon-only fields
 belong on daemon `POST /v1/chat` requests, usually port `8790`.
+
+Launch and call a direct local embedding server:
+
+```bash
+tentgent server run <embedding-model-ref> \
+  --capability embedding \
+  --host 127.0.0.1 \
+  --port 8781 \
+  --lazy-load
+
+curl -s http://127.0.0.1:8781/v1/embeddings \
+  -H 'Content-Type: application/json' \
+  -d '{"input":["first text","second text"]}'
+```
+
+Chat servers reject `/v1/embeddings`, and embedding servers reject `/v1/chat`.
 
 Stream a local base-model response with Server-Sent Events:
 
@@ -300,6 +318,15 @@ curl -sS -N http://127.0.0.1:8790/v1/chat/completions \
     "stream": true
   }'
 
+curl -sS http://127.0.0.1:8790/v1/embeddings \
+  -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_ref": "<embedding-model-ref>",
+    "input": ["first text", "second text"]
+  }'
+
 curl -sS -N http://127.0.0.1:8790/v1/messages \
   -X POST \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
@@ -359,12 +386,13 @@ tentgent daemon run --host 127.0.0.1 --port 8790
 The daemon records process metadata under `TENTGENT_HOME/runtime` and exposes
 Rust HTTP health/status, store discovery and mutation, controlled server
 lifecycle endpoints, background jobs, chat, sessions, and LoRA plan APIs.
-Native `/v1/chat`, OpenAI-compatible `/v1/chat/completions`,
-Claude-compatible `/v1/messages`, and Gemini-compatible
+Native `/v1/chat`, native `/v1/embeddings`, OpenAI-compatible
+`/v1/chat/completions`, Claude-compatible `/v1/messages`, and Gemini-compatible
 `/v1beta/models/{model}:generateContent` adapters are DTO/SSE translators over
-the same kernel text-only chat use cases. They currently reject tools, images,
-and audio before calling the model runtime. Log diagnostics endpoints expose
-fixed daemon/server stdout and stderr paths for local debugging.
+kernel use cases. Chat routes currently reject tools, images, and audio before
+calling the model runtime. Embedding requests do not create or mutate sessions.
+Log diagnostics endpoints expose fixed daemon/server stdout and stderr paths for
+local debugging.
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the
 explicit `--allow-unsafe-bind` flag.
 Detached daemon children inherit daemon configuration environment variables,

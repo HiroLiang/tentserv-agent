@@ -58,6 +58,10 @@ fn runtime_entrypoints_match_python_project_scripts() {
         "tentgent-dataset-synth"
     );
     assert_eq!(
+        RuntimeEntrypoint::EmbeddingOnce.script_name(),
+        "tentgent-embed-once"
+    );
+    assert_eq!(
         RuntimeEntrypoint::HfSnapshot.script_name(),
         "tentgent-hf-snapshot"
     );

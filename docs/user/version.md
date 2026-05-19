@@ -20,11 +20,18 @@ What changed:
   platform/backend/runtime-footprint diagnostics under `doctor`.
 - Added daemon-native chat and OpenAI, Claude, and Gemini compatible adapters
   as text-only DTO/SSE translators over the existing kernel chat use cases.
+- Added daemon-native `POST /v1/embeddings` for local safetensors embedding
+  models and direct Python server `/v1/embeddings` for `--capability embedding`
+  server specs.
+- Added endpoint-family gates so chat routes require `chat` models and
+  embedding routes require `embedding` models before runtime dispatch.
 
 Known limits:
 
 - Tools/function calling, images, and audio are rejected by compatible chat
   adapters until kernel tool-call and multimodal support exists.
+- Rerank metadata can be stored, but `/v1/rerank` and rerank server runtime
+  paths are still deferred.
 - The next release-engineering slice is Apple Developer ID signing,
   notarization, and GitHub Actions release automation for the CLI.
 

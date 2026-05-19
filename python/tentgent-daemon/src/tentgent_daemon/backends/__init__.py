@@ -1,7 +1,7 @@
 """Backend adapters for Tentgent Python runtime."""
 
 from ..runtime.router import BackendKind
-from .base import ChatBackend
+from .base import ChatBackend, EmbeddingBackend
 
 
 def create_backend(kind: BackendKind) -> ChatBackend:
@@ -21,4 +21,13 @@ def create_backend(kind: BackendKind) -> ChatBackend:
     raise ValueError(f"unsupported backend kind `{kind}`")
 
 
-__all__ = ["ChatBackend", "create_backend"]
+def create_embedding_backend(kind: BackendKind) -> EmbeddingBackend:
+    if kind == BackendKind.TRANSFORMERS_PEFT:
+        from .transformers_peft import TransformersPeftEmbeddingBackend
+
+        return TransformersPeftEmbeddingBackend()
+
+    raise ValueError(f"unsupported embedding backend kind `{kind}`")
+
+
+__all__ = ["ChatBackend", "EmbeddingBackend", "create_backend", "create_embedding_backend"]

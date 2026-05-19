@@ -241,6 +241,19 @@ pub enum ServerCapability {
 }
 
 impl ServerCapability {
+    pub fn parse(value: impl AsRef<str>) -> Result<Self, ServerCapabilityParseError> {
+        let normalized = value.as_ref().trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "" => Err(ServerCapabilityParseError::Empty),
+            "chat" => Ok(Self::Chat),
+            "embedding" => Ok(Self::Embedding),
+            "rerank" => Ok(Self::Rerank),
+            _ => Err(ServerCapabilityParseError::Unsupported {
+                value: value.as_ref().trim().to_string(),
+            }),
+        }
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Chat => "chat",
@@ -262,6 +275,22 @@ impl fmt::Display for ServerCapability {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
+}
+
+impl std::str::FromStr for ServerCapability {
+    type Err = ServerCapabilityParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ServerCapabilityParseError {
+    #[error("server capability must not be blank; expected one of: chat, embedding, rerank")]
+    Empty,
+    #[error("unsupported server capability `{value}`; expected one of: chat, embedding, rerank")]
+    Unsupported { value: String },
 }
 
 pub const fn default_server_capability() -> ServerCapability {
@@ -410,6 +439,7 @@ pub enum ServerRuntimeTarget {
     LocalModel {
         model_ref: ModelRef,
         backend: ServerRuntimeBackend,
+        capability: ServerCapability,
     },
     CloudProvider {
         provider: CloudProvider,

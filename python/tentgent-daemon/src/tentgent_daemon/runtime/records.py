@@ -23,6 +23,7 @@ class StoredModelRecord:
     source_path: str | None
     primary_format: str
     detected_formats: tuple[str, ...]
+    model_capabilities: tuple[str, ...]
     file_count: int
     total_bytes: int
     imported_at: str
@@ -84,6 +85,7 @@ def _read_record(model_dir: Path) -> StoredModelRecord:
         source_path=_optional_string(raw, "source_path"),
         primary_format=primary_format,
         detected_formats=tuple(raw.get("detected_formats", [])),
+        model_capabilities=_model_capabilities(raw),
         file_count=int(raw.get("file_count", 0)),
         total_bytes=int(raw.get("total_bytes", 0)),
         imported_at=_require_string(raw, "imported_at"),
@@ -103,6 +105,18 @@ def _require_string(raw: dict[str, object], key: str) -> str:
 def _optional_string(raw: dict[str, object], key: str) -> str | None:
     value = raw.get(key)
     return value if isinstance(value, str) and value else None
+
+
+def _model_capabilities(raw: dict[str, object]) -> tuple[str, ...]:
+    raw_capabilities = raw.get("model_capabilities", ["chat"])
+    if not isinstance(raw_capabilities, list):
+        raise ValueError("invalid `model_capabilities` in model metadata")
+    capabilities = tuple(
+        value.strip().lower()
+        for value in raw_capabilities
+        if isinstance(value, str) and value.strip()
+    )
+    return capabilities or ("chat",)
 
 
 def _read_env_path(name: str) -> Path | None:

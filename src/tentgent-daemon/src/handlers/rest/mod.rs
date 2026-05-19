@@ -4,6 +4,7 @@ pub mod chat;
 pub mod daemon;
 pub mod dataset;
 pub mod doctor;
+pub mod embedding;
 pub mod health;
 pub mod jobs;
 pub mod model;

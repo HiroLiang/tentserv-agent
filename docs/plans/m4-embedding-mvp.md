@@ -3,7 +3,7 @@
 This is the focused execution plan for M4 in the
 [capability-first release roadmap](./capability-first-release-roadmap.md).
 
-Status: planned.
+Status: implemented.
 
 ## Goal
 
@@ -24,13 +24,27 @@ Status: planned.
   embeddings.
 - Do not silently coerce chat models into embedding models.
 
+## Implemented Slice
+
+- Added `features/embedding` in the Rust kernel with domain types, model
+  resolver, use case, and Python one-shot runtime client.
+- Added daemon REST `POST /v1/embeddings` with string and string-array input,
+  model alias resolution, capability gates, and session-free execution.
+- Added Python `tentgent-embed-once` and direct server `POST /v1/embeddings`.
+- Chose the first backend path as safetensors through the existing
+  `transformers-peft` local-model profile using `AutoModel` mean pooling.
+- Enabled local embedding server specs with `--capability embedding` while
+  preserving legacy chat server identity.
+- Added embedding backend capability probing through the local-model dependency
+  set; rerank remains unknown/deferred.
+
 ## Starting Baseline
 
 - M1/M2 provide `model_capabilities` metadata and correction paths.
 - M3 adds server capability metadata and endpoint-family gates.
-- `docs/user/commands.md` currently states that embedding runtime endpoints are
-  not implemented.
-- Backend capability probes currently report embedding readiness as unknown.
+- `docs/user/commands.md` previously stated that embedding runtime endpoints
+  were not implemented.
+- Backend capability probes previously reported embedding readiness as unknown.
 
 ## API Contract
 
@@ -142,8 +156,7 @@ server specs whose capability is `embedding`.
   the selected model advertises `embedding`.
 - Keep existing chat server identity behavior stable. If server capability enters
   identity for non-chat specs, add tests proving old chat refs are unchanged.
-- Ensure `resolve_for_start` gates embedding specs by model capability and
-  backend readiness.
+- Ensure `resolve_for_start` gates embedding specs by model capability.
 
 ### 6. Tests
 

@@ -8,6 +8,7 @@ from pathlib import Path
 class ServerConfig:
     server_ref: str
     runtime_kind: str
+    capability: str
     model_ref: str | None
     provider: str | None
     provider_model: str | None
@@ -20,6 +21,14 @@ class ServerConfig:
     @property
     def is_cloud(self) -> bool:
         return self.runtime_kind == "cloud"
+
+    @property
+    def is_chat(self) -> bool:
+        return self.capability == "chat"
+
+    @property
+    def is_embedding(self) -> bool:
+        return self.capability == "embedding"
 
     @property
     def runtime_label(self) -> str:

@@ -491,6 +491,72 @@ async fn chat_family_routes_reject_non_chat_models_before_runtime() {
 }
 
 #[tokio::test]
+async fn embeddings_reject_empty_input_without_session_writes() {
+    let requested_home = unique_home("embeddings-empty-input");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/embeddings")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"model_ref":"aaaaaaaaaaaa","input":[]}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(fs::read_dir(home.join("sessions"))
+        .expect("sessions dir")
+        .next()
+        .is_none());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn embeddings_reject_non_embedding_models_before_runtime() {
+    for (label, capability, model_ref) in [
+        ("chat", "chat", "8".repeat(64)),
+        ("rerank", "rerank", "9".repeat(64)),
+    ] {
+        let requested_home = unique_home(&format!("embedding-route-{label}"));
+        let state = rest_state_for_home(requested_home);
+        let home = state.app().layout().home_dir.canonicalize().expect("home");
+        write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &[capability]);
+
+        let response = build_router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/embeddings")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(
+                        r#"{{"model_ref":"{model_ref}","input":"hi"}}"#
+                    )))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = json_body(response).await;
+        assert_eq!(body["error"], "unsupported_target");
+        let message = body["message"].as_str().expect("message");
+        assert!(message.contains("embedding endpoint"));
+        assert!(message.contains("requires model capability `embedding`"));
+        assert!(message.contains(capability));
+
+        let _ = fs::remove_dir_all(home);
+    }
+}
+
+#[tokio::test]
 async fn jobs_returns_empty_registry_for_isolated_home() {
     let requested_home = unique_home("jobs-empty");
     let state = rest_state_for_home(requested_home);
@@ -2070,6 +2136,39 @@ async fn server_create_rejects_non_chat_model_for_chat_server() {
 }
 
 #[tokio::test]
+async fn server_create_prepares_embedding_server_spec() {
+    let requested_home = unique_home("servers-create-embedding");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "5".repeat(64);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["embedding"]);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/servers")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"runtime_ref":"{model_ref}","capability":"embedding","host":"127.0.0.1","port":8998}}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    assert_eq!(body["server"]["capability"], "embedding");
+    assert_eq!(
+        body["server"]["model_ref"].as_str(),
+        Some(model_ref.as_str())
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn server_remove_deletes_stopped_spec() {
     let requested_home = unique_home("servers-remove");
     let state = rest_state_for_home(requested_home);
@@ -2757,6 +2856,41 @@ source_kind = "local"
 source_path = "{}"
 primary_format = "mlx"
 detected_formats = ["mlx"]
+model_capabilities = [{capabilities}]
+model_capability_source = "explicit-user"
+file_count = 1
+total_bytes = 10
+imported_at = "2026-05-01T00:00:00Z"
+"#,
+            &model_ref[..12],
+            path_string(home.join("fixtures/model"))
+        ),
+    )
+    .expect("model metadata");
+}
+
+fn write_safetensors_model_fixture_with_capabilities(
+    home: &std::path::Path,
+    model_ref: &str,
+    capabilities: &[&str],
+) {
+    let store_dir = home.join("models/store").join(model_ref);
+    fs::create_dir_all(store_dir.join("variants/safetensors/source")).expect("model source dir");
+    fs::write(store_dir.join("manifest.json"), "{}").expect("manifest");
+    let capabilities = capabilities
+        .iter()
+        .map(|capability| format!(r#""{capability}""#))
+        .collect::<Vec<_>>()
+        .join(", ");
+    fs::write(
+        store_dir.join("model.toml"),
+        format!(
+            r#"model_ref = "{model_ref}"
+short_ref = "{}"
+source_kind = "local"
+source_path = "{}"
+primary_format = "safetensors"
+detected_formats = ["safetensors"]
 model_capabilities = [{capabilities}]
 model_capability_source = "explicit-user"
 file_count = 1

@@ -4,23 +4,38 @@ import io
 import json
 import unittest
 from http import HTTPStatus
+from pathlib import Path
 
 from tentgent_daemon.runtime.adapters import AdapterBackendUnsupportedError
+from tentgent_daemon.server.embedding_api import decode_embedding_request, handle_embedding_request
 from tentgent_daemon.server.chat_api import handle_chat_request
 from tentgent_daemon.server.chat_api import stream_preflight_error_response
+from tentgent_daemon.server.config import ServerConfig
 from tentgent_daemon.server.http import TentgentRequestHandler
 from tentgent_daemon.server.sse import delta_event, done_event, error_event
 
 
 class JsonWriter(TentgentRequestHandler):
-    def __init__(self, body: bytes = b"", session: object | None = None) -> None:
+    def __init__(
+        self,
+        body: bytes = b"",
+        session: object | None = None,
+        *,
+        capability: str = "chat",
+        path: str = "/v1/chat",
+    ) -> None:
         self.rfile = io.BytesIO(body)
         self.wfile = io.BytesIO()
         self.status: HTTPStatus | None = None
         self.headers: dict[str, str] = {}
         if body:
             self.headers["Content-Length"] = str(len(body))
-        self.server = type("FakeServer", (), {"session": session})()
+        self.path = path
+        self.server = type(
+            "FakeServer",
+            (),
+            {"session": session, "config": fake_config(capability)},
+        )()
 
     def send_response(self, code: HTTPStatus, message: str | None = None) -> None:
         self.status = code
@@ -57,6 +72,16 @@ class StreamingSession:
                 raise self.runtime_exc
 
         return _iter()
+
+
+class EmbeddingSession:
+    def __init__(self, vectors: list[list[float]] | None = None) -> None:
+        self.vectors = vectors or [[0.1, 0.2]]
+        self.inputs: list[tuple[str, ...]] = []
+
+    def embed(self, inputs: tuple[str, ...]) -> list[list[float]]:
+        self.inputs.append(inputs)
+        return self.vectors
 
 
 class ServerHttpTests(unittest.TestCase):
@@ -232,6 +257,86 @@ class ServerHttpTests(unittest.TestCase):
         self.assertEqual(status, HTTPStatus.BAD_REQUEST)
         self.assertEqual(payload["error"], "invalid_request")
         self.assertIn("`stream` must be a boolean", payload["message"])
+
+    def test_embedding_parser_accepts_string_and_array_input(self) -> None:
+        single = decode_embedding_request(b'{"input":"hello"}')
+        many = decode_embedding_request(b'{"input":["first","second"]}')
+
+        self.assertEqual(single.inputs, ("hello",))
+        self.assertEqual(many.inputs, ("first", "second"))
+
+    def test_embedding_parser_rejects_empty_input(self) -> None:
+        status, payload = handle_embedding_request(
+            b'{"input":[]}',
+            session=object(),  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+        self.assertEqual(payload["error"], "invalid_request")
+
+    def test_direct_embedding_serializes_numeric_vectors(self) -> None:
+        body = b'{"input":["first","second"]}'
+        session = EmbeddingSession([[0.1, 0.2], [0.3, 0.4]])
+        handler = JsonWriter(
+            body,
+            session=session,
+            capability="embedding",
+            path="/v1/embeddings",
+        )
+
+        handler._handle_embeddings()
+
+        self.assertEqual(handler.status, HTTPStatus.OK)
+        self.assertEqual(session.inputs, [("first", "second")])
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["data"][0]["index"], 0)
+        self.assertEqual(payload["data"][0]["embedding"], [0.1, 0.2])
+        self.assertEqual(payload["data"][1]["index"], 1)
+        self.assertEqual(payload["data"][1]["embedding"], [0.3, 0.4])
+
+    def test_direct_server_rejects_chat_route_on_embedding_server(self) -> None:
+        handler = JsonWriter(
+            b'{"messages":[{"role":"user","content":"hi"}]}',
+            session=object(),
+            capability="embedding",
+            path="/v1/chat",
+        )
+
+        handler.do_POST()
+
+        self.assertEqual(handler.status, HTTPStatus.BAD_REQUEST)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["error"], "unsupported_target")
+
+    def test_direct_server_rejects_embedding_route_on_chat_server(self) -> None:
+        handler = JsonWriter(
+            b'{"input":"hi"}',
+            session=object(),
+            capability="chat",
+            path="/v1/embeddings",
+        )
+
+        handler.do_POST()
+
+        self.assertEqual(handler.status, HTTPStatus.BAD_REQUEST)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["error"], "unsupported_target")
+
+
+def fake_config(capability: str = "chat") -> ServerConfig:
+    return ServerConfig(
+        server_ref="server-ref",
+        runtime_kind="local",
+        capability=capability,
+        model_ref="model-ref",
+        provider=None,
+        provider_model=None,
+        host="127.0.0.1",
+        port=8780,
+        home=Path("/tmp/tentgent-server-http-test"),
+        lazy_load=False,
+        idle_seconds=None,
+    )
 
 
 if __name__ == "__main__":

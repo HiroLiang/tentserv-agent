@@ -7,6 +7,7 @@ pub mod config;
 pub mod daemon;
 pub mod dataset;
 pub mod doctor;
+pub mod embedding;
 pub mod model;
 pub mod runtime;
 pub mod server;

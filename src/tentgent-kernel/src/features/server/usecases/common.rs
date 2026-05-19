@@ -22,6 +22,7 @@ pub(super) fn model_store_layout(layout: &RuntimeLayout) -> ModelStoreLayout {
 
 pub(super) fn resolve_server_runtime_target(
     runtime_ref: &str,
+    capability: ServerCapability,
     layout: &RuntimeLayout,
     model_catalog: &dyn ModelCatalogStore,
 ) -> KernelResult<ServerRuntimeTarget> {
@@ -33,25 +34,34 @@ pub(super) fn resolve_server_runtime_target(
             let model = model_catalog.inspect_model(&model_store, &selector)?;
             let metadata = &model.metadata;
             ensure_model_compatible_with_server(
-                ServerCapability::Chat,
+                capability,
                 &metadata.model_ref,
                 &metadata.model_capabilities,
             )?;
+            ensure_server_capability_implemented(capability)?;
 
             Ok(ServerRuntimeTarget::LocalModel {
                 model_ref: metadata.model_ref.clone(),
                 backend: super::super::domain::ServerRuntimeBackend::from_model_format(
                     metadata.primary_format,
                 ),
+                capability,
             })
         }
         ServerRuntimeSelection::CloudProvider {
             provider,
             provider_model,
-        } => Ok(ServerRuntimeTarget::CloudProvider {
-            provider,
-            provider_model,
-        }),
+        } => {
+            if capability != ServerCapability::Chat {
+                return Err(KernelError::UnsupportedTarget(format!(
+                    "cloud server capability `{capability}` is not implemented yet"
+                )));
+            }
+            Ok(ServerRuntimeTarget::CloudProvider {
+                provider,
+                provider_model,
+            })
+        }
     }
 }
 
@@ -120,11 +130,15 @@ fn spec_for_ref(
 ) -> ServerSpec {
     let short_ref = server_ref.short_ref().to_string();
     match target {
-        ServerRuntimeTarget::LocalModel { model_ref, .. } => ServerSpec {
+        ServerRuntimeTarget::LocalModel {
+            model_ref,
+            capability,
+            ..
+        } => ServerSpec {
             server_ref,
             short_ref,
             runtime_kind: ServerRuntimeKind::Local,
-            capability: ServerCapability::Chat,
+            capability,
             model_ref: Some(model_ref),
             provider: None,
             provider_model: None,
@@ -164,11 +178,10 @@ fn ensure_model_compatible_with_server(
 }
 
 fn ensure_server_capability_implemented(capability: ServerCapability) -> KernelResult<()> {
-    if capability == ServerCapability::Chat {
-        return Ok(());
+    match capability {
+        ServerCapability::Chat | ServerCapability::Embedding => Ok(()),
+        ServerCapability::Rerank => Err(KernelError::UnsupportedTarget(format!(
+            "server capability `{capability}` is not implemented yet"
+        ))),
     }
-
-    Err(KernelError::UnsupportedTarget(format!(
-        "server capability `{capability}` is not implemented yet"
-    )))
 }

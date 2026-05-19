@@ -155,6 +155,10 @@ fn machine_capabilities_probe_maps_backend_import_checks() {
         CapabilityState::Ready
     );
     assert_eq!(
+        backend_state(&capabilities, BackendKind::Embedding),
+        CapabilityState::Ready
+    );
+    assert_eq!(
         backend_state(&capabilities, BackendKind::Mlx),
         CapabilityState::Ready
     );

@@ -52,6 +52,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
             runtime_ref: "claude:claude-3-5-sonnet-latest".to_string(),
+            capability: ServerCapability::Chat,
             host: Some("127.0.0.1".to_string()),
             port: Some(8780),
             lazy_load: false,
@@ -68,6 +69,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
             runtime_ref: "anthropic:claude-3-5-sonnet-latest".to_string(),
+            capability: ServerCapability::Chat,
             host: Some("127.0.0.1".to_string()),
             port: Some(8780),
             lazy_load: false,
@@ -124,6 +126,7 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
             runtime_ref: fixture.model_ref.short_ref().to_string(),
+            capability: ServerCapability::Chat,
             host: None,
             port: Some(8781),
             lazy_load: true,
@@ -212,6 +215,7 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
             .prepare_server(ServerPrepareRequest {
                 layout: fixture.layout_input(LayoutResolveMode::Create),
                 runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: ServerCapability::Chat,
                 host: None,
                 port: Some(8781),
                 lazy_load: false,
@@ -227,8 +231,8 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
 }
 
 #[test]
-fn standard_server_usecase_rejects_non_chat_stored_specs_before_start() {
-    let fixture = Fixture::new("stored-non-chat");
+fn standard_server_usecase_allows_embedding_stored_specs_before_start() {
+    let fixture = Fixture::new("stored-embedding");
     fixture.write_model_capabilities(vec![ModelCapability::Embedding]);
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
@@ -280,16 +284,61 @@ fn standard_server_usecase_rejects_non_chat_stored_specs_before_start() {
         )
         .expect("save server spec");
 
-    let err = servers
+    let result = servers
         .resolve_for_start(ServerResolveForStartRequest {
             layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
             selector: ServerRefSelector::parse(server_ref.short_ref()).expect("selector"),
         })
-        .expect_err("non-chat server runtime is not implemented");
+        .expect("embedding server runtime is implemented");
 
-    assert!(err
-        .to_string()
-        .contains("server capability `embedding` is not implemented yet"));
+    assert_eq!(
+        result.inspection.spec.capability,
+        ServerCapability::Embedding
+    );
+}
+
+#[test]
+fn standard_server_usecase_prepares_embedding_specs() {
+    let fixture = Fixture::new("embedding");
+    fixture.write_model_capabilities(vec![ModelCapability::Embedding]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let prepared = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            runtime_ref: fixture.model_ref.short_ref().to_string(),
+            capability: ServerCapability::Embedding,
+            host: None,
+            port: Some(8781),
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect("prepare embedding server");
+
+    assert!(prepared.outcome.created);
+    assert_eq!(
+        prepared.outcome.inspection.spec.capability,
+        ServerCapability::Embedding
+    );
+    assert_eq!(
+        prepared.outcome.inspection.spec.model_ref.as_ref(),
+        Some(&fixture.model_ref)
+    );
 }
 
 struct Fixture {

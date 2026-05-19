@@ -33,6 +33,9 @@ pub enum KernelError {
     #[error("chat runtime is unavailable: {0}")]
     ChatRuntimeUnavailable(String),
 
+    #[error("embedding runtime is unavailable: {0}")]
+    EmbeddingRuntimeUnavailable(String),
+
     #[error("daemon store is unavailable: {0}")]
     DaemonStoreUnavailable(String),
 

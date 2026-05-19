@@ -18,7 +18,9 @@ use tentgent_kernel::{
             usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase},
         },
         server::{
-            domain::{CloudProvider, LaunchMode, ServerInspection, ServerRuntimeKind},
+            domain::{
+                CloudProvider, LaunchMode, ServerCapability, ServerInspection, ServerRuntimeKind,
+            },
             infra::{PythonServerRuntimeLauncher, ServerRuntimeLaunchRequest},
             usecases::{
                 ServerInspectRequest, ServerLifecycleUseCase, ServerListRequest,
@@ -78,6 +80,7 @@ pub async fn create(
         .prepare_server(ServerPrepareRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             runtime_ref: request.runtime_ref,
+            capability: request.capability.unwrap_or(ServerCapability::Chat),
             host: request.host,
             port: request.port,
             lazy_load: request.lazy_load.unwrap_or(false),
@@ -249,6 +252,7 @@ pub async fn stop(
 #[serde(deny_unknown_fields)]
 pub struct ServerCreateRequest {
     pub runtime_ref: String,
+    pub capability: Option<ServerCapability>,
     pub host: Option<String>,
     pub port: Option<u16>,
     pub lazy_load: Option<bool>,

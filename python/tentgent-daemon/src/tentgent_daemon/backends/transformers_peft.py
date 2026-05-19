@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from threading import Thread
 from typing import Any
 
-from .base import ChatBackend, ChatResult
+from .base import ChatBackend, ChatResult, EmbeddingBackend, EmbeddingResult
 from ..runtime.adapters import StoredAdapterRecord
 from ..runtime.chat import ChatRequest, Message
+from ..runtime.embedding import EmbeddingRequest
 from ..runtime.profile_deps import missing_profile_dependency
 from ..runtime.records import StoredModelRecord
 
@@ -17,6 +18,7 @@ from ..runtime.records import StoredModelRecord
 class TransformersPeftDeps:
     torch: Any
     PeftModel: Any
+    AutoModel: Any
     AutoModelForCausalLM: Any
     AutoTokenizer: Any
     TextIteratorStreamer: Any
@@ -197,11 +199,80 @@ class TransformersPeftChatBackend(ChatBackend):
         return nullcontext()
 
 
+class TransformersPeftEmbeddingBackend(EmbeddingBackend):
+    def __init__(self) -> None:
+        self._deps = _load_transformers_peft_deps()
+        self._record: StoredModelRecord | None = None
+        self._tokenizer: Any | None = None
+        self._model: Any | None = None
+        self._device = _detect_device(self._deps.torch)
+
+    def load(self, record: StoredModelRecord) -> None:
+        load_path = str(record.variant_source_path)
+        tokenizer = self._deps.AutoTokenizer.from_pretrained(
+            load_path,
+            trust_remote_code=True,
+        )
+        model = self._deps.AutoModel.from_pretrained(
+            load_path,
+            trust_remote_code=True,
+        )
+        model.to(self._device)
+        model.eval()
+
+        self._record = record
+        self._tokenizer = tokenizer
+        self._model = model
+
+    def embed(self, request: EmbeddingRequest) -> EmbeddingResult:
+        tokenizer, model = self._require_loaded()
+        encoded = tokenizer(
+            list(request.inputs),
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+        )
+        encoded = {key: value.to(self._device) for key, value in encoded.items()}
+
+        with self._deps.torch.inference_mode():
+            outputs = model(**encoded)
+
+        token_embeddings = outputs.last_hidden_state
+        attention_mask = encoded["attention_mask"].unsqueeze(-1).expand(
+            token_embeddings.size()
+        )
+        attention_mask = attention_mask.float()
+        sum_embeddings = (token_embeddings * attention_mask).sum(dim=1)
+        sum_mask = attention_mask.sum(dim=1).clamp(min=1e-9)
+        vectors = sum_embeddings / sum_mask
+        vectors = self._deps.torch.nn.functional.normalize(vectors, p=2, dim=1)
+        return EmbeddingResult(vectors=vectors.detach().cpu().tolist())
+
+    def release(self) -> None:
+        self._record = None
+        self._tokenizer = None
+        self._model = None
+
+        torch = self._deps.torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+
+    def _require_loaded(self) -> tuple[Any, Any]:
+        if self._record is None or self._tokenizer is None or self._model is None:
+            raise RuntimeError(
+                "Transformers embedding backend is not loaded yet; call load() before embed()."
+            )
+        return self._tokenizer, self._model
+
+
 def _load_transformers_peft_deps() -> TransformersPeftDeps:
     try:
         from peft import PeftModel
         import torch
         from transformers import (
+            AutoModel,
             AutoModelForCausalLM,
             AutoTokenizer,
             TextIteratorStreamer,
@@ -214,6 +285,7 @@ def _load_transformers_peft_deps() -> TransformersPeftDeps:
     return TransformersPeftDeps(
         torch=torch,
         PeftModel=PeftModel,
+        AutoModel=AutoModel,
         AutoModelForCausalLM=AutoModelForCausalLM,
         AutoTokenizer=AutoTokenizer,
         TextIteratorStreamer=TextIteratorStreamer,

@@ -19,6 +19,12 @@ def parse_args() -> argparse.Namespace:
         default="local",
         help="Server runtime kind.",
     )
+    parser.add_argument(
+        "--capability",
+        choices=("chat", "embedding", "rerank"),
+        default="chat",
+        help="Endpoint family served by this process.",
+    )
     parser.add_argument("--model-ref", help="Stored Tentgent model ref")
     parser.add_argument("--provider", choices=("openai", "anthropic"), help="Cloud provider")
     parser.add_argument("--provider-model", help="Cloud provider model name")
@@ -44,10 +50,15 @@ def main() -> int:
         raise SystemExit("--model-ref is required for local server runtimes")
     if args.runtime_kind == "cloud" and (not args.provider or not args.provider_model):
         raise SystemExit("--provider and --provider-model are required for cloud server runtimes")
+    if args.runtime_kind == "cloud" and args.capability != "chat":
+        raise SystemExit("cloud server runtimes support only --capability chat")
+    if args.capability == "rerank":
+        raise SystemExit("--capability rerank is not implemented yet")
 
     config = ServerConfig(
         server_ref=args.server_ref,
         runtime_kind=args.runtime_kind,
+        capability=args.capability,
         model_ref=args.model_ref,
         provider=args.provider,
         provider_model=args.provider_model,

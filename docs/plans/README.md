@@ -34,7 +34,7 @@ one pass without a staged breakdown.
   Implemented M3 slice: server capability metadata, daemon server DTOs, and
   endpoint-family compatibility gates before embedding and rerank runtime work.
 - [m4-embedding-mvp.md](./m4-embedding-mvp.md)
-  Current execution slice: native embedding endpoint, embedding runtime port,
+  Implemented M4 slice: native embedding endpoint, embedding runtime port,
   first backend path, and endpoint-family isolation from chat sessions.
 
 ## Recommended Order
@@ -44,7 +44,7 @@ one pass without a staged breakdown.
    authority.
 3. Gate servers and endpoints by model capability before adding non-chat
    runtime paths.
-4. Implement embedding MVP, then rerank MVP.
+4. Implement rerank MVP.
 5. Define audio contracts before implementing audio runtime support.
 6. Run Apple Developer ID signing and notarization on prerelease artifacts
    before beta or release candidate tags.

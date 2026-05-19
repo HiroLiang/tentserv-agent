@@ -35,6 +35,22 @@ class FakeStreamingBackend:
         yield "好"
 
 
+class FakeEmbeddingBackend:
+    def __init__(self) -> None:
+        self.loaded_records: list[StoredModelRecord] = []
+        self.requests: list[object] = []
+
+    def load(self, record: StoredModelRecord) -> None:
+        self.loaded_records.append(record)
+
+    def release(self) -> None:
+        return
+
+    def embed(self, request: object):
+        self.requests.append(request)
+        return type("EmbeddingResult", (), {"vectors": [[0.1, 0.2], [0.3, 0.4]]})()
+
+
 class RuntimeSessionStreamingTests(unittest.TestCase):
     def test_local_stream_generate_loads_backend_and_marks_activity(self) -> None:
         backend = FakeStreamingBackend()
@@ -83,6 +99,20 @@ class RuntimeSessionStreamingTests(unittest.TestCase):
         self.assertEqual(backend.selected_adapters, [adapter, adapter])
         self.assertEqual(backend.stream_requests[0].adapter_ref, adapter.adapter_ref)
 
+    def test_local_embedding_request_loads_embedding_backend(self) -> None:
+        backend = FakeEmbeddingBackend()
+        with patched_local_embedding_runtime(backend):
+            session = RuntimeSession(embedding_config())
+            vectors = session.embed(("first", "second"))
+
+        self.assertEqual(vectors, [[0.1, 0.2], [0.3, 0.4]])
+        self.assertEqual(len(backend.loaded_records), 1)
+        self.assertEqual(len(backend.requests), 1)
+        self.assertEqual(backend.requests[0].inputs, ("first", "second"))
+        snapshot = session.snapshot()
+        self.assertTrue(snapshot.loaded)
+        self.assertEqual(snapshot.startup_mode, "eager")
+
 
 @contextmanager
 def patched_local_runtime(
@@ -105,10 +135,44 @@ def patched_local_runtime(
         yield
 
 
+@contextmanager
+def patched_local_embedding_runtime(
+    backend: FakeEmbeddingBackend,
+) -> Iterator[None]:
+    with patch(
+        "tentgent_daemon.server.session.load_model_record",
+        return_value=fake_embedding_record(),
+    ), patch(
+        "tentgent_daemon.server.session.resolve_embedding_backend",
+        return_value=BackendKind.TRANSFORMERS_PEFT,
+    ), patch(
+        "tentgent_daemon.server.session.create_embedding_backend",
+        return_value=backend,
+    ):
+        yield
+
+
 def local_config() -> ServerConfig:
     return ServerConfig(
         server_ref="server-ref",
         runtime_kind="local",
+        capability="chat",
+        model_ref="model-ref",
+        provider=None,
+        provider_model=None,
+        host="127.0.0.1",
+        port=8780,
+        home=Path("/tmp/tentgent-local-session-stream-test"),
+        lazy_load=False,
+        idle_seconds=None,
+    )
+
+
+def embedding_config() -> ServerConfig:
+    return ServerConfig(
+        server_ref="server-ref",
+        runtime_kind="local",
+        capability="embedding",
         model_ref="model-ref",
         provider=None,
         provider_model=None,
@@ -131,12 +195,34 @@ def fake_record() -> StoredModelRecord:
         source_path=None,
         primary_format="mlx",
         detected_formats=("mlx",),
+        model_capabilities=("chat",),
         file_count=1,
         total_bytes=1,
         imported_at="2026-04-29T00:00:00Z",
         store_path=root,
         manifest_path=root / "manifest.json",
         variant_source_path=root / "variants" / "mlx" / "source",
+    )
+
+
+def fake_embedding_record() -> StoredModelRecord:
+    root = Path("/tmp/tentgent-local-session-stream-test/model")
+    return StoredModelRecord(
+        model_ref="model-ref",
+        short_ref="model",
+        source_kind="local",
+        source_repo=None,
+        source_revision=None,
+        source_path=None,
+        primary_format="safetensors",
+        detected_formats=("safetensors",),
+        model_capabilities=("embedding",),
+        file_count=1,
+        total_bytes=1,
+        imported_at="2026-04-29T00:00:00Z",
+        store_path=root,
+        manifest_path=root / "manifest.json",
+        variant_source_path=root / "variants" / "safetensors" / "source",
     )
 
 

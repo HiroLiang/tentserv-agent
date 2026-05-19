@@ -126,13 +126,14 @@ Review target:
 
 Detailed plan: [m4-embedding-mvp.md](./m4-embedding-mvp.md).
 
-- Add native `POST /v1/embeddings` through daemon REST and direct local server
+- Status: implemented.
+- Added native `POST /v1/embeddings` through daemon REST and direct local server
   paths.
-- Support string and string-array input with stable output ordering.
-- Implement one local backend path first, likely sentence-transformers or a
-  targeted transformers path after dependency review.
-- Gate backend readiness through kernel capability state.
-- Add CLI examples only after the HTTP contract is stable.
+- Supported string and string-array input with stable output ordering.
+- Implemented the first local backend path as safetensors via the existing
+  `transformers-peft` local-model profile and `AutoModel` mean pooling.
+- Added embedding backend readiness to kernel capability state.
+- Added CLI and curl examples after the HTTP contract stabilized.
 
 Review target:
 

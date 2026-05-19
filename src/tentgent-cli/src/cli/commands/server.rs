@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
+use tentgent_kernel::features::server::domain::ServerCapability;
 
 #[derive(Debug, Subcommand)]
 pub enum ServerCommands {
@@ -122,6 +123,9 @@ pub struct ServerRunCommand {
     /// Auto-release the loaded model after N idle seconds.
     #[arg(short = 'i', long = "idle-seconds", value_name = "N")]
     pub idle_seconds: Option<u64>,
+    /// Endpoint family to serve from the selected runtime.
+    #[arg(long, value_name = "CAPABILITY", default_value_t = ServerCapability::Chat)]
+    pub capability: ServerCapability,
     /// Launch the initial server process in background mode and return immediately.
     #[arg(short = 'd', long)]
     pub detach: bool,

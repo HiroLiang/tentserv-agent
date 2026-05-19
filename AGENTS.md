@@ -74,6 +74,8 @@ Key current documents:
   Local session metadata and transcript message store boundary.
 - `docs/contracts/server-chat.md`
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
+- `docs/contracts/server-embedding.md`
+  Direct Python server embedding request shape and capability routing.
 - `docs/contracts/http-daemon.md`
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
 - `docs/contracts/tentgent-daemon.md`

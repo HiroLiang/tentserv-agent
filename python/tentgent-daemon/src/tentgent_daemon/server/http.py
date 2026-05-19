@@ -12,6 +12,7 @@ from .chat_api import (
     stream_preflight_error_response,
 )
 from .config import ServerConfig
+from .embedding_api import decode_embedding_request, handle_parsed_embedding_request
 from .health import build_health_payload
 from .session import ChatRequestPayload, RuntimeSession
 from .sse import SSE_CACHE_CONTROL, SSE_CONTENT_TYPE, encode_sse_event
@@ -50,7 +51,34 @@ class TentgentRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if self.path == "/v1/chat":
+            if not self.config.is_chat:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {
+                        "error": "unsupported_target",
+                        "message": (
+                            f"server capability `{self.config.capability}` "
+                            "does not serve POST /v1/chat"
+                        ),
+                    },
+                )
+                return
             self._handle_chat()
+            return
+        if self.path == "/v1/embeddings":
+            if not self.config.is_embedding:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {
+                        "error": "unsupported_target",
+                        "message": (
+                            f"server capability `{self.config.capability}` "
+                            "does not serve POST /v1/embeddings"
+                        ),
+                    },
+                )
+                return
+            self._handle_embeddings()
             return
 
         self._write_json(
@@ -143,6 +171,49 @@ class TentgentRequestHandler(BaseHTTPRequestHandler):
                 },
             )
 
+    def _handle_embeddings(self) -> None:
+        content_length = self.headers.get("Content-Length")
+        if content_length is None:
+            self._write_json(
+                HTTPStatus.LENGTH_REQUIRED,
+                {
+                    "error": "length_required",
+                    "message": "Content-Length is required for POST /v1/embeddings",
+                },
+            )
+            return
+
+        try:
+            body_length = int(content_length)
+        except ValueError:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {
+                    "error": "invalid_content_length",
+                    "message": "Content-Length must be an integer",
+                },
+            )
+            return
+
+        raw_body = self.rfile.read(body_length)
+        try:
+            request = decode_embedding_request(raw_body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_json", "message": str(exc)},
+            )
+            return
+        except ValueError as exc:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_request", "message": str(exc)},
+            )
+            return
+
+        status, payload = handle_parsed_embedding_request(request, self.session)
+        self._write_json(status, payload)
+
     def _write_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -167,7 +238,7 @@ def serve(config: ServerConfig, session: RuntimeSession) -> int:
     try:
         print(
             f"Tentgent server skeleton listening on http://{config.host}:{config.port} "
-            f"for {config.runtime_kind} runtime {config.runtime_label}",
+            f"for {config.runtime_kind} {config.capability} runtime {config.runtime_label}",
             flush=True,
         )
         server.serve_forever()

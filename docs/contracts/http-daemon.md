@@ -8,6 +8,7 @@ This document defines the stable HTTP daemon boundary for the Rust
 - Bind locally by default through `127.0.0.1`.
 - Serve JSON responses for daemon-owned routes and errors.
 - Expose native model chat at `POST /v1/chat`, including Server-Sent Events.
+- Expose native local embeddings at `POST /v1/embeddings`.
 - Expose limited OpenAI, Claude, and Gemini compatible chat routes that translate
   DTO and SSE shapes only.
 - Expose daemon health, status, read-only store discovery, controlled server
@@ -611,8 +612,9 @@ and returns:
 ```
 
 `capability` is the endpoint family the stored server spec is meant to serve.
-Current server lifecycle routes create chat-capable specs only. Older
-`server.toml` files without `capability` are read as `chat`.
+Server lifecycle routes create `chat` specs by default and accept
+`"embedding"` for local embedding-capable models. Older `server.toml` files
+without `capability` are read as `chat`.
 
 ## Store Import And Pull Mutations
 
@@ -648,8 +650,8 @@ such as `owner/name`, not a URL or `/tree/...` path. Omitted or `null`
 `revision` uses the core default; blank `revision` returns JSON `400`.
 Model import and pull may include one optional `capability` value: `chat`,
 `embedding`, or `rerank`. Invalid capability values return JSON
-`400 bad_request`. The capability field updates model metadata only; it does
-not add embedding or rerank runtime endpoints.
+`400 bad_request`. The capability field updates model metadata and is enforced
+by endpoint-family gates; it does not change model identity.
 Omitted, `null`, or blank `base_model_ref` means no base binding for adapter
 import or pull.
 
@@ -1270,6 +1272,7 @@ server:
 ```json
 {
   "runtime_ref": "openai:gpt-4.1-mini",
+  "capability": "chat",
   "host": "127.0.0.1",
   "port": 8780,
   "lazy_load": false,
@@ -1312,8 +1315,9 @@ background mode. `{server_ref}` accepts a full server ref or unique short prefix
 Cloud server starts validate launch-time provider auth from env/keychain and
 never persist secrets in the server spec or response.
 Local server starts verify that the selected model advertises the server
-capability before launching the Python runtime. Embedding and rerank server
-capabilities are not launchable until their runtime endpoints exist.
+capability before launching the Python runtime. Local embedding server specs
+are launchable for embedding-capable models; rerank server capabilities are not
+launchable until the rerank runtime endpoint exists.
 
 The body is optional. Omit it or send `{}` to preserve the original response
 shape. Send `wait_ready` to ask the daemon to poll the target server's
@@ -1456,6 +1460,56 @@ events after streaming starts:
 - ambiguous model aliases or refs return `409 ambiguous_ref`
 - model, adapter, runtime, and Python execution failures map to daemon JSON or
   SSE error codes with no provider secrets or raw unbounded logs
+
+## Native Embeddings
+
+`POST /v1/embeddings` invokes the kernel embedding use case directly. It does
+not read or write sessions and does not use chat prompts or transcript storage.
+
+Request body:
+
+```json
+{
+  "model_ref": "d98392263ae1",
+  "input": ["first", "second"]
+}
+```
+
+`input` accepts either one string or a non-empty string array. Empty arrays and
+empty strings return `400 bad_request`.
+
+Selection rules:
+
+- `model_ref` is required and may be a full ref, unique short prefix, source
+  repo alias, or source repo basename alias.
+- selected models must advertise `embedding`; chat-only and rerank-only models
+  return `400 unsupported_target` before runtime dispatch.
+- the first implemented local backend is safetensors through the
+  `transformers-peft` local-model Python profile.
+- GGUF, MLX, cloud provider, and rerank embedding paths are not part of this
+  endpoint.
+
+Success responses preserve request order and indexes:
+
+```json
+{
+  "model_ref": "d98392263ae1...",
+  "data": [
+    {"index": 0, "embedding": [0.1, 0.2]},
+    {"index": 1, "embedding": [0.3, 0.4]}
+  ]
+}
+```
+
+Daemon-owned embedding errors are JSON:
+
+- invalid JSON, unknown fields, empty input, or unsupported input shape return
+  `400 bad_request`
+- non-embedding models return `400 unsupported_target`
+- missing models return `404 not_found`
+- ambiguous model aliases or refs return `409 ambiguous_ref`
+- runtime dependency, executable, and Python execution failures return
+  `500 embedding_runtime_unavailable` or `500 embedding_runtime_failed`
 
 ## Compatible Chat Adapters
 

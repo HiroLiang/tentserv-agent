@@ -5,6 +5,12 @@ use tentgent_kernel::{
             infra::StdChatModelResolver,
             ports::{ChatModelResolveRequest, ChatModelResolveResult, ChatModelResolver},
         },
+        embedding::{
+            infra::StdEmbeddingModelResolver,
+            ports::{
+                EmbeddingModelResolveRequest, EmbeddingModelResolveResult, EmbeddingModelResolver,
+            },
+        },
         model::{
             infra::{
                 FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
@@ -129,5 +135,14 @@ impl ChatModelResolver for ModelKernelComponent {
         request: ChatModelResolveRequest,
     ) -> KernelResult<ChatModelResolveResult> {
         StdChatModelResolver::new(self).resolve_chat_model(request)
+    }
+}
+
+impl EmbeddingModelResolver for ModelKernelComponent {
+    fn resolve_embedding_model(
+        &self,
+        request: EmbeddingModelResolveRequest,
+    ) -> KernelResult<EmbeddingModelResolveResult> {
+        StdEmbeddingModelResolver::new(self).resolve_embedding_model(request)
     }
 }

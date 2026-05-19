@@ -181,6 +181,7 @@ async fn run_server(
         .prepare_server(ServerPrepareRequest {
             layout: runtime_layout_input(LayoutResolveMode::Create, command.home.as_deref()),
             runtime_ref: command.runtime_ref,
+            capability: command.capability,
             host: command.host,
             port: command.port,
             lazy_load: command.lazy_load,

@@ -169,6 +169,7 @@ class CloudRuntimeSessionTests(unittest.TestCase):
         payload = build_health_payload(cloud_config(), session)
 
         self.assertEqual(payload["runtime_kind"], "cloud")
+        self.assertEqual(payload["capability"], "chat")
         self.assertEqual(payload["provider"], "openai")
         self.assertEqual(payload["provider_model"], "gpt-4.1-mini")
         self.assertEqual(payload["startup_mode"], "cloud_proxy")
@@ -180,6 +181,7 @@ def cloud_config() -> ServerConfig:
     return ServerConfig(
         server_ref="server-ref",
         runtime_kind="cloud",
+        capability="chat",
         model_ref=None,
         provider="openai",
         provider_model="gpt-4.1-mini",

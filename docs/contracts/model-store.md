@@ -155,9 +155,10 @@ still content-derived from the manifest. A later metadata update may add
 `embedding` or `rerank` to an imported model when the user or source metadata
 can justify it.
 
-Capability metadata is descriptive only in this milestone. It does not imply
-that `/v1/embeddings`, `/v1/rerank`, embedding runtime ports, or rerank runtime
-ports exist.
+Capability metadata is endpoint-gating metadata. The embedding endpoint accepts
+only models advertising `embedding`; chat endpoints accept only models
+advertising `chat`. Rerank metadata is stored for future endpoint work, but
+`/v1/rerank` and rerank runtime ports do not exist yet.
 
 ## Hugging Face Pull Contract
 

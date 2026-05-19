@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from ..runtime.chat import ChatRequest
+from ..runtime.embedding import EmbeddingRequest
 from ..runtime.adapters import (
     AdapterExecutionNotImplementedError,
     StoredAdapterRecord,
@@ -14,6 +15,11 @@ from ..runtime.records import StoredModelRecord
 @dataclass(frozen=True)
 class ChatResult:
     text: str
+
+
+@dataclass(frozen=True)
+class EmbeddingResult:
+    vectors: list[list[float]]
 
 
 class ChatBackend:
@@ -42,3 +48,17 @@ class ChatBackend:
         result = self.generate(request)
         if result.text:
             yield result.text
+
+
+class EmbeddingBackend:
+    """Minimal backend contract for local embedding inference."""
+
+    def load(self, record: StoredModelRecord) -> None:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        """Release loaded runtime state when the server lifecycle decides to unload."""
+        return None
+
+    def embed(self, request: EmbeddingRequest) -> EmbeddingResult:
+        raise NotImplementedError

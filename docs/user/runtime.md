@@ -122,6 +122,8 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
   safetensors/PEFT, MLX on Apple Silicon macOS, and training dependencies
   report ready.
 - `safetensors` models run through the `transformers-peft` backend when Python dependencies are installed.
+- `embedding` safetensors models run through the same local-model Python
+  dependency set with `transformers` feature extraction and mean pooling.
 - `mlx` models run through the MLX backend only on Apple Silicon macOS.
 - `gguf` models run through `llama-cpp-python` when that dependency is installed.
 - PEFT LoRA adapters can be selected per request with `adapter_ref`.
@@ -134,8 +136,10 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
   default base Python runtime has been smoke-tested on Ubuntu 24.04 without
   build tools. Local-model, training, GPU, and distro-package parity remain
   dependency-gated.
-- Embedding and rerank backend capability probes are not implemented yet, so
-  they may still report unknown even when the base runtime is healthy.
+- Embedding backend probes verify the local-model `safetensors` /
+  `transformers` / `torch` dependency set. Rerank backend probes are not
+  implemented yet, so rerank may still report unknown even when the base runtime
+  is healthy.
 
 ## Keychain Prompts
 

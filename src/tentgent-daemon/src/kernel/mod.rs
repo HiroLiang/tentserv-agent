@@ -36,6 +36,7 @@ use tentgent_kernel::{
             DoctorReportUseCase, DoctorReportUseCaseRequest, DoctorReportUseCaseResult,
             StdDoctorRepairUseCase, StdDoctorReportUseCase,
         },
+        embedding::usecases::StdEmbeddingUseCase,
         model::usecases::StdModelHfPullUseCase,
         server::{
             domain::ServerRefSelector,
@@ -168,6 +169,10 @@ impl KernelComponents {
 
     pub fn chat_usecase(&self) -> StdChatUseCase<'_> {
         StdChatUseCase::new(&self.runtime, &self.models, &self.adapters, &self.runtime)
+    }
+
+    pub fn embedding_usecase(&self) -> StdEmbeddingUseCase<'_> {
+        StdEmbeddingUseCase::new(&self.runtime, &self.models, &self.runtime)
     }
 
     pub fn server_usecase(&self) -> StdServerUseCase<'_> {

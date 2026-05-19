@@ -8,7 +8,12 @@ from pathlib import Path
 from threading import Lock
 from time import monotonic
 
-from tentgent_daemon.backends import ChatBackend, create_backend
+from tentgent_daemon.backends import (
+    ChatBackend,
+    EmbeddingBackend,
+    create_backend,
+    create_embedding_backend,
+)
 from tentgent_daemon.providers import (
     ProviderChatClient,
     ProviderChatRequest,
@@ -21,8 +26,9 @@ from tentgent_daemon.runtime.adapters import (
     validate_adapter_for_model,
 )
 from tentgent_daemon.runtime.chat import ChatRequest, Message
+from tentgent_daemon.runtime.embedding import EmbeddingRequest
 from tentgent_daemon.runtime.records import StoredModelRecord, load_model_record
-from tentgent_daemon.runtime.router import BackendKind, resolve_backend
+from tentgent_daemon.runtime.router import BackendKind, resolve_backend, resolve_embedding_backend
 
 from .config import ServerConfig
 
@@ -53,8 +59,11 @@ class RuntimeSession:
         self._record: StoredModelRecord | None = None
         self._backend_kind: BackendKind | None = None
         self._backend: ChatBackend | None = None
+        self._embedding_backend: EmbeddingBackend | None = None
         self._provider_client: ProviderChatClient | None = None
         if config.is_cloud:
+            if not config.is_chat:
+                raise NotImplementedError("cloud server runtimes support only chat capability")
             self._provider_client = create_provider_chat_client(
                 _require_cloud_field(config.provider, "provider"),
                 _read_provider_api_key(config),
@@ -65,13 +74,27 @@ class RuntimeSession:
                 model_ref,
                 home=config.home,
             )
-            self._backend_kind = resolve_backend(self._record)
-            self._backend = create_backend(self._backend_kind)
+            if config.is_chat:
+                _require_model_capability(self._record, "chat")
+                self._backend_kind = resolve_backend(self._record)
+                self._backend = create_backend(self._backend_kind)
+            elif config.is_embedding:
+                _require_model_capability(self._record, "embedding")
+                self._backend_kind = resolve_embedding_backend(self._record)
+                self._embedding_backend = create_embedding_backend(self._backend_kind)
+            else:
+                raise NotImplementedError(
+                    f"server capability `{config.capability}` is not implemented yet"
+                )
         self._loaded = False
         self._last_activity_monotonic: float | None = None
         self._last_activity_at: str | None = None
         self._last_release_at: str | None = None
         self._last_release_reason: str | None = None
+
+    @property
+    def model_ref(self) -> str | None:
+        return self._config.model_ref
 
     def ensure_loaded(self) -> None:
         with self._lock:
@@ -105,6 +128,10 @@ class RuntimeSession:
 
     def generate(self, payload: ChatRequestPayload) -> str:
         with self._lock:
+            if not self._config.is_chat:
+                raise NotImplementedError(
+                    f"server capability `{self._config.capability}` does not serve chat requests"
+                )
             if self._config.is_cloud:
                 return self._generate_cloud_locked(payload)
 
@@ -126,6 +153,10 @@ class RuntimeSession:
 
     def stream_generate(self, payload: ChatRequestPayload) -> Iterator[str]:
         with self._lock:
+            if not self._config.is_chat:
+                raise NotImplementedError(
+                    f"server capability `{self._config.capability}` does not serve chat requests"
+                )
             if self._config.is_cloud:
                 return self._stream_generate_cloud_locked(payload)
 
@@ -143,6 +174,26 @@ class RuntimeSession:
             )
 
         return self._stream_generate_local(request, adapter)
+
+    def embed(self, inputs: tuple[str, ...]) -> list[list[float]]:
+        with self._lock:
+            if not self._config.is_embedding:
+                raise NotImplementedError(
+                    f"server capability `{self._config.capability}` does not serve embedding requests"
+                )
+            if self._config.is_cloud:
+                raise NotImplementedError("cloud embedding server runtimes are not implemented yet")
+
+            self._release_if_idle_locked()
+            self._ensure_loaded_locked()
+            assert self._embedding_backend is not None
+            request = EmbeddingRequest(
+                model_ref=_require_local_model_ref(self._config),
+                inputs=inputs,
+            )
+            vectors = self._embedding_backend.embed(request).vectors
+            self._mark_activity_locked()
+            return vectors
 
     def _stream_generate_local(
         self,
@@ -179,9 +230,13 @@ class RuntimeSession:
         if self._loaded:
             self._mark_activity_locked()
             return
-        assert self._backend is not None
         assert self._record is not None
-        self._backend.load(self._record)
+        if self._config.is_embedding:
+            assert self._embedding_backend is not None
+            self._embedding_backend.load(self._record)
+        else:
+            assert self._backend is not None
+            self._backend.load(self._record)
         self._loaded = True
         self._mark_activity_locked()
 
@@ -201,8 +256,12 @@ class RuntimeSession:
     def _release_locked(self, reason: str) -> None:
         if not self._loaded:
             return
-        assert self._backend is not None
-        self._backend.release()
+        if self._config.is_embedding:
+            assert self._embedding_backend is not None
+            self._embedding_backend.release()
+        else:
+            assert self._backend is not None
+            self._backend.release()
         self._loaded = False
         self._last_release_at = _utc_now()
         self._last_release_reason = reason
@@ -262,6 +321,16 @@ def _require_local_model_ref(config: ServerConfig) -> str:
     if not config.model_ref:
         raise ValueError("local server config is missing model_ref")
     return config.model_ref
+
+
+def _require_model_capability(record: StoredModelRecord, capability: str) -> None:
+    if capability in record.model_capabilities:
+        return
+    capabilities = ", ".join(record.model_capabilities)
+    raise ValueError(
+        f"server capability `{capability}` requires model capability `{capability}`, "
+        f"but model `{record.model_ref}` advertises [{capabilities}]"
+    )
 
 
 def _require_cloud_field(value: str | None, field: str) -> str:

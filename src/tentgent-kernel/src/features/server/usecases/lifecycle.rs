@@ -58,8 +58,12 @@ impl ServerSpecUseCase for StdServerUseCase<'_> {
     fn prepare_server(&self, request: ServerPrepareRequest) -> KernelResult<ServerPrepareResult> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = server_store_layout(&layout);
-        let target =
-            resolve_server_runtime_target(&request.runtime_ref, &layout, self.model_catalog)?;
+        let target = resolve_server_runtime_target(
+            &request.runtime_ref,
+            request.capability,
+            &layout,
+            self.model_catalog,
+        )?;
         let spec = build_server_spec(
             target,
             request.host.as_deref(),

@@ -30,6 +30,10 @@ accept daemon-only session fields. Requests containing `session_ref` or
 HTTP chat must go through the Rust daemon `POST /v1/chat` proxy, which removes
 session fields before forwarding the final model-bound request.
 
+The process serves chat only when launched with `--capability chat`. A server
+launched with `--capability embedding` rejects `POST /v1/chat` with
+`400 unsupported_target`; see [server-embedding.md](./server-embedding.md).
+
 ## Streaming Contract
 
 When `stream = true` is supported by the selected runtime, the response uses
