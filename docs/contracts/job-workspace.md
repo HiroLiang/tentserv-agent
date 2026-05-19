@@ -28,7 +28,7 @@ Add a kernel feature package:
 src/tentgent-kernel/src/features/job/
 |-- domain.rs
 |-- ports.rs
-|-- usecases.rs
+|-- usecases/
 `-- infra/
 ```
 
