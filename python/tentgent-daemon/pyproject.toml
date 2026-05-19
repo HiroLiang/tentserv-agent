@@ -20,8 +20,10 @@ local-model = [
     "mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-lm; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "peft",
+    "pillow",
     "safetensors",
     "torch",
+    "torchvision",
     "transformers",
 ]
 training = [
@@ -40,6 +42,7 @@ tentgent-embed-once = "tentgent_daemon.cli.embed_once:main"
 tentgent-rerank-once = "tentgent_daemon.cli.rerank_once:main"
 tentgent-server = "tentgent_daemon.cli.server:main"
 tentgent-train-lora-run = "tentgent_daemon.cli.train_lora_run:main"
+tentgent-vision-chat-once = "tentgent_daemon.cli.vision_chat_once:main"
 tentgent-hf-snapshot = "tentgent_daemon.tools.hf_snapshot:main"
 
 [tool.uv]

@@ -13,6 +13,7 @@ from .base import (
     EmbeddingBackend,
     EmbeddingResult,
     RerankBackend,
+    VisionChatBackend,
 )
 from ..runtime.adapters import StoredAdapterRecord
 from ..runtime.audio import (
@@ -25,6 +26,11 @@ from ..runtime.embedding import EmbeddingRequest
 from ..runtime.profile_deps import missing_profile_dependency
 from ..runtime.rerank import RerankRequest, RerankResult, ranked_scores
 from ..runtime.records import StoredModelRecord
+from ..runtime.vision import (
+    VisionChatRequest,
+    VisionChatResult,
+    vision_chat_media_type,
+)
 
 
 @dataclass(frozen=True)
@@ -33,8 +39,12 @@ class TransformersPeftDeps:
     PeftModel: Any
     AutoModel: Any
     AutoModelForCausalLM: Any
+    AutoModelForImageTextToText: Any
     AutoModelForSequenceClassification: Any
+    AutoModelForVision2Seq: Any
+    AutoProcessor: Any
     AutoTokenizer: Any
+    Image: Any
     TextIteratorStreamer: Any
     pipeline: Any
 
@@ -412,17 +422,20 @@ class TransformersPeftAudioTranscriptionBackend(AudioTranscriptionBackend):
 def _load_transformers_peft_deps() -> TransformersPeftDeps:
     try:
         from peft import PeftModel
+        from PIL import Image
         import torch
+        import transformers
         from transformers import (
             AutoModel,
             AutoModelForCausalLM,
             AutoModelForSequenceClassification,
+            AutoProcessor,
             AutoTokenizer,
             TextIteratorStreamer,
             pipeline,
         )
     except ModuleNotFoundError as exc:
-        if exc.name in {"peft", "torch", "transformers"}:
+        if exc.name in {"PIL", "peft", "torch", "transformers"}:
             raise missing_profile_dependency("local-model", exc.name) from exc
         raise
 
@@ -431,8 +444,16 @@ def _load_transformers_peft_deps() -> TransformersPeftDeps:
         PeftModel=PeftModel,
         AutoModel=AutoModel,
         AutoModelForCausalLM=AutoModelForCausalLM,
+        AutoModelForImageTextToText=getattr(
+            transformers,
+            "AutoModelForImageTextToText",
+            None,
+        ),
         AutoModelForSequenceClassification=AutoModelForSequenceClassification,
+        AutoModelForVision2Seq=getattr(transformers, "AutoModelForVision2Seq", None),
+        AutoProcessor=AutoProcessor,
         AutoTokenizer=AutoTokenizer,
+        Image=Image,
         TextIteratorStreamer=TextIteratorStreamer,
         pipeline=pipeline,
     )
@@ -461,6 +482,83 @@ def _is_english_only_language_error(error: ValueError) -> bool:
     )
 
 
+class TransformersPeftVisionChatBackend(VisionChatBackend):
+    def __init__(self) -> None:
+        self._deps = _load_transformers_peft_deps()
+        self._record: StoredModelRecord | None = None
+        self._processor: Any | None = None
+        self._model: Any | None = None
+        self._device = _detect_device(self._deps.torch)
+
+    def load(self, record: StoredModelRecord) -> None:
+        load_path = str(record.variant_source_path)
+        processor = self._deps.AutoProcessor.from_pretrained(
+            load_path,
+            trust_remote_code=True,
+        )
+        model_cls = _vision_model_class(self._deps)
+        model = model_cls.from_pretrained(
+            load_path,
+            trust_remote_code=True,
+        )
+        model.to(self._device)
+        model.eval()
+
+        self._record = record
+        self._processor = processor
+        self._model = model
+
+    def generate_vision_chat(self, request: VisionChatRequest) -> VisionChatResult:
+        processor, model = self._require_loaded()
+        image = self._deps.Image.open(request.image_path).convert("RGB")
+        prompt = _render_vision_prompt(processor, request)
+        encoded = processor(
+            text=prompt,
+            images=[image],
+            return_tensors="pt",
+        )
+        encoded = {
+            key: value.to(self._device) if hasattr(value, "to") else value
+            for key, value in encoded.items()
+        }
+        generate_kwargs = _vision_generate_kwargs(processor, encoded, request)
+
+        with self._deps.torch.inference_mode():
+            output_ids = model.generate(**generate_kwargs)
+
+        prompt_length = 0
+        input_ids = encoded.get("input_ids")
+        if input_ids is not None:
+            prompt_length = input_ids.shape[-1]
+        generated_ids = output_ids[:, prompt_length:] if prompt_length else output_ids
+        text = _decode_vision_output(processor, generated_ids).strip()
+        return VisionChatResult(
+            output_format=request.output_format,
+            media_type=vision_chat_media_type(request.output_format),
+            text=text,
+            finish_reason="stop",
+        )
+
+    def release(self) -> None:
+        self._record = None
+        self._processor = None
+        self._model = None
+
+        torch = self._deps.torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+
+    def _require_loaded(self) -> tuple[Any, Any]:
+        if self._record is None or self._processor is None or self._model is None:
+            raise RuntimeError(
+                "Transformers vision chat backend is not loaded yet; "
+                "call load() before generate_vision_chat()."
+            )
+        return self._processor, self._model
+
+
 def _render_prompt(
     tokenizer: Any,
     messages: tuple[Message, ...],
@@ -487,3 +585,85 @@ def _render_prompt(
         lines.append(f"{role.capitalize()}: {message.content.strip()}")
     lines.append("Assistant:")
     return "\n\n".join(lines)
+
+
+def _vision_model_class(deps: TransformersPeftDeps) -> Any:
+    for candidate in (
+        deps.AutoModelForImageTextToText,
+        deps.AutoModelForVision2Seq,
+        deps.AutoModelForCausalLM,
+    ):
+        if candidate is not None:
+            return candidate
+    raise RuntimeError(
+        "Transformers does not provide a supported vision-chat auto model class"
+    )
+
+
+def _render_vision_prompt(processor: Any, request: VisionChatRequest) -> str:
+    messages: list[dict[str, object]] = []
+    if request.system_prompt:
+        messages.append(
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": request.system_prompt}],
+            }
+        )
+    messages.append(
+        {
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "text", "text": request.prompt},
+            ],
+        }
+    )
+
+    apply_chat_template = getattr(processor, "apply_chat_template", None)
+    if callable(apply_chat_template):
+        return str(
+            apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        )
+
+    if request.system_prompt:
+        return f"{request.system_prompt.strip()}\n\n{request.prompt.strip()}"
+    return request.prompt.strip()
+
+
+def _vision_generate_kwargs(
+    processor: Any,
+    encoded: dict[str, Any],
+    request: VisionChatRequest,
+) -> dict[str, Any]:
+    max_new_tokens = request.max_tokens or 128
+    temperature = 0.0 if request.temperature is None else request.temperature
+    do_sample = temperature > 0
+    kwargs: dict[str, Any] = {
+        **encoded,
+        "max_new_tokens": max_new_tokens,
+        "do_sample": do_sample,
+    }
+    tokenizer = getattr(processor, "tokenizer", None)
+    pad_token_id = getattr(tokenizer, "pad_token_id", None)
+    eos_token_id = getattr(tokenizer, "eos_token_id", None)
+    if pad_token_id is not None:
+        kwargs["pad_token_id"] = pad_token_id
+    if eos_token_id is not None:
+        kwargs["eos_token_id"] = eos_token_id
+    if do_sample:
+        kwargs["temperature"] = temperature
+    return kwargs
+
+
+def _decode_vision_output(processor: Any, generated_ids: Any) -> str:
+    batch_decode = getattr(processor, "batch_decode", None)
+    if callable(batch_decode):
+        return str(batch_decode(generated_ids, skip_special_tokens=True)[0])
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is not None and hasattr(tokenizer, "batch_decode"):
+        return str(tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0])
+    raise RuntimeError("vision processor cannot decode generated token ids")

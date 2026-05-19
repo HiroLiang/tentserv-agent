@@ -5,7 +5,7 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{Multipart, Path, Query, State},
+    extract::{multipart::MultipartRejection, Multipart, Path, Query, State},
     http::{
         header::{CONTENT_DISPOSITION, CONTENT_TYPE},
         HeaderValue, StatusCode,
@@ -43,7 +43,14 @@ use crate::{
         JobArtifact, JobCompletion, JobId, JobKind, JobOutputLine, JobProgressPatch,
         JobProgressUpdate, JobRegistry, JobStatus, JobStream, JobTarget,
     },
-    transport::rest::{error::RestError, state::RestState},
+    transport::rest::{
+        error::RestError,
+        limits::{
+            media_upload_max_bytes, media_upload_stream_limit_exceeded,
+            media_upload_too_large_message,
+        },
+        state::RestState,
+    },
 };
 use tokio::io::AsyncWriteExt;
 
@@ -53,8 +60,11 @@ const MAX_UPLOAD_METADATA_FIELD_BYTES: usize = 8 * 1024;
 
 pub async fn create_transcription_job_from_upload(
     State(state): State<RestState>,
-    multipart: Multipart,
+    multipart: Result<Multipart, MultipartRejection>,
 ) -> Result<(StatusCode, Json<JobResponse>), RestError> {
+    let multipart = multipart.map_err(|error| {
+        RestError::bad_request("bad_request", format!("invalid multipart request: {error}"))
+    })?;
     let job = state.app().jobs().create(
         JobKind::audio_transcription(),
         "transcribe uploaded audio",
@@ -362,6 +372,14 @@ impl AudioUploadError {
         }
     }
 
+    fn payload_too_large(message: impl Into<String>) -> Self {
+        let message = message.into();
+        Self {
+            error: RestError::payload_too_large("upload_too_large", message.clone()),
+            summary: message,
+        }
+    }
+
     fn internal(code: &'static str, message: impl Into<String>) -> Self {
         let message = message.into();
         Self {
@@ -378,9 +396,18 @@ async fn parse_uploaded_transcription_request(
     mut multipart: Multipart,
 ) -> Result<ParsedAudioTranscriptionJobRequest, AudioUploadError> {
     let mut fields = UploadTranscriptionFields::default();
+    let max_upload_bytes = media_upload_max_bytes();
 
     while let Some(field) = multipart.next_field().await.map_err(|error| {
-        AudioUploadError::bad_request(format!("invalid multipart request: {error}"))
+        let message = error.to_string();
+        if media_upload_stream_limit_exceeded(&message) {
+            AudioUploadError::payload_too_large(media_upload_too_large_message(
+                "request body",
+                max_upload_bytes,
+            ))
+        } else {
+            AudioUploadError::bad_request(format!("invalid multipart request: {message}"))
+        }
     })? {
         let name = field
             .name()
@@ -393,7 +420,8 @@ async fn parse_uploaded_transcription_request(
                         "`file` must appear exactly once",
                     ));
                 }
-                fields.file = Some(write_uploaded_audio_file(workspace_dir, field).await?);
+                fields.file =
+                    Some(write_uploaded_audio_file(workspace_dir, field, max_upload_bytes).await?);
             }
             "model_ref" => {
                 set_text_field(&mut fields.model_ref, "model_ref", field).await?;
@@ -519,6 +547,7 @@ async fn read_text_field(
 async fn write_uploaded_audio_file(
     workspace_dir: &StdPath,
     mut field: axum::extract::multipart::Field<'_>,
+    max_upload_bytes: usize,
 ) -> Result<UploadedAudioFile, AudioUploadError> {
     let original_filename = field.file_name().map(str::to_string);
     let media_type = field.content_type().map(str::to_string).unwrap_or_else(|| {
@@ -551,12 +580,26 @@ async fn write_uploaded_audio_file(
     let mut total_bytes = 0u64;
 
     while let Some(chunk) = field.chunk().await.map_err(|error| {
-        AudioUploadError::bad_request(format!("invalid `file` upload stream: {error}"))
+        let message = error.to_string();
+        if media_upload_stream_limit_exceeded(&message) {
+            AudioUploadError::payload_too_large(media_upload_too_large_message(
+                "file",
+                max_upload_bytes,
+            ))
+        } else {
+            AudioUploadError::bad_request(format!("invalid `file` upload stream: {message}"))
+        }
     })? {
         if chunk.is_empty() {
             continue;
         }
         total_bytes = total_bytes.saturating_add(chunk.len() as u64);
+        if total_bytes > max_upload_bytes as u64 {
+            let _ = tokio::fs::remove_file(&partial_path).await;
+            return Err(AudioUploadError::payload_too_large(
+                media_upload_too_large_message("file", max_upload_bytes),
+            ));
+        }
         chunk_count = chunk_count.saturating_add(1);
         file.write_all(&chunk).await.map_err(|error| {
             AudioUploadError::internal(

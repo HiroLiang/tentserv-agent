@@ -31,6 +31,9 @@ What changed:
   transcription with `text`, `json`, `vtt`, and `srt` output formats. The
   command fails if the requested output file already exists and does not create
   daemon jobs.
+- Added foreground CLI `tentgent vision chat` and daemon-native
+  `POST /v1/vision/chat` for bounded single-image plus prompt requests against
+  local `vision-chat` safetensors models.
 - Added endpoint-family gates so chat routes require `chat` models and
   embedding/rerank routes require matching model capabilities before runtime
   dispatch.
@@ -43,8 +46,10 @@ What changed:
 
 Known limits:
 
-- Tools/function calling, images, and audio content are rejected by compatible
-  chat adapters until kernel tool-call and multimodal chat support exists.
+- Tools/function calling and audio content are rejected by compatible chat
+  adapters until kernel tool-call and multimodal chat support exists. OpenAI,
+  Claude, and Gemini compatible image payloads are still rejected; use the
+  native `/v1/vision/chat` endpoint for single-image local vision requests.
 - Audio transcription is batch file transcription. Multipart upload/result
   reads are transport-stream-friendly memory boundaries, not realtime model
   streaming. Live dictation and live translation remain future work.

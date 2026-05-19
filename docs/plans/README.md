@@ -58,11 +58,14 @@ one pass without a staged breakdown.
 - [m6e-audio-transcription-cli-and-large-file-hardening.md](./m6e-audio-transcription-cli-and-large-file-hardening.md)
   Implemented M6E slice for foreground `tentgent transcribe`, output
   behavior, large-file guardrails, and audio CLI documentation.
+- [m6f-vision-chat-image-input.md](./m6f-vision-chat-image-input.md)
+  Implemented M6F slice for native single-image `vision-chat`, foreground CLI,
+  multipart daemon endpoint, and dedicated vision runtime contracts.
 
 ## Recommended Order
 
-1. Continue with M6F-and-later planning in
-   [capability-first-release-roadmap.md](./capability-first-release-roadmap.md).
+1. Review and plan the next media workflow slice after M6F, currently M6G image
+   generation jobs unless priority changes.
 2. Continue each later workflow only after its API/output contract is
    stable.
 3. Run Apple Developer ID signing and notarization on prerelease artifacts

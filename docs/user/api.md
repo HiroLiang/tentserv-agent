@@ -24,6 +24,29 @@ use this shape:
 }
 ```
 
+Multipart media endpoints use one daemon-wide upload cap for received file
+bytes:
+
+- The default is 20 MiB.
+- Operators can adjust it with `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` before
+  starting the daemon.
+- The cap applies to multipart file parts such as `image` on `/v1/vision/chat`
+  and `file` on `/v1/audio/transcriptions/job`.
+- The cap is an HTTP intake guard, not a model context limit. Model-specific
+  image size, audio duration, token, or memory failures still come from the
+  selected runtime.
+- When the uploaded file part exceeds the cap, the daemon returns HTTP `413`
+  with `upload_too_large`.
+
+Example:
+
+```json
+{
+  "error": "upload_too_large",
+  "message": "`image` upload exceeds the daemon media upload limit of 20971520 bytes; set TENTGENT_MEDIA_UPLOAD_MAX_BYTES to adjust this limit"
+}
+```
+
 References such as `model_ref`, `adapter_ref`, `dataset_ref`, `server_ref`, and
 `job_id` accept full refs where available; many routes also accept unique short
 prefixes.
@@ -76,8 +99,59 @@ Compatibility adapters route to the same chat execution path and are text-only:
 | `POST` | `/v1beta/models/{model}:generateContent` | Gemini-style `contents`, optional `systemInstruction`, `generationConfig`, `adapter_ref`. |
 | `POST` | `/v1beta/models/{model}:streamGenerateContent?alt=sse` | Gemini-style streaming response. |
 
-Tools, function calling, image/audio content, and non-text message parts are
-rejected until the corresponding kernel features exist.
+Tools, function calling, audio content, and non-text message parts are rejected
+by chat compatibility routes until their corresponding adapters exist. Send
+single-image local vision requests through the native Vision Chat endpoint
+below.
+
+## Vision Chat
+
+Native vision chat accepts one image plus one text prompt and returns generated
+text in a JSON envelope. It is a bounded synchronous request, not a durable job.
+
+```http
+POST /v1/vision/chat
+Content-Type: multipart/form-data
+```
+
+Multipart fields:
+
+| Field | Required | Type | Notes |
+| --- | --- | --- | --- |
+| `image` | yes | file bytes | Exactly one image. The daemon does not receive or trust the client's local path. |
+| `model_ref` | yes | text | Local `vision-chat` model ref or unique alias. |
+| `prompt` | yes | text | User prompt for the image. |
+| `system_prompt` | no | text | Optional instruction prefix. |
+| `output_format` | no | text | `text`, `json`, or `md`; defaults to `text`. |
+| `max_tokens` | no | integer text | Optional generation cap. |
+| `temperature` | no | float text | Optional sampling temperature. |
+
+Accepted image media types are `image/png`, `image/jpeg`, and `image/webp`.
+The daemon writes uploaded bytes to a request-scoped temp file and removes it
+after success or failure; the selected runtime sees a complete image file. The
+daemon-wide media upload cap applies to the `image` file part.
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/vision/chat \
+  -F model_ref=<vision-chat-model-ref> \
+  -F prompt='Describe this image in one sentence.' \
+  -F output_format=text \
+  -F image=@/absolute/path/image.png
+```
+
+Response:
+
+```json
+{
+  "model_ref": "<vision-chat-model-ref>",
+  "output_format": "text",
+  "text": "A generated answer about the image.",
+  "finish_reason": "stop"
+}
+```
+
+OpenAI, Claude, and Gemini compatible multimodal payloads are not accepted yet.
+Those adapters should map into this native vision contract in a later slice.
 
 ## Embeddings
 
@@ -159,10 +233,15 @@ local file and send its bytes"; it is not a path-based API contract. The daemon
 stores those received bytes in the job workspace and then passes the internal
 workspace file path to the runtime worker.
 
+Only one `file` part is accepted per request. Send multiple recordings as
+multiple jobs, or merge them client-side when one combined transcript is the
+desired output.
+
 The upload body is transport-stream friendly: clients may stream the multipart
 request body, and the daemon writes the file part to disk instead of treating
 the client's local path as input. This is an I/O and memory boundary, not a
 promise that the selected model performs realtime or partial-file inference.
+The daemon-wide media upload cap applies to the `file` file part.
 
 Response:
 

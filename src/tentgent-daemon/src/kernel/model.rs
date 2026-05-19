@@ -35,6 +35,13 @@ use tentgent_kernel::{
             ports::{RerankModelResolveRequest, RerankModelResolveResult, RerankModelResolver},
         },
         runtime::ports::PythonRuntimeResolver,
+        vision::{
+            infra::StdVisionChatModelResolver,
+            ports::{
+                VisionChatModelResolveRequest, VisionChatModelResolveResult,
+                VisionChatModelResolver,
+            },
+        },
     },
     foundation::{error::KernelResult, layout::StdRuntimeLayoutResolver},
 };
@@ -173,5 +180,14 @@ impl AudioTranscriptionModelResolver for ModelKernelComponent {
         request: AudioTranscriptionModelResolveRequest,
     ) -> KernelResult<AudioTranscriptionModelResolveResult> {
         StdAudioTranscriptionModelResolver::new(self).resolve_audio_transcription_model(request)
+    }
+}
+
+impl VisionChatModelResolver for ModelKernelComponent {
+    fn resolve_vision_chat_model(
+        &self,
+        request: VisionChatModelResolveRequest,
+    ) -> KernelResult<VisionChatModelResolveResult> {
+        StdVisionChatModelResolver::new(self).resolve_vision_chat_model(request)
     }
 }

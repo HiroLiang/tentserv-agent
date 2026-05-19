@@ -278,17 +278,23 @@ Status: implemented.
 
 #### M6F: Vision Chat Image Input
 
-Status: planned.
+Status: implemented.
 
 - Add native `vision-chat` typed image-plus-text requests.
 - Do not reuse the text-only chat DTO for image inputs.
-- Primary public file input should be multipart image bytes. Trusted local path
-  input may exist only as a local/debug variant.
-- Candidate APIs: `POST /v1/vision/chat` for bounded synchronous requests and
-  `POST /v1/vision/chat/job` for slower or larger requests.
+- Primary daemon file input is multipart image bytes. Foreground CLI uses a
+  local image path and does not require the daemon.
+- API: `POST /v1/vision/chat` for bounded synchronous single-image
+  requests.
+- Added foreground CLI `tentgent vision chat <IMAGE_PATH>` for local smoke tests
+  without daemon dependency.
+- Keep `POST /v1/vision/chat/job` deferred unless real local VLM smoke shows
+  synchronous HTTP is not comfortable.
 - Outputs: `text`, `json`, or `md`.
 - Compatible OpenAI/Claude/Gemini multimodal DTOs wait until the native typed
   DTO is stable.
+- Detailed plan:
+  [m6f-vision-chat-image-input.md](./m6f-vision-chat-image-input.md).
 
 #### M6G: Image Generation Jobs
 
@@ -380,11 +386,13 @@ Review target:
 ## Release Milestones
 
 - Current alpha line: capability metadata, compatibility gates, embedding MVP,
-  rerank MVP, and M6A media metadata vocabulary are implemented and documented.
+  rerank MVP, M6A media metadata vocabulary, audio transcription, and native
+  single-image vision chat are implemented and documented.
 - Multimodal planning follow-up: kernel-owned job workspaces are implemented
   before native runtime work; M6C audio transcription, M6D file-upload job
-  intake, and M6E foreground transcription CLI are implemented; M6F-and-later
-  stages the remaining media workflows by CLI, output format, server, and
+  intake, M6E foreground transcription CLI, and M6F native vision chat are
+  implemented; M6G-and-later stages the remaining media workflows by CLI,
+  output format, server, and
   transport shape.
 - Signing prerelease: Developer ID signing and notarization pipeline passes.
 - Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints

@@ -1,9 +1,9 @@
 # Model Fixtures
 
 Use this guide when you want small models for local smoke tests. `chat`,
-`embedding`, `rerank`, and `audio-transcription` are runnable endpoint
-families. Other M6 media capability values can be stored as model metadata, but
-they do not have runtime endpoints yet.
+`embedding`, `rerank`, `audio-transcription`, and `vision-chat` are runnable
+endpoint families. Other M6 media capability values can be stored as model
+metadata, but they do not have runtime endpoints yet.
 
 ## Access Labels
 
@@ -13,6 +13,7 @@ they do not have runtime endpoints yet.
 - `metadata-only`: Tentgent accepts this as model metadata, but no endpoint can
   run it yet.
 - `cli`: runnable from a foreground Tentgent CLI command.
+- `daemon`: runnable from a daemon HTTP route.
 - `daemon-job`: run this through a daemon background job and workflow result
   route.
 - `planned`: Tentgent does not yet accept this workflow name.
@@ -83,12 +84,13 @@ vision-chat
 image-generation
 ```
 
-`chat`, `embedding`, `rerank`, and `audio-transcription` have foreground CLI
-runtime paths today. `audio-transcription` also has a daemon file-upload job
-runtime path for HTTP integrations. Direct local server routes are available
-for chat, embedding, and rerank; audio server routes are planned separately. The
-remaining media values are metadata-only until their payload, artifact, and
-runtime contracts are implemented.
+`chat`, `embedding`, `rerank`, `audio-transcription`, and `vision-chat` have
+foreground CLI runtime paths today. `audio-transcription` also has a daemon
+file-upload job runtime path for HTTP integrations. `vision-chat` also has a
+bounded daemon multipart route. Direct local server routes are available for
+chat, embedding, and rerank; audio and vision server routes are planned
+separately. The remaining media values are metadata-only until their payload,
+artifact, and runtime contracts are implemented.
 
 ## Runnable Smoke Commands
 
@@ -128,6 +130,16 @@ tentgent transcribe /absolute/path/audio.mp3 \
   --model-ref <audio-transcription-model-ref> \
   --output transcript.txt \
   --format text
+```
+
+Vision chat CLI:
+
+```bash
+tentgent vision chat /absolute/path/image.png \
+  --model-ref <vision-chat-model-ref> \
+  --prompt "Describe this image in one sentence." \
+  --output answer.md \
+  --format md
 ```
 
 Daemon REST for repeated local tests:
@@ -172,6 +184,21 @@ Whisper checkpoints such as `openai/whisper-tiny.en`; keep it for multilingual
 checkpoints such as `openai/whisper-tiny`. `vtt` and `srt` output require
 backend segment timestamps.
 
+Vision chat daemon route:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/vision/chat \
+  -F model_ref=<vision-chat-model-ref> \
+  -F prompt='Describe this image in one sentence.' \
+  -F output_format=text \
+  -F image=@/absolute/path/image.png
+```
+
+Vision chat accepts PNG, JPEG, and WebP inputs in the native daemon route.
+Multipart media uploads share the daemon-wide `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`
+cap, which defaults to 20 MiB. Direct OpenAI, Claude, and Gemini compatible
+multimodal payloads remain out of scope for this fixture page.
+
 ## Current Fixture Models
 
 These rows are for local smoke tests, not product defaults.
@@ -191,9 +218,11 @@ These rows are for local smoke tests, not product defaults.
 ## M6 Media Fixture Models
 
 Audio transcription candidates can run through `tentgent transcribe` and the
-daemon job route. Other candidates are for metadata and contract planning.
-Pulling them with their media `--capability` values records model intent only;
-it does not make those non-transcription workflows runnable yet.
+daemon job route. Vision chat candidates can run through `tentgent vision chat`
+and daemon `POST /v1/vision/chat`. Other candidates are for metadata and
+contract planning. Pulling them with their media `--capability` values records
+model intent only; it does not make those non-transcription, non-vision
+workflows runnable yet.
 
 | Metadata capability | Candidate | Access | Pull command | Notes |
 | --- | --- | --- | --- | --- |
@@ -201,7 +230,7 @@ it does not make those non-transcription workflows runnable yet.
 | `audio-transcription` | [`openai/whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | `public`, `cli`, `daemon-job` | `tentgent model pull openai/whisper-tiny --capability audio-transcription` | Multilingual tiny Whisper checkpoint, about 39M parameters. |
 | `audio-speech` | [`facebook/mms-tts-eng`](https://huggingface.co/facebook/mms-tts-eng) | `public`, `license`, `metadata-only` | `tentgent model pull facebook/mms-tts-eng --capability audio-speech` | English VITS TTS, about 36M parameters; CC-BY-NC 4.0. |
 | `audio-speech` | [`suno/bark-small`](https://huggingface.co/suno/bark-small) | `public`, `metadata-only` | `tentgent model pull suno/bark-small --capability audio-speech` | MIT-licensed TTS pipeline candidate; heavier than MMS-TTS. |
-| `vision-chat` | [`HuggingFaceTB/SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) | `public`, `metadata-only` | `tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat` | Small image+text to text model for VQA/captioning contract tests. |
+| `vision-chat` | [`HuggingFaceTB/SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) | `public`, `cli`, `daemon` | `tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat` | Small image+text to text model for VQA/captioning smoke tests. |
 | future video understanding | [`HuggingFaceTB/SmolVLM2-256M-Video-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Video-Instruct) | `public`, `planned` | no command until video workflow name is approved | Keep out of the first native endpoint unless video payload handling is approved. |
 | `image-generation` | [`hf-internal-testing/tiny-stable-diffusion-pipe`](https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe) | `public`, `internal-test`, `metadata-only` | `tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe --capability image-generation` | Diffusers plumbing fixture only; not product-quality output. |
 | `image-generation` | [`segmind/tiny-sd`](https://huggingface.co/segmind/tiny-sd) | `public`, `metadata-only` | `tentgent model pull segmind/tiny-sd --capability image-generation` | Tiny Stable Diffusion-style model; requires a Diffusers/artifact contract. |

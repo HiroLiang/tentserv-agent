@@ -20,6 +20,7 @@ mod session;
 mod session_kernel;
 mod train;
 mod transcribe;
+mod vision;
 
 use clap::{CommandFactory, Parser};
 use commands::Commands;
@@ -44,6 +45,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Embed(command) => embed::handle_embed_command(command).await?,
         Commands::Rerank(command) => rerank::handle_rerank_command(command).await?,
         Commands::Transcribe(command) => transcribe::handle_transcribe_command(command).await?,
+        Commands::Vision { action } => vision::handle_vision_command(action).await?,
         Commands::Server { action } => server::handle_server_command(action).await?,
         Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
@@ -176,6 +178,56 @@ mod tests {
             .expect_err("missing model ref");
 
         assert!(err.to_string().contains("--model-ref"));
+    }
+
+    #[test]
+    fn parses_vision_chat_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "vision",
+            "chat",
+            "image.png",
+            "--model-ref",
+            "abc123",
+            "--prompt",
+            "Describe it.",
+            "--system-prompt",
+            "Be concise.",
+            "--output",
+            "answer.md",
+            "--format",
+            "md",
+            "--max-tokens",
+            "64",
+            "--temperature",
+            "0.2",
+            "--home",
+            "/tmp/tentgent",
+        ])
+        .expect("parse vision chat command");
+
+        match cli.command {
+            Commands::Vision { action } => match action {
+                super::commands::VisionCommands::Chat(command) => {
+                    assert_eq!(command.image_path, std::path::Path::new("image.png"));
+                    assert_eq!(command.model_ref, "abc123");
+                    assert_eq!(command.prompt, "Describe it.");
+                    assert_eq!(command.system_prompt.as_deref(), Some("Be concise."));
+                    assert_eq!(
+                        command.output.as_deref(),
+                        Some(std::path::Path::new("answer.md"))
+                    );
+                    assert_eq!(command.format, "md");
+                    assert_eq!(command.max_tokens, Some(64));
+                    assert_eq!(command.temperature, Some(0.2));
+                    assert_eq!(
+                        command.home.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent"))
+                    );
+                }
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 
     #[test]

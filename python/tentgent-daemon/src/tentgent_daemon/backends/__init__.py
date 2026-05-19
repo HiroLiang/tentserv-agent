@@ -1,7 +1,13 @@
 """Backend adapters for Tentgent Python runtime."""
 
 from ..runtime.router import BackendKind
-from .base import AudioTranscriptionBackend, ChatBackend, EmbeddingBackend, RerankBackend
+from .base import (
+    AudioTranscriptionBackend,
+    ChatBackend,
+    EmbeddingBackend,
+    RerankBackend,
+    VisionChatBackend,
+)
 
 
 def create_backend(kind: BackendKind) -> ChatBackend:
@@ -50,13 +56,24 @@ def create_audio_transcription_backend(
     raise ValueError(f"unsupported audio transcription backend kind `{kind}`")
 
 
+def create_vision_chat_backend(kind: BackendKind) -> VisionChatBackend:
+    if kind == BackendKind.TRANSFORMERS_PEFT:
+        from .transformers_peft import TransformersPeftVisionChatBackend
+
+        return TransformersPeftVisionChatBackend()
+
+    raise ValueError(f"unsupported vision chat backend kind `{kind}`")
+
+
 __all__ = [
     "ChatBackend",
     "EmbeddingBackend",
     "RerankBackend",
     "AudioTranscriptionBackend",
+    "VisionChatBackend",
     "create_backend",
     "create_audio_transcription_backend",
     "create_embedding_backend",
     "create_rerank_backend",
+    "create_vision_chat_backend",
 ]

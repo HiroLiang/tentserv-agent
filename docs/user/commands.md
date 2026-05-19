@@ -4,6 +4,23 @@ This document collects user-facing command examples. Short references are accept
 
 Most common options have short aliases, such as `-m` for model/message-like inputs, `-o` for output, `-p` for provider/path/port depending on the subcommand, and `-H` for runtime home. Run `tentgent <command> --help`; every help screen also supports `-h`.
 
+## File And HTTP Media Rules
+
+- Foreground CLI media commands read local paths on the caller's machine. They
+  do not create daemon jobs unless the command explicitly says it talks to the
+  daemon.
+- When a CLI media command accepts `--output`, it writes to that path and fails
+  before running if the file already exists. Without `--output`, text-like
+  formats print to stdout when the format supports terminal output.
+- Daemon media endpoints receive multipart file bytes, not client-local paths.
+  `curl -F file=@/path/audio.mp3` and `curl -F image=@/path/image.png` are curl
+  syntax for reading local bytes into the request.
+- Audio transcription daemon uploads create workflow jobs and expose result
+  bytes through a result route. Native vision chat daemon uploads are bounded
+  synchronous requests.
+- Multipart media uploads share `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting
+  to 20 MiB. Exceeding the cap returns HTTP `413` with `upload_too_large`.
+
 ## Auth
 
 Check all provider keys:
@@ -100,11 +117,13 @@ tentgent model pull BAAI/bge-reranker-base --capability rerank --revision main
 
 `--capability` accepts `chat`, `embedding`, `rerank`,
 `audio-transcription`, `audio-speech`, `vision-chat`, or
-`image-generation`. Chat, embedding, rerank, and audio transcription endpoints
-enforce this metadata before runtime dispatch. `audio-transcription` is
-available through `tentgent transcribe` and the daemon job API for local
-safetensors ASR models. The remaining media capability values are metadata-only
-until their payload and runtime contracts are implemented.
+`image-generation`. Chat, embedding, rerank, audio transcription, and vision
+chat endpoints enforce this metadata before runtime dispatch.
+`audio-transcription` is available through `tentgent transcribe` and the daemon
+job API for local safetensors ASR models. `vision-chat` is available through
+`tentgent vision chat` and daemon `POST /v1/vision/chat` for local safetensors
+image-plus-text models. `audio-speech` and `image-generation` remain
+metadata-only until their payload and artifact contracts are implemented.
 
 List and inspect models:
 
@@ -239,7 +258,54 @@ for progress or terminal error details. Workspace chunks and temporary files
 are internal details. The multipart upload and result reads are
 transport-stream-friendly memory boundaries, not realtime model inference. For
 the complete HTTP contract, including byte-array multipart upload semantics,
-see [api.md](./api.md).
+see [api.md](./api.md). The daemon rejects multipart media file parts above
+the daemon-wide upload cap with `upload_too_large`; set
+`TENTGENT_MEDIA_UPLOAD_MAX_BYTES` before daemon startup to adjust the default
+20 MiB cap.
+
+## Vision Chat
+
+Run foreground vision chat without starting the daemon:
+
+```bash
+tentgent vision chat /absolute/path/image.png \
+  --model-ref <vision-chat-model-ref> \
+  --prompt "Describe this image in one sentence." \
+  --output answer.md \
+  --format md
+```
+
+With `--output`, the command writes only to the requested file and prints a
+short completion message. It fails if the output file already exists. Without
+`--output`, `text` and `md` print the generated answer to stdout; `json` prints
+the response envelope.
+
+Pull a small model before running local vision chat:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat
+```
+
+For HTTP integrations, send the image as multipart form data:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/vision/chat \
+  -F model_ref=<vision-chat-model-ref> \
+  -F prompt='Describe this image in one sentence.' \
+  -F output_format=text \
+  -F image=@/absolute/path/image.png
+```
+
+Supported input media types are PNG, JPEG, and WebP. The daemon upload route
+stores the complete image in a request-scoped temp file, calls the runtime, and
+removes the temp file after success or failure. This is a native Tentgent
+endpoint. Vision chat image processing uses the `local-model` Python profile
+dependencies, including Pillow and torchvision; no system `ffmpeg` install is
+needed for PNG, JPEG, or WebP. OpenAI, Claude, and Gemini compatible
+multimodal payloads are still text-only rejected until a later compatibility
+slice. The same daemon-wide media upload cap applies here; set
+`TENTGENT_MEDIA_UPLOAD_MAX_BYTES` before daemon startup to adjust it.
 
 ## Server
 
@@ -520,13 +586,14 @@ tentgent daemon run --host 127.0.0.1 --port 8790
 The daemon records process metadata under `TENTGENT_HOME/runtime` and exposes
 Rust HTTP health/status, store discovery and mutation, controlled server
 lifecycle endpoints, background jobs, chat, sessions, and LoRA plan APIs.
-Native `/v1/chat`, native `/v1/embeddings`, native `/v1/rerank`,
-OpenAI-compatible
-`/v1/chat/completions`, Claude-compatible `/v1/messages`, and Gemini-compatible
+Native `/v1/chat`, native `/v1/embeddings`, native `/v1/rerank`, native
+`/v1/vision/chat`, OpenAI-compatible `/v1/chat/completions`, Claude-compatible
+`/v1/messages`, and Gemini-compatible
 `/v1beta/models/{model}:generateContent` adapters are DTO/SSE translators over
-kernel use cases. Chat routes currently reject tools, images, and audio before
-calling the model runtime. Embedding and rerank requests do not create or mutate
-sessions.
+kernel use cases. Text chat routes currently reject tools, images, and audio
+before calling the model runtime; image-plus-text requests use
+`/v1/vision/chat`. Embedding, rerank, and vision chat requests do not create or
+mutate sessions.
 Log diagnostics endpoints expose fixed daemon/server stdout and stderr paths for
 local debugging.
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the

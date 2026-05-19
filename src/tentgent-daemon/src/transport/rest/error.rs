@@ -26,6 +26,10 @@ impl RestError {
         Self::new(StatusCode::CONFLICT, code, message)
     }
 
+    pub fn payload_too_large(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(StatusCode::PAYLOAD_TOO_LARGE, code, message)
+    }
+
     pub fn internal(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, code, message)
     }

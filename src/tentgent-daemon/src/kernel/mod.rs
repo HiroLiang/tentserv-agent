@@ -54,6 +54,7 @@ use tentgent_kernel::{
             usecases::StdSessionUseCase,
         },
         train::usecases::{StdLoraTrainPlanUseCase, StdLoraTrainRunUseCase},
+        vision::usecases::StdVisionChatUseCase,
     },
     foundation::{
         error::{KernelError, KernelResult},
@@ -183,6 +184,10 @@ impl KernelComponents {
 
     pub fn audio_transcription_usecase(&self) -> StdAudioTranscriptionUseCase<'_> {
         StdAudioTranscriptionUseCase::new(&self.runtime, &self.models, &self.runtime)
+    }
+
+    pub fn vision_chat_usecase(&self) -> StdVisionChatUseCase<'_> {
+        StdVisionChatUseCase::new(&self.runtime, &self.models, &self.runtime)
     }
 
     pub fn server_usecase(&self) -> StdServerUseCase<'_> {

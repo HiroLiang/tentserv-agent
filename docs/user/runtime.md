@@ -52,6 +52,16 @@ Supported path overrides:
 
 Environment variables are read when a process starts. Tentgent does not rewrite or persist shell environment settings.
 
+Daemon media upload limits:
+
+- `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` sets the daemon-wide file-part byte cap for
+  multipart media endpoints such as audio transcription upload and native
+  vision chat upload.
+- The default is 20 MiB.
+- The value is a positive integer in bytes. Invalid, empty, or zero values fall
+  back to the default and are logged as warnings by the daemon.
+- Requests above the cap return HTTP `413` with `upload_too_large`.
+
 ## Runtime Footprint
 
 Use `tentgent runtime status` or `tentgent doctor` to inspect
@@ -146,9 +156,10 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 Media models have two dependency classes:
 
 - Python model execution dependencies are installed by runtime profiles.
-  `local-model` covers `torch`, `transformers`, `tokenizers`,
-  `safetensors`, and PEFT support used by local safetensors chat,
-  embedding, rerank, and `audio-transcription` models.
+  `local-model` covers `torch`, `torchvision`, `transformers`, `tokenizers`,
+  `safetensors`, Pillow image decoding, and PEFT support used by local
+  safetensors chat, embedding, rerank, `audio-transcription`, and
+  `vision-chat` models.
 - Media file decoding dependencies are system tools on `PATH`. Current
   `audio-transcription` jobs store the uploaded file in a daemon workspace and
   pass that file path to the Transformers ASR pipeline, which expects `ffmpeg`
@@ -170,9 +181,13 @@ On Debian or Ubuntu:
 sudo apt install ffmpeg
 ```
 
-Future `audio-speech`, `vision-chat`, `image-generation`, and video-oriented
-routes may add more capability-specific checks. Those checks should stay
-warning-level unless the user is actively running a feature that requires them.
+Vision chat currently uses Python/Pillow/torchvision image processing through
+the `local-model` profile and does not require a system decoder like `ffmpeg`
+for PNG, JPEG, or WebP inputs.
+
+Future `audio-speech`, `image-generation`, and video-oriented routes may add
+more capability-specific checks. Those checks should stay warning-level unless
+the user is actively running a feature that requires them.
 
 ## Keychain Prompts
 

@@ -24,6 +24,8 @@ keychain.
 - Japanese: [docs/i18n/ja/README.md](./docs/i18n/ja/README.md)
 - Full user guide: [docs/user/README.md](./docs/user/README.md)
 - HTTP API reference: [docs/user/api.md](./docs/user/api.md)
+- Model fixture and smoke-test guide:
+  [docs/user/model-fixtures.md](./docs/user/model-fixtures.md)
 - Developer guide: [docs/development/README.md](./docs/development/README.md)
 
 ## Quick Start
@@ -238,7 +240,27 @@ Stop the daemon:
 tentgent daemon stop
 ```
 
-For the full daemon API, endpoint list, response shapes, auth behavior, and error mapping, see [docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md).
+For the full user-facing daemon API, endpoint list, response shapes, auth
+behavior, and error mapping, see [docs/user/api.md](./docs/user/api.md). For
+the lower-level daemon transport contract, see
+[docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md).
+
+## Media CLI And API Rules
+
+- CLI media commands such as `tentgent transcribe` and `tentgent vision chat`
+  read local files directly from the caller's machine.
+- Daemon media endpoints receive multipart file bytes; curl `@/path/file`
+  syntax is client-side file reading, not a daemon path contract.
+- Audio transcription daemon uploads return jobs. Native daemon vision chat is
+  a bounded synchronous request.
+- Multipart media upload size is controlled by
+  `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting to 20 MiB. Oversized uploads
+  return HTTP `413` with `upload_too_large`.
+
+See [docs/user/commands.md](./docs/user/commands.md) for CLI examples,
+[docs/user/api.md](./docs/user/api.md) for request shapes, and
+[docs/user/model-fixtures.md](./docs/user/model-fixtures.md) for small model
+fixtures.
 
 ## Remove The Tool
 
@@ -346,9 +368,10 @@ Included:
 - OpenAI and Anthropic local server proxy runtimes
 - dataset validation, prompt templates, multi-split provider synthesis, and provider evaluation
 - one-shot local chat for MLX, PEFT safetensors, and llama-cpp GGUF paths
+- one-shot local embedding and rerank commands for compatible safetensors models
+- foreground audio transcription and native image-plus-text vision chat for
+  compatible local safetensors models
 - local HTTP daemon API for store, dataset, server, chat, training, diagnostics, and bounded session workflows
-- terminal UI operator console for daemon discovery, chat, jobs, resources,
-  store/server/training actions, session cleanup, and guarded local setup
 - managed LoRA train plans, durable run records, metrics/log inspection, and runnable MLX / PEFT training loops
 - local sessions with bounded transcript compaction for short-term working context
 - installer-managed Python runtime bootstrap for direct installs and `tentgent runtime bootstrap` for package-manager installs

@@ -15,3 +15,4 @@ pub mod session;
 pub mod status;
 mod store_jobs;
 pub mod train;
+pub mod vision;

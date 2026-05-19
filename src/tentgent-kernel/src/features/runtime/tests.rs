@@ -78,6 +78,10 @@ fn runtime_entrypoints_match_python_project_scripts() {
         RuntimeEntrypoint::TrainLoraRun.script_name(),
         "tentgent-train-lora-run"
     );
+    assert_eq!(
+        RuntimeEntrypoint::VisionChatOnce.script_name(),
+        "tentgent-vision-chat-once"
+    );
 }
 
 #[test]

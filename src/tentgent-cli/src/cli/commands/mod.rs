@@ -11,6 +11,7 @@ mod server;
 mod session;
 mod train;
 mod transcribe;
+mod vision;
 
 pub use adapter::AdapterCommands;
 pub use auth::{AuthCommands, AuthProviderAction};
@@ -29,6 +30,7 @@ pub use train::{
     TrainLoraRunWorkerCommand,
 };
 pub use transcribe::TranscribeCommand;
+pub use vision::{VisionChatCommand, VisionCommands};
 
 use clap::{Args, Subcommand};
 
@@ -97,6 +99,16 @@ pub enum Commands {
         long_about = "Transcribe a local audio file in the foreground without starting the daemon. The command resolves a stored audio-transcription model, calls the Python audio runtime once, and writes text, JSON, WebVTT, or SRT output. With --output it writes only to the requested file and fails if that file already exists."
     )]
     Transcribe(TranscribeCommand),
+    /// Run local image-plus-text vision chat.
+    #[command(
+        name = "vision",
+        about = "Run local image-plus-text vision workflows.",
+        long_about = "Run local image-plus-text vision workflows. The first supported workflow is `tentgent vision chat`, which resolves a stored vision-chat model and asks one prompt about one local image."
+    )]
+    Vision {
+        #[command(subcommand)]
+        action: VisionCommands,
+    },
     /// Inspect and manage adapters, including LoRA selection and switching.
     #[command(
         name = "adapter",

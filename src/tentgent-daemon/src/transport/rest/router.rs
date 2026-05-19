@@ -1,4 +1,5 @@
 use axum::{
+    extract::DefaultBodyLimit,
     middleware,
     routing::{get, post},
     Router,
@@ -8,10 +9,12 @@ use tracing::Level;
 
 use crate::handlers::rest::{
     adapter, audio, auth, chat, daemon, dataset, doctor, embedding, health, jobs, model, rerank,
-    server, session, status, train,
+    server, session, status, train, vision,
 };
 
-use super::{security::authorize_daemon_token, state::RestState};
+use super::{
+    limits::media_upload_body_limit_bytes, security::authorize_daemon_token, state::RestState,
+};
 
 pub fn build_router(state: RestState) -> Router {
     app_routes(state.clone()).with_state(state).layer(
@@ -38,6 +41,7 @@ fn v1_routes() -> Router<RestState> {
         .merge(chat_routes())
         .merge(embedding_routes())
         .merge(rerank_routes())
+        .merge(vision_routes())
         .merge(audio_routes())
         .merge(job_routes())
         .merge(store_routes())
@@ -73,6 +77,12 @@ fn rerank_routes() -> Router<RestState> {
     Router::new().route("/v1/rerank", post(rerank::create))
 }
 
+fn vision_routes() -> Router<RestState> {
+    Router::new()
+        .route("/v1/vision/chat", post(vision::chat))
+        .layer(DefaultBodyLimit::max(media_upload_body_limit_bytes()))
+}
+
 fn audio_routes() -> Router<RestState> {
     Router::new()
         .route(
@@ -91,6 +101,7 @@ fn audio_routes() -> Router<RestState> {
             "/v1/audio/transcriptions/jobs/{job_id}/result",
             get(audio::transcription_job_result),
         )
+        .layer(DefaultBodyLimit::max(media_upload_body_limit_bytes()))
 }
 
 fn job_routes() -> Router<RestState> {

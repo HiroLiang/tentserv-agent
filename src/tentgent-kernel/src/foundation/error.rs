@@ -42,6 +42,9 @@ pub enum KernelError {
     #[error("audio runtime is unavailable: {0}")]
     AudioRuntimeUnavailable(String),
 
+    #[error("vision runtime is unavailable: {0}")]
+    VisionRuntimeUnavailable(String),
+
     #[error("daemon store is unavailable: {0}")]
     DaemonStoreUnavailable(String),
 

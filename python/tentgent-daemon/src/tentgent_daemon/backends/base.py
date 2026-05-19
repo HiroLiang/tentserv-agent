@@ -12,6 +12,7 @@ from ..runtime.adapters import (
     StoredAdapterRecord,
 )
 from ..runtime.records import StoredModelRecord
+from ..runtime.vision import VisionChatRequest, VisionChatResult
 
 
 @dataclass(frozen=True)
@@ -94,4 +95,18 @@ class AudioTranscriptionBackend:
         self,
         request: AudioTranscriptionRequest,
     ) -> AudioTranscriptionResult:
+        raise NotImplementedError
+
+
+class VisionChatBackend:
+    """Minimal backend contract for local image-plus-text inference."""
+
+    def load(self, record: StoredModelRecord) -> None:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        """Release loaded runtime state when the server lifecycle decides to unload."""
+        return None
+
+    def generate_vision_chat(self, request: VisionChatRequest) -> VisionChatResult:
         raise NotImplementedError

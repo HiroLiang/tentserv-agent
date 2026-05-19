@@ -173,7 +173,15 @@ pub(crate) fn runtime_profile_modules(profile: BootstrapProfile) -> Vec<&'static
 }
 
 fn local_model_modules() -> Vec<&'static str> {
-    let mut modules = vec!["llama_cpp", "peft", "safetensors", "torch", "transformers"];
+    let mut modules = vec![
+        "PIL",
+        "llama_cpp",
+        "peft",
+        "safetensors",
+        "torch",
+        "torchvision",
+        "transformers",
+    ];
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         modules.push("mlx");
         modules.push("mlx_lm");

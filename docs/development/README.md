@@ -184,6 +184,51 @@ safe-to-recreate package/cache data; remove it manually only when no installer
 or Python bootstrap process is running. Do not remove `runtime/python-env`
 unless intentionally repairing or reinstalling the managed Python runtime.
 
+## Media Endpoint Smoke Tests
+
+Use these checks when changing daemon upload handling, media routes, REST
+errors, or user-facing media docs. They do not require a real model because
+the intentionally tiny upload cap fails the request before model resolution.
+
+Start a foreground daemon with an isolated runtime home and a tiny media upload
+limit:
+
+```bash
+TENTGENT_HOME=/private/tmp/tentgent-media-limit-smoke \
+TENTGENT_MEDIA_UPLOAD_MAX_BYTES=16 \
+cargo run -p tentgent-cli -- daemon run --host 127.0.0.1 --port 8792
+```
+
+From another terminal, verify native vision chat upload errors:
+
+```bash
+curl -sS -i http://127.0.0.1:8792/v1/vision/chat \
+  -F model_ref=missing \
+  -F prompt='Describe this image.' \
+  -F image=@test-data/test_image.png
+```
+
+Expected result:
+
+```text
+HTTP/1.1 413 Payload Too Large
+{"error":"upload_too_large", ...}
+```
+
+Verify audio transcription upload errors:
+
+```bash
+curl -sS -i http://127.0.0.1:8792/v1/audio/transcriptions/job \
+  -F model_ref=missing \
+  -F output_format=text \
+  -F file=@test-data/we_go_up.mp3
+```
+
+Expected result is also HTTP `413` with `upload_too_large`. Stop the foreground
+daemon with Ctrl-C after the smoke checks.
+
+For end-to-end model execution, keep using [docs/user/model-fixtures.md](../user/model-fixtures.md).
+
 ## Auth Commands
 
 ```bash

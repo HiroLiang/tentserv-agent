@@ -29,12 +29,30 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
   sessions, and LoRA training.
 - [api.md](./api.md)
   User-facing daemon HTTP API reference, including request shapes, result
-  routes, job behavior, and multipart audio upload semantics.
+  routes, job behavior, multipart media upload semantics, and HTTP error
+  behavior.
 - [model-fixtures.md](./model-fixtures.md)
   Recommended small Hugging Face models and smoke-test commands for chat,
-  embedding, rerank, audio transcription, and planned M6 media workflows.
+  embedding, rerank, audio transcription, and media workflows.
 - [runtime.md](./runtime.md)
-  Runtime home layout, environment overrides, backend support, and macOS Keychain prompts.
+  Runtime home layout, environment overrides, daemon media upload limits,
+  backend support, and macOS Keychain prompts.
+
+## Media Workflow Rules
+
+- CLI media commands such as `tentgent transcribe` and `tentgent vision chat`
+  read local files from the caller's machine and run in the foreground.
+- Daemon media endpoints receive multipart file bytes. `curl -F
+  file=@/path/audio.mp3` and `curl -F image=@/path/image.png` are client-side
+  shorthand for reading local files; the daemon does not receive or trust the
+  original client path.
+- Audio transcription daemon requests create workflow jobs. Vision chat daemon
+  requests are bounded synchronous requests.
+- Multipart media uploads share the daemon-wide
+  `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` file-part cap, which defaults to 20 MiB
+  and returns HTTP `413` with `upload_too_large` when exceeded.
+- Recommended small local model fixtures and copy-paste smoke commands live in
+  [model-fixtures.md](./model-fixtures.md).
 
 ## Notes
 

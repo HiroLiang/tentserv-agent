@@ -48,6 +48,11 @@ use tentgent_kernel::{
                 StdRuntimeStateUseCase,
             },
         },
+        vision::{
+            domain::VisionChatResponse,
+            infra::PythonVisionChatOnceRuntimeClient,
+            ports::{VisionChatRuntimeClient, VisionChatRuntimeRequest, VisionPortFuture},
+        },
     },
     foundation::{
         error::KernelResult,
@@ -234,6 +239,19 @@ impl AudioTranscriptionRuntimeClient for RuntimeKernelComponent {
         Box::pin(async move {
             PythonAudioTranscriptionBatchRuntimeClient::new(self)
                 .transcribe_audio(request)
+                .await
+        })
+    }
+}
+
+impl VisionChatRuntimeClient for RuntimeKernelComponent {
+    fn generate_vision_chat(
+        &'_ self,
+        request: VisionChatRuntimeRequest,
+    ) -> VisionPortFuture<'_, VisionChatResponse> {
+        Box::pin(async move {
+            PythonVisionChatOnceRuntimeClient::new(self)
+                .generate_vision_chat(request)
                 .await
         })
     }

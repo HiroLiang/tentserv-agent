@@ -264,7 +264,7 @@ fn python_bootstrap_hint(source: PythonRuntimeSource) -> &'static str {
     }
 }
 
-fn runtime_entrypoints() -> [RuntimeEntrypoint; 8] {
+fn runtime_entrypoints() -> [RuntimeEntrypoint; 9] {
     [
         RuntimeEntrypoint::AudioTranscriptionBatch,
         RuntimeEntrypoint::ChatOnce,
@@ -274,6 +274,7 @@ fn runtime_entrypoints() -> [RuntimeEntrypoint; 8] {
         RuntimeEntrypoint::HfSnapshot,
         RuntimeEntrypoint::Server,
         RuntimeEntrypoint::TrainLoraRun,
+        RuntimeEntrypoint::VisionChatOnce,
     ]
 }
 
