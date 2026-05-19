@@ -100,7 +100,12 @@ fn std_rerank_model_resolver_accepts_rerank_safetensors_model() {
 
 #[test]
 fn std_rerank_model_resolver_rejects_non_rerank_models() {
-    for capability in [ModelCapability::Chat, ModelCapability::Embedding] {
+    for capability in [
+        ModelCapability::Chat,
+        ModelCapability::Embedding,
+        ModelCapability::AudioSpeech,
+        ModelCapability::ImageGeneration,
+    ] {
         let catalog = FakeModelCatalog {
             metadata: model_metadata(ModelFormat::Safetensors, vec![capability]),
         };

@@ -69,7 +69,12 @@ fn std_embedding_model_resolver_accepts_embedding_safetensors_model() {
 
 #[test]
 fn std_embedding_model_resolver_rejects_non_embedding_models() {
-    for capability in [ModelCapability::Chat, ModelCapability::Rerank] {
+    for capability in [
+        ModelCapability::Chat,
+        ModelCapability::Rerank,
+        ModelCapability::AudioTranscription,
+        ModelCapability::VisionChat,
+    ] {
         let catalog = FakeModelCatalog {
             metadata: model_metadata(ModelFormat::Safetensors, vec![capability]),
         };

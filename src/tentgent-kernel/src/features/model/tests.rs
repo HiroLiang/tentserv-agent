@@ -228,7 +228,11 @@ fn model_metadata_capabilities_round_trip_as_strings() {
         source_path: Some("/tmp/source".to_string()),
         primary_format: ModelFormat::Safetensors,
         detected_formats: vec![ModelFormat::Safetensors],
-        model_capabilities: vec![ModelCapability::Chat, ModelCapability::Rerank],
+        model_capabilities: vec![
+            ModelCapability::Chat,
+            ModelCapability::Rerank,
+            ModelCapability::AudioTranscription,
+        ],
         model_capability_source: ModelCapabilitySource::ManualUpdate,
         file_count: 1,
         total_bytes: 42,
@@ -238,12 +242,17 @@ fn model_metadata_capabilities_round_trip_as_strings() {
     let body = toml::to_string_pretty(&metadata).expect("serialize metadata");
     assert!(body.contains("\"chat\""));
     assert!(body.contains("\"rerank\""));
+    assert!(body.contains("\"audio-transcription\""));
     assert!(body.contains("model_capability_source = \"manual-update\""));
 
     let parsed: ModelMetadata = toml::from_str(&body).expect("parse metadata");
     assert_eq!(
         parsed.model_capabilities,
-        vec![ModelCapability::Chat, ModelCapability::Rerank]
+        vec![
+            ModelCapability::Chat,
+            ModelCapability::Rerank,
+            ModelCapability::AudioTranscription
+        ]
     );
     assert_eq!(
         parsed.model_capability_source,
@@ -261,8 +270,36 @@ fn model_capability_parser_accepts_known_values_and_rejects_unknown_values() {
         "RERANK".parse::<ModelCapability>().expect("rerank"),
         ModelCapability::Rerank
     );
+    assert_eq!(
+        " audio-transcription "
+            .parse::<ModelCapability>()
+            .expect("audio transcription"),
+        ModelCapability::AudioTranscription
+    );
+    assert_eq!(
+        "audio-speech"
+            .parse::<ModelCapability>()
+            .expect("audio speech"),
+        ModelCapability::AudioSpeech
+    );
+    assert_eq!(
+        "vision-chat"
+            .parse::<ModelCapability>()
+            .expect("vision chat"),
+        ModelCapability::VisionChat
+    );
+    assert_eq!(
+        "image-generation"
+            .parse::<ModelCapability>()
+            .expect("image generation"),
+        ModelCapability::ImageGeneration
+    );
 
     let err = "audio".parse::<ModelCapability>().expect_err("parse error");
+    assert!(err.to_string().contains("unsupported model capability"));
+    let err = "multimodal"
+        .parse::<ModelCapability>()
+        .expect_err("parse error");
     assert!(err.to_string().contains("unsupported model capability"));
 }
 

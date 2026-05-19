@@ -19,7 +19,7 @@ pub const MODEL_METADATA_FILENAME: &str = "model.toml";
 pub const MODEL_MANIFEST_FILENAME: &str = "manifest.json";
 pub const VARIANT_METADATA_FILENAME: &str = "variant.toml";
 pub const DEFAULT_CHAT_CAPABILITY_WARNING: &str =
-    "capability defaulted to chat; provide capability to classify embedding or rerank models";
+    "capability defaulted to chat; provide capability to classify another endpoint family";
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModelRef(String);
@@ -193,11 +193,15 @@ impl std::fmt::Display for ModelFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum ModelCapability {
     Chat,
     Embedding,
     Rerank,
+    AudioTranscription,
+    AudioSpeech,
+    VisionChat,
+    ImageGeneration,
 }
 
 impl ModelCapability {
@@ -206,6 +210,10 @@ impl ModelCapability {
             Self::Chat => "chat",
             Self::Embedding => "embedding",
             Self::Rerank => "rerank",
+            Self::AudioTranscription => "audio-transcription",
+            Self::AudioSpeech => "audio-speech",
+            Self::VisionChat => "vision-chat",
+            Self::ImageGeneration => "image-generation",
         }
     }
 }
@@ -226,6 +234,10 @@ impl std::str::FromStr for ModelCapability {
             "chat" => Ok(Self::Chat),
             "embedding" => Ok(Self::Embedding),
             "rerank" => Ok(Self::Rerank),
+            "audio-transcription" => Ok(Self::AudioTranscription),
+            "audio-speech" => Ok(Self::AudioSpeech),
+            "vision-chat" => Ok(Self::VisionChat),
+            "image-generation" => Ok(Self::ImageGeneration),
             _ => Err(ModelCapabilityParseError::Unsupported {
                 value: value.trim().to_string(),
             }),
@@ -235,9 +247,13 @@ impl std::str::FromStr for ModelCapability {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ModelCapabilityParseError {
-    #[error("model capability must not be blank; expected one of: chat, embedding, rerank")]
+    #[error(
+        "model capability must not be blank; expected one of: chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, image-generation"
+    )]
     Empty,
-    #[error("unsupported model capability `{value}`; expected one of: chat, embedding, rerank")]
+    #[error(
+        "unsupported model capability `{value}`; expected one of: chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, image-generation"
+    )]
     Unsupported { value: String },
 }
 

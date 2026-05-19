@@ -42,13 +42,14 @@ one pass without a staged breakdown.
   cross-encoder backend path, CLI one-shot embedding/rerank helpers, and
   endpoint-family isolation from chat sessions.
 - [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md)
-  Planned M6A slice: native multimodal capability vocabulary, transport shape
-  decisions, opaque proxy boundary, and small Hugging Face smoke fixtures.
+  Implemented M6A slice: metadata-only multimodal capability vocabulary,
+  transport shape decisions, opaque proxy boundary, and small Hugging Face smoke
+  fixtures.
 
 ## Recommended Order
 
-1. Complete M6A multimodal contracts and choose whether M6B is async media jobs,
-   opaque stream proxy, or the first native endpoint.
+1. Define M6B async media jobs and artifact refs before adding audio, image, or
+   video runtime execution.
 2. Run Apple Developer ID signing and notarization on prerelease artifacts
    before beta or release candidate tags.
 

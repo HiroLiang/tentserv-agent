@@ -1,15 +1,18 @@
 # Model Fixtures
 
-Use this guide when you want small models for local smoke tests. The current
-stable Tentgent capabilities are `chat`, `embedding`, and `rerank`; media rows
-are planning fixtures only until M6 contracts and runtime support land.
+Use this guide when you want small models for local smoke tests. `chat`,
+`embedding`, and `rerank` are runnable endpoint families. M6A media capability
+values can be stored as model metadata, but they do not have runtime endpoints
+yet.
 
 ## Access Labels
 
 - `public`: the model files are publicly downloadable from Hugging Face.
 - `terms`: your Hugging Face account must accept model terms before download.
 - `license`: read the model license before using it beyond local smoke tests.
-- `planned`: Tentgent does not yet accept this capability value.
+- `metadata-only`: Tentgent accepts this as model metadata, but no endpoint can
+  run it yet.
+- `planned`: Tentgent does not yet accept this workflow name.
 - `internal-test`: useful for plumbing tests, not a product-quality model.
 
 For `terms` models, log in to Hugging Face in a browser, accept the model
@@ -65,16 +68,21 @@ tentgent model inspect <model-ref-or-prefix>
 tentgent model set-capability <model-ref-or-prefix> embedding
 ```
 
-Current accepted capability values:
+Accepted model metadata capability values:
 
 ```text
 chat
 embedding
 rerank
+audio-transcription
+audio-speech
+vision-chat
+image-generation
 ```
 
-Planned M6 values such as `audio-transcription`, `audio-speech`,
-`vision-chat`, and `image-generation` are not accepted by the CLI yet.
+Only `chat`, `embedding`, and `rerank` have CLI, daemon, and direct server
+runtime paths today. The media values are metadata-only until M6B/M6C implement
+their payload, artifact, and runtime contracts.
 
 ## Runnable Smoke Commands
 
@@ -145,27 +153,27 @@ These rows are for local smoke tests, not product defaults.
 | `rerank` | [`mixedbread-ai/mxbai-rerank-xsmall-v1`](https://huggingface.co/mixedbread-ai/mxbai-rerank-xsmall-v1) | `public` | `tentgent model pull mixedbread-ai/mxbai-rerank-xsmall-v1 --capability rerank` | Apache-2.0 reranker, about 70.8M parameters. |
 | `rerank` | [`BAAI/bge-reranker-base`](https://huggingface.co/BAAI/bge-reranker-base) | `public` | `tentgent model pull BAAI/bge-reranker-base --capability rerank` | Heavier MIT-licensed accuracy target for rerank tests. |
 
-## Planned M6 Fixture Models
+## M6A Metadata Fixture Models
 
-These candidates are for contract planning. Do not use their workflow names as
-`--capability` values until the corresponding M6 metadata and runtime support
-exist.
+These candidates are for metadata and contract planning. Pulling them with
+their media `--capability` values records model intent only; it does not make
+audio, image, or video inference available yet.
 
-| Planned workflow | Candidate | Access | Future command shape | Notes |
+| Metadata capability | Candidate | Access | Pull command | Notes |
 | --- | --- | --- | --- | --- |
-| `audio-transcription` | [`openai/whisper-tiny.en`](https://huggingface.co/openai/whisper-tiny.en) | `public`, `planned` | `tentgent model pull openai/whisper-tiny.en --capability audio-transcription` | English ASR, safetensors, about 38M parameters. |
-| `audio-transcription` | [`openai/whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | `public`, `planned` | `tentgent model pull openai/whisper-tiny --capability audio-transcription` | Multilingual tiny Whisper checkpoint, about 39M parameters. |
-| `audio-speech` | [`facebook/mms-tts-eng`](https://huggingface.co/facebook/mms-tts-eng) | `public`, `license`, `planned` | `tentgent model pull facebook/mms-tts-eng --capability audio-speech` | English VITS TTS, about 36M parameters; CC-BY-NC 4.0. |
-| `audio-speech` | [`suno/bark-small`](https://huggingface.co/suno/bark-small) | `public`, `planned` | `tentgent model pull suno/bark-small --capability audio-speech` | MIT-licensed TTS pipeline candidate; heavier than MMS-TTS. |
-| `vision-chat` | [`HuggingFaceTB/SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) | `public`, `planned` | `tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat` | Small image+text to text model for VQA/captioning contract tests. |
+| `audio-transcription` | [`openai/whisper-tiny.en`](https://huggingface.co/openai/whisper-tiny.en) | `public`, `metadata-only` | `tentgent model pull openai/whisper-tiny.en --capability audio-transcription` | English ASR, safetensors, about 38M parameters. |
+| `audio-transcription` | [`openai/whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | `public`, `metadata-only` | `tentgent model pull openai/whisper-tiny --capability audio-transcription` | Multilingual tiny Whisper checkpoint, about 39M parameters. |
+| `audio-speech` | [`facebook/mms-tts-eng`](https://huggingface.co/facebook/mms-tts-eng) | `public`, `license`, `metadata-only` | `tentgent model pull facebook/mms-tts-eng --capability audio-speech` | English VITS TTS, about 36M parameters; CC-BY-NC 4.0. |
+| `audio-speech` | [`suno/bark-small`](https://huggingface.co/suno/bark-small) | `public`, `metadata-only` | `tentgent model pull suno/bark-small --capability audio-speech` | MIT-licensed TTS pipeline candidate; heavier than MMS-TTS. |
+| `vision-chat` | [`HuggingFaceTB/SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) | `public`, `metadata-only` | `tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat` | Small image+text to text model for VQA/captioning contract tests. |
 | future video understanding | [`HuggingFaceTB/SmolVLM2-256M-Video-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Video-Instruct) | `public`, `planned` | no command until video workflow name is approved | Keep out of the first native endpoint unless video payload handling is approved. |
-| `image-generation` | [`hf-internal-testing/tiny-stable-diffusion-pipe`](https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe) | `public`, `internal-test`, `planned` | `tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe --capability image-generation` | Diffusers plumbing fixture only; not product-quality output. |
-| `image-generation` | [`segmind/tiny-sd`](https://huggingface.co/segmind/tiny-sd) | `public`, `planned` | `tentgent model pull segmind/tiny-sd --capability image-generation` | Tiny Stable Diffusion-style model; requires a Diffusers/artifact contract. |
+| `image-generation` | [`hf-internal-testing/tiny-stable-diffusion-pipe`](https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe) | `public`, `internal-test`, `metadata-only` | `tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe --capability image-generation` | Diffusers plumbing fixture only; not product-quality output. |
+| `image-generation` | [`segmind/tiny-sd`](https://huggingface.co/segmind/tiny-sd) | `public`, `metadata-only` | `tentgent model pull segmind/tiny-sd --capability image-generation` | Tiny Stable Diffusion-style model; requires a Diffusers/artifact contract. |
 
 ## Notes
 
 - The current Hugging Face pull path downloads full snapshots. Some repos may
   include ONNX or extra assets that inflate local size.
 - Add allow-pattern support later if smoke fixtures become too large.
-- Keep media fixture commands marked as planned until M6 contracts become
-  stable and runtime support exists.
+- Keep media fixture commands marked as metadata-only until runtime support
+  exists.

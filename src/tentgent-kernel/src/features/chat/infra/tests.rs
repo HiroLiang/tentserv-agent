@@ -64,19 +64,26 @@ fn std_chat_model_resolver_maps_model_metadata_to_local_chat_target() {
 
 #[test]
 fn std_chat_model_resolver_rejects_non_chat_models() {
-    let catalog = FakeModelCatalog {
-        metadata: model_metadata(ModelFormat::Safetensors, vec![ModelCapability::Embedding]),
-    };
-    let resolver = StdChatModelResolver::new(&catalog);
+    for capability in [
+        ModelCapability::Embedding,
+        ModelCapability::Rerank,
+        ModelCapability::AudioTranscription,
+        ModelCapability::VisionChat,
+    ] {
+        let catalog = FakeModelCatalog {
+            metadata: model_metadata(ModelFormat::Safetensors, vec![capability]),
+        };
+        let resolver = StdChatModelResolver::new(&catalog);
 
-    let err = resolver
-        .resolve_chat_model(ChatModelResolveRequest {
-            layout: layout_input(unique_path("chat-model-embedding-home")),
-            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
-        })
-        .expect_err("non-chat model");
+        let err = resolver
+            .resolve_chat_model(ChatModelResolveRequest {
+                layout: layout_input(unique_path("chat-model-non-chat-home")),
+                selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            })
+            .expect_err("non-chat model");
 
-    assert!(matches!(err, KernelError::UnsupportedTarget(_)));
+        assert!(matches!(err, KernelError::UnsupportedTarget(_)));
+    }
 }
 
 #[test]

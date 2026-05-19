@@ -175,4 +175,23 @@ mod tests {
         })
         .is_none());
     }
+
+    #[test]
+    fn does_not_infer_media_capabilities_from_huggingface_metadata_yet() {
+        for pipeline_tag in [
+            "automatic-speech-recognition",
+            "text-to-speech",
+            "image-to-text",
+            "text-to-image",
+        ] {
+            assert!(
+                classify_hf_model_capability(&HfModelMetadata {
+                    pipeline_tag: Some(pipeline_tag.to_string()),
+                    ..HfModelMetadata::default()
+                })
+                .is_none(),
+                "media pipeline tag `{pipeline_tag}` should require explicit user capability"
+            );
+        }
+    }
 }

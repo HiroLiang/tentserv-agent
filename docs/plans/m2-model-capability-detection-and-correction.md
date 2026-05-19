@@ -160,7 +160,7 @@ capability source remains `default-chat`:
 ```json
 {
   "warnings": [
-    "capability defaulted to chat; provide capability to classify embedding or rerank models"
+    "capability defaulted to chat; provide capability to classify another endpoint family"
   ]
 }
 ```

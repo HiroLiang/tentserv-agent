@@ -774,6 +774,34 @@ mod tests {
     }
 
     #[test]
+    fn parses_media_model_capability_values_as_metadata() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "model",
+            "pull",
+            "org/whisper",
+            "--capability",
+            "audio-transcription",
+        ])
+        .expect("parse media model capability");
+
+        match cli.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Pull {
+                        repo_id,
+                        capability,
+                        ..
+                    },
+            } => {
+                assert_eq!(repo_id, "org/whisper");
+                assert_eq!(capability, Some(ModelCapability::AudioTranscription));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn model_set_capability_rejects_unknown_cli_value() {
         let err = Cli::try_parse_from(["tentgent", "model", "set-capability", "abc123", "audio"])
             .expect_err("parse error");

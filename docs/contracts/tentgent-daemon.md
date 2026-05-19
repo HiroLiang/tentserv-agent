@@ -151,8 +151,9 @@ The first stable REST surface is:
 - `GET /v1/models/{reference}`
   Kernel-backed model inspection response for a full model ref or unique
   prefix. Model DTOs expose `model_capabilities` and
-  `model_capability_source` from kernel metadata so chat, embedding, and rerank
-  support remains visible at the API boundary.
+  `model_capability_source` from kernel metadata so runnable chat, embedding,
+  rerank support and metadata-only M6A media intent remain visible at the API
+  boundary.
 - `DELETE /v1/models/{reference}`
   Removes a stored model by full model ref or unique prefix after kernel
   reference checks pass.

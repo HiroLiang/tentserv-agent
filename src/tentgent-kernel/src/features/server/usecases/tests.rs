@@ -191,6 +191,8 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
     for (label, capability) in [
         ("embedding", ModelCapability::Embedding),
         ("rerank", ModelCapability::Rerank),
+        ("audio-transcription", ModelCapability::AudioTranscription),
+        ("vision-chat", ModelCapability::VisionChat),
     ] {
         let fixture = Fixture::new(label);
         fixture.write_model_capabilities(vec![capability]);

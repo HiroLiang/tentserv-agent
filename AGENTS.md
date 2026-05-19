@@ -94,15 +94,15 @@ Key current documents:
   User command examples for auth, model, adapter, dataset, chat, server, and LoRA training flows.
 - `docs/user/model-fixtures.md`
   Recommended small model fixtures and smoke-test commands for chat, embedding,
-  rerank, and planned M6 media workflows.
+  rerank, and metadata-only M6 media workflows.
 - `docs/user/runtime.md`
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
 - `docs/plans/capability-first-release-roadmap.md`
-  Active roadmap for model capability classification, embedding and rerank
-  endpoint work, deferred audio contracts, and prerelease Apple Developer ID
-  signing.
+  Active roadmap for model capability classification, embedding, rerank,
+  metadata-only media capability vocabulary, M6B media jobs, and prerelease
+  Apple Developer ID signing.
 - `docs/plans/archive/README.md`
   Router for completed or superseded plans that should be consulted only when historical implementation context is needed.
 - `docs/plans/archive/http-daemon-mvp.md`

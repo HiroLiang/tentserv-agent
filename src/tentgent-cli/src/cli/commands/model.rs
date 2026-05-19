@@ -15,8 +15,8 @@ pub enum ModelCommands {
         /// Local model file or directory to import.
         #[arg(value_name = "PATH")]
         path: PathBuf,
-        /// Serving capability to assign to this model.
-        #[arg(long, value_name = "chat|embedding|rerank")]
+        /// Capability metadata to assign to this model.
+        #[arg(long, value_name = "CAPABILITY")]
         capability: Option<ModelCapability>,
     },
     /// Pull a full model snapshot from Hugging Face into the managed store.
@@ -32,8 +32,8 @@ pub enum ModelCommands {
         /// Hugging Face revision to resolve before downloading.
         #[arg(short = 'r', long, value_name = "REV")]
         revision: Option<String>,
-        /// Serving capability to assign to this model.
-        #[arg(long, value_name = "chat|embedding|rerank")]
+        /// Capability metadata to assign to this model.
+        #[arg(long, value_name = "CAPABILITY")]
         capability: Option<ModelCapability>,
     },
     /// List managed models in the local Tentgent model store.
@@ -77,8 +77,8 @@ pub enum ModelCommands {
         /// Full model_ref or unique short-ref prefix.
         #[arg(value_name = "REF")]
         reference: String,
-        /// Serving capability to assign to this model.
-        #[arg(value_name = "chat|embedding|rerank")]
+        /// Capability metadata to assign to this model.
+        #[arg(value_name = "CAPABILITY")]
         capability: ModelCapability,
     },
 }

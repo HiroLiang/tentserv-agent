@@ -170,14 +170,15 @@ Review target:
 
 Detailed plan: [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md).
 
-- Define native multimodal request and response contracts before implementation.
+- Added metadata-only model capability values for `audio-transcription`,
+  `audio-speech`, `vision-chat`, and `image-generation`.
+- Kept media capability inference explicit-only; Hugging Face metadata
+  detection still classifies only confident chat, embedding, and rerank
+  evidence.
 - Split media capability names by workflow instead of using one broad value.
-- Consider audio transcription, speech generation, vision chat, image
-  generation, and video workflows as separate future endpoint families.
-- Identify small Hugging Face smoke models for each candidate workflow.
-- Decide whether the first deployable slice is a native parsed endpoint, an
-  opaque stream-in/stream-out runtime proxy, or a staged pair of both.
-- Keep the opaque proxy contract separate from native capability contracts: it
+- Identified small Hugging Face smoke models for each candidate workflow.
+- Chose async media jobs and artifact refs as the M6B runtime boundary.
+- Kept the opaque proxy contract separate from native capability contracts: it
   may forward bytes or chunks without parsing model-specific payloads, but it
   should not imply validation, compatibility gates, transcript state, or
   OpenAI-compatible semantics.
@@ -186,14 +187,15 @@ Detailed plan: [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md).
 
 Review target:
 
-- M6A has a precise native multimodal vocabulary plus an explicit decision on
-  whether an opaque streaming proxy belongs in the first implementation slice.
+- M6A has a precise native multimodal metadata vocabulary plus an explicit
+  decision that M6B starts with media jobs/artifacts, not an opaque streaming
+  proxy.
 
 ### M6B: Media Runtime Boundary
 
-- Convert the approved M6A contract direction into one implementable slice.
-- Choose either async media jobs, an opaque stream proxy, or the first native
-  endpoint as the implementation target.
+- Convert the approved M6A async media job and artifact direction into one
+  implementable slice.
+- Keep opaque stream proxy work separate from native media endpoint contracts.
 - Move stable interface text into `docs/contracts/` only when implementation is
   approved.
 
@@ -218,9 +220,9 @@ Review target:
 ## Release Milestones
 
 - Current alpha line: capability metadata, compatibility gates, embedding MVP,
-  and rerank MVP are implemented and documented.
-- Multimodal planning follow-up: native media contracts and any opaque streaming
-  proxy boundary are explicit before runtime work starts.
+  rerank MVP, and M6A media metadata vocabulary are implemented and documented.
+- Multimodal planning follow-up: async media jobs and artifact refs are defined
+  before native runtime work starts.
 - Signing prerelease: Developer ID signing and notarization pipeline passes.
 - Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints
   remain explicitly deferred unless their contracts and runtime paths are
@@ -233,5 +235,6 @@ Review target:
 - Import and pull tests for capability override behavior.
 - Server tests for incompatible model and endpoint combinations.
 - HTTP tests for embedding and rerank request validation and response ordering.
+- Metadata tests for explicit-only M6A media capability values.
 - Doctor/capability-state tests for backend readiness reporting.
 - Release workflow tests or dry runs for signed macOS artifacts before beta.

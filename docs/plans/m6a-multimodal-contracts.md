@@ -3,7 +3,7 @@
 This is the focused execution plan for the first M6 slice in the
 [capability-first release roadmap](./capability-first-release-roadmap.md).
 
-Status: planned.
+Status: implemented.
 
 ## Goal
 
@@ -12,23 +12,24 @@ Status: planned.
 - Decide which media workflows need HTTP request/response, async job, and
   realtime streaming contracts.
 - Identify small Hugging Face models that can smoke-test each planned workflow.
-- Keep the output as planning Markdown until contracts and runtime paths are
-  ready to implement.
+- Persist approved media workflow names as model metadata only.
 
 ## Documentation Boundary
 
-- Keep M6 contract decisions in `docs/plans/` until a native endpoint, proxy
-  boundary, or versioned release surface is approved.
+- Keep runtime and payload decisions in `docs/plans/` until a native endpoint,
+  proxy boundary, or versioned release surface is approved.
+- Update `docs/contracts/model-store.md` and `docs/contracts/http-daemon.md`
+  for the stable model metadata vocabulary.
 - User-facing fixture docs may list current runnable `chat`, `embedding`, and
-  `rerank` models, plus clearly marked planned M6 media candidates.
-- Do not update `docs/contracts/` or claim media endpoints in root `README.md`
-  until a stable implementation boundary exists.
-- When implementation starts, split stable interface text into focused
+  `rerank` models, plus clearly marked metadata-only M6 media candidates.
+- Do not add media runtime contract docs or claim media endpoints in root
+  `README.md` until a stable implementation boundary exists.
+- When runtime implementation starts, split stable interface text into focused
   `docs/contracts/*.md` files instead of growing this plan.
 
 ## Native Capability Vocabulary
 
-Initial candidate workflow names:
+Approved model metadata capability names:
 
 ```text
 audio-transcription
@@ -42,10 +43,14 @@ Rules:
 - Do not persist a generic `audio`, `media`, or `multimodal` capability.
 - Capability names describe the endpoint workflow, not only the file format or
   model family.
+- `vision-chat` is a separate model capability from text-only `chat`; it should
+  not reuse text-only message DTOs until media content parts are explicit.
 - Video is not one capability. Treat future video work as workflow-specific,
   such as `video-understanding`, after payload and streaming semantics are
   clearer.
 - Opaque proxy support, if added, is not a normal model serving capability.
+- Hugging Face metadata detection must not infer these media capabilities yet;
+  users must set them explicitly with `--capability` or `set-capability`.
 
 ## Workflow Meanings
 
@@ -119,11 +124,28 @@ Rules:
   semantics, or payload validation.
 - Treat it as a runtime tunnel with explicit resource and lifecycle limits.
 
+## M6B Decision
+
+M6B should implement the media artifact and async job boundary before realtime
+duplex streaming or an opaque raw stream proxy.
+
+Rationale:
+
+- It gives audio, image, and future video workflows one shared place for input
+  artifact refs, output artifact refs, size limits, retention, and cleanup.
+- It keeps long-running media generation out of ordinary request/response
+  paths.
+- It does not prevent a later WebSocket/WebRTC or opaque stream proxy, but it
+  avoids treating raw chunk forwarding as the main model-serving contract.
+
+Recommended M6C first native endpoint candidate: `audio-transcription`, with a
+small Whisper fixture and a non-realtime file/artifact request path.
+
 ## Candidate HF Smoke Models
 
-These are planning-time fixtures, not product defaults.
+These are metadata and planning-time fixtures, not product defaults.
 See [../user/model-fixtures.md](../user/model-fixtures.md) for the broader
-chat, embedding, rerank, and planned media fixture guide.
+chat, embedding, rerank, and metadata-only media fixture guide.
 
 | Workflow | Candidate | Why it is useful | Caveat |
 | --- | --- | --- | --- |
@@ -140,9 +162,8 @@ chat, embedding, rerank, and planned media fixture guide.
 
 ### 1. Capability Vocabulary Draft
 
-- Add the candidate names to the roadmap as deferred, not persisted, values.
-- Decide whether `vision-chat` is a chat extension or separate first-class
-  capability in model metadata.
+- Add the candidate names to model metadata as explicit-only values.
+- Decide `vision-chat` is a separate first-class capability in model metadata.
 - Leave video naming deferred until transport and artifact behavior are clearer.
 
 ### 2. Payload And Artifact Decisions
@@ -175,24 +196,24 @@ chat, embedding, rerank, and planned media fixture guide.
 
 ### 6. Follow-Up Plan Split
 
-- M6B should become either async media jobs or opaque stream proxy after M6A.
+- M6B should define async media jobs and artifact refs.
 - M6C should become the first native runtime endpoint after the contract is
   stable.
 - Stable contract docs move only when M6B/M6C is approved for implementation.
-- User docs may keep planned media fixtures only when they are clearly marked as
-  unavailable workflow names.
+- User docs may keep media fixtures only when they are clearly marked as
+  metadata-only until runtime support exists.
 
 ## Non-Goals
 
 - Do not implement audio, image, or video runtime execution.
 - Do not add OpenAI-compatible media endpoints.
 - Do not add realtime WebSocket/WebRTC infrastructure.
-- Do not persist media capability metadata before names and gates are approved.
 - Do not claim media endpoint or versioned behavior before it exists.
 
 ## Review Target
 
-- The team can choose M6B and M6C from a clear matrix of native workflows,
-  transport shapes, and HF smoke fixtures.
+- M6B is selected as async media jobs and artifact refs.
+- M6C can choose the first native runtime endpoint from a clear matrix of
+  native workflows, transport shapes, and HF smoke fixtures.
 - No runtime code or user-facing claims are added before the contract boundary is
   stable.

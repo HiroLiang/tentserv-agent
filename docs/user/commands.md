@@ -98,9 +98,11 @@ tentgent model pull DravenBlack/gemma-3-1b-it-Q4_K_M-GGUF
 tentgent model pull BAAI/bge-reranker-base --capability rerank --revision main
 ```
 
-`--capability` accepts `chat`, `embedding`, or `rerank`. Chat and embedding
-endpoints enforce this metadata before runtime dispatch. Rerank metadata is
-stored for future endpoint work.
+`--capability` accepts `chat`, `embedding`, `rerank`,
+`audio-transcription`, `audio-speech`, `vision-chat`, or
+`image-generation`. Chat, embedding, and rerank endpoints enforce this metadata
+before runtime dispatch. Media capability values are metadata-only until their
+payload and runtime contracts are implemented.
 
 List and inspect models:
 

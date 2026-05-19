@@ -955,7 +955,7 @@ async fn model_import_route_returns_default_capability_warning() {
     assert_eq!(body["model"]["model_capability_source"], "default-chat");
     assert_eq!(
         body["warnings"][0],
-        "capability defaulted to chat; provide capability to classify embedding or rerank models"
+        "capability defaulted to chat; provide capability to classify another endpoint family"
     );
 
     let _ = fs::remove_dir_all(home);
@@ -1081,7 +1081,7 @@ async fn model_import_job_records_default_capability_warning() {
     assert_eq!(body["job"]["status"], "succeeded");
     assert_eq!(
         body["job"]["warning_summary"],
-        "capability defaulted to chat; provide capability to classify embedding or rerank models"
+        "capability defaulted to chat; provide capability to classify another endpoint family"
     );
 
     let _ = fs::remove_dir_all(home);
@@ -1186,7 +1186,7 @@ async fn model_patch_updates_capability_metadata() {
                 .method("PATCH")
                 .uri(format!("/v1/models/{}", &model_ref[..12]))
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"capability":"rerank"}"#))
+                .body(Body::from(r#"{"capability":"vision-chat"}"#))
                 .expect("request"),
         )
         .await
@@ -1197,7 +1197,7 @@ async fn model_patch_updates_capability_metadata() {
     assert_eq!(body["mutation"]["kind"], "update_capability");
     assert_eq!(
         body["model"]["model_capabilities"],
-        serde_json::json!(["rerank"])
+        serde_json::json!(["vision-chat"])
     );
     assert_eq!(body["model"]["model_capability_source"], "manual-update");
 
@@ -1213,7 +1213,7 @@ async fn model_patch_updates_capability_metadata() {
     let body = json_body(response).await;
     assert_eq!(
         body["model"]["model_capabilities"],
-        serde_json::json!(["rerank"])
+        serde_json::json!(["vision-chat"])
     );
     assert_eq!(body["model"]["model_capability_source"], "manual-update");
 

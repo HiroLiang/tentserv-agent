@@ -650,9 +650,13 @@ Request bodies reject unknown fields. `repo_id` must be a Hugging Face repo id
 such as `owner/name`, not a URL or `/tree/...` path. Omitted or `null`
 `revision` uses the core default; blank `revision` returns JSON `400`.
 Model import and pull may include one optional `capability` value: `chat`,
-`embedding`, or `rerank`. Invalid capability values return JSON
-`400 bad_request`. The capability field updates model metadata and is enforced
-by endpoint-family gates; it does not change model identity.
+`embedding`, `rerank`, `audio-transcription`, `audio-speech`, `vision-chat`,
+or `image-generation`. Invalid capability values return JSON `400 bad_request`.
+The capability field updates model metadata and is enforced by implemented
+endpoint-family gates; it does not change model identity. Media capability
+values are metadata-only in M6A and do not imply audio, image, or video runtime
+routes.
+
 Omitted, `null`, or blank `base_model_ref` means no base binding for adapter
 import or pull.
 
@@ -670,7 +674,7 @@ Successful responses return the stable inspect shape plus a mutation summary:
     "source_index_path": "/path/to/models/by-source/local/..."
   },
   "warnings": [
-    "capability defaulted to chat; provide capability to classify embedding or rerank models"
+    "capability defaulted to chat; provide capability to classify another endpoint family"
   ]
 }
 ```
@@ -1168,12 +1172,12 @@ DELETE /v1/datasets/{dataset_ref}
 DELETE /v1/servers/{server_ref}
 ```
 
-`PATCH /v1/models/{model_ref}` accepts one `capability` value and rewrites only
-model capability metadata. It sets `model_capability_source` to
-`manual-update` and does not change `model_ref`:
+`PATCH /v1/models/{model_ref}` accepts one model metadata `capability` value
+and rewrites only model capability metadata. It sets
+`model_capability_source` to `manual-update` and does not change `model_ref`:
 
 ```json
-{ "capability": "embedding" }
+{ "capability": "vision-chat" }
 ```
 
 Successful model capability updates return:

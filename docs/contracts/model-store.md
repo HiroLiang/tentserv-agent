@@ -95,21 +95,26 @@ Primary format selection order:
 
 ## Model Capability Metadata
 
-`model_capabilities` describes what endpoint families a model can serve. It is
-separate from file format and local backend readiness.
+`model_capabilities` describes the intended endpoint family for a model. It is
+separate from file format, local backend readiness, and whether a runtime path
+has been implemented yet.
 
 Initial capability values:
 
 - `chat`
 - `embedding`
 - `rerank`
+- `audio-transcription`
+- `audio-speech`
+- `vision-chat`
+- `image-generation`
 
 Existing metadata without `model_capabilities` should be read as `["chat"]`.
 New imports default to `["chat"]` when neither explicit input nor confident
 Hugging Face metadata evidence identifies a capability. Local import and
-Hugging Face pull accept one explicit capability value: `chat`, `embedding`, or
-`rerank`. Explicit input stores exactly that one value and records
-`model_capability_source = "explicit-user"`.
+Hugging Face pull accept one explicit capability value. Explicit input stores
+exactly that one value and records `model_capability_source =
+"explicit-user"`.
 
 If content deduplication finds an existing `model_ref`, omitted capability
 input preserves the stored metadata. Explicit capability input updates the
@@ -123,6 +128,10 @@ evidence. `feature-extraction`, `sentence-similarity`,
 sequence-classification paired with ranking metadata can classify `rerank`;
 `text-generation`, `conversational`, or a tokenizer `chat_template` can
 classify `chat`. Conflicting or weak evidence must not be guessed.
+
+Media capabilities are explicit-only in M6A: Hugging Face audio, image, or
+vision pipeline tags must not auto-classify a model as `audio-transcription`,
+`audio-speech`, `vision-chat`, or `image-generation`.
 
 Capability assignment precedence is:
 
@@ -150,15 +159,17 @@ shape.
   architectures provided enough evidence.
 - `manual-update`: a later local metadata mutation changed the capability set.
 
-Changing capability metadata does not change `model_ref`; canonical identity is
-still content-derived from the manifest. A later metadata update may add
-`embedding` or `rerank` to an imported model when the user or source metadata
-can justify it.
+Changing capability metadata does not change `model_ref`; canonical identity
+is still content-derived from the manifest. A later metadata update may change
+the stored endpoint-family intent when the user or source metadata can justify
+it.
 
 Capability metadata is endpoint-gating metadata. Chat endpoints accept only
 models advertising `chat`; the embedding endpoint accepts only models
 advertising `embedding`; the rerank endpoint accepts only models advertising
-`rerank`.
+`rerank`. M6A media capability values are persisted metadata only. They do not
+enable audio, image, video, direct server, or daemon runtime endpoints until a
+later contract explicitly implements those surfaces.
 
 ## Hugging Face Pull Contract
 
