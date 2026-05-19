@@ -232,6 +232,8 @@ Added:
   and token-gated daemon shutdown.
 - HTTP and CLI session mutation, session-aware chat, OpenAI-compatible
   `session_ref` extensions, and destructive bounded session compaction.
+- Server specs expose endpoint capability and reject non-chat models on chat
+  server and chat route paths.
 - Terminal UI operator console with status/settings screens, daemon discovery,
   explicit daemon start, non-secret config, guarded local Keychain setup, and
   read-only navigators for stores, servers, sessions, and LoRA training state.

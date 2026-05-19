@@ -75,6 +75,7 @@ impl ServerSpecUseCase for StdServerUseCase<'_> {
 
         if store.server_spec_path(spec.server_ref.as_str()).exists() {
             let inspection = self.catalog.inspect_server(&store, &selector)?;
+            ensure_server_spec_launchable(&inspection.spec, &layout, self.model_catalog)?;
             return Ok(ServerPrepareResult {
                 layout,
                 store,

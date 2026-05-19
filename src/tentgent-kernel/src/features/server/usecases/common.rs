@@ -1,9 +1,9 @@
 use crate::features::model::domain::{ModelCapability, ModelRefSelector, ModelStoreLayout};
 use crate::features::model::ports::ModelCatalogStore;
 use crate::features::server::domain::{
-    normalize_server_host, parse_server_runtime_selection, ServerRef, ServerRuntimeKind,
-    ServerRuntimeSelection, ServerRuntimeTarget, ServerSpec, ServerStoreLayout,
-    DEFAULT_SERVER_PORT,
+    ensure_server_model_capability, normalize_server_host, parse_server_runtime_selection,
+    ServerCapability, ServerRef, ServerRuntimeKind, ServerRuntimeSelection, ServerRuntimeTarget,
+    ServerSpec, ServerStoreLayout, DEFAULT_SERVER_PORT,
 };
 use crate::features::server::ports::ServerIdentityGenerator;
 use crate::foundation::error::{KernelError, KernelResult};
@@ -32,12 +32,11 @@ pub(super) fn resolve_server_runtime_target(
             let model_store = model_store_layout(layout);
             let model = model_catalog.inspect_model(&model_store, &selector)?;
             let metadata = &model.metadata;
-            if !metadata.supports_capability(ModelCapability::Chat) {
-                return Err(KernelError::UnsupportedTarget(format!(
-                    "model `{}` does not advertise chat capability",
-                    metadata.model_ref
-                )));
-            }
+            ensure_model_compatible_with_server(
+                ServerCapability::Chat,
+                &metadata.model_ref,
+                &metadata.model_capabilities,
+            )?;
 
             Ok(ServerRuntimeTarget::LocalModel {
                 model_ref: metadata.model_ref.clone(),
@@ -74,12 +73,12 @@ pub(super) fn ensure_server_spec_launchable(
             let selector = ModelRefSelector::parse(model_ref.as_str())
                 .map_err(|err| KernelError::ServerStoreUnavailable(err.to_string()))?;
             let model = model_catalog.inspect_model(&model_store, &selector)?;
-            if !model.metadata.supports_capability(ModelCapability::Chat) {
-                return Err(KernelError::UnsupportedTarget(format!(
-                    "model `{}` does not advertise chat capability",
-                    model.metadata.model_ref
-                )));
-            }
+            ensure_model_compatible_with_server(
+                spec.capability,
+                &model.metadata.model_ref,
+                &model.metadata.model_capabilities,
+            )?;
+            ensure_server_capability_implemented(spec.capability)?;
             Ok(())
         }
     }
@@ -125,6 +124,7 @@ fn spec_for_ref(
             server_ref,
             short_ref,
             runtime_kind: ServerRuntimeKind::Local,
+            capability: ServerCapability::Chat,
             model_ref: Some(model_ref),
             provider: None,
             provider_model: None,
@@ -141,6 +141,7 @@ fn spec_for_ref(
             server_ref,
             short_ref,
             runtime_kind: ServerRuntimeKind::Cloud,
+            capability: ServerCapability::Chat,
             model_ref: None,
             provider: Some(provider),
             provider_model: Some(provider_model),
@@ -151,4 +152,23 @@ fn spec_for_ref(
             created_at,
         },
     }
+}
+
+fn ensure_model_compatible_with_server(
+    server_capability: ServerCapability,
+    model_ref: &crate::features::model::domain::ModelRef,
+    model_capabilities: &[ModelCapability],
+) -> KernelResult<()> {
+    ensure_server_model_capability(server_capability, model_ref, model_capabilities)
+        .map_err(|err| KernelError::UnsupportedTarget(err.to_string()))
+}
+
+fn ensure_server_capability_implemented(capability: ServerCapability) -> KernelResult<()> {
+    if capability == ServerCapability::Chat {
+        return Ok(());
+    }
+
+    Err(KernelError::UnsupportedTarget(format!(
+        "server capability `{capability}` is not implemented yet"
+    )))
 }

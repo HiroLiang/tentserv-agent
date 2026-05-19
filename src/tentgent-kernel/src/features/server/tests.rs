@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use crate::features::model::domain::{ModelRef, ModelRefSelector};
 
 use super::domain::{
-    parse_server_runtime_selection, CloudProvider, LaunchMode, ServerProcessMetadata, ServerRef,
-    ServerRefParseError, ServerRefSelector, ServerRuntimeKind, ServerRuntimeSelection, ServerSpec,
-    ServerStoreLayout, DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, SERVER_PROCESS_FILENAME,
-    SERVER_REF_HEX_LENGTH, SERVER_SPEC_FILENAME, SERVER_STDERR_LOG_FILENAME,
-    SERVER_STDOUT_LOG_FILENAME, SHORT_SERVER_REF_LENGTH,
+    parse_server_runtime_selection, CloudProvider, LaunchMode, ServerCapability,
+    ServerProcessMetadata, ServerRef, ServerRefParseError, ServerRefSelector, ServerRuntimeKind,
+    ServerRuntimeSelection, ServerSpec, ServerStoreLayout, DEFAULT_SERVER_HOST,
+    DEFAULT_SERVER_PORT, SERVER_PROCESS_FILENAME, SERVER_REF_HEX_LENGTH, SERVER_SPEC_FILENAME,
+    SERVER_STDERR_LOG_FILENAME, SERVER_STDOUT_LOG_FILENAME, SHORT_SERVER_REF_LENGTH,
 };
 
 #[test]
@@ -112,6 +112,7 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref,
         runtime_kind: ServerRuntimeKind::Local,
+        capability: ServerCapability::Chat,
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
@@ -129,9 +130,17 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
 
     let spec_body = toml::to_string_pretty(&spec).expect("serialize spec");
     assert!(spec_body.contains("runtime_kind = \"local\""));
+    assert!(spec_body.contains("capability = \"chat\""));
     assert!(spec_body.contains("lazy_load = true"));
     let parsed_spec: ServerSpec = toml::from_str(&spec_body).expect("parse spec");
     assert_eq!(parsed_spec, spec);
+    let legacy_body = spec_body
+        .lines()
+        .filter(|line| !line.starts_with("capability = "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let parsed_legacy_spec: ServerSpec = toml::from_str(&legacy_body).expect("parse legacy spec");
+    assert_eq!(parsed_legacy_spec.capability, ServerCapability::Chat);
 
     let process_body = toml::to_string_pretty(&process).expect("serialize process");
     assert!(process_body.contains("launch_mode = \"background\""));

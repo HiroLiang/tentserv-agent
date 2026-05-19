@@ -253,7 +253,7 @@ The first stable REST surface is:
 - `GET /v1/servers/{reference}`
   Kernel-backed stored server inspection response for a full server ref or
   unique prefix. Server DTOs expose runtime target, bind settings, process
-  metadata, and server-local paths from kernel state.
+  metadata, endpoint capability, and server-local paths from kernel state.
 - `GET /v1/sessions`
   Kernel-backed session catalog list response.
 - `GET /v1/sessions/{reference}`

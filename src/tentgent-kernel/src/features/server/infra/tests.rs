@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::features::auth::domain::{AuthSecretMaterial, AuthSecretSource, Provider};
 use crate::features::model::domain::ModelRef;
 use crate::features::server::domain::{
-    CloudProvider, LaunchMode, ServerRef, ServerRefSelector, ServerRuntimeKind,
+    CloudProvider, LaunchMode, ServerCapability, ServerRef, ServerRefSelector, ServerRuntimeKind,
     ServerRuntimeTarget, ServerSpec, ServerStoreLayout, SERVER_REF_HEX_LENGTH,
 };
 use crate::features::server::ports::{
@@ -84,6 +84,7 @@ fn file_catalog_stores_specs_and_process_metadata() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref: server_ref.clone(),
         runtime_kind: super::super::domain::ServerRuntimeKind::Local,
+        capability: ServerCapability::Chat,
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
@@ -131,6 +132,7 @@ fn local_runtime_args_preserve_python_server_shape() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref,
         runtime_kind: ServerRuntimeKind::Local,
+        capability: ServerCapability::Chat,
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
@@ -175,6 +177,7 @@ fn cloud_runtime_args_include_provider_auth_env() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref,
         runtime_kind: ServerRuntimeKind::Cloud,
+        capability: ServerCapability::Chat,
         model_ref: None,
         provider: Some(CloudProvider::OpenAI),
         provider_model: Some("gpt-4.1-mini".to_string()),

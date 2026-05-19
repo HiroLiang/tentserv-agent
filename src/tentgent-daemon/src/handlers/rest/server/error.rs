@@ -19,6 +19,9 @@ pub(super) fn server_error(error: KernelError) -> RestError {
     match error {
         KernelError::ServerStoreUnavailable(message) => server_store_error(message),
         KernelError::ServerRuntimeUnavailable(message) => server_runtime_error(message),
+        KernelError::UnsupportedTarget(message) => {
+            RestError::bad_request("unsupported_target", message)
+        }
         other => RestError::kernel("server_read_failed", other),
     }
 }

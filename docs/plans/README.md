@@ -28,8 +28,14 @@ one pass without a staged breakdown.
   embedding and rerank endpoint work, deferred audio contracts, and Apple
   Developer ID signing before beta or release candidate tags.
 - [m2-model-capability-detection-and-correction.md](./m2-model-capability-detection-and-correction.md)
-  Next execution slice: Hugging Face capability detection, manual metadata
+  Detailed M2 slice: Hugging Face capability detection, manual metadata
   correction, and clear default-chat fallback warnings.
+- [m3-server-compatibility-gates.md](./m3-server-compatibility-gates.md)
+  Implemented M3 slice: server capability metadata, daemon server DTOs, and
+  endpoint-family compatibility gates before embedding and rerank runtime work.
+- [m4-embedding-mvp.md](./m4-embedding-mvp.md)
+  Current execution slice: native embedding endpoint, embedding runtime port,
+  first backend path, and endpoint-family isolation from chat sessions.
 
 ## Recommended Order
 

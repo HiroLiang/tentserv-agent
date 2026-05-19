@@ -6,7 +6,7 @@ use crate::features::auth::domain::{AuthSecretMaterial, Provider};
 use crate::features::runtime::domain::{PythonRuntimeLayout, RuntimeEntrypoint};
 use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::features::server::domain::{
-    CloudProvider, ServerInspection, ServerRuntimeKind, ServerSpec,
+    CloudProvider, ServerCapability, ServerInspection, ServerRuntimeKind, ServerSpec,
 };
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayout;
@@ -145,6 +145,13 @@ pub(super) fn server_runtime_command_parts(
     home_dir: &std::path::Path,
     auth: Option<&AuthSecretMaterial>,
 ) -> KernelResult<ServerRuntimeCommandParts> {
+    if spec.capability != ServerCapability::Chat {
+        return Err(server_runtime_error(format!(
+            "server capability `{}` is not implemented yet",
+            spec.capability
+        )));
+    }
+
     let mut args = vec![
         "--server-ref".to_string(),
         spec.server_ref.to_string(),

@@ -688,6 +688,7 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
             "status",
             "mode",
             "runtime",
+            "capability",
             "provider",
             "model",
             "host",
@@ -720,6 +721,7 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
             Cell::new(if server.running { "running" } else { "stopped" }),
             Cell::new(mode),
             Cell::new(server.spec.runtime_kind.as_str()),
+            Cell::new(server.spec.capability.as_str()),
             Cell::new(server.spec.provider_label()),
             Cell::new(server.spec.runtime_model_label()),
             Cell::new(&server.spec.host),
@@ -821,6 +823,10 @@ fn render_server_table(inspection: &ServerInspection) -> Table {
     table.add_row(vec![
         Cell::new("runtime"),
         Cell::new(inspection.spec.runtime_kind.as_str()),
+    ]);
+    table.add_row(vec![
+        Cell::new("capability"),
+        Cell::new(inspection.spec.capability.as_str()),
     ]);
     if inspection.spec.is_cloud() {
         table.add_row(vec![

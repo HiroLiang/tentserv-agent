@@ -109,6 +109,8 @@ Review target:
 
 ### M3: Server Compatibility Gates
 
+Detailed plan: [m3-server-compatibility-gates.md](./m3-server-compatibility-gates.md).
+
 - Add server capability to local server specs and daemon server DTOs.
 - Reject incompatible starts and requests with clear errors:
   - chat endpoint with embedding or rerank model
@@ -121,6 +123,8 @@ Review target:
 - A model cannot be accidentally served through the wrong endpoint family.
 
 ### M4: Embedding MVP
+
+Detailed plan: [m4-embedding-mvp.md](./m4-embedding-mvp.md).
 
 - Add native `POST /v1/embeddings` through daemon REST and direct local server
   paths.

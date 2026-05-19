@@ -1,16 +1,22 @@
 use std::path::PathBuf;
 
 use crate::features::model::domain::{
-    default_model_capabilities, default_model_capability_source, ModelFormat, ModelMetadata,
-    ModelRef, ModelSourceKind, ModelStoreLayout,
+    default_model_capabilities, default_model_capability_source, ModelCapability, ModelFormat,
+    ModelMetadata, ModelRef, ModelSourceKind, ModelStoreLayout,
 };
 use crate::features::model::infra::FileModelCatalogStore;
 use crate::features::model::ports::ModelCatalogStore;
-use crate::features::server::domain::{CloudProvider, LaunchMode, ServerRefSelector};
+use crate::features::server::domain::{
+    CloudProvider, LaunchMode, ServerCapability, ServerRef, ServerRefSelector, ServerRuntimeKind,
+    ServerSpec,
+};
 use crate::features::server::infra::{
     FileServerCatalogStore, StdServerIdentityGenerator, StdServerStoreLayoutInitializer,
 };
-use crate::features::server::ports::{ServerClock, ServerProcessController, ServerProcessProbe};
+use crate::features::server::ports::{
+    ServerCatalogStore, ServerClock, ServerProcessController, ServerProcessProbe,
+    ServerStoreLayoutInitializer,
+};
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::{
     LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
@@ -177,6 +183,115 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
         .expect("remove local server");
 }
 
+#[test]
+fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
+    for (label, capability) in [
+        ("embedding", ModelCapability::Embedding),
+        ("rerank", ModelCapability::Rerank),
+    ] {
+        let fixture = Fixture::new(label);
+        fixture.write_model_capabilities(vec![capability]);
+        let layout_resolver = StdRuntimeLayoutResolver;
+        let initializer = StdServerStoreLayoutInitializer;
+        let model_catalog = FileModelCatalogStore;
+        let identity = StdServerIdentityGenerator;
+        let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+        let controller = StaticProcessController;
+        let clock = StaticClock;
+        let servers = StdServerUseCase::new(
+            &layout_resolver,
+            &initializer,
+            &model_catalog,
+            &identity,
+            &catalog,
+            &controller,
+            &clock,
+        );
+
+        let err = servers
+            .prepare_server(ServerPrepareRequest {
+                layout: fixture.layout_input(LayoutResolveMode::Create),
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                host: None,
+                port: Some(8781),
+                lazy_load: false,
+                idle_seconds: None,
+            })
+            .expect_err("non-chat model should not prepare a chat server");
+
+        let message = err.to_string();
+        assert!(message.contains("server capability `chat`"));
+        assert!(message.contains("requires model capability `chat`"));
+        assert!(message.contains(capability.as_str()));
+    }
+}
+
+#[test]
+fn standard_server_usecase_rejects_non_chat_stored_specs_before_start() {
+    let fixture = Fixture::new("stored-non-chat");
+    fixture.write_model_capabilities(vec![ModelCapability::Embedding]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+    let layout = StdRuntimeLayoutResolver
+        .resolve(fixture.layout_input(LayoutResolveMode::Create))
+        .expect("layout");
+    let server_store =
+        crate::features::server::domain::ServerStoreLayout::from_home_and_servers_dir(
+            layout.home_dir.clone(),
+            layout.servers_dir.clone(),
+        );
+    StdServerStoreLayoutInitializer
+        .ensure_server_store_layout(&server_store)
+        .expect("server layout");
+    let server_ref =
+        ServerRef::parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+            .expect("server ref");
+    FileServerCatalogStore::new(StaticProcessProbe { running: false })
+        .save_server_spec(
+            &server_store,
+            &ServerSpec {
+                server_ref: server_ref.clone(),
+                short_ref: server_ref.short_ref().to_string(),
+                runtime_kind: ServerRuntimeKind::Local,
+                capability: ServerCapability::Embedding,
+                model_ref: Some(fixture.model_ref.clone()),
+                provider: None,
+                provider_model: None,
+                host: "127.0.0.1".to_string(),
+                port: 8781,
+                lazy_load: false,
+                idle_seconds: None,
+                created_at: "2026-05-17T00:00:00Z".to_string(),
+            },
+        )
+        .expect("save server spec");
+
+    let err = servers
+        .resolve_for_start(ServerResolveForStartRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            selector: ServerRefSelector::parse(server_ref.short_ref()).expect("selector"),
+        })
+        .expect_err("non-chat server runtime is not implemented");
+
+    assert!(err
+        .to_string()
+        .contains("server capability `embedding` is not implemented yet"));
+}
+
 struct Fixture {
     home: PathBuf,
     data: PathBuf,
@@ -212,6 +327,10 @@ impl Fixture {
     }
 
     fn write_chat_model(&self) {
+        self.write_model_capabilities(default_model_capabilities());
+    }
+
+    fn write_model_capabilities(&self, capabilities: Vec<ModelCapability>) {
         let layout = StdRuntimeLayoutResolver
             .resolve(self.layout_input(LayoutResolveMode::Create))
             .expect("layout");
@@ -228,7 +347,7 @@ impl Fixture {
                     source_path: Some("/tmp/model".to_string()),
                     primary_format: ModelFormat::Safetensors,
                     detected_formats: vec![ModelFormat::Safetensors],
-                    model_capabilities: default_model_capabilities(),
+                    model_capabilities: capabilities,
                     model_capability_source: default_model_capability_source(),
                     file_count: 1,
                     total_bytes: 1024,

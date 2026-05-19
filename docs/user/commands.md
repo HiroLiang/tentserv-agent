@@ -139,6 +139,9 @@ Launch a long-lived local server:
 tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 ```
 
+Server launch currently requires a chat-capable model. Models classified only
+as `embedding` or `rerank` are rejected until their runtime endpoints ship.
+
 Call the server:
 
 ```bash

@@ -429,6 +429,68 @@ async fn gemini_generate_content_rejects_non_text_parts() {
 }
 
 #[tokio::test]
+async fn chat_family_routes_reject_non_chat_models_before_runtime() {
+    for (label, capability, model_ref) in [
+        ("embedding", "embedding", "4".repeat(64)),
+        ("rerank", "rerank", "5".repeat(64)),
+    ] {
+        let requested_home = unique_home(&format!("chat-route-{label}"));
+        let state = rest_state_for_home(requested_home);
+        let home = state.app().layout().home_dir.canonicalize().expect("home");
+        write_model_fixture_with_capabilities(&home, &model_ref, &[capability]);
+
+        let requests = [
+            (
+                "/v1/chat".to_string(),
+                format!(
+                    r#"{{"model_ref":"{model_ref}","messages":[{{"role":"user","content":"hi"}}]}}"#
+                ),
+            ),
+            (
+                "/v1/chat/completions".to_string(),
+                format!(
+                    r#"{{"model":"{model_ref}","messages":[{{"role":"user","content":"hi"}}]}}"#
+                ),
+            ),
+            (
+                "/v1/messages".to_string(),
+                format!(
+                    r#"{{"model":"{model_ref}","max_tokens":12,"messages":[{{"role":"user","content":"hi"}}]}}"#
+                ),
+            ),
+            (
+                format!("/v1beta/models/{model_ref}:generateContent"),
+                r#"{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}"#.to_string(),
+            ),
+        ];
+
+        for (uri, body) in requests {
+            let response = build_router(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(uri)
+                        .header("content-type", "application/json")
+                        .body(Body::from(body))
+                        .expect("request"),
+                )
+                .await
+                .expect("response");
+
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            let body = json_body(response).await;
+            assert_eq!(body["error"], "unsupported_target");
+            let message = body["message"].as_str().expect("message");
+            assert!(message.contains("chat endpoint"));
+            assert!(message.contains("requires model capability `chat`"));
+            assert!(message.contains(capability));
+        }
+
+        let _ = fs::remove_dir_all(home);
+    }
+}
+
+#[tokio::test]
 async fn jobs_returns_empty_registry_for_isolated_home() {
     let requested_home = unique_home("jobs-empty");
     let state = rest_state_for_home(requested_home);
@@ -1885,6 +1947,7 @@ async fn server_list_and_inspect_read_kernel_catalog() {
     assert_eq!(servers[0]["server_ref"].as_str(), Some(server_ref.as_str()));
     assert_eq!(servers[0]["short_ref"].as_str(), Some(&server_ref[..12]));
     assert_eq!(servers[0]["runtime_kind"], "local");
+    assert_eq!(servers[0]["capability"], "chat");
     assert_eq!(servers[0]["model_ref"].as_str(), Some(model_ref.as_str()));
     assert_eq!(servers[0]["host"], "127.0.0.1");
     assert_eq!(servers[0]["port"], 8999);
@@ -1907,6 +1970,7 @@ async fn server_list_and_inspect_read_kernel_catalog() {
     let body = json_body(response).await;
     let server = &body["server"];
     assert_eq!(server["server_ref"].as_str(), Some(server_ref.as_str()));
+    assert_eq!(server["capability"], "chat");
     let expected_server_dir = path_string(home.join("servers").join(&server_ref));
     assert_eq!(
         server["server_dir"].as_str(),
@@ -1954,6 +2018,7 @@ async fn server_create_prepares_kernel_spec() {
     let body = json_body(response).await;
     assert_eq!(body["created"], true);
     assert_eq!(body["server"]["runtime_kind"], "local");
+    assert_eq!(body["server"]["capability"], "chat");
     assert_eq!(
         body["server"]["model_ref"].as_str(),
         Some(model_ref.as_str())
@@ -1967,6 +2032,39 @@ async fn server_create_prepares_kernel_spec() {
         .join(server_ref)
         .join("server.toml")
         .exists());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_create_rejects_non_chat_model_for_chat_server() {
+    let requested_home = unique_home("servers-create-non-chat");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "3".repeat(64);
+    write_model_fixture_with_capabilities(&home, &model_ref, &["embedding"]);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/servers")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"runtime_ref":"{model_ref}","host":"127.0.0.1","port":8998}}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "unsupported_target");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("requires model capability `chat`"));
 
     let _ = fs::remove_dir_all(home);
 }
@@ -2028,6 +2126,38 @@ async fn server_start_returns_conflict_for_running_server() {
     assert_eq!(response.status(), StatusCode::CONFLICT);
     let body = json_body(response).await;
     assert_eq!(body["error"], "already_running");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_start_rejects_incompatible_stored_chat_spec() {
+    let requested_home = unique_home("servers-start-non-chat-model");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let server_ref = "a".repeat(64);
+    let model_ref = "4".repeat(64);
+    write_model_fixture_with_capabilities(&home, &model_ref, &["embedding"]);
+    write_server_fixture_with_capability(&home, &server_ref, &model_ref, Some("chat"));
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/servers/{}/start", &server_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "unsupported_target");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("requires model capability `chat`"));
 
     let _ = fs::remove_dir_all(home);
 }
@@ -2602,9 +2732,22 @@ fn unique_home(label: &str) -> PathBuf {
 }
 
 fn write_model_fixture(home: &std::path::Path, model_ref: &str) {
+    write_model_fixture_with_capabilities(home, model_ref, &["chat", "embedding"]);
+}
+
+fn write_model_fixture_with_capabilities(
+    home: &std::path::Path,
+    model_ref: &str,
+    capabilities: &[&str],
+) {
     let store_dir = home.join("models/store").join(model_ref);
     fs::create_dir_all(store_dir.join("variants/mlx/source")).expect("model source dir");
     fs::write(store_dir.join("manifest.json"), "{}").expect("manifest");
+    let capabilities = capabilities
+        .iter()
+        .map(|capability| format!(r#""{capability}""#))
+        .collect::<Vec<_>>()
+        .join(", ");
     fs::write(
         store_dir.join("model.toml"),
         format!(
@@ -2614,7 +2757,7 @@ source_kind = "local"
 source_path = "{}"
 primary_format = "mlx"
 detected_formats = ["mlx"]
-model_capabilities = ["chat", "embedding"]
+model_capabilities = [{capabilities}]
 model_capability_source = "explicit-user"
 file_count = 1
 total_bytes = 10
@@ -2694,15 +2837,27 @@ source_manifest = "manifest.json"
 }
 
 fn write_server_fixture(home: &std::path::Path, server_ref: &str, model_ref: &str) {
+    write_server_fixture_with_capability(home, server_ref, model_ref, None);
+}
+
+fn write_server_fixture_with_capability(
+    home: &std::path::Path,
+    server_ref: &str,
+    model_ref: &str,
+    capability: Option<&str>,
+) {
     let server_dir = home.join("servers").join(server_ref);
     fs::create_dir_all(&server_dir).expect("server dir");
+    let capability = capability
+        .map(|capability| format!("capability = \"{capability}\"\n"))
+        .unwrap_or_default();
     fs::write(
         server_dir.join("server.toml"),
         format!(
             r#"server_ref = "{server_ref}"
 short_ref = "{}"
 runtime_kind = "local"
-model_ref = "{model_ref}"
+{capability}model_ref = "{model_ref}"
 host = "127.0.0.1"
 port = 8999
 lazy_load = false

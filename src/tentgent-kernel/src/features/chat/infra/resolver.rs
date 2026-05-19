@@ -35,8 +35,9 @@ impl ChatModelResolver for StdChatModelResolver<'_> {
 
         if !metadata.supports_capability(ModelCapability::Chat) {
             return Err(KernelError::UnsupportedTarget(format!(
-                "model `{}` does not advertise chat capability",
-                metadata.model_ref
+                "chat endpoint requires model capability `chat`, but model `{}` advertises {}",
+                metadata.model_ref,
+                model_capabilities_label(&metadata.model_capabilities)
             )));
         }
 
@@ -54,6 +55,21 @@ impl ChatModelResolver for StdChatModelResolver<'_> {
             target,
         })
     }
+}
+
+fn model_capabilities_label(capabilities: &[ModelCapability]) -> String {
+    if capabilities.is_empty() {
+        return "[]".to_string();
+    }
+
+    format!(
+        "[{}]",
+        capabilities
+            .iter()
+            .map(|capability| capability.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 /// Resolves chat adapters by adapting the adapter compatibility use-case boundary.

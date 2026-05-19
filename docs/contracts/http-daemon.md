@@ -564,6 +564,7 @@ working context, not audit logs.
       "server_ref": "25ee...",
       "short_ref": "25ee5888595d",
       "runtime_kind": "cloud",
+      "capability": "chat",
       "model_ref": null,
       "provider": "openai",
       "provider_model": "gpt-4.1-mini",
@@ -588,6 +589,7 @@ and returns:
     "server_ref": "25ee...",
     "short_ref": "25ee5888595d",
     "runtime_kind": "cloud",
+    "capability": "chat",
     "model_ref": null,
     "provider": "openai",
     "provider_model": "gpt-4.1-mini",
@@ -607,6 +609,10 @@ and returns:
   }
 }
 ```
+
+`capability` is the endpoint family the stored server spec is meant to serve.
+Current server lifecycle routes create chat-capable specs only. Older
+`server.toml` files without `capability` are read as `chat`.
 
 ## Store Import And Pull Mutations
 
@@ -1279,6 +1285,7 @@ An abbreviated response is:
     "server_ref": "25ee...",
     "short_ref": "25ee5888595d",
     "runtime_kind": "cloud",
+    "capability": "chat",
     "model_ref": null,
     "provider": "openai",
     "provider_model": "gpt-4.1-mini",
@@ -1304,6 +1311,9 @@ An abbreviated response is:
 background mode. `{server_ref}` accepts a full server ref or unique short prefix.
 Cloud server starts validate launch-time provider auth from env/keychain and
 never persist secrets in the server spec or response.
+Local server starts verify that the selected model advertises the server
+capability before launching the Python runtime. Embedding and rerank server
+capabilities are not launchable until their runtime endpoints exist.
 
 The body is optional. Omit it or send `{}` to preserve the original response
 shape. Send `wait_ready` to ask the daemon to poll the target server's
@@ -1326,6 +1336,7 @@ An abbreviated response is:
     "server_ref": "25ee...",
     "short_ref": "25ee5888595d",
     "runtime_kind": "cloud",
+    "capability": "chat",
     "provider": "openai",
     "provider_model": "gpt-4.1-mini",
     "running": true,
@@ -1404,6 +1415,8 @@ Selection rules:
 
 - `model_ref` is required and may be a full ref, unique short prefix, source
   repo alias, or source repo basename alias.
+- selected models must advertise `chat`; embedding-only and rerank-only models
+  return `400 unsupported_target` before runtime dispatch.
 - `adapter_ref` is optional and may be a full ref or unique short prefix.
 - supported message roles are `system`, `user`, and `assistant`.
 - messages are text-only; tools, images, audio, and tool-call transcript roles
@@ -1438,6 +1451,7 @@ events after streaming starts:
 
 - invalid JSON, unknown fields, empty prompts, empty content, or unsupported
   roles return `400 bad_request`
+- non-chat models selected for chat routes return `400 unsupported_target`
 - missing models return `404 not_found`
 - ambiguous model aliases or refs return `409 ambiguous_ref`
 - model, adapter, runtime, and Python execution failures map to daemon JSON or

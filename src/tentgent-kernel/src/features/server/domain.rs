@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::features::model::domain::{ModelFormat, ModelRef, ModelRefSelector};
+use crate::features::model::domain::{ModelCapability, ModelFormat, ModelRef, ModelRefSelector};
 
 pub const DEFAULT_SERVER_HOST: &str = "127.0.0.1";
 pub const DEFAULT_SERVER_PORT: u16 = 8000;
@@ -233,6 +233,86 @@ impl fmt::Display for LaunchMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ServerCapability {
+    Chat,
+    Embedding,
+    Rerank,
+}
+
+impl ServerCapability {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::Embedding => "embedding",
+            Self::Rerank => "rerank",
+        }
+    }
+
+    pub const fn required_model_capability(self) -> ModelCapability {
+        match self {
+            Self::Chat => ModelCapability::Chat,
+            Self::Embedding => ModelCapability::Embedding,
+            Self::Rerank => ModelCapability::Rerank,
+        }
+    }
+}
+
+impl fmt::Display for ServerCapability {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+pub const fn default_server_capability() -> ServerCapability {
+    ServerCapability::Chat
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "server capability `{server_capability}` requires model capability `{required_model_capability}`, but model `{model_ref}` advertises {advertised_model_capabilities}"
+)]
+pub struct ServerCapabilityCompatibilityError {
+    pub server_capability: ServerCapability,
+    pub required_model_capability: ModelCapability,
+    pub model_ref: ModelRef,
+    pub advertised_model_capabilities: String,
+}
+
+pub fn ensure_server_model_capability(
+    server_capability: ServerCapability,
+    model_ref: &ModelRef,
+    model_capabilities: &[ModelCapability],
+) -> Result<(), ServerCapabilityCompatibilityError> {
+    let required_model_capability = server_capability.required_model_capability();
+    if model_capabilities.contains(&required_model_capability) {
+        return Ok(());
+    }
+
+    Err(ServerCapabilityCompatibilityError {
+        server_capability,
+        required_model_capability,
+        model_ref: model_ref.clone(),
+        advertised_model_capabilities: model_capabilities_label(model_capabilities),
+    })
+}
+
+fn model_capabilities_label(capabilities: &[ModelCapability]) -> String {
+    if capabilities.is_empty() {
+        return "[]".to_string();
+    }
+
+    format!(
+        "[{}]",
+        capabilities
+            .iter()
+            .map(|capability| capability.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ServerRuntimeBackend {
     TransformersPeft,
@@ -343,6 +423,8 @@ pub struct ServerSpec {
     pub short_ref: String,
     #[serde(default)]
     pub runtime_kind: ServerRuntimeKind,
+    #[serde(default = "default_server_capability")]
+    pub capability: ServerCapability,
     #[serde(default)]
     pub model_ref: Option<ModelRef>,
     #[serde(default)]
