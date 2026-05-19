@@ -27,6 +27,9 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
 - [commands.md](./commands.md)
   Common commands for auth, models, adapters, datasets, chat, servers, daemon,
   sessions, and LoRA training.
+- [model-fixtures.md](./model-fixtures.md)
+  Recommended small Hugging Face models and smoke-test commands for chat,
+  embedding, rerank, and planned M6 media workflows.
 - [runtime.md](./runtime.md)
   Runtime home layout, environment overrides, backend support, and macOS Keychain prompts.
 

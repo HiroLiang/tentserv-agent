@@ -166,12 +166,15 @@ Review target:
 - A managed rerank model can score candidate documents and return ordered
   results through the daemon.
 
-### M6: Multimodal And Streaming Planning
+### M6A: Multimodal Contracts
+
+Detailed plan: [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md).
 
 - Define native multimodal request and response contracts before implementation.
 - Split media capability names by workflow instead of using one broad value.
 - Consider audio transcription, speech generation, vision chat, image
   generation, and video workflows as separate future endpoint families.
+- Identify small Hugging Face smoke models for each candidate workflow.
 - Decide whether the first deployable slice is a native parsed endpoint, an
   opaque stream-in/stream-out runtime proxy, or a staged pair of both.
 - Keep the opaque proxy contract separate from native capability contracts: it
@@ -183,8 +186,21 @@ Review target:
 
 Review target:
 
-- M6 has a precise native multimodal vocabulary plus an explicit decision on
+- M6A has a precise native multimodal vocabulary plus an explicit decision on
   whether an opaque streaming proxy belongs in the first implementation slice.
+
+### M6B: Media Runtime Boundary
+
+- Convert the approved M6A contract direction into one implementable slice.
+- Choose either async media jobs, an opaque stream proxy, or the first native
+  endpoint as the implementation target.
+- Move stable interface text into `docs/contracts/` only when implementation is
+  approved.
+
+Review target:
+
+- The first media runtime boundary is small enough to implement and verify
+  without committing to every audio, image, and video workflow at once.
 
 ### M7: Apple Developer ID Signing
 

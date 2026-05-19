@@ -36,7 +36,7 @@ If the current task is about agent workflows, role selection, or role-specific w
 - `docs/contracts/`
   Concise contract documents for cross-module and cross-language interfaces.
 - `docs/user/`
-  User-facing install, upgrade, version, command, runtime, and Keychain documentation.
+  User-facing install, upgrade, version, command, runtime, model fixture, and Keychain documentation.
 - `docs/plans/`
   Active roadmap for larger runtime, backend, and release initiatives.
 - `docs/development/`
@@ -92,6 +92,9 @@ Key current documents:
   Current MVP feature list, known limits, and upgrade expectations.
 - `docs/user/commands.md`
   User command examples for auth, model, adapter, dataset, chat, server, and LoRA training flows.
+- `docs/user/model-fixtures.md`
+  Recommended small model fixtures and smoke-test commands for chat, embedding,
+  rerank, and planned M6 media workflows.
 - `docs/user/runtime.md`
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`

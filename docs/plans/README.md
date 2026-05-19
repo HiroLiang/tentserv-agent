@@ -41,11 +41,14 @@ one pass without a staged breakdown.
   Implemented M5 slice: native rerank endpoint, rerank runtime port, first local
   cross-encoder backend path, CLI one-shot embedding/rerank helpers, and
   endpoint-family isolation from chat sessions.
+- [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md)
+  Planned M6A slice: native multimodal capability vocabulary, transport shape
+  decisions, opaque proxy boundary, and small Hugging Face smoke fixtures.
 
 ## Recommended Order
 
-1. Define the M6 native multimodal contracts and opaque streaming proxy boundary
-   before implementing media runtime support.
+1. Complete M6A multimodal contracts and choose whether M6B is async media jobs,
+   opaque stream proxy, or the first native endpoint.
 2. Run Apple Developer ID signing and notarization on prerelease artifacts
    before beta or release candidate tags.
 

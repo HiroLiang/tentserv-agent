@@ -115,6 +115,9 @@ Tentgent keeps the backward-compatible `chat` default and prints a warning.
 Use `set-capability` to correct stored metadata later without changing
 `model_ref`.
 
+For recommended small Hugging Face fixtures, gated-access reminders, and
+copy-paste smoke commands, see [model-fixtures.md](./model-fixtures.md).
+
 ## Chat
 
 Run one-shot chat:
