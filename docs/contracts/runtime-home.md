@@ -57,6 +57,7 @@ Reserved runtime files:
 - `runtime/daemon.toml`
 - `runtime/auth.toml`
 - `runtime/capabilities.toml`
+- `runtime/jobs/`
 - `runtime/bootstrap/`
 - `config.toml`
 
@@ -74,6 +75,19 @@ Missing runtime-home states should be reported with stable warning codes such as
 presence, validation state, and last update/validation timestamps. It must not
 contain provider secret values, daemon bearer tokens, or request-provided
 provider keys.
+
+## Runtime Jobs And Workspaces
+
+`runtime/jobs/` stores local job records and job-scoped temporary work data
+through the kernel job workspace contract. Job metadata is persisted as
+`<job_id>.json`. Large binary input and result data may live under
+`runtime/jobs/<job_id>/workspace/` as chunk files plus done manifests, as
+defined in [job-workspace.md](./job-workspace.md).
+
+Job workspace data is temporary runtime state, not a managed model, adapter, or
+dataset store. Cleanup must preserve a retention buffer after completion,
+interruption, or shutdown so future retry and result-read behavior has a stable
+base.
 
 ## Shared Config
 

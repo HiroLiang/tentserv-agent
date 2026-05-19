@@ -45,15 +45,20 @@ one pass without a staged breakdown.
   Implemented M6A slice: metadata-only multimodal capability vocabulary,
   transport shape decisions, opaque proxy boundary, and small Hugging Face smoke
   fixtures.
-- [m6b-job-spool-media-workflows.md](./m6b-job-spool-media-workflows.md)
-  Planned M6B slice: job-scoped input/result spooling, cleanup, quota, and
-  cursor-based result reads before media model runtime execution.
+- [m6b-kernel-job-workspace-foundation.md](./m6b-kernel-job-workspace-foundation.md)
+  M6B refactor slice: kernel-owned job workspace ports, chunk IO, result files,
+  cleanup, and daemon runtime wiring before media model execution.
+- [m6c-through-m6h-media-runtime-roadmap.md](./m6c-through-m6h-media-runtime-roadmap.md)
+  Proposed follow-up M6 slices for audio transcription, CLI wrappers, audio
+  speech, image generation, vision chat, and video/realtime decisions.
 
 ## Recommended Order
 
-1. Implement M6B job-scoped media spooling before adding audio, image, or video
-   runtime execution.
-2. Run Apple Developer ID signing and notarization on prerelease artifacts
+1. Finish M6B kernel job workspace refactor before adding media workers.
+2. Implement M6C daemon audio transcription on top of the kernel job workspace.
+3. Add M6D CLI wrapper and generic job control helpers.
+4. Continue M6E-M6H only after each workflow's API/output contract is stable.
+5. Run Apple Developer ID signing and notarization on prerelease artifacts
    before beta or release candidate tags.
 
 ## Deferred Plans

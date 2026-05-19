@@ -177,7 +177,7 @@ Detailed plan: [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md).
   evidence.
 - Split media capability names by workflow instead of using one broad value.
 - Identified small Hugging Face smoke models for each candidate workflow.
-- Chose job-scoped input/result spooling as the M6B runtime boundary.
+- Chose kernel-owned job workspaces as the M6B runtime boundary.
 - Kept the opaque proxy contract separate from native capability contracts: it
   may forward bytes or chunks without parsing model-specific payloads, but it
   should not imply validation, compatibility gates, transcript state, or
@@ -188,34 +188,66 @@ Detailed plan: [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md).
 Review target:
 
 - M6A has a precise native multimodal metadata vocabulary plus an explicit
-  decision that M6B starts with job-scoped spooling, not an opaque streaming
+  decision that M6B starts with kernel job workspaces, not an opaque streaming
   proxy.
 
-### M6B: Job Spool Boundary
+### M6B: Kernel Job Workspace Boundary
 
 Detailed plan:
-[m6b-job-spool-media-workflows.md](./m6b-job-spool-media-workflows.md).
+[m6b-kernel-job-workspace-foundation.md](./m6b-kernel-job-workspace-foundation.md).
 
-- Add daemon-owned job spool infrastructure for large binary input/output.
-- Use `job_id` as the user-visible handle instead of creating a managed
+- Status: needs kernel refactor before M6C.
+- Move job identity, status, workspace, chunk IO, result files, and cleanup
+  semantics into `tentgent-kernel`.
+- Keep daemon worker scheduling, shutdown coordination, and Python runtime
+  invocation in `tentgent-daemon`.
+- Keep daemon in-flight job management in `tentgent-daemon`; kernel must not
+  hold active task or detached process handles.
+- Provide kernel ports for opening job workspaces, listing jobs, inspecting job
+  status, canceling/deleting jobs, removing workspaces, chunked read/write,
+  result file listing, and result file reads.
+- Keep daemon lifecycle and model-bound server lifecycle out of the job catalog.
+- Use `job_id` as the workflow handle instead of creating a managed
   `media_ref` catalog.
-- Support path input and upload input by chunking bytes into a job-local input
-  spool.
-- Support result chunks and cursor-based reads so streaming and download
-  workflows can share one output path.
-- Add TTL, quota, startup cleanup, periodic cleanup, and explicit cleanup rules
-  to protect SSD usage.
-- Make daemon stop interrupt active spool jobs and run one retention-aware GC
-  sweep.
+- Add explicit cleanup rules and retention-aware shutdown sweeps to protect SSD
+  usage.
 - Keep future CLI media model commands simple: users provide an input file and
-  output path while the CLI hides job/spool details by default.
+  output path while the CLI hides job/workspace details by default.
 - Keep opaque stream proxy work separate from native media endpoint contracts.
 - Leave model runtime execution to M6C.
 
 Review target:
 
-- Clients and future workflow workers can use job-scoped input/result spools
-  before any audio, image, or video model endpoint exists.
+- Kernel job/workspace ports are the shared foundation before any audio, image,
+  or video model endpoint exists.
+
+### M6C-M6H: Media Runtime Workflows
+
+Detailed plan:
+[m6c-through-m6h-media-runtime-roadmap.md](./m6c-through-m6h-media-runtime-roadmap.md).
+
+M6B intentionally does not execute models. The follow-up M6 slices should stage
+the native workflow work in this order:
+
+- M6C: daemon audio transcription jobs using `audio-transcription` models,
+  kernel job workspaces, transcript output formats, and feature-specific result
+  retrieval.
+- M6D: CLI foreground file-to-output wrapper for transcription, optional
+  detached mode, and generic `jobs inspect`, `jobs cancel`, and `jobs delete`
+  helpers.
+- M6E: audio speech jobs that turn text into `wav` or later approved audio
+  result files.
+- M6F: image generation jobs that turn prompts into `png` or `jpg` result
+  files.
+- M6G: vision chat with explicit image-plus-text DTOs and text/JSON/Markdown
+  outputs.
+- M6H: video understanding and realtime/opaque stream proxy decision, with
+  WebSocket evaluated before WebRTC for local daemon simplicity.
+
+Review target:
+
+- The remaining M6 work has workflow-specific API, CLI, output-format, and
+  transport decisions before runtime implementation starts.
 
 ### M7: Apple Developer ID Signing
 
@@ -234,8 +266,9 @@ Review target:
 
 - Current alpha line: capability metadata, compatibility gates, embedding MVP,
   rerank MVP, and M6A media metadata vocabulary are implemented and documented.
-- Multimodal planning follow-up: job-scoped media spooling is implemented
-  before native runtime work starts.
+- Multimodal planning follow-up: kernel-owned job workspaces are planned before
+  native runtime work starts, and M6C-M6H stages the remaining media workflows
+  by API, CLI, output format, and transport shape.
 - Signing prerelease: Developer ID signing and notarization pipeline passes.
 - Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints
   remain explicitly deferred unless their contracts and runtime paths are
@@ -249,7 +282,7 @@ Review target:
 - Server tests for incompatible model and endpoint combinations.
 - HTTP tests for embedding and rerank request validation and response ordering.
 - Metadata tests for explicit-only M6A media capability values.
-- Job spool tests for path import, upload, result cursor reads, quota, cleanup,
-  and fake-worker handoff.
+- Job workspace tests for path input, upload input, chunk IO, result file list
+  and reads, quota, cleanup, and fake-worker handoff.
 - Doctor/capability-state tests for backend readiness reporting.
 - Release workflow tests or dry runs for signed macOS artifacts before beta.

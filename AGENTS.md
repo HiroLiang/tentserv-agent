@@ -72,6 +72,8 @@ Key current documents:
   Canonical chat, tool-call, and cloud-generated dataset record schema.
 - `docs/contracts/session-store.md`
   Local session metadata and transcript message store boundary.
+- `docs/contracts/job-workspace.md`
+  Kernel-owned job workspace, chunk IO, result file, and cleanup port boundary.
 - `docs/contracts/server-chat.md`
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
 - `docs/contracts/server-embedding.md`
@@ -101,7 +103,7 @@ Key current documents:
   Developer command reference for source-first builds and repository-local tests.
 - `docs/plans/capability-first-release-roadmap.md`
   Active roadmap for model capability classification, embedding, rerank,
-  metadata-only media capability vocabulary, M6B media jobs, and prerelease
+  metadata-only media capability vocabulary, M6 job workspace/media workflows, and prerelease
   Apple Developer ID signing.
 - `docs/plans/archive/README.md`
   Router for completed or superseded plans that should be consulted only when historical implementation context is needed.

@@ -165,6 +165,7 @@ features/config/
 features/server/
 features/daemon/
 features/doctor/
+features/job/
 features/session/
 features/runtime/
 features/train/
@@ -190,6 +191,15 @@ job yet, keep it empty or do not create it.
 re-export the public surface, and carry module-level documentation. Put runtime,
 store, probe, planner, executor, and test logic in focused sibling files instead
 of accumulating behavior inside a generic module entry file.
+
+`features/job/` owns job and workspace semantics shared by daemon REST, CLI,
+and future media workflows. The kernel owns job ids, job status transitions,
+workspace refs, chunk cursors, result file metadata, retention policy, and
+ports for list/inspect/cancel/delete, workspace open/remove, chunk read/write,
+result-file list/read, and cleanup sweeps. The kernel does not own a
+long-running worker loop; `tentgent-daemon` remains responsible for task
+spawning, process shutdown, and runtime supervision while implementing or
+wiring the kernel job ports.
 
 `features/runtime/domain.rs` owns pure runtime setup names and state:
 

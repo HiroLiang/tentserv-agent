@@ -16,7 +16,7 @@ This document defines the stable HTTP daemon boundary for the Rust
   lifecycle mutations, store import/pull mutations, deterministic dataset
   tooling, cloud dataset tooling, LoRA train-plan management, auth status,
   doctor diagnostics, daemon shutdown control, chat, log diagnostics,
-  session discovery, and explicit session mutation.
+  session discovery and explicit session mutation.
 - Keep loopback-local daemon development usable without auth, while requiring a
   token or explicit unsafe flag for non-loopback and wildcard binds.
 
@@ -696,12 +696,16 @@ failures return `502 pull_failed`; unexpected store mutation failures return
 
 These endpoints remain synchronous compatibility surfaces. Large local imports
 or Hugging Face pulls may exceed short client timeouts; clients that want
-daemon-side background progress should use the explicit job routes below.
+background progress should use the explicit job routes below.
 
 ## Background Action Jobs
 
-Long-running store and dataset actions can opt into daemon-side jobs without
-changing the synchronous route response shape:
+Long-running store and dataset actions can opt into background jobs without
+changing the synchronous route response shape. Durable job records and future
+job workspaces are kernel-owned concepts exposed through daemon REST; the
+daemon remains responsible for in-flight worker handles, execution, shutdown,
+and HTTP adaptation. The daemon process itself is not a job, and model-bound
+servers remain server lifecycle resources rather than job records.
 
 ```text
 POST /v1/models/import/jobs
@@ -750,11 +754,12 @@ return `202` with:
 }
 ```
 
-Job `status` values are `queued`, `running`, `succeeded`, `failed`, and
-`interrupted`; `canceled` is reserved for a future cancel contract. Slice 4.1
-does not expose a cancel route, so `cancellable` is always `false`. Job records
-are persisted under the resolved runtime home. Daemon restart marks previously
-queued or running jobs as terminal `interrupted` instead of resuming them.
+Job `status` values are `queued`, `running`, `succeeded`, `failed`,
+`interrupted`, and, once M6B cancel/delete is implemented, `canceled`. Existing
+store and dataset jobs do not expose cancellation yet, so `cancellable` is
+`false` until the worker can honor cancel requests. Job records are persisted
+under the resolved runtime home. Daemon restart marks previously queued or
+running jobs as terminal `interrupted` instead of resuming them.
 
 Job records must not contain daemon tokens, provider secrets, raw provider
 output, or unbounded logs. `/v1/jobs*` follows the same daemon bearer-token auth

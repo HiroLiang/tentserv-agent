@@ -93,9 +93,9 @@ Candidate fits:
 
 The job contract should model:
 
-- input spool state
+- input workspace state
 - status and progress
-- result spool state and read cursors
+- result file state and read cursors
 - expiration and cleanup
 - structured failure state
 
@@ -126,13 +126,13 @@ Rules:
 
 ## M6B Direction
 
-M6B should implement a job-scoped media spool before realtime duplex streaming,
-an opaque raw stream proxy, or a managed media artifact catalog.
+M6B should implement a kernel-owned job workspace before realtime duplex
+streaming, an opaque raw stream proxy, or a managed media artifact catalog.
 
 Rationale:
 
-- It gives audio, image, and future video workflows one shared place for
-  job-local input chunks, result chunks, size limits, retention, and cleanup.
+- It gives audio, image, and future video workflows one shared kernel contract
+  for job-local input chunks, result files, size limits, retention, and cleanup.
 - It keeps long-running media generation out of ordinary request/response
   paths.
 - It avoids creating permanent media objects for high-frequency tool calls
@@ -141,7 +141,7 @@ Rationale:
   avoids treating raw chunk forwarding as the main model-serving contract.
 
 Recommended M6C first native endpoint candidate: `audio-transcription`, with a
-small Whisper fixture and a non-realtime job spool request path.
+small Whisper fixture and a non-realtime job workspace request path.
 
 ## Candidate HF Smoke Models
 
@@ -171,8 +171,8 @@ chat, embedding, rerank, and metadata-only media fixture guide.
 ### 2. Payload And Spool Decisions
 
 - Decide whether media inputs are inline base64, multipart uploads, file paths,
-  job spool refs, or a combination.
-- Prefer job-scoped input/result spools for larger audio, image, and video
+  job workspace refs, or a combination.
+- Prefer job-scoped input/result workspaces for larger audio, image, and video
   payloads.
 - Define how local daemon storage owns temporary media and result files without
   creating a model/dataset-like media catalog.
@@ -200,10 +200,17 @@ chat, embedding, rerank, and metadata-only media fixture guide.
 
 ### 6. Follow-Up Plan Split
 
-- M6B should define job-scoped media input/result spools and cleanup rules.
-- M6C should become the first native runtime endpoint after the contract is
-  stable.
-- Stable contract docs move only when M6B/M6C is approved for implementation.
+- M6B defines kernel job workspace ports, chunk IO, result files, and cleanup
+  rules.
+- M6C should become daemon audio transcription jobs on top of the kernel job
+  workspace contract.
+- M6D should add the first CLI file-to-output media workflow and optional
+  generic job control helpers.
+- M6E through M6H should stage audio speech, image generation, vision chat, and
+  video/realtime decisions as described in
+  [m6c-through-m6h-media-runtime-roadmap.md](./m6c-through-m6h-media-runtime-roadmap.md).
+- Stable contract docs move only when each workflow is approved for
+  implementation.
 - User docs may keep media fixtures only when they are clearly marked as
   metadata-only until runtime support exists.
 
@@ -216,7 +223,7 @@ chat, embedding, rerank, and metadata-only media fixture guide.
 
 ## Review Target
 
-- M6B is selected as job-scoped media spooling with TTL, quota, and cleanup.
+- M6B is selected as kernel-owned job workspaces with TTL, quota, and cleanup.
 - M6C can choose the first native runtime endpoint from a clear matrix of
   native workflows, transport shapes, and HF smoke fixtures.
 - No runtime code or user-facing claims are added before the contract boundary is

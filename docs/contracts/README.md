@@ -36,6 +36,8 @@ Use this directory for concise interface documents that define stable boundaries
   Direct Python server embedding request shape and capability routing.
 - [server-rerank.md](./server-rerank.md)
   Direct Python server rerank request shape and capability routing.
+- [job-workspace.md](./job-workspace.md)
+  Kernel-owned job workspace, chunk IO, result file, and cleanup port boundary.
 - [http-daemon.md](./http-daemon.md)
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
 - [tentgent-daemon.md](./tentgent-daemon.md)

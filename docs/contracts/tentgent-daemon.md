@@ -9,9 +9,11 @@ bootstrap, transport listeners, daemon-local state, and background runtime
 systems.
 
 The crate should stay thin over `tentgent-kernel` use cases. It may keep
-process-local services such as caches, schedulers, job registries, and transport
-handler wiring, but product behavior should remain in kernel domain, ports,
-infrastructure, and use cases.
+process-local services such as caches, schedulers, worker runners, in-flight job
+registries, and transport handler wiring, but product behavior should remain in
+kernel domain, ports, infrastructure, and use cases. Durable job records and job
+workspaces are kernel feature concepts even though the daemon owns active worker
+handles.
 
 ## Dependency Direction
 
@@ -40,8 +42,9 @@ infrastructure, and use cases.
 - `src/handlers/`
   Maps transport DTOs into daemon app services and kernel use cases.
 - `src/runtime/`
-  Owns daemon-local cache, scheduler, job registry, and future memory-like
-  process state.
+  Owns daemon-local cache, scheduler, worker runners, in-flight job registry,
+  and future memory-like process state. Durable job/workspace operations should
+  go through kernel job ports.
 
 ## Bootstrap Boundary
 
@@ -122,12 +125,12 @@ The first stable REST surface is:
 - `GET /v1/status`
   Kernel-backed daemon status response.
 - `GET /v1/jobs`
-  Daemon-runtime job list response. Jobs expose daemon-local execution state
+  Kernel job list response through daemon REST. Jobs expose execution state
   for long-running one-shot work, including status, stage, bounded progress,
   bounded output tail, target, artifact, warnings, result summary, and error
   summary.
 - `GET /v1/jobs/{job_id}`
-  Daemon-runtime job inspection response for one persisted or in-memory job.
+  Kernel job inspection response for one persisted or in-memory job.
 - `POST /v1/chat`
   Kernel-backed local model chat. The request selects a managed `model_ref`,
   optional `adapter_ref`, chat messages, generation options, and optional SSE
@@ -276,22 +279,35 @@ The first stable REST surface is:
 
 ## Runtime Boundary
 
-Daemon-local runtime state is allowed when it is process-scoped:
+Daemon-local runtime state is allowed, and sometimes required, when it is
+process-scoped:
 
 - Memory cache.
-- Job registry.
+- In-flight job registry.
 - Scheduler.
 - Connection or session bookkeeping.
 
 Persistent state and product decisions should remain in `tentgent-kernel`
 unless the state is explicitly transport-only.
 
-The daemon runtime layer may define typed records for daemon execution state,
-such as background job status, progress, bounded output tails, affected targets,
-and produced artifacts. These types are daemon runtime models, not kernel
-feature domain. They may reference kernel-owned artifacts such as `model_ref`,
-`adapter_ref`, `dataset_ref`, `session_ref`, or LoRA `run_ref`, but product
-validation and store mutations stay behind kernel use cases.
+The daemon runtime layer must hold process-local worker handles, detached child
+process handles, scheduler queues, and cancellation signals for jobs that are
+actually running. Durable job records, job status vocabulary, job workspaces,
+chunk IO, result files, retention policy, and cleanup operations belong to the
+kernel job feature. Daemon code should call kernel job use cases and ports
+instead of defining a parallel durable job domain.
+
+The daemon process itself is not a job. Model-bound server processes are also
+not jobs by default: they are long-lived server lifecycle resources with stored
+server specs, process metadata, health/readiness, and start/stop APIs. A future
+server maintenance action may become a job only when it is a detached one-shot
+operation rather than server lifecycle state.
+
+If a durable job record says `queued` or `running` but the daemon has no
+recoverable in-flight handle after startup or worker failure, the daemon should
+mark the job `interrupted` or `failed` through kernel job use cases before
+cleanup is allowed. Kernel code should not attempt to infer process liveness on
+its own.
 
 Long-running one-shot work should be represented as jobs when the caller needs
 to keep observing progress after the initial request returns. Job records should
