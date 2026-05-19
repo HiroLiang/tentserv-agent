@@ -3,7 +3,7 @@
 This is the focused execution plan for the second M6 slice in the
 [capability-first release roadmap](./capability-first-release-roadmap.md).
 
-Status: needs kernel refactor before M6C.
+Status: completed.
 
 ## Goal
 
@@ -65,7 +65,7 @@ src/tentgent-kernel/src/features/job/
 |-- mod.rs
 |-- domain.rs
 |-- ports.rs
-|-- usecases.rs
+|-- usecases/
 `-- infra/
 ```
 
@@ -87,7 +87,7 @@ src/tentgent-kernel/src/features/job/
 - `JobResultPort`
 - `JobRetentionPort`
 
-`usecases.rs` owns shared orchestration:
+`usecases/` owns shared orchestration:
 
 - create job record and workspace
 - list jobs
