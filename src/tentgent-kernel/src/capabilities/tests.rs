@@ -85,6 +85,15 @@ fn machine_capabilities_probe_uses_layout_and_platform_facts() {
             .state,
         CapabilityState::Unsupported
     );
+    assert_eq!(
+        capabilities
+            .backends
+            .iter()
+            .find(|backend| backend.backend == BackendKind::MlxVlm)
+            .expect("mlx-vlm backend")
+            .state,
+        CapabilityState::Unsupported
+    );
 }
 
 #[test]
@@ -160,6 +169,10 @@ fn machine_capabilities_probe_maps_backend_import_checks() {
     );
     assert_eq!(
         backend_state(&capabilities, BackendKind::Mlx),
+        CapabilityState::Ready
+    );
+    assert_eq!(
+        backend_state(&capabilities, BackendKind::MlxVlm),
         CapabilityState::Ready
     );
     assert_eq!(

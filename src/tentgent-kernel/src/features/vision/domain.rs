@@ -4,7 +4,7 @@ use std::{fmt, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::features::model::domain::{ModelCapability, ModelFormat, ModelRef};
+use crate::features::model::domain::{MlxRuntimeFamily, ModelCapability, ModelFormat, ModelRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -119,12 +119,14 @@ pub struct VisionChatGenerationOptions {
 #[serde(rename_all = "kebab-case")]
 pub enum VisionChatBackend {
     TransformersImageTextToText,
+    MlxVlm,
 }
 
 impl VisionChatBackend {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::TransformersImageTextToText => "transformers-image-text-to-text",
+            Self::MlxVlm => "mlx-vlm",
         }
     }
 
@@ -132,6 +134,22 @@ impl VisionChatBackend {
         match format {
             ModelFormat::Safetensors => Some(Self::TransformersImageTextToText),
             ModelFormat::Diffusers | ModelFormat::Gguf | ModelFormat::Mlx => None,
+        }
+    }
+
+    pub const fn from_model_format_and_mlx_family(
+        format: ModelFormat,
+        mlx_runtime_family: Option<MlxRuntimeFamily>,
+    ) -> Option<Self> {
+        match format {
+            ModelFormat::Mlx => match mlx_runtime_family {
+                Some(MlxRuntimeFamily::Vlm) => Some(Self::MlxVlm),
+                None
+                | Some(
+                    MlxRuntimeFamily::Lm | MlxRuntimeFamily::Audio | MlxRuntimeFamily::Diffusion,
+                ) => None,
+            },
+            _ => Self::from_model_format(format),
         }
     }
 }

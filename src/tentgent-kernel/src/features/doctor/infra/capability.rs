@@ -97,6 +97,7 @@ fn backend_label(backend: BackendKind) -> &'static str {
         BackendKind::CpuGguf => "cpu-gguf",
         BackendKind::SafetensorsPeft => "safetensors-peft",
         BackendKind::Mlx => "mlx",
+        BackendKind::MlxVlm => "mlx-vlm",
         BackendKind::Training => "training",
         BackendKind::Embedding => "embedding",
         BackendKind::Rerank => "rerank",

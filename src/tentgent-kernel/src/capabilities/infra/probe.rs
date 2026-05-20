@@ -118,6 +118,7 @@ fn backend_capabilities(
         BackendKind::CpuGguf,
         BackendKind::SafetensorsPeft,
         BackendKind::Mlx,
+        BackendKind::MlxVlm,
         BackendKind::Training,
         BackendKind::Embedding,
         BackendKind::Rerank,
@@ -133,12 +134,14 @@ fn backend_capability(
     backend: BackendKind,
 ) -> BackendCapability {
     match backend {
-        BackendKind::Mlx if !is_macos_apple_silicon(platform) => BackendCapability {
-            backend,
-            state: CapabilityState::Unsupported,
-            message: Some("MLX requires Apple Silicon macOS".to_string()),
-            next_step: None,
-        },
+        BackendKind::Mlx | BackendKind::MlxVlm if !is_macos_apple_silicon(platform) => {
+            BackendCapability {
+                backend,
+                state: CapabilityState::Unsupported,
+                message: Some("MLX requires Apple Silicon macOS".to_string()),
+                next_step: None,
+            }
+        }
         BackendKind::Training if !is_known_runtime_os(platform) => BackendCapability {
             backend,
             state: CapabilityState::Unsupported,
@@ -201,6 +204,7 @@ fn backend_modules(backend: BackendKind) -> Vec<&'static str> {
         BackendKind::CpuGguf => vec!["llama_cpp"],
         BackendKind::SafetensorsPeft => vec!["safetensors", "peft", "transformers", "torch"],
         BackendKind::Mlx => vec!["mlx", "mlx_lm"],
+        BackendKind::MlxVlm => vec!["mlx", "mlx_vlm"],
         BackendKind::Training => training_modules(),
         BackendKind::Embedding => vec!["safetensors", "peft", "transformers", "torch"],
         BackendKind::Rerank => vec!["safetensors", "transformers", "torch"],
@@ -212,6 +216,7 @@ fn backend_bootstrap_hint(backend: BackendKind) -> &'static str {
         BackendKind::CpuGguf
         | BackendKind::SafetensorsPeft
         | BackendKind::Mlx
+        | BackendKind::MlxVlm
         | BackendKind::Embedding
         | BackendKind::Rerank => "run `tentgent runtime bootstrap --profile local-model`",
         BackendKind::Training => "run `tentgent runtime bootstrap --profile training`",

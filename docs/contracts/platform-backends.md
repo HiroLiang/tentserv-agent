@@ -21,7 +21,7 @@ Current backend states:
 | Backend | Model format | Runtime family | macOS Apple Silicon | macOS Intel | Windows | Linux |
 | --- | --- | --- | --- | --- | --- | --- |
 | `mlx` | `mlx` | `mlx-lm` | enabled | unsupported | unsupported | unsupported |
-| `mlx-vlm` | `mlx` | `mlx-vlm` | planned | unsupported | unsupported | unsupported |
+| `mlx-vlm` | `mlx` | `mlx-vlm` | dependency-gated | unsupported | unsupported | unsupported |
 | `mlx-audio` | `mlx` | `mlx-audio` | planned | unsupported | unsupported | unsupported |
 | `mlx-diffusion` | `mlx` | `mlx-diffusion` | planned | unsupported | unsupported | unsupported |
 | `transformers-peft` | `safetensors` | n/a | dependency-gated | dependency-gated | dependency-gated | dependency-gated |
@@ -44,7 +44,9 @@ runtime family:
 
 - `primary_format = "mlx"` with missing family or `mlx_runtime_family =
   "mlx-lm"` uses the existing MLX chat backend for `chat`
-- `primary_format = "mlx"` with `mlx-vlm`, `mlx-audio`, or `mlx-diffusion` is
+- `primary_format = "mlx"` with `mlx_runtime_family = "mlx-vlm"` uses
+  `mlx-vlm` for native `vision-chat`
+- `primary_format = "mlx"` with `mlx-audio` or `mlx-diffusion` is
   metadata-only until the matching backend slice is implemented
 - `primary_format = "safetensors"` uses `transformers-peft`
 - `primary_format = "diffusers"` uses `diffusers`

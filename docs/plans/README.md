@@ -69,6 +69,10 @@ one pass without a staged breakdown.
   runtime family metadata and routing guardrails across vision, audio, and
   image workflows without replacing the implemented safetensors/Diffusers
   runtime paths.
+- [m6i-mlx-vision-chat-backend.md](./m6i-mlx-vision-chat-backend.md)
+  Implemented M6I backend path for making the existing native `vision-chat`
+  CLI and daemon endpoint route to `mlx-vlm` models on Apple Silicon, with CLI
+  and daemon smoke evidence recorded.
 
 ## Recommended Order
 

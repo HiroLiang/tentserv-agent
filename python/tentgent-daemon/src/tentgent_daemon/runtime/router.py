@@ -69,7 +69,9 @@ def resolve_vision_chat_backend(record: StoredModelRecord) -> BackendKind:
     if record.primary_format == "safetensors":
         return BackendKind.TRANSFORMERS_PEFT
     if record.primary_format == "mlx" and record.mlx_runtime_family == "mlx-vlm":
-        _raise_planned_mlx_backend(record, "vision chat", "mlx-vlm")
+        backend = BackendKind.MLX_VLM
+        ensure_backend_supported(str(backend))
+        return backend
 
     raise ValueError(
         f"unsupported primary_format `{record.primary_format}` for vision chat model `{record.model_ref}`"

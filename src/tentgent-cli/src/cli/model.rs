@@ -11,8 +11,8 @@ use tentgent_kernel::features::auth::usecases::{
     AuthSecretResolutionRequest, StdAuthSecretResolverUseCase,
 };
 use tentgent_kernel::features::model::domain::{
-    HfModelPullProgress, ModelCapability, ModelFormat, ModelImportOutcome, ModelInspection,
-    ModelRefSelector, ModelRemovalOutcome, ModelSummary,
+    HfModelPullProgress, MlxRuntimeFamily, ModelCapability, ModelFormat, ModelImportOutcome,
+    ModelInspection, ModelMetadata, ModelRefSelector, ModelRemovalOutcome, ModelSummary,
 };
 use tentgent_kernel::features::model::infra::{
     FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
@@ -590,7 +590,7 @@ fn add_model_metadata_rows(
     ]);
     table.add_row(vec![
         Cell::new("backend_support"),
-        Cell::new(model_format_support_summary(metadata.primary_format)),
+        Cell::new(model_backend_support_summary(metadata)),
     ]);
     table.add_row(vec![
         Cell::new("file_count"),
@@ -661,6 +661,20 @@ fn model_format_support_summary(format: ModelFormat) -> String {
         ModelFormat::Gguf => {
             "dependency-gated: requires a working llama-cpp-python installation".to_string()
         }
+    }
+}
+
+fn model_backend_support_summary(metadata: &ModelMetadata) -> String {
+    match (metadata.primary_format, metadata.mlx_runtime_family) {
+        (ModelFormat::Mlx, Some(MlxRuntimeFamily::Vlm))
+            if cfg!(all(target_os = "macos", target_arch = "aarch64")) =>
+        {
+            "dependency-gated: requires MLX VLM Python packages such as mlx and mlx-vlm".to_string()
+        }
+        (ModelFormat::Mlx, Some(MlxRuntimeFamily::Vlm)) => {
+            "unsupported: MLX VLM is supported only on Apple Silicon macOS".to_string()
+        }
+        _ => model_format_support_summary(metadata.primary_format),
     }
 }
 

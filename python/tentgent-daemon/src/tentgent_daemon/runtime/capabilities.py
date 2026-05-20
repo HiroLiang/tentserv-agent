@@ -5,14 +5,14 @@ import sys
 
 
 def ensure_backend_supported(backend: str) -> None:
-    if backend != "mlx":
+    if backend not in {"mlx", "mlx_vlm"}:
         return
 
     if _is_apple_silicon_macos():
         return
 
     raise RuntimeError(
-        "backend `mlx` is supported only on Apple Silicon macOS; "
+        f"backend `{backend}` is supported only on Apple Silicon macOS; "
         f"current platform is {sys.platform}-{platform.machine()}"
     )
 

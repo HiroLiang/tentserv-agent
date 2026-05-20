@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::model::domain::{
-    default_model_capability_source, ModelCapability, ModelFormat, ModelInspection, ModelMetadata,
-    ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
+    default_model_capability_source, MlxRuntimeFamily, ModelCapability, ModelFormat,
+    ModelInspection, ModelMetadata, ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
 };
 use crate::features::model::usecases::{
     ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
@@ -86,6 +86,54 @@ fn std_vision_chat_model_resolver_accepts_safetensors_model() {
 }
 
 #[test]
+fn vision_chat_backend_maps_mlx_vlm_family_only() {
+    assert_eq!(
+        VisionChatBackend::from_model_format_and_mlx_family(
+            ModelFormat::Mlx,
+            Some(MlxRuntimeFamily::Vlm)
+        ),
+        Some(VisionChatBackend::MlxVlm)
+    );
+    assert_eq!(
+        VisionChatBackend::from_model_format_and_mlx_family(ModelFormat::Mlx, None),
+        None
+    );
+    assert_eq!(
+        VisionChatBackend::from_model_format_and_mlx_family(
+            ModelFormat::Mlx,
+            Some(MlxRuntimeFamily::Lm)
+        ),
+        None
+    );
+}
+
+#[test]
+fn std_vision_chat_model_resolver_accepts_mlx_vlm_model() {
+    let catalog = FakeModelCatalog {
+        metadata: mlx_model_metadata(MlxRuntimeFamily::Vlm, vec![ModelCapability::VisionChat]),
+    };
+    let resolver = StdVisionChatModelResolver::new(&catalog);
+
+    let result = resolver
+        .resolve_vision_chat_model(VisionChatModelResolveRequest {
+            layout: layout_input(unique_path("vision-mlx-vlm-home")),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+        })
+        .expect("resolve mlx vision chat model");
+
+    assert_eq!(
+        result.target,
+        VisionChatRuntimeTarget::LocalModel {
+            model_ref: model_ref(),
+            backend: VisionChatBackend::MlxVlm,
+            source_repo: Some("mlx-community/model".to_string()),
+            source_revision: Some("main".to_string()),
+            model_capabilities: vec![ModelCapability::VisionChat],
+        }
+    );
+}
+
+#[test]
 fn std_vision_chat_model_resolver_rejects_non_vision_models() {
     for capability in [
         ModelCapability::Chat,
@@ -130,6 +178,32 @@ fn std_vision_chat_model_resolver_rejects_unsupported_format() {
 
     assert!(matches!(err, KernelError::UnsupportedTarget(_)));
     assert!(err.to_string().contains("does not support `gguf`"));
+}
+
+#[test]
+fn std_vision_chat_model_resolver_rejects_non_vlm_mlx_families() {
+    for family in [
+        MlxRuntimeFamily::Lm,
+        MlxRuntimeFamily::Audio,
+        MlxRuntimeFamily::Diffusion,
+    ] {
+        let catalog = FakeModelCatalog {
+            metadata: mlx_model_metadata(family, vec![ModelCapability::VisionChat]),
+        };
+        let resolver = StdVisionChatModelResolver::new(&catalog);
+
+        let err = resolver
+            .resolve_vision_chat_model(VisionChatModelResolveRequest {
+                layout: layout_input(unique_path("vision-wrong-mlx-family-home")),
+                selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            })
+            .expect_err("unsupported mlx family");
+
+        assert!(matches!(err, KernelError::UnsupportedTarget(_)));
+        assert!(err
+            .to_string()
+            .contains(&format!("MLX runtime family `{family}`")));
+    }
 }
 
 #[cfg(unix)]
@@ -306,6 +380,16 @@ fn model_metadata(format: ModelFormat, capabilities: Vec<ModelCapability>) -> Mo
         total_bytes: 10,
         imported_at: "2026-01-01T00:00:00Z".to_string(),
     }
+}
+
+fn mlx_model_metadata(
+    family: MlxRuntimeFamily,
+    capabilities: Vec<ModelCapability>,
+) -> ModelMetadata {
+    let mut metadata = model_metadata(ModelFormat::Mlx, capabilities);
+    metadata.source_repo = Some("mlx-community/model".to_string());
+    metadata.mlx_runtime_family = Some(family);
+    metadata
 }
 
 fn model_ref() -> ModelRef {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tentgent_daemon.runtime.records import StoredModelRecord, load_model_record
 from tentgent_daemon.runtime.router import (
@@ -45,15 +46,21 @@ class RuntimeRouterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected `mlx-lm`"):
             resolve_backend(record)
 
-    def test_media_mlx_families_are_recorded_but_not_implemented_yet(self) -> None:
-        with self.assertRaisesRegex(ValueError, "planned and not implemented"):
-            resolve_vision_chat_backend(
-                stored_model_record(
-                    primary_format="mlx",
-                    mlx_runtime_family="mlx-vlm",
-                    model_capabilities=("vision-chat",),
-                )
+    def test_mlx_vlm_vision_backend_resolves(self) -> None:
+        with patch("tentgent_daemon.runtime.router.ensure_backend_supported") as ensure:
+            self.assertEqual(
+                resolve_vision_chat_backend(
+                    stored_model_record(
+                        primary_format="mlx",
+                        mlx_runtime_family="mlx-vlm",
+                        model_capabilities=("vision-chat",),
+                    )
+                ),
+                BackendKind.MLX_VLM,
             )
+            ensure.assert_called_once_with("mlx_vlm")
+
+    def test_unimplemented_media_mlx_families_still_reject(self) -> None:
         with self.assertRaisesRegex(ValueError, "planned and not implemented"):
             resolve_audio_transcription_backend(
                 stored_model_record(

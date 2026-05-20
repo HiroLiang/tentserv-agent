@@ -37,15 +37,18 @@ impl VisionChatModelResolver for StdVisionChatModelResolver<'_> {
             )));
         }
 
-        let backend =
-            VisionChatBackend::from_model_format(metadata.primary_format).ok_or_else(|| {
-                KernelError::UnsupportedTarget(format!(
-                    "vision chat endpoint does not support `{}` model format{} yet for model `{}`",
-                    metadata.primary_format,
-                    mlx_runtime_family_suffix(metadata.mlx_runtime_family),
-                    metadata.model_ref
-                ))
-            })?;
+        let backend = VisionChatBackend::from_model_format_and_mlx_family(
+            metadata.primary_format,
+            metadata.mlx_runtime_family,
+        )
+        .ok_or_else(|| {
+            KernelError::UnsupportedTarget(format!(
+                "vision chat endpoint does not support `{}` model format{} yet for model `{}`",
+                metadata.primary_format,
+                mlx_runtime_family_suffix(metadata.mlx_runtime_family),
+                metadata.model_ref
+            ))
+        })?;
         let target = VisionChatRuntimeTarget::LocalModel {
             model_ref: metadata.model_ref.clone(),
             backend,

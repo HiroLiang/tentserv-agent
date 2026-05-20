@@ -67,9 +67,10 @@ MLX model metadata:
 - `tentgent model inspect <model-ref>` shows `mlx_runtime_family` when an MLX
   model maps to a specific runtime family.
 - `mlx-lm` is the current runnable MLX chat path.
-- `mlx-vlm`, `mlx-audio`, and `mlx-diffusion` are metadata families reserved
-  for planned Apple Silicon media backends. They are not runnable until their
-  dedicated backend slices pass smoke tests.
+- `mlx-vlm` is the Apple Silicon MLX VLM path for native `vision-chat`.
+- `mlx-audio` and `mlx-diffusion` are metadata families reserved for planned
+  Apple Silicon media backends. They are not runnable until their dedicated
+  backend slices pass smoke tests.
 
 ## Runtime Footprint
 

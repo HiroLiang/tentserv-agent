@@ -58,6 +58,10 @@ def create_audio_transcription_backend(
 
 
 def create_vision_chat_backend(kind: BackendKind) -> VisionChatBackend:
+    if kind == BackendKind.MLX_VLM:
+        from .mlx_vlm import MlxVlmVisionChatBackend
+
+        return MlxVlmVisionChatBackend()
     if kind == BackendKind.TRANSFORMERS_PEFT:
         from .transformers_peft import TransformersPeftVisionChatBackend
 

@@ -343,15 +343,22 @@ Status: implemented foundation.
 
 #### M6I: MLX Vision Chat Backend
 
-Status: planned.
+Status: implemented and smoke-tested.
 
-- Add `vision-chat` support for MLX VLM models as a parallel backend to the
+- Detailed plan:
+  [m6i-mlx-vision-chat-backend.md](./m6i-mlx-vision-chat-backend.md).
+- Added `vision-chat` support for MLX VLM models as a parallel backend to the
   already implemented Transformers vision path.
 - Keep the native CLI and daemon API unchanged:
   `tentgent vision chat <IMAGE_PATH>` and `POST /v1/vision/chat`.
 - Candidate runtime family: `mlx-vlm`.
-- Candidate smoke models include small `mlx-community` VLM repos such as
-  SmolVLM, LFM2-VL, or Qwen2.5-VL variants when they fit local hardware.
+- Primary smoke candidate:
+  `mlx-community/SmolVLM-256M-Instruct-bf16`.
+- Fallback candidates include `mlx-community/LFM2-VL-450M-4bit` and
+  `mlx-community/Qwen2.5-VL-3B-Instruct-4bit` when they fit local hardware and
+  pass runtime API checks.
+- Added a dedicated MLX VLM backend readiness probe instead of treating this as
+  generic `mlx-lm`.
 - Do not add OpenAI/Claude/Gemini multimodal compatibility in this slice.
 
 #### M6J: MLX Audio Runtime Backend
