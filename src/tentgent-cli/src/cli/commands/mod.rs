@@ -4,6 +4,7 @@ mod chat;
 mod daemon;
 mod dataset;
 mod embed;
+mod image;
 mod model;
 mod rerank;
 mod runtime;
@@ -19,6 +20,7 @@ pub use chat::ChatCommand;
 pub use daemon::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 pub use dataset::DatasetCommands;
 pub use embed::EmbedCommand;
+pub use image::{ImageCommands, ImageGenerateCommand};
 pub use model::ModelCommands;
 pub use rerank::RerankCommand;
 pub use runtime::RuntimeBootstrapProfile;
@@ -108,6 +110,16 @@ pub enum Commands {
     Vision {
         #[command(subcommand)]
         action: VisionCommands,
+    },
+    /// Run local image generation workflows.
+    #[command(
+        name = "image",
+        about = "Run local image generation workflows.",
+        long_about = "Run local image generation workflows. The first supported workflow is `tentgent image generate`, which resolves a stored image-generation model and writes one generated image file from one text prompt."
+    )]
+    Image {
+        #[command(subcommand)]
+        action: ImageCommands,
     },
     /// Inspect and manage adapters, including LoRA selection and switching.
     #[command(

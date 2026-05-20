@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from ..runtime.chat import ChatRequest
 from ..runtime.embedding import EmbeddingRequest
+from ..runtime.image_generation import ImageGenerationRequest, ImageGenerationResult
 from ..runtime.rerank import RerankRequest, RerankResult
 from ..runtime.audio import AudioTranscriptionRequest, AudioTranscriptionResult
 from ..runtime.adapters import (
@@ -109,4 +110,18 @@ class VisionChatBackend:
         return None
 
     def generate_vision_chat(self, request: VisionChatRequest) -> VisionChatResult:
+        raise NotImplementedError
+
+
+class ImageGenerationBackend:
+    """Minimal backend contract for local text-to-image inference."""
+
+    def load(self, record: StoredModelRecord) -> None:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        """Release loaded runtime state when the server lifecycle decides to unload."""
+        return None
+
+    def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         raise NotImplementedError

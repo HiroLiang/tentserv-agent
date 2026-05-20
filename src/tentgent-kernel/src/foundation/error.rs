@@ -45,6 +45,9 @@ pub enum KernelError {
     #[error("vision runtime is unavailable: {0}")]
     VisionRuntimeUnavailable(String),
 
+    #[error("image generation runtime is unavailable: {0}")]
+    ImageGenerationRuntimeUnavailable(String),
+
     #[error("daemon store is unavailable: {0}")]
     DaemonStoreUnavailable(String),
 

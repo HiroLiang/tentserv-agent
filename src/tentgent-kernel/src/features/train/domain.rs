@@ -668,6 +668,14 @@ pub fn select_backend(
                         .to_string(),
                 ],
             ),
+            ModelFormat::Diffusers => (
+                None,
+                "model primary_format is diffusers".to_string(),
+                vec![
+                    "Diffusers image generation models are not trainable by Tentgent LoRA MVP yet"
+                        .to_string(),
+                ],
+            ),
         },
         LoraTrainBackendRequest::Mlx if model_format != ModelFormat::Mlx => (
             None,

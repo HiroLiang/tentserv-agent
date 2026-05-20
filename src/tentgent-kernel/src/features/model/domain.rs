@@ -174,6 +174,7 @@ pub enum ModelFormat {
     Safetensors,
     Gguf,
     Mlx,
+    Diffusers,
 }
 
 impl ModelFormat {
@@ -182,6 +183,7 @@ impl ModelFormat {
             Self::Safetensors => "safetensors",
             Self::Gguf => "gguf",
             Self::Mlx => "mlx",
+            Self::Diffusers => "diffusers",
         }
     }
 }
@@ -644,6 +646,15 @@ pub fn detect_model_formats(
         formats.push(ModelFormat::Mlx);
     }
 
+    if manifest.files.iter().any(|entry| {
+        Path::new(&entry.relative_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == "model_index.json")
+    }) {
+        formats.push(ModelFormat::Diffusers);
+    }
+
     let has_safetensors = manifest.files.iter().any(|entry| {
         entry.relative_path.ends_with(".safetensors")
             || Path::new(&entry.relative_path)
@@ -674,6 +685,10 @@ pub fn select_primary_model_format(
         return Ok(ModelFormat::Mlx);
     }
 
+    if detected_formats.contains(&ModelFormat::Diffusers) {
+        return Ok(ModelFormat::Diffusers);
+    }
+
     if detected_formats.contains(&ModelFormat::Safetensors) {
         return Ok(ModelFormat::Safetensors);
     }
@@ -696,7 +711,7 @@ pub fn escape_huggingface_repo_id(repo_id: &str) -> String {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ModelFormatSelectionError {
     #[error(
-        "unsupported model layout; expected safetensors files, model.safetensors.index.json, gguf files, or an mlx-community Hugging Face repository"
+        "unsupported model layout; expected Diffusers model_index.json, safetensors files, model.safetensors.index.json, gguf files, or an mlx-community Hugging Face repository"
     )]
     UnsupportedLayout,
 }

@@ -247,12 +247,13 @@ the lower-level daemon transport contract, see
 
 ## Media CLI And API Rules
 
-- CLI media commands such as `tentgent transcribe` and `tentgent vision chat`
-  read local files directly from the caller's machine.
+- CLI media commands such as `tentgent transcribe`, `tentgent vision chat`,
+  and `tentgent image generate` read local files or prompts directly from the
+  caller's machine.
 - Daemon media endpoints receive multipart file bytes; curl `@/path/file`
   syntax is client-side file reading, not a daemon path contract.
-- Audio transcription daemon uploads return jobs. Native daemon vision chat is
-  a bounded synchronous request.
+- Audio transcription and image generation daemon routes return jobs. Native
+  daemon vision chat is a bounded synchronous request.
 - Multipart media upload size is controlled by
   `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting to 20 MiB. Oversized uploads
   return HTTP `413` with `upload_too_large`.
@@ -369,8 +370,8 @@ Included:
 - dataset validation, prompt templates, multi-split provider synthesis, and provider evaluation
 - one-shot local chat for MLX, PEFT safetensors, and llama-cpp GGUF paths
 - one-shot local embedding and rerank commands for compatible safetensors models
-- foreground audio transcription and native image-plus-text vision chat for
-  compatible local safetensors models
+- foreground audio transcription, native image-plus-text vision chat, and
+  text-to-image generation for compatible local models
 - local HTTP daemon API for store, dataset, server, chat, training, diagnostics, and bounded session workflows
 - managed LoRA train plans, durable run records, metrics/log inspection, and runnable MLX / PEFT training loops
 - local sessions with bounded transcript compaction for short-term working context
@@ -380,6 +381,8 @@ Known limits:
 
 - macOS and Windows x86_64 are the first packaged install targets
 - MLX requires Apple Silicon macOS
+- MLX acceleration is currently implemented for chat and LoRA training; MLX
+  media backends for audio, vision, and image generation are planned in M6H+
 - Cloud provider servers do not support request-time local adapters
 - generated dataset splits are not deduplicated against each other yet
 - provider key set/remove and `doctor --fix` remain CLI-only

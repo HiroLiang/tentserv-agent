@@ -9,6 +9,7 @@ pub mod daemon;
 pub mod dataset;
 pub mod doctor;
 pub mod embedding;
+pub mod image_generation;
 pub mod job;
 pub mod model;
 pub mod rerank;

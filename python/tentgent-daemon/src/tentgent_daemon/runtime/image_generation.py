@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from .records import StoredModelRecord, load_model_record
+from .router import BackendKind, resolve_image_generation_backend
+
+
+PNG_FORMAT = "png"
+JPG_FORMAT = "jpg"
+SUPPORTED_OUTPUT_FORMATS = {PNG_FORMAT, JPG_FORMAT}
+
+DEFAULT_WIDTH = 512
+DEFAULT_HEIGHT = 512
+DEFAULT_STEPS = 20
+DEFAULT_GUIDANCE_SCALE = 7.5
+MAX_PROMPT_BYTES = 8 * 1024
+
+
+@dataclass(frozen=True)
+class ImageGenerationRequest:
+    model_ref: str
+    prompt: str
+    output_path: Path
+    output_format: str
+    negative_prompt: str | None = None
+    width: int = DEFAULT_WIDTH
+    height: int = DEFAULT_HEIGHT
+    steps: int = DEFAULT_STEPS
+    guidance_scale: float = DEFAULT_GUIDANCE_SCALE
+    seed: int | None = None
+
+
+@dataclass(frozen=True)
+class ImageGenerationResult:
+    output_format: str
+    media_type: str
+    output_path: Path
+    total_bytes: int
+    width: int
+    height: int
+    seed: int | None
+
+
+@dataclass(frozen=True)
+class ImageGenerationPlan:
+    request: ImageGenerationRequest
+    record: StoredModelRecord
+    backend: BackendKind
+    load_path: Path
+
+
+def build_image_generation_plan(
+    request: ImageGenerationRequest,
+    home: Path | None = None,
+) -> ImageGenerationPlan:
+    record = load_model_record(request.model_ref, home=home)
+    if "image-generation" not in record.model_capabilities:
+        capabilities = ", ".join(record.model_capabilities)
+        raise ValueError(
+            "image generation endpoint requires model capability "
+            f"`image-generation`, but model `{record.model_ref}` advertises "
+            f"[{capabilities}]"
+        )
+
+    prompt = request.prompt.strip()
+    if not prompt:
+        raise ValueError("image generation prompt must not be empty")
+    if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
+        raise ValueError(
+            f"image generation prompt must be at most {MAX_PROMPT_BYTES} bytes"
+        )
+
+    negative_prompt = request.negative_prompt.strip() if request.negative_prompt else None
+    if negative_prompt == "":
+        negative_prompt = None
+    if negative_prompt and len(negative_prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
+        raise ValueError(
+            f"image generation negative prompt must be at most {MAX_PROMPT_BYTES} bytes"
+        )
+
+    output_path = request.output_path.expanduser().resolve()
+    if output_path.exists():
+        raise FileExistsError(f"image generation output path `{output_path}` already exists")
+
+    output_format = normalize_image_generation_output_format(request.output_format)
+    validate_image_generation_dimensions(request.width, request.height)
+    validate_image_generation_steps(request.steps)
+    validate_image_generation_guidance_scale(request.guidance_scale)
+
+    return ImageGenerationPlan(
+        request=ImageGenerationRequest(
+            model_ref=request.model_ref,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            output_path=output_path,
+            output_format=output_format,
+            width=request.width,
+            height=request.height,
+            steps=request.steps,
+            guidance_scale=request.guidance_scale,
+            seed=request.seed,
+        ),
+        record=record,
+        backend=resolve_image_generation_backend(record),
+        load_path=record.variant_source_path,
+    )
+
+
+def normalize_image_generation_output_format(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized == "jpeg":
+        normalized = JPG_FORMAT
+    if normalized not in SUPPORTED_OUTPUT_FORMATS:
+        expected = ", ".join(sorted(SUPPORTED_OUTPUT_FORMATS))
+        raise ValueError(
+            f"unsupported image generation output format `{value}`; "
+            f"expected one of: {expected}"
+        )
+    return normalized
+
+
+def image_generation_media_type(output_format: str) -> str:
+    output_format = normalize_image_generation_output_format(output_format)
+    if output_format == JPG_FORMAT:
+        return "image/jpeg"
+    return "image/png"
+
+
+def validate_image_generation_dimensions(width: int, height: int) -> None:
+    _validate_side("width", width)
+    _validate_side("height", height)
+
+
+def validate_image_generation_steps(steps: int) -> None:
+    if steps < 1 or steps > 100:
+        raise ValueError(f"image generation steps must be between 1 and 100; got {steps}")
+
+
+def validate_image_generation_guidance_scale(guidance_scale: float) -> None:
+    if guidance_scale != guidance_scale or guidance_scale < 0.0 or guidance_scale > 30.0:
+        raise ValueError(
+            "image generation guidance scale must be between 0 and 30; "
+            f"got {guidance_scale}"
+        )
+
+
+def write_image_generation_output(
+    request: ImageGenerationRequest,
+    image: object,
+) -> ImageGenerationResult:
+    request.output_path.parent.mkdir(parents=True, exist_ok=True)
+    if request.output_format == JPG_FORMAT and hasattr(image, "convert"):
+        image = image.convert("RGB")
+    save_kwargs: dict[str, object] = {}
+    if request.output_format == JPG_FORMAT:
+        save_kwargs["quality"] = 95
+    image.save(request.output_path, **save_kwargs)
+    return ImageGenerationResult(
+        output_format=normalize_image_generation_output_format(request.output_format),
+        media_type=image_generation_media_type(request.output_format),
+        output_path=request.output_path,
+        total_bytes=request.output_path.stat().st_size,
+        width=request.width,
+        height=request.height,
+        seed=request.seed,
+    )
+
+
+def _validate_side(axis: str, value: int) -> None:
+    if value < 64 or value > 1024:
+        raise ValueError(
+            f"image generation {axis} must be between 64 and 1024 pixels; got {value}"
+        )
+    if value % 8 != 0:
+        raise ValueError(
+            f"image generation {axis} must be divisible by 8 pixels; got {value}"
+        )

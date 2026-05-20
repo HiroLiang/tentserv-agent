@@ -153,6 +153,103 @@ Response:
 OpenAI, Claude, and Gemini compatible multimodal payloads are not accepted yet.
 Those adapters should map into this native vision contract in a later slice.
 
+## Image Generation Jobs
+
+Canonical text-to-image generation uses a workflow job:
+
+```http
+POST /v1/images/generations/job
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{
+  "model_ref": "<image-generation-model-ref>",
+  "prompt": "A small ceramic teapot on a wooden table",
+  "negative_prompt": "optional negative prompt",
+  "output_format": "png",
+  "output_filename": "teapot.png",
+  "width": 512,
+  "height": 512,
+  "steps": 20,
+  "guidance_scale": 7.5,
+  "seed": 42
+}
+```
+
+Fields:
+
+| Field | Required | Type | Notes |
+| --- | --- | --- | --- |
+| `model_ref` | yes | string | Local `image-generation` model ref or unique alias. |
+| `prompt` | yes | string | Text prompt for image generation. |
+| `negative_prompt` | no | string | Optional negative prompt. |
+| `output_format` | no | string | `png` or `jpg`; defaults to `png`. |
+| `output_filename` | no | string | File name only, not a path. Defaults to `image.<format>`. |
+| `width` | no | integer | Defaults to 512. Must be 64..1024 and divisible by 8. |
+| `height` | no | integer | Defaults to 512. Must be 64..1024 and divisible by 8. |
+| `steps` | no | integer | Defaults to 20. Must be 1..100. |
+| `guidance_scale` | no | number | Defaults to 7.5. Must be 0..30. |
+| `seed` | no | integer | Optional deterministic seed. |
+
+The daemon uses the same Diffusers runtime as the CLI. Set
+`TENTGENT_IMAGE_GENERATION_DEVICE=cpu`, `mps`, or `cuda` before daemon startup
+to force a device for image-generation jobs. Set
+`TENTGENT_IMAGE_GENERATION_TORCH_DTYPE=float32` or `float16` only for
+model/runtime compatibility debugging.
+
+Response:
+
+```json
+{
+  "job": {
+    "job_id": "job-...",
+    "kind": "image_generation",
+    "status": "queued",
+    "target": {
+      "section": "image",
+      "reference": "<model-ref>",
+      "path": null
+    }
+  }
+}
+```
+
+List generated files after completion:
+
+```http
+GET /v1/images/generations/job/{job_id}/files
+```
+
+Example response:
+
+```json
+{
+  "files": [
+    {
+      "file_id": "teapot.png",
+      "filename": "teapot.png",
+      "media_type": "image/png",
+      "format": "png",
+      "total_bytes": 12345
+    }
+  ]
+}
+```
+
+Download one generated file:
+
+```http
+GET /v1/images/generations/job/{job_id}/files/{file_id}
+```
+
+File download returns the image bytes with `Content-Type`,
+`Content-Disposition`, `x-tentgent-job-id`, and `x-tentgent-file-id` headers.
+Before completion, file routes return HTTP `409` with `result_pending`.
+Failed, interrupted, or canceled jobs return clear terminal conflict errors.
+
 ## Embeddings
 
 ```http

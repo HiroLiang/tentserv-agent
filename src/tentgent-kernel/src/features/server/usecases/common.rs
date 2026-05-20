@@ -191,7 +191,11 @@ fn server_runtime_backend_for_format(
 ) -> KernelResult<super::super::domain::ServerRuntimeBackend> {
     match capability {
         ServerCapability::Chat => {
-            Ok(super::super::domain::ServerRuntimeBackend::from_model_format(format))
+            super::super::domain::ServerRuntimeBackend::from_model_format(format).ok_or_else(|| {
+                KernelError::UnsupportedTarget(format!(
+                    "server capability `{capability}` does not support `{format}` model format yet"
+                ))
+            })
         }
         ServerCapability::Embedding | ServerCapability::Rerank
             if format == ModelFormat::Safetensors =>

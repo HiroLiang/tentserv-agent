@@ -15,9 +15,9 @@ Most common options have short aliases, such as `-m` for model/message-like inpu
 - Daemon media endpoints receive multipart file bytes, not client-local paths.
   `curl -F file=@/path/audio.mp3` and `curl -F image=@/path/image.png` are curl
   syntax for reading local bytes into the request.
-- Audio transcription daemon uploads create workflow jobs and expose result
-  bytes through a result route. Native vision chat daemon uploads are bounded
-  synchronous requests.
+- Audio transcription and image generation daemon routes create workflow jobs
+  and expose result bytes or files through result routes. Native vision chat
+  daemon uploads are bounded synchronous requests.
 - Multipart media uploads share `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting
   to 20 MiB. Exceeding the cap returns HTTP `413` with `upload_too_large`.
 
@@ -117,13 +117,15 @@ tentgent model pull BAAI/bge-reranker-base --capability rerank --revision main
 
 `--capability` accepts `chat`, `embedding`, `rerank`,
 `audio-transcription`, `audio-speech`, `vision-chat`, or
-`image-generation`. Chat, embedding, rerank, audio transcription, and vision
-chat endpoints enforce this metadata before runtime dispatch.
+`image-generation`. Chat, embedding, rerank, audio transcription, vision chat,
+and image generation endpoints enforce this metadata before runtime dispatch.
 `audio-transcription` is available through `tentgent transcribe` and the daemon
 job API for local safetensors ASR models. `vision-chat` is available through
 `tentgent vision chat` and daemon `POST /v1/vision/chat` for local safetensors
-image-plus-text models. `audio-speech` and `image-generation` remain
-metadata-only until their payload and artifact contracts are implemented.
+image-plus-text models. `image-generation` is available through
+`tentgent image generate` and daemon `POST /v1/images/generations/job` for
+local Diffusers text-to-image models. `audio-speech` remains metadata-only
+until its payload and artifact contract is implemented.
 
 List and inspect models:
 
@@ -306,6 +308,72 @@ needed for PNG, JPEG, or WebP. OpenAI, Claude, and Gemini compatible
 multimodal payloads are still text-only rejected until a later compatibility
 slice. The same daemon-wide media upload cap applies here; set
 `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` before daemon startup to adjust it.
+
+## Image Generation
+
+Run foreground text-to-image generation without starting the daemon:
+
+```bash
+tentgent image generate \
+  --model-ref <image-generation-model-ref> \
+  --prompt "A small ceramic teapot on a wooden table" \
+  --output image.png \
+  --format png \
+  --width 512 \
+  --height 512 \
+  --steps 20
+```
+
+The command always writes to `--output` and fails before running if that file
+already exists. Supported output formats are `png` and `jpg`. Width and height
+must be between 64 and 1024 pixels and divisible by 8. Steps must be 1 through
+100, and guidance scale must be 0 through 30. Diffusers image generation
+defaults to the first available supported device, but you can force one command
+to CPU when debugging Apple MPS or CUDA issues:
+
+```bash
+TENTGENT_IMAGE_GENERATION_DEVICE=cpu tentgent image generate \
+  --model-ref <image-generation-model-ref> \
+  --prompt "A smiling face avatar" \
+  --output avatar.png
+```
+
+Pull a tiny Diffusers plumbing fixture before local smoke tests:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe --capability image-generation
+```
+
+For HTTP integrations, create an image generation job with JSON:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/images/generations/job \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_ref":"<image-generation-model-ref>",
+    "prompt":"A small ceramic teapot on a wooden table",
+    "output_format":"png",
+    "output_filename":"teapot.png",
+    "width":512,
+    "height":512,
+    "steps":20
+  }'
+```
+
+Inspect the job, list generated files, and download a file:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
+curl -sS http://127.0.0.1:8790/v1/images/generations/job/<job-id>/files
+curl -sS http://127.0.0.1:8790/v1/images/generations/job/<job-id>/files/teapot.png \
+  -o teapot.png
+```
+
+Reading result files before completion returns `result_pending`; inspect
+`/v1/jobs/<job-id>` for progress or terminal error details. The daemon stores
+generated files in the job workspace and exposes only the file listing and file
+download APIs.
 
 ## Server
 

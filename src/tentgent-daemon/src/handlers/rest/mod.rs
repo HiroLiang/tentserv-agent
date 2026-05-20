@@ -7,6 +7,7 @@ pub mod dataset;
 pub mod doctor;
 pub mod embedding;
 pub mod health;
+pub mod images;
 pub mod jobs;
 pub mod model;
 pub mod rerank;

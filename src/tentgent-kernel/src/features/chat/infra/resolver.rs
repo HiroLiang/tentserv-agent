@@ -43,7 +43,12 @@ impl ChatModelResolver for StdChatModelResolver<'_> {
 
         let target = ChatRuntimeTarget::LocalModel {
             model_ref: metadata.model_ref.clone(),
-            backend: ChatBackend::from_model_format(metadata.primary_format),
+            backend: ChatBackend::from_model_format(metadata.primary_format).ok_or_else(|| {
+                KernelError::UnsupportedTarget(format!(
+                    "chat endpoint does not support `{}` model format yet for model `{}`",
+                    metadata.primary_format, metadata.model_ref
+                ))
+            })?,
             source_repo: metadata.source_repo.clone(),
             source_revision: metadata.source_revision.clone(),
             model_capabilities: metadata.model_capabilities.clone(),

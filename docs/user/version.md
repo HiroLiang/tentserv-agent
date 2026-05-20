@@ -34,6 +34,11 @@ What changed:
 - Added foreground CLI `tentgent vision chat` and daemon-native
   `POST /v1/vision/chat` for bounded single-image plus prompt requests against
   local `vision-chat` safetensors models.
+- Added foreground CLI `tentgent image generate` and daemon-native
+  `POST /v1/images/generations/job` for text-to-image Diffusers
+  `image-generation` models. Generated files are exposed through
+  `/v1/images/generations/job/{job_id}/files` and
+  `/v1/images/generations/job/{job_id}/files/{file_id}`.
 - Added endpoint-family gates so chat routes require `chat` models and
   embedding/rerank routes require matching model capabilities before runtime
   dispatch.
@@ -53,6 +58,12 @@ Known limits:
 - Audio transcription is batch file transcription. Multipart upload/result
   reads are transport-stream-friendly memory boundaries, not realtime model
   streaming. Live dictation and live translation remain future work.
+- Image generation is text-to-image only. Image LoRA, image-to-image,
+  inpainting/masks, reference images, ControlNet, compatible OpenAI image APIs,
+  and direct image model server routes are future slices.
+- MLX acceleration is implemented for chat and LoRA training today. Audio,
+  vision, and image-generation MLX backends are planned follow-up work; current
+  media baselines use Transformers or Diffusers.
 - Rerank scores are raw backend scores; compare them within one request/model
   family rather than across unrelated models.
 - The next release-engineering slice is Apple Developer ID signing,
@@ -354,6 +365,8 @@ Known limits:
 
 - macOS and Windows x86_64 are the first packaged install targets
 - MLX requires Apple Silicon macOS
+- MLX media backends are planned after the current media baselines; they are
+  not part of the current implemented surface yet
 - Windows runtime support is PEFT/safetensors-first; MLX is disabled
 - HTTP chat is currently non-streaming
 - `llama-cpp` external adapter execution is not implemented in this MVP

@@ -8,8 +8,8 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::Level;
 
 use crate::handlers::rest::{
-    adapter, audio, auth, chat, daemon, dataset, doctor, embedding, health, jobs, model, rerank,
-    server, session, status, train, vision,
+    adapter, audio, auth, chat, daemon, dataset, doctor, embedding, health, images, jobs, model,
+    rerank, server, session, status, train, vision,
 };
 
 use super::{
@@ -42,6 +42,7 @@ fn v1_routes() -> Router<RestState> {
         .merge(embedding_routes())
         .merge(rerank_routes())
         .merge(vision_routes())
+        .merge(image_routes())
         .merge(audio_routes())
         .merge(job_routes())
         .merge(store_routes())
@@ -81,6 +82,22 @@ fn vision_routes() -> Router<RestState> {
     Router::new()
         .route("/v1/vision/chat", post(vision::chat))
         .layer(DefaultBodyLimit::max(media_upload_body_limit_bytes()))
+}
+
+fn image_routes() -> Router<RestState> {
+    Router::new()
+        .route(
+            "/v1/images/generations/job",
+            post(images::create_generation_job),
+        )
+        .route(
+            "/v1/images/generations/job/{job_id}/files",
+            get(images::generation_job_files),
+        )
+        .route(
+            "/v1/images/generations/job/{job_id}/files/{file_id}",
+            get(images::generation_job_file),
+        )
 }
 
 fn audio_routes() -> Router<RestState> {

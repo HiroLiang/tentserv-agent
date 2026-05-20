@@ -11,6 +11,7 @@ mod dataset;
 mod display;
 mod doctor;
 mod embed;
+mod image;
 mod model;
 mod rerank;
 mod runtime;
@@ -46,6 +47,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Rerank(command) => rerank::handle_rerank_command(command).await?,
         Commands::Transcribe(command) => transcribe::handle_transcribe_command(command).await?,
         Commands::Vision { action } => vision::handle_vision_command(action).await?,
+        Commands::Image { action } => image::handle_image_command(action).await?,
         Commands::Server { action } => server::handle_server_command(action).await?,
         Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
@@ -220,6 +222,60 @@ mod tests {
                     assert_eq!(command.format, "md");
                     assert_eq!(command.max_tokens, Some(64));
                     assert_eq!(command.temperature, Some(0.2));
+                    assert_eq!(
+                        command.home.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent"))
+                    );
+                }
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_image_generate_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "image",
+            "generate",
+            "--model-ref",
+            "abc123",
+            "--prompt",
+            "A neon city.",
+            "--negative-prompt",
+            "blurry",
+            "--output",
+            "image.png",
+            "--format",
+            "jpg",
+            "--width",
+            "512",
+            "--height",
+            "768",
+            "--steps",
+            "25",
+            "--guidance-scale",
+            "6.5",
+            "--seed",
+            "42",
+            "--home",
+            "/tmp/tentgent",
+        ])
+        .expect("parse image generate command");
+
+        match cli.command {
+            Commands::Image { action } => match action {
+                super::commands::ImageCommands::Generate(command) => {
+                    assert_eq!(command.model_ref, "abc123");
+                    assert_eq!(command.prompt, "A neon city.");
+                    assert_eq!(command.negative_prompt.as_deref(), Some("blurry"));
+                    assert_eq!(command.output, std::path::Path::new("image.png"));
+                    assert_eq!(command.format, "jpg");
+                    assert_eq!(command.width, 512);
+                    assert_eq!(command.height, 768);
+                    assert_eq!(command.steps, 25);
+                    assert_eq!(command.guidance_scale, 6.5);
+                    assert_eq!(command.seed, Some(42));
                     assert_eq!(
                         command.home.as_deref(),
                         Some(std::path::Path::new("/tmp/tentgent"))

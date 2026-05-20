@@ -280,6 +280,7 @@ SYNC_ARGS=(
   --python "${PYTHON_VERSION}"
   --frozen
   --no-editable
+  --reinstall-package tentgent-daemon
 )
 
 if [[ "${DRY_RUN}" == "true" ]]; then

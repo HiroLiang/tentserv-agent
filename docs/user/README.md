@@ -25,8 +25,8 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
 - [version.md](./version.md)
   Current version feature list, known limits, and release expectations.
 - [commands.md](./commands.md)
-  Common commands for auth, models, adapters, datasets, chat, servers, daemon,
-  sessions, and LoRA training.
+  Common commands for auth, models, adapters, datasets, chat, media workflows,
+  servers, daemon, sessions, and LoRA training.
 - [api.md](./api.md)
   User-facing daemon HTTP API reference, including request shapes, result
   routes, job behavior, multipart media upload semantics, and HTTP error
@@ -40,14 +40,15 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
 
 ## Media Workflow Rules
 
-- CLI media commands such as `tentgent transcribe` and `tentgent vision chat`
-  read local files from the caller's machine and run in the foreground.
+- CLI media commands such as `tentgent transcribe`, `tentgent vision chat`,
+  and `tentgent image generate` read local files or prompts from the caller's
+  machine and run in the foreground.
 - Daemon media endpoints receive multipart file bytes. `curl -F
   file=@/path/audio.mp3` and `curl -F image=@/path/image.png` are client-side
   shorthand for reading local files; the daemon does not receive or trust the
   original client path.
-- Audio transcription daemon requests create workflow jobs. Vision chat daemon
-  requests are bounded synchronous requests.
+- Audio transcription and image generation daemon requests create workflow
+  jobs. Vision chat daemon requests are bounded synchronous requests.
 - Multipart media uploads share the daemon-wide
   `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` file-part cap, which defaults to 20 MiB
   and returns HTTP `413` with `upload_too_large` when exceeded.

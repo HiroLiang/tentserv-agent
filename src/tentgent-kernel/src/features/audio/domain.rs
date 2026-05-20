@@ -95,7 +95,7 @@ impl AudioTranscriptionBackend {
     pub const fn from_model_format(format: ModelFormat) -> Option<Self> {
         match format {
             ModelFormat::Safetensors => Some(Self::TransformersAutomaticSpeechRecognition),
-            ModelFormat::Gguf | ModelFormat::Mlx => None,
+            ModelFormat::Diffusers | ModelFormat::Gguf | ModelFormat::Mlx => None,
         }
     }
 }

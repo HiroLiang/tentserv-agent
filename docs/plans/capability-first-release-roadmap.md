@@ -15,6 +15,10 @@ separate release, Linux, daemon-runtime, packaging, and model-capability plans i
   implementation slice.
 - Separate native parsed media endpoints from any opaque stream-in/stream-out
   runtime proxy before implementation starts.
+- Treat Apple Silicon local deployment as a first-class product target. When a
+  practical MLX runtime exists for a media workflow, add it as a parallel local
+  backend instead of leaving that workflow CPU-only on Apple Studio, Mac mini,
+  or MacBook-class hardware.
 - Run Apple Developer ID signing and notarization before beta or release
   candidate tags, not after the first stable release.
 
@@ -298,17 +302,87 @@ Status: implemented.
 
 #### M6G: Image Generation Jobs
 
-Status: planned.
+Status: implemented baseline and CLI smoke-tested.
 
-- Add `image-generation` artifact jobs.
+- Added `image-generation` artifact jobs.
 - Canonical API: `POST /v1/images/generations/job`.
 - Result/file APIs return generated `png` or `jpg` files through
   workflow-owned routes, not workspace/spool routes.
 - First slice is text-to-image only with validated prompt, dimensions, seed,
   and output format.
-- Reference image, mask, image-to-image, and inpainting are later sub-slices.
+- Implemented the first runtime path as Diffusers through the `local-model`
+  Python profile, with CPU/MPS fp32 and CUDA fp16 dtype defaults.
+- M6G.1 through M6G.4 follow with image LoRA, image-to-image, inpainting/masks,
+  and reference image or ControlNet contracts.
+- Detailed plan:
+  [m6g-image-generation-jobs.md](./m6g-image-generation-jobs.md).
 
-#### M6H: Audio Speech Jobs
+#### M6H: MLX Multimodal Backend Family Foundation
+
+Status: planned.
+
+- Detailed plan:
+  [m6h-mlx-multimodal-backend-foundation.md](./m6h-mlx-multimodal-backend-foundation.md).
+- Insert this before new media capability surfaces so Apple Silicon deployment
+  does not lag behind the existing safetensors/Diffusers baseline.
+- Split MLX runtime families instead of treating every `ModelFormat::Mlx` model
+  as `mlx-lm` chat:
+  - `mlx-lm` for text chat and current MLX LoRA paths
+  - `mlx-vlm` for `vision-chat`
+  - `mlx-audio` for ASR, audio understanding, and text-to-speech candidates
+  - an MLX diffusion family, if a stable runtime is approved, for
+    `image-generation`
+- Add model metadata or resolver rules that can select the correct MLX runtime
+  family without breaking existing `mlx-community` chat models.
+- Add doctor/runtime readiness probes for any new MLX packages before exposing
+  the corresponding backend.
+
+#### M6I: MLX Vision Chat Backend
+
+Status: planned.
+
+- Add `vision-chat` support for MLX VLM models as a parallel backend to the
+  already implemented Transformers vision path.
+- Keep the native CLI and daemon API unchanged:
+  `tentgent vision chat <IMAGE_PATH>` and `POST /v1/vision/chat`.
+- Candidate runtime family: `mlx-vlm`.
+- Candidate smoke models include small `mlx-community` VLM repos such as
+  SmolVLM, LFM2-VL, or Qwen2.5-VL variants when they fit local hardware.
+- Do not add OpenAI/Claude/Gemini multimodal compatibility in this slice.
+
+#### M6J: MLX Audio Runtime Backend
+
+Status: planned.
+
+- Add an MLX audio backend path for `audio-transcription` before expanding
+  audio workflows beyond the current ASR baseline.
+- Keep the native transcription API and CLI unchanged:
+  `tentgent transcribe`, `POST /v1/audio/transcriptions/job`, and result
+  routes.
+- Candidate runtime family: `mlx-audio`.
+- Candidate smoke models include MLX Whisper ASR variants. Audio understanding
+  models can be evaluated here but should not change the transcription
+  contract unless a separate capability is approved.
+- Evaluate whether the same runtime family is mature enough to support
+  `audio-speech`; if yes, feed that directly into M6L.
+
+#### M6K: MLX Image Generation Backend Decision
+
+Status: planned decision and implementation split.
+
+- Decide and, if practical, implement an MLX image-generation backend parallel
+  to the current Diffusers backend.
+- Keep the existing `image-generation` CLI and daemon job API unchanged.
+- Candidate runtime families include DiffusionKit or other MLX Stable
+  Diffusion-compatible runtimes. Do not route these through `mlx-lm`.
+- If the MLX image-generation runtime is not stable enough, record the blocker
+  explicitly and keep the M6G Diffusers path as the implemented baseline rather
+  than blocking user-visible image generation.
+- Do not start advanced image-generation sub-slices such as image LoRA,
+  image-to-image, inpainting, reference images, or ControlNet until the Apple
+  Silicon backend decision is recorded.
+
+#### M6L: Audio Speech Jobs
 
 Status: planned.
 
@@ -317,9 +391,11 @@ Status: planned.
 - First output format should be `wav`; `flac` can follow if supported.
 - `mp3` waits until encoder dependency and licensing boundaries are approved.
 - Voice/language selection must be model-aware and fail early when unsupported.
+- Include both Transformers and MLX runtime candidates when practical, rather
+  than shipping a speech path that is unnecessarily CPU-only on Apple Silicon.
 - Realtime speech streaming is out of scope for this slice.
 
-#### M6I: Video Understanding
+#### M6M: Video Understanding
 
 Status: planned, contract first.
 
@@ -334,7 +410,7 @@ Status: planned, contract first.
 - Keep this contract-only if no practical small local model/runtime fixture is
   approved.
 
-#### M6J: Video Generation Artifact Decision
+#### M6N: Video Generation Artifact Decision
 
 Status: decision slice, not implementation by default.
 
@@ -347,7 +423,7 @@ Status: decision slice, not implementation by default.
 - If no-go, keep `video-generation` out of accepted capability values until a
   later milestone.
 
-#### M6K: Media Serving And Runtime Stream Proxy Decision
+#### M6O: Media Serving And Runtime Stream Proxy Decision
 
 Status: planned decision and implementation split.
 
@@ -390,10 +466,10 @@ Review target:
   single-image vision chat are implemented and documented.
 - Multimodal planning follow-up: kernel-owned job workspaces are implemented
   before native runtime work; M6C audio transcription, M6D file-upload job
-  intake, M6E foreground transcription CLI, and M6F native vision chat are
-  implemented; M6G-and-later stages the remaining media workflows by CLI,
-  output format, server, and
-  transport shape.
+  intake, M6E foreground transcription CLI, M6F native vision chat, and M6G
+  image-generation jobs are implemented; M6H-and-later prioritizes MLX media
+  backend parity for Apple Silicon before opening additional media surfaces by
+  CLI, output format, server, and transport shape.
 - Signing prerelease: Developer ID signing and notarization pipeline passes.
 - Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints
   remain explicitly deferred unless their contracts and runtime paths are
@@ -409,5 +485,7 @@ Review target:
 - Metadata tests for explicit-only M6A media capability values.
 - Job workspace tests for path input, upload input, chunk IO, result file list
   and reads, quota, cleanup, and fake-worker handoff.
+- MLX media backend tests for runtime-family selection, Apple Silicon readiness
+  diagnostics, and parity with native audio, vision, and image APIs.
 - Doctor/capability-state tests for backend readiness reporting.
 - Release workflow tests or dry runs for signed macOS artifacts before beta.

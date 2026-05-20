@@ -18,6 +18,13 @@ use tentgent_kernel::{
                 EmbeddingModelResolveRequest, EmbeddingModelResolveResult, EmbeddingModelResolver,
             },
         },
+        image_generation::{
+            infra::StdImageGenerationModelResolver,
+            ports::{
+                ImageGenerationModelResolveRequest, ImageGenerationModelResolveResult,
+                ImageGenerationModelResolver,
+            },
+        },
         model::{
             infra::{
                 FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
@@ -189,5 +196,14 @@ impl VisionChatModelResolver for ModelKernelComponent {
         request: VisionChatModelResolveRequest,
     ) -> KernelResult<VisionChatModelResolveResult> {
         StdVisionChatModelResolver::new(self).resolve_vision_chat_model(request)
+    }
+}
+
+impl ImageGenerationModelResolver for ModelKernelComponent {
+    fn resolve_image_generation_model(
+        &self,
+        request: ImageGenerationModelResolveRequest,
+    ) -> KernelResult<ImageGenerationModelResolveResult> {
+        StdImageGenerationModelResolver::new(self).resolve_image_generation_model(request)
     }
 }

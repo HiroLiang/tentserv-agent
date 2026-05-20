@@ -136,7 +136,9 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
   dependency set with `transformers` feature extraction and mean pooling.
 - `rerank` safetensors models run through the local-model Python dependency set
   with `transformers` sequence classification.
-- `mlx` models run through the MLX backend only on Apple Silicon macOS.
+- `mlx` chat and LoRA training models run through the MLX backend only on Apple
+  Silicon macOS. MLX media backends for audio, vision, and image generation are
+  planned separately from the current Transformers/Diffusers media baselines.
 - `gguf` models run through `llama-cpp-python` when that dependency is installed.
 - PEFT LoRA adapters can be selected per request with `adapter_ref`.
 - MLX adapters can be selected per request; changing adapters reloads the MLX model for correctness.
@@ -157,9 +159,10 @@ Media models have two dependency classes:
 
 - Python model execution dependencies are installed by runtime profiles.
   `local-model` covers `torch`, `torchvision`, `transformers`, `tokenizers`,
-  `safetensors`, Pillow image decoding, and PEFT support used by local
-  safetensors chat, embedding, rerank, `audio-transcription`, and
-  `vision-chat` models.
+  `safetensors`, `diffusers`, `accelerate`, Pillow image decoding, and PEFT
+  support used by local safetensors chat, embedding, rerank,
+  `audio-transcription`, `vision-chat`, and Diffusers `image-generation`
+  models.
 - Media file decoding dependencies are system tools on `PATH`. Current
   `audio-transcription` jobs store the uploaded file in a daemon workspace and
   pass that file path to the Transformers ASR pipeline, which expects `ffmpeg`
@@ -185,9 +188,17 @@ Vision chat currently uses Python/Pillow/torchvision image processing through
 the `local-model` profile and does not require a system decoder like `ffmpeg`
 for PNG, JPEG, or WebP inputs.
 
-Future `audio-speech`, `image-generation`, and video-oriented routes may add
-more capability-specific checks. Those checks should stay warning-level unless
-the user is actively running a feature that requires them.
+Image generation currently uses Python Diffusers/Pillow through the
+`local-model` profile and does not require a system decoder like `ffmpeg` for
+text-to-image output. Some Diffusers repositories ship fp16 weights by default;
+Tentgent loads CPU and Apple MPS image-generation runs as fp32 for stability and
+CUDA runs as fp16 by default. Override the backend device with
+`TENTGENT_IMAGE_GENERATION_DEVICE=cpu`, `mps`, or `cuda`, and override dtype
+with `TENTGENT_IMAGE_GENERATION_TORCH_DTYPE=float32` or `float16` only when
+debugging model/runtime compatibility. Future `audio-speech` and
+video-oriented routes may add more capability-specific checks. Those checks
+should stay warning-level unless the user is actively running a feature that
+requires them.
 
 ## Keychain Prompts
 

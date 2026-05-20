@@ -119,6 +119,7 @@ fn model_store_layout_matches_contract_paths() {
 fn format_detection_keeps_contract_order_and_mlx_repo_rule() {
     let manifest = ModelManifest {
         files: vec![
+            manifest_entry("model_index.json", 2),
             manifest_entry("weights/model.gguf", 8),
             manifest_entry("model.safetensors.index.json", 4),
         ],
@@ -130,6 +131,7 @@ fn format_detection_keeps_contract_order_and_mlx_repo_rule() {
         detected,
         vec![
             ModelFormat::Mlx,
+            ModelFormat::Diffusers,
             ModelFormat::Safetensors,
             ModelFormat::Gguf
         ]
@@ -140,7 +142,7 @@ fn format_detection_keeps_contract_order_and_mlx_repo_rule() {
     );
     assert_eq!(
         select_primary_model_format(&detected, Some("other/example")),
-        Ok(ModelFormat::Safetensors)
+        Ok(ModelFormat::Diffusers)
     );
 }
 

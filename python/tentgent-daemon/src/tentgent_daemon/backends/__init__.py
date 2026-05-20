@@ -5,6 +5,7 @@ from .base import (
     AudioTranscriptionBackend,
     ChatBackend,
     EmbeddingBackend,
+    ImageGenerationBackend,
     RerankBackend,
     VisionChatBackend,
 )
@@ -65,15 +66,26 @@ def create_vision_chat_backend(kind: BackendKind) -> VisionChatBackend:
     raise ValueError(f"unsupported vision chat backend kind `{kind}`")
 
 
+def create_image_generation_backend(kind: BackendKind) -> ImageGenerationBackend:
+    if kind == BackendKind.DIFFUSERS:
+        from .diffusers import DiffusersImageGenerationBackend
+
+        return DiffusersImageGenerationBackend()
+
+    raise ValueError(f"unsupported image generation backend kind `{kind}`")
+
+
 __all__ = [
     "ChatBackend",
     "EmbeddingBackend",
+    "ImageGenerationBackend",
     "RerankBackend",
     "AudioTranscriptionBackend",
     "VisionChatBackend",
     "create_backend",
     "create_audio_transcription_backend",
     "create_embedding_backend",
+    "create_image_generation_backend",
     "create_rerank_backend",
     "create_vision_chat_backend",
 ]

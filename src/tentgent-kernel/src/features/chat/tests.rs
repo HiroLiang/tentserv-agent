@@ -36,16 +36,17 @@ fn chat_prompt_requires_messages() {
 fn chat_backend_maps_to_adapter_backend_support() {
     assert_eq!(
         ChatBackend::from_model_format(ModelFormat::Safetensors),
-        ChatBackend::TransformersPeft
+        Some(ChatBackend::TransformersPeft)
     );
     assert_eq!(
         ChatBackend::from_model_format(ModelFormat::Mlx),
-        ChatBackend::Mlx
+        Some(ChatBackend::Mlx)
     );
     assert_eq!(
         ChatBackend::from_model_format(ModelFormat::Gguf),
-        ChatBackend::LlamaCpp
+        Some(ChatBackend::LlamaCpp)
     );
+    assert_eq!(ChatBackend::from_model_format(ModelFormat::Diffusers), None);
     assert_eq!(
         ChatBackend::TransformersPeft.adapter_backend_support(),
         AdapterBackendSupport::TransformersPeft

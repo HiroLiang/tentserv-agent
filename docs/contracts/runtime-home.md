@@ -190,7 +190,7 @@ It downloads a pinned `uv` release archive, verifies the pinned `sha256.sum` man
 It resolves the packaged or development Python project, ensures pinned `uv` is cached, and runs:
 
 ```text
-UV_PROJECT_ENVIRONMENT=<python-env> UV_CACHE_DIR=<bootstrap-uv-cache> uv --no-config sync --project <python-project> --managed-python --python 3.13 --frozen --no-editable
+UV_PROJECT_ENVIRONMENT=<python-env> UV_CACHE_DIR=<bootstrap-uv-cache> uv --no-config sync --project <python-project> --managed-python --python 3.13 --frozen --no-editable --reinstall-package tentgent-daemon
 ```
 
 Default managed Python environment:

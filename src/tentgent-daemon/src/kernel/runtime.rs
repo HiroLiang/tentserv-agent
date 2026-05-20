@@ -26,6 +26,14 @@ use tentgent_kernel::{
             infra::PythonEmbeddingOnceRuntimeClient,
             ports::{EmbeddingPortFuture, EmbeddingRuntimeClient, EmbeddingRuntimeRequest},
         },
+        image_generation::{
+            domain::ImageGenerationResponse,
+            infra::PythonImageGenerationOnceRuntimeClient,
+            ports::{
+                ImageGenerationPortFuture, ImageGenerationRuntimeClient,
+                ImageGenerationRuntimeRequest,
+            },
+        },
         rerank::{
             domain::RerankResponse,
             infra::PythonRerankOnceRuntimeClient,
@@ -252,6 +260,19 @@ impl VisionChatRuntimeClient for RuntimeKernelComponent {
         Box::pin(async move {
             PythonVisionChatOnceRuntimeClient::new(self)
                 .generate_vision_chat(request)
+                .await
+        })
+    }
+}
+
+impl ImageGenerationRuntimeClient for RuntimeKernelComponent {
+    fn generate_image(
+        &'_ self,
+        request: ImageGenerationRuntimeRequest,
+    ) -> ImageGenerationPortFuture<'_, ImageGenerationResponse> {
+        Box::pin(async move {
+            PythonImageGenerationOnceRuntimeClient::new(self)
+                .generate_image(request)
                 .await
         })
     }

@@ -1080,6 +1080,129 @@ async fn audio_transcription_result_reads_workspace_chunks() {
 }
 
 #[tokio::test]
+async fn image_generation_files_report_pending_for_active_job() {
+    let requested_home = unique_home("image-generation-result-pending");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let job = state.app().jobs().create(
+        JobKind::image_generation(),
+        "generate fixture",
+        None,
+        Vec::<String>::new(),
+    );
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/images/generations/job/{}/files", job.job_id))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "result_pending");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn image_generation_result_file_lists_and_downloads_workspace_file() {
+    let requested_home = unique_home("image-generation-result-file");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let job = state.app().jobs().create(
+        JobKind::image_generation(),
+        "generate fixture",
+        None,
+        Vec::<String>::new(),
+    );
+    let store = FileJobWorkspaceStore::from_runtime_dir(state.app().layout().runtime_dir.clone());
+    let workspace = store.open_workspace(&job.job_id).expect("workspace");
+    let files_dir = workspace.workspace_dir.join("files");
+    fs::create_dir_all(&files_dir).expect("files dir");
+    fs::write(files_dir.join("image.png"), b"png-bytes").expect("result file");
+    let workspace_summary = store
+        .finalize_stream(
+            &job.job_id,
+            JobStreamKind::Result,
+            JobWorkspaceStreamSummary {
+                state: "done".to_string(),
+                done: true,
+                failed: false,
+                chunk_count: 1,
+                total_bytes: 9,
+                sha256: None,
+                media_type: Some("image/png".to_string()),
+                original_filename: Some("image.png".to_string()),
+            },
+        )
+        .expect("finalize result");
+    store
+        .declare_result_file(
+            &job.job_id,
+            JobResultFile {
+                file_id: "image.png".to_string(),
+                filename: "image.png".to_string(),
+                media_type: Some("image/png".to_string()),
+                format: Some("png".to_string()),
+                total_bytes: 9,
+            },
+        )
+        .expect("declare result");
+    state
+        .app()
+        .jobs()
+        .update_workspace(&job.job_id, workspace_summary);
+    state
+        .app()
+        .jobs()
+        .succeed(&job.job_id, None, "image generation wrote image.png");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/images/generations/job/{}/files", job.job_id))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["files"][0]["file_id"], "image.png");
+    assert_eq!(body["files"][0]["media_type"], "image/png");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/images/generations/job/{}/files/image.png",
+                    job.job_id
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("image/png")
+    );
+    let body = sse_body(response).await;
+    assert_eq!(body.as_bytes(), b"png-bytes");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn jobs_returns_empty_registry_for_isolated_home() {
     let requested_home = unique_home("jobs-empty");
     let state = rest_state_for_home(requested_home);

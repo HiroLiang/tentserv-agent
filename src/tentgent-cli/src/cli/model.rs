@@ -648,6 +648,10 @@ fn model_format_support_summary(format: ModelFormat) -> String {
             "dependency-gated: requires Python packages such as torch, transformers, peft, and safetensors"
                 .to_string()
         }
+        ModelFormat::Diffusers => {
+            "dependency-gated: requires Python packages such as torch, diffusers, accelerate, and pillow"
+                .to_string()
+        }
         ModelFormat::Gguf => {
             "dependency-gated: requires a working llama-cpp-python installation".to_string()
         }
@@ -837,5 +841,6 @@ mod tests {
     fn backend_support_summary_uses_kernel_model_format() {
         assert!(model_format_support_summary(ModelFormat::Gguf).contains("llama-cpp-python"));
         assert!(model_format_support_summary(ModelFormat::Safetensors).contains("transformers"));
+        assert!(model_format_support_summary(ModelFormat::Diffusers).contains("diffusers"));
     }
 }

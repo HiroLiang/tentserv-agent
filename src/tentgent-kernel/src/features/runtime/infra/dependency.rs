@@ -174,7 +174,9 @@ pub(crate) fn runtime_profile_modules(profile: BootstrapProfile) -> Vec<&'static
 
 fn local_model_modules() -> Vec<&'static str> {
     let mut modules = vec![
+        "diffusers",
         "PIL",
+        "accelerate",
         "llama_cpp",
         "peft",
         "safetensors",

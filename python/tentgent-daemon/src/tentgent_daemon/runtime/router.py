@@ -7,6 +7,7 @@ from .records import StoredModelRecord
 
 
 class BackendKind(StrEnum):
+    DIFFUSERS = "diffusers"
     MLX = "mlx"
     TRANSFORMERS_PEFT = "transformers_peft"
     LLAMA_CPP = "llama_cpp"
@@ -60,4 +61,13 @@ def resolve_vision_chat_backend(record: StoredModelRecord) -> BackendKind:
 
     raise ValueError(
         f"unsupported primary_format `{record.primary_format}` for vision chat model `{record.model_ref}`"
+    )
+
+
+def resolve_image_generation_backend(record: StoredModelRecord) -> BackendKind:
+    if record.primary_format == "diffusers":
+        return BackendKind.DIFFUSERS
+
+    raise ValueError(
+        f"unsupported primary_format `{record.primary_format}` for image generation model `{record.model_ref}`"
     )

@@ -38,6 +38,7 @@ use tentgent_kernel::{
             StdDoctorRepairUseCase, StdDoctorReportUseCase,
         },
         embedding::usecases::StdEmbeddingUseCase,
+        image_generation::usecases::StdImageGenerationUseCase,
         model::usecases::StdModelHfPullUseCase,
         rerank::usecases::StdRerankUseCase,
         server::{
@@ -188,6 +189,10 @@ impl KernelComponents {
 
     pub fn vision_chat_usecase(&self) -> StdVisionChatUseCase<'_> {
         StdVisionChatUseCase::new(&self.runtime, &self.models, &self.runtime)
+    }
+
+    pub fn image_generation_usecase(&self) -> StdImageGenerationUseCase<'_> {
+        StdImageGenerationUseCase::new(&self.runtime, &self.models, &self.runtime)
     }
 
     pub fn server_usecase(&self) -> StdServerUseCase<'_> {

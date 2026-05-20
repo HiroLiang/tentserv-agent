@@ -144,11 +144,12 @@ pub enum ChatBackend {
 }
 
 impl ChatBackend {
-    pub const fn from_model_format(format: ModelFormat) -> Self {
+    pub const fn from_model_format(format: ModelFormat) -> Option<Self> {
         match format {
-            ModelFormat::Safetensors => Self::TransformersPeft,
-            ModelFormat::Gguf => Self::LlamaCpp,
-            ModelFormat::Mlx => Self::Mlx,
+            ModelFormat::Safetensors => Some(Self::TransformersPeft),
+            ModelFormat::Gguf => Some(Self::LlamaCpp),
+            ModelFormat::Mlx => Some(Self::Mlx),
+            ModelFormat::Diffusers => None,
         }
     }
 

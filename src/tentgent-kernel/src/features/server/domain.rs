@@ -350,11 +350,12 @@ pub enum ServerRuntimeBackend {
 }
 
 impl ServerRuntimeBackend {
-    pub const fn from_model_format(format: ModelFormat) -> Self {
+    pub const fn from_model_format(format: ModelFormat) -> Option<Self> {
         match format {
-            ModelFormat::Safetensors => Self::TransformersPeft,
-            ModelFormat::Mlx => Self::Mlx,
-            ModelFormat::Gguf => Self::LlamaCpp,
+            ModelFormat::Safetensors => Some(Self::TransformersPeft),
+            ModelFormat::Mlx => Some(Self::Mlx),
+            ModelFormat::Gguf => Some(Self::LlamaCpp),
+            ModelFormat::Diffusers => None,
         }
     }
 
