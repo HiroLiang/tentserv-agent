@@ -20,6 +20,7 @@ local-model = [
     "diffusers",
     "llama-cpp-python; sys_platform != 'win32'",
     "mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-audio; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-lm; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-vlm; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "peft",

@@ -5,7 +5,7 @@ import sys
 
 
 def ensure_backend_supported(backend: str) -> None:
-    if backend not in {"mlx", "mlx_vlm"}:
+    if backend not in {"mlx", "mlx_audio", "mlx_vlm"}:
         return
 
     if _is_apple_silicon_macos():

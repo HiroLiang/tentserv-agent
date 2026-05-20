@@ -68,9 +68,11 @@ MLX model metadata:
   model maps to a specific runtime family.
 - `mlx-lm` is the current runnable MLX chat path.
 - `mlx-vlm` is the Apple Silicon MLX VLM path for native `vision-chat`.
-- `mlx-audio` and `mlx-diffusion` are metadata families reserved for planned
-  Apple Silicon media backends. They are not runnable until their dedicated
-  backend slices pass smoke tests.
+- `mlx-audio` is the Apple Silicon MLX path for native
+  `audio-transcription`.
+- `mlx-diffusion` is a metadata family reserved for a planned Apple Silicon
+  image-generation backend. It is not runnable until its dedicated backend
+  slice passes smoke tests.
 
 ## Runtime Footprint
 
@@ -146,9 +148,10 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
   dependency set with `transformers` feature extraction and mean pooling.
 - `rerank` safetensors models run through the local-model Python dependency set
   with `transformers` sequence classification.
-- `mlx` chat and LoRA training models run through the MLX backend only on Apple
-  Silicon macOS. MLX media backends for audio, vision, and image generation are
-  planned separately from the current Transformers/Diffusers media baselines.
+- `mlx` chat, LoRA training, `vision-chat`, and `audio-transcription` models
+  run through MLX backend families only on Apple Silicon macOS. The MLX
+  image-generation backend remains planned separately from the current
+  Diffusers baseline.
 - `gguf` models run through `llama-cpp-python` when that dependency is installed.
 - PEFT LoRA adapters can be selected per request with `adapter_ref`.
 - MLX adapters can be selected per request; changing adapters reloads the MLX model for correctness.

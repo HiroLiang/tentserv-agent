@@ -4,7 +4,7 @@ use std::{fmt, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::features::model::domain::{ModelCapability, ModelFormat, ModelRef};
+use crate::features::model::domain::{MlxRuntimeFamily, ModelCapability, ModelFormat, ModelRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -83,12 +83,14 @@ pub enum AudioTranscriptionOutputFormatParseError {
 #[serde(rename_all = "kebab-case")]
 pub enum AudioTranscriptionBackend {
     TransformersAutomaticSpeechRecognition,
+    MlxAudio,
 }
 
 impl AudioTranscriptionBackend {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::TransformersAutomaticSpeechRecognition => "transformers-asr",
+            Self::MlxAudio => "mlx-audio",
         }
     }
 
@@ -96,6 +98,23 @@ impl AudioTranscriptionBackend {
         match format {
             ModelFormat::Safetensors => Some(Self::TransformersAutomaticSpeechRecognition),
             ModelFormat::Diffusers | ModelFormat::Gguf | ModelFormat::Mlx => None,
+        }
+    }
+
+    pub const fn from_model_format_and_mlx_family(
+        format: ModelFormat,
+        mlx_runtime_family: Option<MlxRuntimeFamily>,
+    ) -> Option<Self> {
+        match format {
+            ModelFormat::Safetensors => Some(Self::TransformersAutomaticSpeechRecognition),
+            ModelFormat::Mlx => match mlx_runtime_family {
+                Some(MlxRuntimeFamily::Audio) => Some(Self::MlxAudio),
+                Some(MlxRuntimeFamily::Lm)
+                | Some(MlxRuntimeFamily::Vlm)
+                | Some(MlxRuntimeFamily::Diffusion)
+                | None => None,
+            },
+            ModelFormat::Diffusers | ModelFormat::Gguf => None,
         }
     }
 }

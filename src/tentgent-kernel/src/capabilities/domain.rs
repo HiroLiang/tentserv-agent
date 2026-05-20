@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::features::runtime::domain::{BootstrapProfile, RuntimeReadiness};
 use crate::foundation::platform::PlatformFacts;
 
-pub const CAPABILITY_SCHEMA_VERSION: u32 = 3;
+pub const CAPABILITY_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MachineCapabilities {
@@ -47,6 +47,7 @@ pub enum BackendKind {
     SafetensorsPeft,
     Mlx,
     MlxVlm,
+    MlxAudio,
     Training,
     Embedding,
     Rerank,

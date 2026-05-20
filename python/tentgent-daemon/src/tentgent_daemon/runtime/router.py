@@ -58,7 +58,9 @@ def resolve_audio_transcription_backend(record: StoredModelRecord) -> BackendKin
     if record.primary_format == "safetensors":
         return BackendKind.TRANSFORMERS_PEFT
     if record.primary_format == "mlx" and record.mlx_runtime_family == "mlx-audio":
-        _raise_planned_mlx_backend(record, "audio transcription", "mlx-audio")
+        backend = BackendKind.MLX_AUDIO
+        ensure_backend_supported(str(backend))
+        return backend
 
     raise ValueError(
         f"unsupported primary_format `{record.primary_format}` for audio transcription model `{record.model_ref}`"

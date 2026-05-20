@@ -49,6 +49,10 @@ def create_rerank_backend(kind: BackendKind) -> RerankBackend:
 def create_audio_transcription_backend(
     kind: BackendKind,
 ) -> AudioTranscriptionBackend:
+    if kind == BackendKind.MLX_AUDIO:
+        from .mlx_audio import MlxAudioTranscriptionBackend
+
+        return MlxAudioTranscriptionBackend()
     if kind == BackendKind.TRANSFORMERS_PEFT:
         from .transformers_peft import TransformersPeftAudioTranscriptionBackend
 

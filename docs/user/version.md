@@ -61,9 +61,10 @@ Known limits:
 - Image generation is text-to-image only. Image LoRA, image-to-image,
   inpainting/masks, reference images, ControlNet, compatible OpenAI image APIs,
   and direct image model server routes are future slices.
-- MLX acceleration is implemented for chat and LoRA training today. Audio,
-  vision, and image-generation MLX backends are planned follow-up work; current
-  media baselines use Transformers or Diffusers.
+- MLX acceleration is implemented for chat, LoRA training, native
+  `vision-chat`, and native `audio-transcription` on Apple Silicon. The
+  image-generation MLX backend remains planned; the current image baseline uses
+  Diffusers.
 - Rerank scores are raw backend scores; compare them within one request/model
   family rather than across unrelated models.
 - The next release-engineering slice is Apple Developer ID signing,
@@ -365,8 +366,7 @@ Known limits:
 
 - macOS and Windows x86_64 are the first packaged install targets
 - MLX requires Apple Silicon macOS
-- MLX media backends are planned after the current media baselines; they are
-  not part of the current implemented surface yet
+- MLX image generation remains planned after the current Diffusers baseline
 - Windows runtime support is PEFT/safetensors-first; MLX is disabled
 - HTTP chat is currently non-streaming
 - `llama-cpp` external adapter execution is not implemented in this MVP

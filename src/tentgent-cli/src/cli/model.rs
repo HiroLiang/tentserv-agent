@@ -674,6 +674,15 @@ fn model_backend_support_summary(metadata: &ModelMetadata) -> String {
         (ModelFormat::Mlx, Some(MlxRuntimeFamily::Vlm)) => {
             "unsupported: MLX VLM is supported only on Apple Silicon macOS".to_string()
         }
+        (ModelFormat::Mlx, Some(MlxRuntimeFamily::Audio))
+            if cfg!(all(target_os = "macos", target_arch = "aarch64")) =>
+        {
+            "dependency-gated: requires MLX audio Python packages such as mlx and mlx-audio"
+                .to_string()
+        }
+        (ModelFormat::Mlx, Some(MlxRuntimeFamily::Audio)) => {
+            "unsupported: MLX audio is supported only on Apple Silicon macOS".to_string()
+        }
         _ => model_format_support_summary(metadata.primary_format),
     }
 }

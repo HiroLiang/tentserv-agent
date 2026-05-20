@@ -14,8 +14,8 @@ use crate::features::audio::ports::{
     AudioTranscriptionRuntimeClient, AudioTranscriptionRuntimeRequest,
 };
 use crate::features::model::domain::{
-    default_model_capability_source, ModelCapability, ModelFormat, ModelInspection, ModelMetadata,
-    ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
+    default_model_capability_source, MlxRuntimeFamily, ModelCapability, ModelFormat,
+    ModelInspection, ModelMetadata, ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
 };
 use crate::features::model::usecases::{
     ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
@@ -78,6 +78,63 @@ fn std_audio_transcription_model_resolver_accepts_safetensors_model() {
 }
 
 #[test]
+fn audio_transcription_backend_maps_mlx_audio_family_only() {
+    assert_eq!(
+        AudioTranscriptionBackend::from_model_format_and_mlx_family(
+            ModelFormat::Mlx,
+            Some(MlxRuntimeFamily::Audio)
+        ),
+        Some(AudioTranscriptionBackend::MlxAudio)
+    );
+    assert_eq!(
+        AudioTranscriptionBackend::from_model_format_and_mlx_family(ModelFormat::Mlx, None),
+        None
+    );
+    for family in [
+        MlxRuntimeFamily::Lm,
+        MlxRuntimeFamily::Vlm,
+        MlxRuntimeFamily::Diffusion,
+    ] {
+        assert_eq!(
+            AudioTranscriptionBackend::from_model_format_and_mlx_family(
+                ModelFormat::Mlx,
+                Some(family)
+            ),
+            None
+        );
+    }
+}
+
+#[test]
+fn std_audio_transcription_model_resolver_accepts_mlx_audio_model() {
+    let catalog = FakeModelCatalog {
+        metadata: mlx_model_metadata(
+            Some(MlxRuntimeFamily::Audio),
+            vec![ModelCapability::AudioTranscription],
+        ),
+    };
+    let resolver = StdAudioTranscriptionModelResolver::new(&catalog);
+
+    let result = resolver
+        .resolve_audio_transcription_model(AudioTranscriptionModelResolveRequest {
+            layout: layout_input(unique_path("audio-mlx-audio-home")),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+        })
+        .expect("resolve mlx audio transcription model");
+
+    assert_eq!(
+        result.target,
+        AudioTranscriptionRuntimeTarget::LocalModel {
+            model_ref: model_ref(),
+            backend: AudioTranscriptionBackend::MlxAudio,
+            source_repo: Some("org/model".to_string()),
+            source_revision: Some("main".to_string()),
+            model_capabilities: vec![ModelCapability::AudioTranscription],
+        }
+    );
+}
+
+#[test]
 fn std_audio_transcription_model_resolver_rejects_non_audio_models() {
     for capability in [
         ModelCapability::Chat,
@@ -121,6 +178,31 @@ fn std_audio_transcription_model_resolver_rejects_unsupported_format() {
 
     assert!(matches!(err, KernelError::UnsupportedTarget(_)));
     assert!(err.to_string().contains("does not support `gguf`"));
+}
+
+#[test]
+fn std_audio_transcription_model_resolver_rejects_non_audio_mlx_families() {
+    for family in [
+        None,
+        Some(MlxRuntimeFamily::Lm),
+        Some(MlxRuntimeFamily::Vlm),
+        Some(MlxRuntimeFamily::Diffusion),
+    ] {
+        let catalog = FakeModelCatalog {
+            metadata: mlx_model_metadata(family, vec![ModelCapability::AudioTranscription]),
+        };
+        let resolver = StdAudioTranscriptionModelResolver::new(&catalog);
+
+        let err = resolver
+            .resolve_audio_transcription_model(AudioTranscriptionModelResolveRequest {
+                layout: layout_input(unique_path("audio-non-audio-mlx-home")),
+                selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            })
+            .expect_err("unsupported mlx audio family");
+
+        assert!(matches!(err, KernelError::UnsupportedTarget(_)));
+        assert!(err.to_string().contains("does not support `mlx`"));
+    }
 }
 
 #[cfg(unix)]
@@ -292,6 +374,15 @@ fn model_metadata(format: ModelFormat, capabilities: Vec<ModelCapability>) -> Mo
         total_bytes: 10,
         imported_at: "2026-01-01T00:00:00Z".to_string(),
     }
+}
+
+fn mlx_model_metadata(
+    family: Option<MlxRuntimeFamily>,
+    capabilities: Vec<ModelCapability>,
+) -> ModelMetadata {
+    let mut metadata = model_metadata(ModelFormat::Mlx, capabilities);
+    metadata.mlx_runtime_family = family;
+    metadata
 }
 
 fn model_ref() -> ModelRef {

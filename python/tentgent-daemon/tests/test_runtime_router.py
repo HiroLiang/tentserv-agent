@@ -60,15 +60,21 @@ class RuntimeRouterTests(unittest.TestCase):
             )
             ensure.assert_called_once_with("mlx_vlm")
 
-    def test_unimplemented_media_mlx_families_still_reject(self) -> None:
-        with self.assertRaisesRegex(ValueError, "planned and not implemented"):
-            resolve_audio_transcription_backend(
-                stored_model_record(
-                    primary_format="mlx",
-                    mlx_runtime_family="mlx-audio",
-                    model_capabilities=("audio-transcription",),
-                )
+    def test_mlx_audio_backend_resolves(self) -> None:
+        with patch("tentgent_daemon.runtime.router.ensure_backend_supported") as ensure:
+            self.assertEqual(
+                resolve_audio_transcription_backend(
+                    stored_model_record(
+                        primary_format="mlx",
+                        mlx_runtime_family="mlx-audio",
+                        model_capabilities=("audio-transcription",),
+                    )
+                ),
+                BackendKind.MLX_AUDIO,
             )
+            ensure.assert_called_once_with("mlx_audio")
+
+    def test_unimplemented_media_mlx_families_still_reject(self) -> None:
         with self.assertRaisesRegex(ValueError, "planned and not implemented"):
             resolve_image_generation_backend(
                 stored_model_record(

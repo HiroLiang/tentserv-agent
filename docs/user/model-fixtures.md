@@ -264,13 +264,18 @@ non-transcription, non-vision, non-image workflows runnable yet.
 For `mlx-community/*` repos, the same capability flag also records
 `mlx_runtime_family` when it can be inferred. `mlx-vlm` can run native
 `vision-chat` on Apple Silicon after the `local-model` runtime profile is
-bootstrapped. `mlx-audio` and `mlx-diffusion` are metadata families until their
-dedicated Apple Silicon backends are implemented.
+bootstrapped. `mlx-audio` can run native `audio-transcription` on Apple
+Silicon after the `local-model` runtime profile is bootstrapped.
+`mlx-diffusion` remains metadata-only until its dedicated Apple Silicon backend
+is implemented.
 
 | Metadata capability | Candidate | Access | Pull command | Notes |
 | --- | --- | --- | --- | --- |
 | `audio-transcription` | [`openai/whisper-tiny.en`](https://huggingface.co/openai/whisper-tiny.en) | `public`, `cli`, `daemon-job` | `tentgent model pull openai/whisper-tiny.en --capability audio-transcription` | English ASR, safetensors, about 38M parameters. |
 | `audio-transcription` | [`openai/whisper-tiny`](https://huggingface.co/openai/whisper-tiny) | `public`, `cli`, `daemon-job` | `tentgent model pull openai/whisper-tiny --capability audio-transcription` | Multilingual tiny Whisper checkpoint, about 39M parameters. |
+| `audio-transcription` | [`mlx-community/whisper-tiny-asr-fp16`](https://huggingface.co/mlx-community/whisper-tiny-asr-fp16) | `public`, `mlx-audio`, `cli`, `daemon-job` | `tentgent model pull mlx-community/whisper-tiny-asr-fp16 --capability audio-transcription` | Small Apple Silicon MLX audio smoke target; inspect should show `mlx_runtime_family = mlx-audio`. |
+| `audio-transcription` | [`mlx-community/whisper-tiny-mlx`](https://huggingface.co/mlx-community/whisper-tiny-mlx) | `public`, `mlx-audio`, `processor-metadata-warning` | `tentgent model pull mlx-community/whisper-tiny-mlx --capability audio-transcription` | Older MLX Whisper package; current `mlx-audio` may fail because the repo lacks Hugging Face processor metadata. |
+| `audio-transcription` | [`mlx-community/whisper-tiny-fp16`](https://huggingface.co/mlx-community/whisper-tiny-fp16) | `public`, `mlx-audio`, `processor-metadata-warning` | `tentgent model pull mlx-community/whisper-tiny-fp16 --capability audio-transcription` | Older MLX Whisper package; prefer `whisper-tiny-asr-fp16` for current `mlx-audio` smoke tests. |
 | `audio-speech` | [`facebook/mms-tts-eng`](https://huggingface.co/facebook/mms-tts-eng) | `public`, `license`, `metadata-only` | `tentgent model pull facebook/mms-tts-eng --capability audio-speech` | English VITS TTS, about 36M parameters; CC-BY-NC 4.0. |
 | `audio-speech` | [`suno/bark-small`](https://huggingface.co/suno/bark-small) | `public`, `metadata-only` | `tentgent model pull suno/bark-small --capability audio-speech` | MIT-licensed TTS pipeline candidate; heavier than MMS-TTS. |
 | `vision-chat` | [`HuggingFaceTB/SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) | `public`, `cli`, `daemon` | `tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat` | Small image+text to text model for Transformers VQA/captioning smoke tests. |

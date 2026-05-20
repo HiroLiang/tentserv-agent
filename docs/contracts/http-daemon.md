@@ -660,9 +660,10 @@ Model import and pull may include one optional `capability` value: `chat`,
 `embedding`, `rerank`, `audio-transcription`, `audio-speech`, `vision-chat`,
 or `image-generation`. Invalid capability values return JSON `400 bad_request`.
 The capability field updates model metadata and is enforced by implemented
-endpoint-family gates; it does not change model identity. Media capability
-values are metadata-only in M6A and do not imply audio, image, or video runtime
-routes.
+endpoint-family gates; it does not change model identity. Implemented media
+runtime routes currently include audio transcription, native vision chat, and
+image generation. Other media capability values remain metadata-only until
+their dedicated workflow slices are implemented.
 
 Omitted, `null`, or blank `base_model_ref` means no base binding for adapter
 import or pull.

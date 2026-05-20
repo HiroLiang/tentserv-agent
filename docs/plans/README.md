@@ -25,9 +25,8 @@ one pass without a staged breakdown.
 
 - [capability-first-release-roadmap.md](./capability-first-release-roadmap.md)
   Active roadmap after `v0.3.5-alpha.0`: model capability classification,
-  embedding and rerank endpoint work, deferred multimodal and streaming-boundary
-  planning, and Apple Developer ID signing before beta or release candidate
-  tags.
+  embedding and rerank endpoint work, M6 media workflow slices, and Apple
+  Developer ID signing before beta or release candidate tags.
 - [m2-model-capability-detection-and-correction.md](./m2-model-capability-detection-and-correction.md)
   Detailed M2 slice: Hugging Face capability detection, manual metadata
   correction, and clear default-chat fallback warnings.
@@ -73,16 +72,29 @@ one pass without a staged breakdown.
   Implemented M6I backend path for making the existing native `vision-chat`
   CLI and daemon endpoint route to `mlx-vlm` models on Apple Silicon, with CLI
   and daemon smoke evidence recorded.
+- [m6j-mlx-audio-runtime-backend.md](./m6j-mlx-audio-runtime-backend.md)
+  Implemented M6J backend path for making the existing native
+  `audio-transcription` CLI and daemon job route to `mlx-audio` models on
+  Apple Silicon without adding new user-facing audio APIs, with CLI and daemon
+  smoke evidence recorded.
 
 ## Recommended Order
 
-1. Keep M6C through M6G as implemented media workflow slices.
-2. Implement M6I/M6J/M6K MLX media backends where practical before opening
-   more media capability surfaces.
+1. Continue the remaining M6 media workflow slices from the active roadmap.
+2. Keep full model compatibility architecture in the post-M7 marker plan until
+   a focused future execution plan is initialized.
 3. Continue each later workflow only after its API/output contract and backend
    family decision are stable.
-4. Run Apple Developer ID signing and notarization on prerelease artifacts
+4. Run M7 Apple Developer ID signing and notarization on prerelease artifacts
    before beta or release candidate tags.
+
+## Future Plan Markers
+
+- [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)
+  Future marker only, not initialized for execution: model compatibility
+  probe/cache, dynamic runtime transduction, optional shared compatibility
+  registry, model resource coordination, and conversion boundaries after the
+  current M6-to-M7 release track.
 
 ## Deferred Plans
 

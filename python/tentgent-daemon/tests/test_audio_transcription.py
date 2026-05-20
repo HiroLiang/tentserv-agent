@@ -4,7 +4,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from tentgent_daemon.backends import create_audio_transcription_backend
+from tentgent_daemon.backends.mlx_audio import MlxAudioDeps, MlxAudioTranscriptionBackend
 from tentgent_daemon.runtime.audio import (
     AudioTranscriptionRequest,
     audio_transcription_media_type,
@@ -13,6 +16,8 @@ from tentgent_daemon.runtime.audio import (
     render_audio_transcription_output,
     write_audio_transcription_output,
 )
+from tentgent_daemon.runtime.records import StoredModelRecord
+from tentgent_daemon.runtime.router import BackendKind
 
 
 class AudioTranscriptionRuntimeTests(unittest.TestCase):
@@ -127,6 +132,137 @@ class AudioTranscriptionRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported audio transcription output format"):
             normalize_audio_transcription_output_format("pdf")
 
+    def test_mlx_audio_backend_maps_request_to_runtime_package(self) -> None:
+        calls: dict[str, object] = {}
+
+        class FakeMlxAudioModel:
+            def generate(
+                self,
+                audio: str,
+                *,
+                language: str | None = None,
+                word_timestamps: bool = False,
+            ) -> dict[str, object]:
+                calls["generate"] = {
+                    "audio": audio,
+                    "language": language,
+                    "word_timestamps": word_timestamps,
+                }
+                return {
+                    "text": " hello world ",
+                    "segments": [
+                        {"text": "hello", "start": 0.0, "end": 1.25},
+                        {"text": "world", "start": 1.25, "end": 2.5},
+                    ],
+                }
+
+        def fake_load(path: str) -> FakeMlxAudioModel:
+            calls["load_path"] = path
+            return FakeMlxAudioModel()
+
+        with patch(
+            "tentgent_daemon.backends.mlx_audio._load_mlx_audio_deps",
+            return_value=MlxAudioDeps(load=fake_load),
+        ):
+            backend = MlxAudioTranscriptionBackend()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_path = root / "out" / "transcript.vtt"
+            input_path = root / "audio.wav"
+            input_path.write_bytes(b"audio")
+            backend.load(stored_mlx_audio_record(root))
+            result = backend.transcribe(
+                AudioTranscriptionRequest(
+                    model_ref="model-ref",
+                    input_path=input_path,
+                    output_path=output_path,
+                    output_format="vtt",
+                    language="en",
+                    timestamps=True,
+                )
+            )
+
+            self.assertEqual(
+                calls["load_path"],
+                str(root / "variants" / "mlx" / "source"),
+            )
+            self.assertEqual(
+                calls["generate"],
+                {
+                    "audio": str(input_path),
+                    "language": "en",
+                    "word_timestamps": True,
+                },
+            )
+            self.assertEqual(result.text, "hello world")
+            self.assertEqual(result.media_type, "text/vtt")
+            self.assertIn("WEBVTT", output_path.read_text(encoding="utf-8"))
+
+    def test_mlx_audio_backend_reports_missing_subtitle_timestamps(self) -> None:
+        class FakeMlxAudioModel:
+            def generate(self, audio: str) -> dict[str, object]:
+                return {"text": "hello"}
+
+        with patch(
+            "tentgent_daemon.backends.mlx_audio._load_mlx_audio_deps",
+            return_value=MlxAudioDeps(load=lambda _path: FakeMlxAudioModel()),
+        ):
+            backend = MlxAudioTranscriptionBackend()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_path = root / "audio.wav"
+            input_path.write_bytes(b"audio")
+            backend.load(stored_mlx_audio_record(root))
+            with self.assertRaisesRegex(ValueError, "requires segment timestamps"):
+                backend.transcribe(
+                    AudioTranscriptionRequest(
+                        model_ref="model-ref",
+                        input_path=input_path,
+                        output_path=root / "transcript.srt",
+                        output_format="srt",
+                    )
+                )
+
+    def test_mlx_audio_backend_explains_missing_processor_metadata(self) -> None:
+        class FakeMlxAudioModel:
+            def generate(self, audio: str) -> dict[str, object]:
+                raise ValueError(
+                    "Processor not found. Make sure the model was loaded with a "
+                    "HuggingFace processor."
+                )
+
+        with patch(
+            "tentgent_daemon.backends.mlx_audio._load_mlx_audio_deps",
+            return_value=MlxAudioDeps(load=lambda _path: FakeMlxAudioModel()),
+        ):
+            backend = MlxAudioTranscriptionBackend()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_path = root / "audio.wav"
+            input_path.write_bytes(b"audio")
+            backend.load(stored_mlx_audio_record(root))
+            with self.assertRaisesRegex(RuntimeError, "missing Hugging Face processor"):
+                backend.transcribe(
+                    AudioTranscriptionRequest(
+                        model_ref="model-ref",
+                        input_path=input_path,
+                        output_path=root / "transcript.txt",
+                        output_format="text",
+                    )
+                )
+
+    def test_backend_factory_creates_mlx_audio_backend(self) -> None:
+        with patch(
+            "tentgent_daemon.backends.mlx_audio._load_mlx_audio_deps",
+            return_value=MlxAudioDeps(load=lambda _path: object()),
+        ):
+            backend = create_audio_transcription_backend(BackendKind.MLX_AUDIO)
+
+        self.assertIsInstance(backend, MlxAudioTranscriptionBackend)
+
 
 def write_model_record(home: Path, model_ref: str, capabilities: list[str]) -> None:
     store_dir = home / "models" / "store" / model_ref
@@ -149,6 +285,27 @@ imported_at = "2026-05-01T00:00:00Z"
         encoding="utf-8",
     )
     (store_dir / "manifest.json").write_text("{}", encoding="utf-8")
+
+
+def stored_mlx_audio_record(root: Path) -> StoredModelRecord:
+    return StoredModelRecord(
+        model_ref="model-ref",
+        short_ref="model",
+        source_kind="huggingface",
+        source_repo="mlx-community/demo",
+        source_revision="main",
+        source_path=None,
+        primary_format="mlx",
+        detected_formats=("mlx",),
+        mlx_runtime_family="mlx-audio",
+        model_capabilities=("audio-transcription",),
+        file_count=1,
+        total_bytes=1,
+        imported_at="2026-05-20T00:00:00Z",
+        store_path=root,
+        manifest_path=root / "manifest.json",
+        variant_source_path=root / "variants" / "mlx" / "source",
+    )
 
 
 if __name__ == "__main__":

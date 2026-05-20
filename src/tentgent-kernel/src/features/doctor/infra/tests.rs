@@ -179,6 +179,12 @@ fn capability_mapper_maps_platform_profiles_and_backends() {
                 next_step: None,
             },
             BackendCapability {
+                backend: BackendKind::MlxAudio,
+                state: CapabilityState::Ready,
+                message: None,
+                next_step: None,
+            },
+            BackendCapability {
                 backend: BackendKind::Training,
                 state: CapabilityState::Missing,
                 message: Some("dependencies missing".to_string()),
@@ -200,6 +206,9 @@ fn capability_mapper_maps_platform_profiles_and_backends() {
     assert!(checks
         .iter()
         .any(|check| check.name == "backend mlx-vlm" && check.status == DoctorCheckStatus::Pass));
+    assert!(checks
+        .iter()
+        .any(|check| check.name == "backend mlx-audio" && check.status == DoctorCheckStatus::Pass));
     assert!(checks
         .iter()
         .any(|check| check.name == "backend training" && check.status == DoctorCheckStatus::Fail));

@@ -13,12 +13,17 @@ separate release, Linux, daemon-runtime, packaging, and model-capability plans i
   OpenAI-compatible expansion.
 - Treat M6 as multimodal and streaming-boundary planning, not an audio-only
   implementation slice.
+- Treat M6C through M6J as completed media capability slices while M6K and later
+  finish the remaining media workflow and serving decisions.
 - Separate native parsed media endpoints from any opaque stream-in/stream-out
   runtime proxy before implementation starts.
 - Treat Apple Silicon local deployment as a first-class product target. When a
   practical MLX runtime exists for a media workflow, add it as a parallel local
   backend instead of leaving that workflow CPU-only on Apple Studio, Mac mini,
   or MacBook-class hardware.
+- Keep full cross-runtime compatibility, dynamic runtime transduction, shared
+  compatibility registry, and broad model resource coordination out of the
+  M6-to-M7 release track. Track those as post-M7 architecture work.
 - Run Apple Developer ID signing and notarization before beta or release
   candidate tags, not after the first stable release.
 
@@ -336,8 +341,8 @@ Status: implemented foundation.
 - Added model metadata and resolver rules that select or reject by MLX runtime
   family without breaking existing `mlx-community` chat models.
 - Python runtime records and router now read `mlx_runtime_family`; MLX media
-  families return explicit planned-backend errors until M6I/M6J/M6K implement
-  them.
+  families return explicit planned-backend errors until their dedicated backend
+  slice implements them.
 - Doctor/runtime readiness probes for new MLX packages remain part of the
   corresponding backend implementation slices.
 
@@ -363,19 +368,35 @@ Status: implemented and smoke-tested.
 
 #### M6J: MLX Audio Runtime Backend
 
-Status: planned.
+Status: implemented and smoke-tested.
 
-- Add an MLX audio backend path for `audio-transcription` before expanding
-  audio workflows beyond the current ASR baseline.
-- Keep the native transcription API and CLI unchanged:
+- Detailed plan:
+  [m6j-mlx-audio-runtime-backend.md](./m6j-mlx-audio-runtime-backend.md).
+- Added an MLX audio backend path for the existing `audio-transcription`
+  workflow before expanding audio workflows beyond the current ASR baseline.
+- Kept the native transcription API and CLI unchanged:
   `tentgent transcribe`, `POST /v1/audio/transcriptions/job`, and result
   routes.
-- Candidate runtime family: `mlx-audio`.
-- Candidate smoke models include MLX Whisper ASR variants. Audio understanding
-  models can be evaluated here but should not change the transcription
-  contract unless a separate capability is approved.
-- Evaluate whether the same runtime family is mature enough to support
-  `audio-speech`; if yes, feed that directly into M6P.
+- Runtime family: `mlx-audio`.
+- Added a dedicated audio backend selection path rather than treating MLX audio
+  as generic `mlx-lm`:
+  - `safetensors` remains `transformers-asr`
+  - `mlx + mlx_runtime_family = mlx-audio` routes to the new MLX audio backend
+  - other MLX families are rejected for audio transcription
+- Smoke-tested with `mlx-community/whisper-tiny-asr-fp16` through CLI text,
+  CLI JSON/VTT timestamp output, and daemon multipart upload/result routes.
+- Older `mlx-community/whisper-tiny-mlx` and
+  `mlx-community/whisper-tiny-fp16` pulled successfully but failed with current
+  `mlx-audio` because they lack Hugging Face processor metadata required by
+  the package's Whisper loader.
+- Audio understanding and text-to-speech models were left for later slices;
+  they must not change the transcription contract unless a separate capability
+  is approved.
+- Evaluate whether the same runtime family is mature enough to support future
+  `audio-speech`; if yes, feed that into M6P instead of broadening M6J.
+- Did not add a default same-model lock for read-only transcription inference.
+  Future model resource coordination should focus on mutation/exclusive-state
+  tasks and optional operator-configured runtime capacity limits.
 
 #### M6K: MLX Image Generation Backend Decision
 
@@ -498,7 +519,7 @@ Status: planned decision and implementation split.
 Review target:
 
 - The remaining M6 work has workflow-specific API, CLI, upload, output-format,
-  server, and transport decisions before runtime implementation starts.
+  server, and transport decisions before release engineering starts.
 
 ### M7: Apple Developer ID Signing
 
@@ -518,16 +539,21 @@ Review target:
 - Current alpha line: capability metadata, compatibility gates, embedding MVP,
   rerank MVP, M6A media metadata vocabulary, audio transcription, and native
   single-image vision chat are implemented and documented.
-- Multimodal planning follow-up: kernel-owned job workspaces are implemented
-  before native runtime work; M6C audio transcription, M6D file-upload job
-  intake, M6E foreground transcription CLI, M6F native vision chat, and M6G
-  image-generation jobs are implemented; M6H-and-later prioritizes MLX media
-  backend parity for Apple Silicon before opening additional media surfaces by
-  CLI, output format, server, and transport shape.
-- Signing prerelease: Developer ID signing and notarization pipeline passes.
-- Beta/RC: chat, embedding, and rerank are documented; multimodal endpoints
-  remain explicitly deferred unless their contracts and runtime paths are
-  implemented.
+- M6 in progress: kernel-owned job workspaces, audio transcription,
+  file-upload job intake, foreground transcription CLI, native vision chat,
+  text-to-image jobs, MLX runtime-family metadata, MLX vision chat, and MLX
+  audio transcription have completed their first implementation slices.
+- M6 remaining before M7: MLX image-generation decision, advanced image
+  workflows, audio speech, video decisions, and media serving/runtime stream
+  proxy decisions.
+- M7: Developer ID signing and notarization pipeline for prerelease artifacts.
+- Post-M7 architecture work:
+  [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)
+  tracks full model compatibility, dynamic runtime transduction, compatibility
+  probe/cache, optional shared registry, resource coordination, and conversion
+  boundaries. It is not part of the current M6-to-M7 release track.
+- Beta/RC: chat, embedding, rerank, and the completed M6 multimodal surfaces
+  are documented with smoke evidence and known limits.
 
 ## Verification Themes
 
