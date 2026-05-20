@@ -1,6 +1,6 @@
 # M6H MLX Multimodal Backend Foundation
 
-Status: planned.
+Status: implemented foundation.
 
 Depends on:
 
@@ -40,25 +40,35 @@ Planned MLX family split:
 | `mlx-audio` | `audio-transcription`, future `audio-speech` candidates | `mlx-audio` | Whisper-style ASR and some TTS/audio-understanding candidates. |
 | `mlx-diffusion` | `image-generation` | DiffusionKit or approved MLX diffusion runtime | Decision slice before advanced image generation work. |
 
-## Kernel Shape
+## Implemented Kernel Shape
 
 - Keep `ModelFormat::Mlx` as the persisted storage format unless a stronger
-  split is needed.
-- Add a kernel-owned MLX runtime-family concept that is separate from storage
-  format and serving capability.
-- Let feature resolvers choose a backend from both serving capability and MLX
-  family:
-  - `chat` + `mlx-lm` -> current MLX chat backend
-  - `vision-chat` + `mlx-vlm` -> future MLX VLM backend
-  - `audio-transcription` + `mlx-audio` -> future MLX ASR backend
-  - `image-generation` + `mlx-diffusion` -> future MLX image backend
-- Preserve explicit user capability overrides and existing model refs.
-- Reject mismatched MLX families early with clear errors instead of attempting
-  to load them through the wrong Python package.
+  split is needed. Implemented as-is.
+- Added kernel-owned `mlx_runtime_family` metadata that is separate from
+  storage format and serving capability.
+- Runtime family inference now follows explicit model capability for
+  `ModelFormat::Mlx`:
+  - `chat` -> `mlx-lm`
+  - `vision-chat` -> `mlx-vlm`
+  - `audio-transcription` and `audio-speech` -> `mlx-audio`
+  - `image-generation` -> `mlx-diffusion`
+- Existing old MLX chat metadata with no `mlx_runtime_family` remains valid and
+  still routes to the current MLX chat backend.
+- Chat rejects `mlx-vlm`, `mlx-audio`, and `mlx-diffusion` instead of attempting
+  to load them through `mlx-lm`.
+- Audio, vision, and image generation resolvers surface the recorded MLX family
+  in unsupported-backend errors until the matching runtime is implemented.
 
-## Python Runtime Shape
+## Implemented Python Runtime Shape
 
-Add runtime adapters only after the package and smoke model are approved:
+- `StoredModelRecord` reads optional `mlx_runtime_family` from `model.toml`.
+- Python router preserves existing `mlx-lm` chat behavior.
+- Python router rejects MLX media families with a clear "planned and not
+  implemented yet" error rather than falling through to the wrong backend.
+
+Future adapters should be added only after the package and smoke model are
+approved:
+
 
 ```text
 python/tentgent-daemon/src/tentgent_daemon/backends/mlx_vlm.py
@@ -78,8 +88,8 @@ Doctor/runtime readiness should probe packages by family:
 
 ## User Surface
 
-No new user API is required for M6H itself. Users should keep using the native
-feature commands and endpoints:
+No new user API was added for M6H itself. Users keep using the native feature
+commands and endpoints:
 
 - `tentgent vision chat <IMAGE_PATH>`
 - `tentgent transcribe <AUDIO_PATH>`
@@ -88,8 +98,8 @@ feature commands and endpoints:
 - `POST /v1/audio/transcriptions/job`
 - `POST /v1/images/generations/job`
 
-Backend choice should be visible in model inspect, job/server details, or CLI
-verbose/plan output once the runtime-family selector exists.
+Backend family is now visible in model metadata through `tentgent model inspect`
+and daemon model responses when the stored model has `mlx_runtime_family`.
 
 ## Candidate Model Families
 
@@ -121,3 +131,5 @@ These candidates prove availability, not final support:
   checks, backend adapters, resolver logic, and smoke tests.
 - The next implementation slice can choose MLX vision chat or MLX audio without
   refactoring the whole model store again.
+- M6H does not claim runnable MLX media support; M6I/M6J/M6K own real backend
+  smoke tests.

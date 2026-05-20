@@ -23,6 +23,7 @@ class StoredModelRecord:
     source_path: str | None
     primary_format: str
     detected_formats: tuple[str, ...]
+    mlx_runtime_family: str | None
     model_capabilities: tuple[str, ...]
     file_count: int
     total_bytes: int
@@ -85,6 +86,7 @@ def _read_record(model_dir: Path) -> StoredModelRecord:
         source_path=_optional_string(raw, "source_path"),
         primary_format=primary_format,
         detected_formats=tuple(raw.get("detected_formats", [])),
+        mlx_runtime_family=_optional_string(raw, "mlx_runtime_family"),
         model_capabilities=_model_capabilities(raw),
         file_count=int(raw.get("file_count", 0)),
         total_bytes=int(raw.get("total_bytes", 0)),

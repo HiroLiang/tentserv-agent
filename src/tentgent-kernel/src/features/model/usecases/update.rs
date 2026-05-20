@@ -1,6 +1,6 @@
 //! Model capability metadata update use case.
 
-use crate::features::model::domain::ModelCapabilitySource;
+use crate::features::model::domain::{infer_mlx_runtime_family, ModelCapabilitySource};
 use crate::features::model::ports::ModelCatalogStore;
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayoutResolver;
@@ -39,6 +39,10 @@ impl ModelCapabilityUpdateUseCase for StdModelCapabilityUpdateUseCase<'_> {
 
         inspection.metadata.model_capabilities = vec![request.capability];
         inspection.metadata.model_capability_source = ModelCapabilitySource::ManualUpdate;
+        inspection.metadata.mlx_runtime_family = infer_mlx_runtime_family(
+            inspection.metadata.primary_format,
+            &inspection.metadata.model_capabilities,
+        );
         self.catalog
             .save_model_metadata(&store, &inspection.metadata)?;
 

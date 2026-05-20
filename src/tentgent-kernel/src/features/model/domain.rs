@@ -195,6 +195,45 @@ impl std::fmt::Display for ModelFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MlxRuntimeFamily {
+    #[serde(rename = "mlx-lm")]
+    Lm,
+    #[serde(rename = "mlx-vlm")]
+    Vlm,
+    #[serde(rename = "mlx-audio")]
+    Audio,
+    #[serde(rename = "mlx-diffusion")]
+    Diffusion,
+}
+
+impl MlxRuntimeFamily {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Lm => "mlx-lm",
+            Self::Vlm => "mlx-vlm",
+            Self::Audio => "mlx-audio",
+            Self::Diffusion => "mlx-diffusion",
+        }
+    }
+
+    pub const fn for_capability(capability: ModelCapability) -> Option<Self> {
+        match capability {
+            ModelCapability::Chat => Some(Self::Lm),
+            ModelCapability::AudioTranscription | ModelCapability::AudioSpeech => Some(Self::Audio),
+            ModelCapability::VisionChat => Some(Self::Vlm),
+            ModelCapability::ImageGeneration => Some(Self::Diffusion),
+            ModelCapability::Embedding | ModelCapability::Rerank => None,
+        }
+    }
+}
+
+impl std::fmt::Display for MlxRuntimeFamily {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ModelCapability {
     Chat,
@@ -461,6 +500,8 @@ pub struct ModelMetadata {
     pub source_path: Option<String>,
     pub primary_format: ModelFormat,
     pub detected_formats: Vec<ModelFormat>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mlx_runtime_family: Option<MlxRuntimeFamily>,
     #[serde(default = "default_model_capabilities")]
     pub model_capabilities: Vec<ModelCapability>,
     #[serde(default = "default_model_capability_source")]
@@ -698,6 +739,26 @@ pub fn select_primary_model_format(
     }
 
     Err(ModelFormatSelectionError::UnsupportedLayout)
+}
+
+pub fn infer_mlx_runtime_family(
+    primary_format: ModelFormat,
+    capabilities: &[ModelCapability],
+) -> Option<MlxRuntimeFamily> {
+    if primary_format != ModelFormat::Mlx {
+        return None;
+    }
+
+    let mut inferred = None;
+    for capability in capabilities {
+        let family = MlxRuntimeFamily::for_capability(*capability)?;
+        match inferred {
+            Some(existing) if existing != family => return None,
+            Some(_) => {}
+            None => inferred = Some(family),
+        }
+    }
+    inferred
 }
 
 pub fn is_mlx_huggingface_repo(repo_id: &str) -> bool {

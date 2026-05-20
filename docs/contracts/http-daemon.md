@@ -290,6 +290,7 @@ managed refs only, never filesystem paths.
       "imported_at": "2026-04-28T00:00:00Z",
       "format": "mlx",
       "detected_formats": ["mlx"],
+      "mlx_runtime_family": "mlx-lm",
       "model_capabilities": ["chat"],
       "model_capability_source": "default-chat",
       "source_kind": "huggingface",
@@ -315,6 +316,7 @@ inspect-only paths:
     "imported_at": "2026-04-28T00:00:00Z",
     "format": "mlx",
     "detected_formats": ["mlx"],
+    "mlx_runtime_family": "mlx-lm",
     "model_capabilities": ["chat"],
     "model_capability_source": "default-chat",
     "source_kind": "huggingface",
@@ -326,6 +328,11 @@ inspect-only paths:
   }
 }
 ```
+
+`mlx_runtime_family` is present only for stored MLX models whose capability
+metadata maps to a single runtime family such as `mlx-lm`, `mlx-vlm`,
+`mlx-audio`, or `mlx-diffusion`. Missing family remains valid for legacy MLX
+chat metadata.
 
 `GET /v1/adapters` returns:
 

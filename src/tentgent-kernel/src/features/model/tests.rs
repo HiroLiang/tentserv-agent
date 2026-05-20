@@ -6,11 +6,12 @@ use crate::foundation::layout::RuntimeLayout;
 
 use super::domain::{
     default_model_capabilities, default_model_capability_source, detect_model_formats,
-    escape_huggingface_repo_id, select_primary_model_format, HfModelPullProgress,
-    HfModelSourceIndex, LocalModelSourceIndex, ModelCapability, ModelCapabilitySource, ModelFormat,
-    ModelImportMethod, ModelManifest, ModelManifestEntry, ModelMetadata, ModelRef,
-    ModelRefParseError, ModelRefSelector, ModelSourceKind, ModelStoreLayout, ModelVariantMetadata,
-    ModelVariantStatus, HUGGINGFACE_SOURCE_DIRNAME, LOCAL_SOURCE_DIRNAME, MODEL_MANIFEST_FILENAME,
+    escape_huggingface_repo_id, infer_mlx_runtime_family, select_primary_model_format,
+    HfModelPullProgress, HfModelSourceIndex, LocalModelSourceIndex, MlxRuntimeFamily,
+    ModelCapability, ModelCapabilitySource, ModelFormat, ModelImportMethod, ModelManifest,
+    ModelManifestEntry, ModelMetadata, ModelRef, ModelRefParseError, ModelRefSelector,
+    ModelSourceKind, ModelStoreLayout, ModelVariantMetadata, ModelVariantStatus,
+    HUGGINGFACE_SOURCE_DIRNAME, LOCAL_SOURCE_DIRNAME, MODEL_MANIFEST_FILENAME,
     MODEL_METADATA_FILENAME, SHORT_MODEL_REF_LENGTH, SOURCE_DIRNAME, STAGING_DIRNAME,
     STORE_DIRNAME, VARIANTS_DIRNAME, VARIANT_METADATA_FILENAME,
 };
@@ -171,6 +172,7 @@ fn metadata_reports_source_summary_and_short_ref_consistency() {
         source_path: None,
         primary_format: ModelFormat::Gguf,
         detected_formats: vec![ModelFormat::Gguf],
+        mlx_runtime_family: None,
         model_capabilities: vec![ModelCapability::Chat, ModelCapability::Embedding],
         model_capability_source: ModelCapabilitySource::ExplicitUser,
         file_count: 1,
@@ -230,6 +232,7 @@ fn model_metadata_capabilities_round_trip_as_strings() {
         source_path: Some("/tmp/source".to_string()),
         primary_format: ModelFormat::Safetensors,
         detected_formats: vec![ModelFormat::Safetensors],
+        mlx_runtime_family: None,
         model_capabilities: vec![
             ModelCapability::Chat,
             ModelCapability::Rerank,
@@ -259,6 +262,90 @@ fn model_metadata_capabilities_round_trip_as_strings() {
     assert_eq!(
         parsed.model_capability_source,
         ModelCapabilitySource::ManualUpdate
+    );
+}
+
+#[test]
+fn model_metadata_defaults_missing_mlx_runtime_family_to_none() {
+    let body = format!(
+        r#"{{
+            "model_ref": "{model_ref}",
+            "short_ref": "{short_ref}",
+            "source_kind": "huggingface",
+            "source_repo": "mlx-community/demo",
+            "source_revision": "main",
+            "source_path": null,
+            "primary_format": "mlx",
+            "detected_formats": ["mlx"],
+            "model_capabilities": ["chat"],
+            "model_capability_source": "explicit-user",
+            "file_count": 1,
+            "total_bytes": 42,
+            "imported_at": "2026-05-17T00:00:00Z"
+        }}"#,
+        model_ref = "d".repeat(64),
+        short_ref = "d".repeat(SHORT_MODEL_REF_LENGTH)
+    );
+
+    let metadata: ModelMetadata = serde_json::from_str(&body).expect("metadata");
+
+    assert_eq!(metadata.mlx_runtime_family, None);
+}
+
+#[test]
+fn mlx_runtime_family_round_trips_as_explicit_backend_family() {
+    #[derive(Debug, serde::Deserialize, serde::Serialize)]
+    struct FamilyDocument {
+        mlx_runtime_family: MlxRuntimeFamily,
+    }
+
+    let family = MlxRuntimeFamily::Vlm;
+    let body = toml::to_string(&FamilyDocument {
+        mlx_runtime_family: family,
+    })
+    .expect("serialize family");
+
+    assert!(body.contains("mlx_runtime_family = \"mlx-vlm\""));
+    assert_eq!(
+        toml::from_str::<FamilyDocument>(&body)
+            .expect("parse family")
+            .mlx_runtime_family,
+        family
+    );
+}
+
+#[test]
+fn mlx_runtime_family_inference_follows_model_capability() {
+    assert_eq!(
+        infer_mlx_runtime_family(ModelFormat::Mlx, &[ModelCapability::Chat]),
+        Some(MlxRuntimeFamily::Lm)
+    );
+    assert_eq!(
+        infer_mlx_runtime_family(ModelFormat::Mlx, &[ModelCapability::VisionChat]),
+        Some(MlxRuntimeFamily::Vlm)
+    );
+    assert_eq!(
+        infer_mlx_runtime_family(ModelFormat::Mlx, &[ModelCapability::AudioTranscription]),
+        Some(MlxRuntimeFamily::Audio)
+    );
+    assert_eq!(
+        infer_mlx_runtime_family(ModelFormat::Mlx, &[ModelCapability::ImageGeneration]),
+        Some(MlxRuntimeFamily::Diffusion)
+    );
+    assert_eq!(
+        infer_mlx_runtime_family(ModelFormat::Safetensors, &[ModelCapability::Chat]),
+        None
+    );
+    assert_eq!(
+        infer_mlx_runtime_family(ModelFormat::Mlx, &[ModelCapability::Embedding]),
+        None
+    );
+    assert_eq!(
+        infer_mlx_runtime_family(
+            ModelFormat::Mlx,
+            &[ModelCapability::Chat, ModelCapability::VisionChat]
+        ),
+        None
     );
 }
 
@@ -476,6 +563,7 @@ fn model_metadata_fixture(model_ref: ModelRef) -> ModelMetadata {
         source_path: Some("/tmp/source".to_string()),
         primary_format: ModelFormat::Gguf,
         detected_formats: vec![ModelFormat::Gguf],
+        mlx_runtime_family: None,
         model_capabilities: default_model_capabilities(),
         model_capability_source: default_model_capability_source(),
         file_count: 1,

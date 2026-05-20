@@ -1,6 +1,10 @@
 # M6G Image Generation Jobs
 
-Status: implemented baseline and CLI smoke-tested.
+Status: implemented and CLI smoke-tested.
+
+M6G's scope is the native text-to-image workflow only. Advanced image workflows
+have moved to later standalone roadmap slices so this plan can remain a
+completed implementation record.
 
 Depends on:
 
@@ -56,14 +60,15 @@ compatible OpenAI image APIs, or direct server routes.
 - `png` is the default output format. `jpg`/`jpeg` can be supported if the
   runtime can encode it cleanly.
 - Image LoRA, image-to-image, masks/inpainting, reference images, and ControlNet
-  are follow-up M6G sub-slices after the text-to-image job baseline works.
+  are later standalone roadmap slices, not part of M6G.
 - Apple Silicon acceleration parity is handled by the later MLX media backend
-  work. M6G's implemented baseline is Diffusers, with CPU/MPS fp32 and CUDA
+  work. M6G's completed runtime path is Diffusers, with CPU/MPS fp32 and CUDA
   fp16 dtype defaults for stability.
 - No prompt template system in M6G.
 - No OpenAI-compatible `POST /v1/images/generations` route in M6G. That belongs
   after the native artifact contract is stable.
-- No `tentgent server` route in M6G. M6K decides direct media serving.
+- No `tentgent server` route in M6G. The roadmap's media serving decision slice
+  decides direct media serving.
 
 ## Native Request Contract
 
@@ -489,46 +494,15 @@ curl -sS http://127.0.0.1:8790/v1/images/generations/job/<job-id>/files/image.pn
 - User docs explain CLI usage, daemon job usage, output file behavior, model
   fixture expectations, and current non-goals.
 
-## Follow-Up M6G Sub-Slices
+## Moved To Later Roadmap Slices
 
-These are intentionally not part of the first M6G implementation, but they are
-expected image-generation follow-ups once the text-to-image job baseline is
-stable.
+The following image workflows are not part of M6G. They are tracked as later
+standalone roadmap slices after the MLX image backend decision:
 
-### M6G.1: Image Generation LoRA
-
-- Add image-generation adapter selection for Diffusers pipelines.
-- Validate adapter/base model compatibility for image-generation models instead
-  of reusing chat LoRA assumptions.
-- Support LoRA weight scale and clear trigger-word documentation when known.
-- Keep multi-LoRA stacking out of the first LoRA slice unless the runtime path
-  is already simple.
-
-### M6G.2: Image-To-Image
-
-- Add one input image plus prompt to produce a modified output image.
-- Reuse daemon multipart upload rules and job workspace input storage.
-- Add image-to-image parameters such as `strength` with explicit validation.
-- Keep the generated output routes the same as text-to-image.
-
-### M6G.3: Inpainting And Masks
-
-- Add original image plus mask plus prompt.
-- Define accepted mask formats and whether white/black means repaint or keep.
-- Validate image/mask dimensions before runtime.
-- Keep this separate from M6G.2 because mask semantics and user errors are
-  different enough to deserve their own tests and docs.
-
-### M6G.4: Reference Images And ControlNet
-
-- Add controlled generation inputs after the simpler image input contracts are
-  stable.
-- Treat reference images as model/pipeline-specific unless a common contract is
-  proven.
-- Treat ControlNet as a separate control model/input family with explicit
-  dependency, preprocessing, and compatibility checks.
-- Do not merge this into the baseline text-to-image route without a clear typed
-  request shape.
+- Image generation LoRA.
+- Image-to-image.
+- Inpainting and masks.
+- Reference images and ControlNet.
 
 ## Deferred Beyond M6G
 

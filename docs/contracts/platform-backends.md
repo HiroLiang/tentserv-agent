@@ -18,24 +18,36 @@ Tentgent treats a backend as supported only when it has:
 
 Current backend states:
 
-| Backend | Model format | macOS Apple Silicon | macOS Intel | Windows | Linux |
-| --- | --- | --- | --- | --- | --- |
-| `mlx` | `mlx` | enabled | unsupported | unsupported | unsupported |
-| `transformers-peft` | `safetensors` | dependency-gated | dependency-gated | dependency-gated | dependency-gated |
-| `llama-cpp` | `gguf` | dependency-gated | dependency-gated | dependency-gated | dependency-gated |
+| Backend | Model format | Runtime family | macOS Apple Silicon | macOS Intel | Windows | Linux |
+| --- | --- | --- | --- | --- | --- | --- |
+| `mlx` | `mlx` | `mlx-lm` | enabled | unsupported | unsupported | unsupported |
+| `mlx-vlm` | `mlx` | `mlx-vlm` | planned | unsupported | unsupported | unsupported |
+| `mlx-audio` | `mlx` | `mlx-audio` | planned | unsupported | unsupported | unsupported |
+| `mlx-diffusion` | `mlx` | `mlx-diffusion` | planned | unsupported | unsupported | unsupported |
+| `transformers-peft` | `safetensors` | n/a | dependency-gated | dependency-gated | dependency-gated | dependency-gated |
+| `diffusers` | `diffusers` | n/a | dependency-gated | dependency-gated | dependency-gated | dependency-gated |
+| `llama-cpp` | `gguf` | n/a | dependency-gated | dependency-gated | dependency-gated | dependency-gated |
 
 State meanings:
 
 - `enabled`: Tentgent may route work to this backend on the current platform.
 - `dependency-gated`: Tentgent may route work to this backend, but Python packages or native wheels must still be installed and checked.
+- `planned`: Tentgent may record this runtime family in model metadata, but it
+  must reject execution until a later slice implements and smoke-tests the
+  backend.
 - `unsupported`: Tentgent should block before launching the backend.
 
 ## Backend Selection
 
-Runtime backend selection follows model format:
+Runtime backend selection follows model capability, model format, and MLX
+runtime family:
 
-- `primary_format = "mlx"` uses `mlx`
+- `primary_format = "mlx"` with missing family or `mlx_runtime_family =
+  "mlx-lm"` uses the existing MLX chat backend for `chat`
+- `primary_format = "mlx"` with `mlx-vlm`, `mlx-audio`, or `mlx-diffusion` is
+  metadata-only until the matching backend slice is implemented
 - `primary_format = "safetensors"` uses `transformers-peft`
+- `primary_format = "diffusers"` uses `diffusers`
 - `primary_format = "gguf"` uses `llama-cpp`
 
 LoRA training backend selection:

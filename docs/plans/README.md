@@ -62,18 +62,19 @@ one pass without a staged breakdown.
   Implemented M6F slice for native single-image `vision-chat`, foreground CLI,
   multipart daemon endpoint, and dedicated vision runtime contracts.
 - [m6g-image-generation-jobs.md](./m6g-image-generation-jobs.md)
-  Implemented M6G baseline for native text-to-image artifact jobs, Diffusers
-  runtime support, foreground CLI output, and workflow-owned result file routes.
+  Implemented M6G native text-to-image artifact jobs, Diffusers runtime
+  support, foreground CLI output, and workflow-owned result file routes.
 - [m6h-mlx-multimodal-backend-foundation.md](./m6h-mlx-multimodal-backend-foundation.md)
-  Planned M6H foundation for Apple Silicon media backend parity: MLX runtime
-  family selection across vision, audio, and image workflows without replacing
-  the implemented safetensors/Diffusers baselines.
+  Implemented M6H foundation for Apple Silicon media backend parity: MLX
+  runtime family metadata and routing guardrails across vision, audio, and
+  image workflows without replacing the implemented safetensors/Diffusers
+  runtime paths.
 
 ## Recommended Order
 
-1. Keep M6C through M6G as implemented media baselines.
-2. Plan and execute M6H before opening new media surfaces so Apple Silicon
-   deployment gets MLX backend parity where practical.
+1. Keep M6C through M6G as implemented media workflow slices.
+2. Implement M6I/M6J/M6K MLX media backends where practical before opening
+   more media capability surfaces.
 3. Continue each later workflow only after its API/output contract and backend
    family decision are stable.
 4. Run Apple Developer ID signing and notarization on prerelease artifacts

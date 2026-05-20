@@ -215,6 +215,7 @@ fn metadata_fixture(model_ref: ModelRef) -> ModelMetadata {
         source_path: Some("/tmp/source".to_string()),
         primary_format: ModelFormat::Gguf,
         detected_formats: vec![ModelFormat::Gguf],
+        mlx_runtime_family: None,
         model_capabilities: default_model_capabilities(),
         model_capability_source: default_model_capability_source(),
         file_count: 1,

@@ -36,7 +36,7 @@ def run_peft_training(
 ) -> int:
     try:
         import torch
-        from peft import LoraConfig, TaskType, get_peft_model
+        from peft import get_peft_model
         from transformers import AutoModelForCausalLM
     except ModuleNotFoundError as exc:
         if exc.name in {"torch", "peft", "transformers"}:

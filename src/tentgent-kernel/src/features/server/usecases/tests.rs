@@ -512,6 +512,7 @@ impl Fixture {
                     source_path: Some("/tmp/model".to_string()),
                     primary_format: format,
                     detected_formats: vec![format],
+                    mlx_runtime_family: None,
                     model_capabilities: capabilities,
                     model_capability_source: default_model_capability_source(),
                     file_count: 1,

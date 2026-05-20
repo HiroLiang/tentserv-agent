@@ -212,6 +212,7 @@ impl Fixture {
                     source_path: Some("/tmp/model".to_string()),
                     primary_format: ModelFormat::Safetensors,
                     detected_formats: vec![ModelFormat::Safetensors],
+                    mlx_runtime_family: None,
                     model_capabilities: default_model_capabilities(),
                     model_capability_source: default_model_capability_source(),
                     file_count: 1,

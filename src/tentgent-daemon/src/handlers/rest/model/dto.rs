@@ -52,6 +52,8 @@ pub struct ModelItem {
     pub imported_at: String,
     pub format: String,
     pub detected_formats: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mlx_runtime_family: Option<String>,
     pub model_capabilities: Vec<String>,
     pub model_capability_source: String,
     pub source_kind: String,
@@ -139,6 +141,7 @@ fn model_item_from_parts(
             .into_iter()
             .map(|format| format.to_string())
             .collect(),
+        mlx_runtime_family: metadata.mlx_runtime_family.map(|family| family.to_string()),
         model_capabilities: metadata
             .model_capabilities
             .into_iter()

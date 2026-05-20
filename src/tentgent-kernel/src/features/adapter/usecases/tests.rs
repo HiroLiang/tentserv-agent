@@ -652,6 +652,7 @@ fn model_metadata_fixture() -> ModelMetadata {
         source_path: None,
         primary_format: ModelFormat::Safetensors,
         detected_formats: vec![ModelFormat::Safetensors],
+        mlx_runtime_family: None,
         model_capabilities: default_model_capabilities(),
         model_capability_source: default_model_capability_source(),
         file_count: 1,

@@ -66,6 +66,8 @@ TENTGENT_HOME/
 - `source_path`
 - `primary_format`
 - `detected_formats`
+- `mlx_runtime_family` when `primary_format = "mlx"` and Tentgent can infer a
+  single MLX runtime family from model capability metadata
 - `model_capabilities`
 - `model_capability_source`
 - `file_count`
@@ -149,6 +151,29 @@ explicitly provides a capability.
 A model may list multiple capabilities later when source metadata, user edits,
 or another explicit update path proves that it supports more than one serving
 shape.
+
+## MLX Runtime Family Metadata
+
+`primary_format = "mlx"` records the storage layout family. It does not by
+itself mean the model should be loaded through `mlx-lm`.
+
+`mlx_runtime_family` is optional and records the intended MLX runtime package
+family when Tentgent can infer exactly one family from the model capabilities:
+
+- `mlx-lm` for `chat`
+- `mlx-vlm` for `vision-chat`
+- `mlx-audio` for `audio-transcription` and `audio-speech`
+- `mlx-diffusion` for `image-generation`
+
+Existing metadata without `mlx_runtime_family` remains valid. For backward
+compatibility, `primary_format = "mlx"` plus missing family is treated as the
+legacy chat path when the model advertises `chat`.
+
+Tentgent should leave `mlx_runtime_family` unset when the model is not MLX,
+when the capability has no approved MLX runtime family, or when multiple
+capabilities would imply conflicting MLX runtime families. Updating explicit or
+manual model capability metadata recalculates this field without changing
+`model_ref`.
 
 `model_capability_source` records why the current capability set was chosen:
 

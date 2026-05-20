@@ -574,6 +574,12 @@ fn add_model_metadata_rows(
                 .join(", "),
         ),
     ]);
+    if let Some(family) = metadata.mlx_runtime_family {
+        table.add_row(vec![
+            Cell::new("mlx_runtime_family"),
+            Cell::new(family.as_str()),
+        ]);
+    }
     table.add_row(vec![
         Cell::new("model_capabilities"),
         Cell::new(model_capabilities_label(&metadata.model_capabilities)),

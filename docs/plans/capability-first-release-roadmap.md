@@ -302,7 +302,7 @@ Status: implemented.
 
 #### M6G: Image Generation Jobs
 
-Status: implemented baseline and CLI smoke-tested.
+Status: implemented and CLI smoke-tested.
 
 - Added `image-generation` artifact jobs.
 - Canonical API: `POST /v1/images/generations/job`.
@@ -312,19 +312,20 @@ Status: implemented baseline and CLI smoke-tested.
   and output format.
 - Implemented the first runtime path as Diffusers through the `local-model`
   Python profile, with CPU/MPS fp32 and CUDA fp16 dtype defaults.
-- M6G.1 through M6G.4 follow with image LoRA, image-to-image, inpainting/masks,
-  and reference image or ControlNet contracts.
+- Advanced image workflows are not part of M6G. Image LoRA, image-to-image,
+  inpainting/masks, and reference image or ControlNet contracts move to later
+  standalone slices after the MLX image backend decision.
 - Detailed plan:
   [m6g-image-generation-jobs.md](./m6g-image-generation-jobs.md).
 
 #### M6H: MLX Multimodal Backend Family Foundation
 
-Status: planned.
+Status: implemented foundation.
 
 - Detailed plan:
   [m6h-mlx-multimodal-backend-foundation.md](./m6h-mlx-multimodal-backend-foundation.md).
 - Insert this before new media capability surfaces so Apple Silicon deployment
-  does not lag behind the existing safetensors/Diffusers baseline.
+  does not lag behind the existing safetensors/Diffusers runtime paths.
 - Split MLX runtime families instead of treating every `ModelFormat::Mlx` model
   as `mlx-lm` chat:
   - `mlx-lm` for text chat and current MLX LoRA paths
@@ -332,10 +333,13 @@ Status: planned.
   - `mlx-audio` for ASR, audio understanding, and text-to-speech candidates
   - an MLX diffusion family, if a stable runtime is approved, for
     `image-generation`
-- Add model metadata or resolver rules that can select the correct MLX runtime
+- Added model metadata and resolver rules that select or reject by MLX runtime
   family without breaking existing `mlx-community` chat models.
-- Add doctor/runtime readiness probes for any new MLX packages before exposing
-  the corresponding backend.
+- Python runtime records and router now read `mlx_runtime_family`; MLX media
+  families return explicit planned-backend errors until M6I/M6J/M6K implement
+  them.
+- Doctor/runtime readiness probes for new MLX packages remain part of the
+  corresponding backend implementation slices.
 
 #### M6I: MLX Vision Chat Backend
 
@@ -364,7 +368,7 @@ Status: planned.
   models can be evaluated here but should not change the transcription
   contract unless a separate capability is approved.
 - Evaluate whether the same runtime family is mature enough to support
-  `audio-speech`; if yes, feed that directly into M6L.
+  `audio-speech`; if yes, feed that directly into M6P.
 
 #### M6K: MLX Image Generation Backend Decision
 
@@ -376,13 +380,56 @@ Status: planned decision and implementation split.
 - Candidate runtime families include DiffusionKit or other MLX Stable
   Diffusion-compatible runtimes. Do not route these through `mlx-lm`.
 - If the MLX image-generation runtime is not stable enough, record the blocker
-  explicitly and keep the M6G Diffusers path as the implemented baseline rather
-  than blocking user-visible image generation.
-- Do not start advanced image-generation sub-slices such as image LoRA,
-  image-to-image, inpainting, reference images, or ControlNet until the Apple
+  explicitly and keep the completed M6G Diffusers path rather than blocking
+  user-visible image generation.
+- Do not start advanced image-generation slices M6L through M6O until the Apple
   Silicon backend decision is recorded.
 
-#### M6L: Audio Speech Jobs
+#### M6L: Image Generation LoRA
+
+Status: planned.
+
+- Add image-generation adapter selection for Diffusers pipelines and any
+  approved MLX image backend.
+- Validate adapter/base model compatibility for image-generation models instead
+  of reusing chat LoRA assumptions.
+- Support LoRA weight scale and clear trigger-word documentation when known.
+- Keep multi-LoRA stacking out of the first LoRA slice unless the runtime path
+  is already simple.
+
+#### M6M: Image-To-Image
+
+Status: planned.
+
+- Add one input image plus prompt to produce a modified output image.
+- Reuse daemon multipart upload rules and job workspace input storage.
+- Add image-to-image parameters such as `strength` with explicit validation.
+- Keep generated output routes aligned with text-to-image result file routes.
+
+#### M6N: Inpainting And Masks
+
+Status: planned.
+
+- Add original image plus mask plus prompt.
+- Define accepted mask formats and whether white/black means repaint or keep.
+- Validate image/mask dimensions before runtime.
+- Keep this separate from M6M because mask semantics and user errors need their
+  own tests and docs.
+
+#### M6O: Reference Images And ControlNet
+
+Status: planned.
+
+- Add controlled generation inputs after simpler image input contracts are
+  stable.
+- Treat reference images as model/pipeline-specific unless a common contract is
+  proven.
+- Treat ControlNet as a separate control model/input family with explicit
+  dependency, preprocessing, and compatibility checks.
+- Do not merge this into the baseline text-to-image route without a clear typed
+  request shape.
+
+#### M6P: Audio Speech Jobs
 
 Status: planned.
 
@@ -395,7 +442,7 @@ Status: planned.
   than shipping a speech path that is unnecessarily CPU-only on Apple Silicon.
 - Realtime speech streaming is out of scope for this slice.
 
-#### M6M: Video Understanding
+#### M6Q: Video Understanding
 
 Status: planned, contract first.
 
@@ -410,7 +457,7 @@ Status: planned, contract first.
 - Keep this contract-only if no practical small local model/runtime fixture is
   approved.
 
-#### M6N: Video Generation Artifact Decision
+#### M6R: Video Generation Artifact Decision
 
 Status: decision slice, not implementation by default.
 
@@ -423,7 +470,7 @@ Status: decision slice, not implementation by default.
 - If no-go, keep `video-generation` out of accepted capability values until a
   later milestone.
 
-#### M6O: Media Serving And Runtime Stream Proxy Decision
+#### M6S: Media Serving And Runtime Stream Proxy Decision
 
 Status: planned decision and implementation split.
 

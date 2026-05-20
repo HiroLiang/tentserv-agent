@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::features::adapter::domain::{AdapterBackendSupport, AdapterRef};
 use crate::features::auth::domain::Provider;
-use crate::features::model::domain::{ModelCapability, ModelFormat, ModelRef};
+use crate::features::model::domain::{MlxRuntimeFamily, ModelCapability, ModelFormat, ModelRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -150,6 +150,21 @@ impl ChatBackend {
             ModelFormat::Gguf => Some(Self::LlamaCpp),
             ModelFormat::Mlx => Some(Self::Mlx),
             ModelFormat::Diffusers => None,
+        }
+    }
+
+    pub const fn from_model_format_and_mlx_family(
+        format: ModelFormat,
+        mlx_runtime_family: Option<MlxRuntimeFamily>,
+    ) -> Option<Self> {
+        match format {
+            ModelFormat::Mlx => match mlx_runtime_family {
+                None | Some(MlxRuntimeFamily::Lm) => Some(Self::Mlx),
+                Some(
+                    MlxRuntimeFamily::Vlm | MlxRuntimeFamily::Audio | MlxRuntimeFamily::Diffusion,
+                ) => None,
+            },
+            _ => Self::from_model_format(format),
         }
     }
 

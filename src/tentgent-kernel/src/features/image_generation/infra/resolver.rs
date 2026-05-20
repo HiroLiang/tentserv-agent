@@ -41,8 +41,10 @@ impl ImageGenerationModelResolver for StdImageGenerationModelResolver<'_> {
         let backend = ImageGenerationBackend::from_model_format(metadata.primary_format)
             .ok_or_else(|| {
                 KernelError::UnsupportedTarget(format!(
-                    "image generation endpoint does not support `{}` model format yet for model `{}`",
-                    metadata.primary_format, metadata.model_ref
+                    "image generation endpoint does not support `{}` model format{} yet for model `{}`",
+                    metadata.primary_format,
+                    mlx_runtime_family_suffix(metadata.mlx_runtime_family),
+                    metadata.model_ref
                 ))
             })?;
         let target = ImageGenerationRuntimeTarget::LocalModel {
@@ -59,6 +61,14 @@ impl ImageGenerationModelResolver for StdImageGenerationModelResolver<'_> {
             target,
         })
     }
+}
+
+fn mlx_runtime_family_suffix(
+    family: Option<crate::features::model::domain::MlxRuntimeFamily>,
+) -> String {
+    family
+        .map(|family| format!(" with MLX runtime family `{family}`"))
+        .unwrap_or_default()
 }
 
 fn model_capabilities_label(capabilities: &[ModelCapability]) -> String {

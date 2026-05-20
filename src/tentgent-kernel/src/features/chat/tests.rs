@@ -2,7 +2,7 @@ use super::domain::{
     ChatBackend, ChatFinishReason, ChatMessage, ChatPrompt, ChatRole, ChatRoleParseError,
 };
 use crate::features::adapter::domain::AdapterBackendSupport;
-use crate::features::model::domain::ModelFormat;
+use crate::features::model::domain::{MlxRuntimeFamily, ModelFormat};
 
 #[test]
 fn chat_role_parses_supported_roles() {
@@ -41,6 +41,21 @@ fn chat_backend_maps_to_adapter_backend_support() {
     assert_eq!(
         ChatBackend::from_model_format(ModelFormat::Mlx),
         Some(ChatBackend::Mlx)
+    );
+    assert_eq!(
+        ChatBackend::from_model_format_and_mlx_family(ModelFormat::Mlx, None),
+        Some(ChatBackend::Mlx)
+    );
+    assert_eq!(
+        ChatBackend::from_model_format_and_mlx_family(ModelFormat::Mlx, Some(MlxRuntimeFamily::Lm)),
+        Some(ChatBackend::Mlx)
+    );
+    assert_eq!(
+        ChatBackend::from_model_format_and_mlx_family(
+            ModelFormat::Mlx,
+            Some(MlxRuntimeFamily::Vlm)
+        ),
+        None
     );
     assert_eq!(
         ChatBackend::from_model_format(ModelFormat::Gguf),

@@ -139,6 +139,9 @@ When no explicit capability or confident Hugging Face metadata is available,
 Tentgent keeps the backward-compatible `chat` default and prints a warning.
 Use `set-capability` to correct stored metadata later without changing
 `model_ref`.
+For MLX models, inspect output also shows `mlx_runtime_family` when the stored
+capability maps to a specific MLX runtime family such as `mlx-lm`,
+`mlx-vlm`, `mlx-audio`, or `mlx-diffusion`.
 
 For recommended small Hugging Face fixtures, gated-access reminders, and
 copy-paste smoke commands, see [model-fixtures.md](./model-fixtures.md).

@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::features::model::domain::{
-    detect_model_formats, select_primary_model_format, HfModelSourceIndex, LocalModelSourceIndex,
-    ModelCapabilityAssignment, ModelCapabilitySource, ModelImportMethod, ModelImportOutcome,
-    ModelMetadata, ModelSourceKind, ModelStoreLayout, ModelVariantMetadata, ModelVariantStatus,
-    SOURCE_DIRNAME,
+    detect_model_formats, infer_mlx_runtime_family, select_primary_model_format,
+    HfModelSourceIndex, LocalModelSourceIndex, ModelCapabilityAssignment, ModelCapabilitySource,
+    ModelImportMethod, ModelImportOutcome, ModelMetadata, ModelSourceKind, ModelStoreLayout,
+    ModelVariantMetadata, ModelVariantStatus, SOURCE_DIRNAME,
 };
 use crate::features::model::ports::{
     ModelCatalogStore, ModelContentStore, ModelIdentityGenerator, ModelManifestBuilder,
@@ -105,6 +105,8 @@ impl ModelImportFinalizer<'_> {
             let mut metadata = self.catalog.load_model_metadata(store, &model_ref)?;
             if should_apply_capability_assignment(&metadata, &capability_assignment) {
                 apply_capability_assignment(&mut metadata, &capability_assignment);
+                metadata.mlx_runtime_family =
+                    infer_mlx_runtime_family(metadata.primary_format, &metadata.model_capabilities);
                 self.catalog.save_model_metadata(store, &metadata)?;
             }
             let source_index_path = self.save_source_index(store, &metadata, &source)?;
@@ -131,6 +133,10 @@ impl ModelImportFinalizer<'_> {
                 .map(|path| path.display().to_string()),
             primary_format,
             detected_formats,
+            mlx_runtime_family: infer_mlx_runtime_family(
+                primary_format,
+                &capability_assignment.capabilities,
+            ),
             model_capabilities: capability_assignment.capabilities.clone(),
             model_capability_source: capability_assignment.source,
             file_count: manifest.file_count(),

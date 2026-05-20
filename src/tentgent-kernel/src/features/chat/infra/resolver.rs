@@ -43,10 +43,16 @@ impl ChatModelResolver for StdChatModelResolver<'_> {
 
         let target = ChatRuntimeTarget::LocalModel {
             model_ref: metadata.model_ref.clone(),
-            backend: ChatBackend::from_model_format(metadata.primary_format).ok_or_else(|| {
+            backend: ChatBackend::from_model_format_and_mlx_family(
+                metadata.primary_format,
+                metadata.mlx_runtime_family,
+            )
+            .ok_or_else(|| {
                 KernelError::UnsupportedTarget(format!(
-                    "chat endpoint does not support `{}` model format yet for model `{}`",
-                    metadata.primary_format, metadata.model_ref
+                    "chat endpoint does not support `{}` model format{} for model `{}`",
+                    metadata.primary_format,
+                    mlx_runtime_family_suffix(metadata.mlx_runtime_family),
+                    metadata.model_ref
                 ))
             })?,
             source_repo: metadata.source_repo.clone(),
@@ -60,6 +66,14 @@ impl ChatModelResolver for StdChatModelResolver<'_> {
             target,
         })
     }
+}
+
+fn mlx_runtime_family_suffix(
+    family: Option<crate::features::model::domain::MlxRuntimeFamily>,
+) -> String {
+    family
+        .map(|family| format!(" with MLX runtime family `{family}`"))
+        .unwrap_or_default()
 }
 
 fn model_capabilities_label(capabilities: &[ModelCapability]) -> String {

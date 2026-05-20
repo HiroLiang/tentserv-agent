@@ -8,9 +8,9 @@ use crate::features::auth::usecases::{
 };
 use crate::features::model::domain::{
     default_model_capabilities, default_model_capability_source, HfModelMetadata,
-    HfModelPullProgress, ModelCapability, ModelCapabilitySource, ModelFormat, ModelImportOutcome,
-    ModelInspection, ModelMetadata, ModelRef, ModelRefSelector, ModelRemovalOutcome,
-    ModelSourceKind, ModelStoreLayout, ModelSummary,
+    HfModelPullProgress, MlxRuntimeFamily, ModelCapability, ModelCapabilitySource, ModelFormat,
+    ModelImportOutcome, ModelInspection, ModelMetadata, ModelRef, ModelRefSelector,
+    ModelRemovalOutcome, ModelSourceKind, ModelStoreLayout, ModelSummary,
 };
 use crate::features::model::infra::{
     FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
@@ -18,7 +18,7 @@ use crate::features::model::infra::{
     StdModelSourceStager, StdModelStoreLayoutInitializer,
 };
 use crate::features::model::ports::{
-    HfModelSnapshot, HfModelSnapshotFetcher, HfModelSnapshotRequest,
+    HfModelSnapshot, HfModelSnapshotFetcher, HfModelSnapshotRequest, ModelCatalogStore,
 };
 use crate::features::runtime::domain::{
     PythonRuntimeLayout, PythonRuntimeResolutionInput, PythonRuntimeSource,
@@ -553,6 +553,32 @@ fn standard_model_capability_update_rewrites_metadata_without_changing_ref() {
     let _ = fs::remove_dir_all(home);
 }
 
+#[test]
+fn standard_model_capability_update_recalculates_mlx_runtime_family() {
+    let home = unique_path("model-capability-update-mlx-family");
+    let imported = import_local_for_test(&home, None, b"model");
+    let mut metadata = imported.outcome.metadata.clone();
+    metadata.primary_format = ModelFormat::Mlx;
+    metadata.detected_formats = vec![ModelFormat::Mlx];
+    metadata.mlx_runtime_family = None;
+    FileModelCatalogStore
+        .save_model_metadata(&imported.store, &metadata)
+        .expect("save mlx metadata");
+
+    let updated = update_capability_for_test(
+        &home,
+        imported.outcome.metadata.short_ref.as_str(),
+        ModelCapability::VisionChat,
+    );
+
+    assert_eq!(
+        updated.model.metadata.mlx_runtime_family,
+        Some(MlxRuntimeFamily::Vlm)
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
 fn pull_hf_model_for_test(
     home: &Path,
     metadata: Option<HfModelMetadata>,
@@ -802,6 +828,7 @@ fn metadata_fixture() -> ModelMetadata {
         source_path: Some("/tmp/source-model".to_string()),
         primary_format: ModelFormat::Gguf,
         detected_formats: vec![ModelFormat::Gguf],
+        mlx_runtime_family: None,
         model_capabilities: default_model_capabilities(),
         model_capability_source: default_model_capability_source(),
         file_count: 1,

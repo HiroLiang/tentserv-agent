@@ -261,6 +261,10 @@ and daemon `POST /v1/vision/chat`. Image generation candidates can run through
 Other candidates are for metadata and contract planning. Pulling them with
 their media `--capability` values records model intent only; it does not make
 non-transcription, non-vision, non-image workflows runnable yet.
+For `mlx-community/*` repos, the same capability flag also records
+`mlx_runtime_family` when it can be inferred. `mlx-vlm`, `mlx-audio`, and
+`mlx-diffusion` are metadata families until their dedicated Apple Silicon
+backends are implemented.
 
 | Metadata capability | Candidate | Access | Pull command | Notes |
 | --- | --- | --- | --- | --- |
