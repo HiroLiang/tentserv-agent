@@ -120,6 +120,7 @@ fn backend_capabilities(
         BackendKind::Mlx,
         BackendKind::MlxVlm,
         BackendKind::MlxAudio,
+        BackendKind::MlxDiffusion,
         BackendKind::Training,
         BackendKind::Embedding,
         BackendKind::Rerank,
@@ -135,7 +136,10 @@ fn backend_capability(
     backend: BackendKind,
 ) -> BackendCapability {
     match backend {
-        BackendKind::Mlx | BackendKind::MlxVlm | BackendKind::MlxAudio
+        BackendKind::Mlx
+        | BackendKind::MlxVlm
+        | BackendKind::MlxAudio
+        | BackendKind::MlxDiffusion
             if !is_macos_apple_silicon(platform) =>
         {
             BackendCapability {
@@ -209,6 +213,7 @@ fn backend_modules(backend: BackendKind) -> Vec<&'static str> {
         BackendKind::Mlx => vec!["mlx", "mlx_lm"],
         BackendKind::MlxVlm => vec!["mlx", "mlx_vlm"],
         BackendKind::MlxAudio => vec!["mlx", "mlx_audio"],
+        BackendKind::MlxDiffusion => vec!["mlx", "mflux"],
         BackendKind::Training => training_modules(),
         BackendKind::Embedding => vec!["safetensors", "peft", "transformers", "torch"],
         BackendKind::Rerank => vec!["safetensors", "transformers", "torch"],
@@ -222,6 +227,7 @@ fn backend_bootstrap_hint(backend: BackendKind) -> &'static str {
         | BackendKind::Mlx
         | BackendKind::MlxVlm
         | BackendKind::MlxAudio
+        | BackendKind::MlxDiffusion
         | BackendKind::Embedding
         | BackendKind::Rerank => "run `tentgent runtime bootstrap --profile local-model`",
         BackendKind::Training => "run `tentgent runtime bootstrap --profile training`",

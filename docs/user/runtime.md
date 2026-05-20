@@ -70,9 +70,8 @@ MLX model metadata:
 - `mlx-vlm` is the Apple Silicon MLX VLM path for native `vision-chat`.
 - `mlx-audio` is the Apple Silicon MLX path for native
   `audio-transcription`.
-- `mlx-diffusion` is a metadata family reserved for a planned Apple Silicon
-  image-generation backend. It is not runnable until its dedicated backend
-  slice passes smoke tests.
+- `mlx-diffusion` is the Apple Silicon MLX path for native
+  `image-generation` through MFLUX Flux-family text-to-image models.
 
 ## Runtime Footprint
 
@@ -148,10 +147,9 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
   dependency set with `transformers` feature extraction and mean pooling.
 - `rerank` safetensors models run through the local-model Python dependency set
   with `transformers` sequence classification.
-- `mlx` chat, LoRA training, `vision-chat`, and `audio-transcription` models
-  run through MLX backend families only on Apple Silicon macOS. The MLX
-  image-generation backend remains planned separately from the current
-  Diffusers baseline.
+- `mlx` chat, LoRA training, `vision-chat`, `audio-transcription`, and
+  `image-generation` models run through MLX backend families only on Apple
+  Silicon macOS.
 - `gguf` models run through `llama-cpp-python` when that dependency is installed.
 - PEFT LoRA adapters can be selected per request with `adapter_ref`.
 - MLX adapters can be selected per request; changing adapters reloads the MLX model for correctness.
@@ -172,10 +170,10 @@ Media models have two dependency classes:
 
 - Python model execution dependencies are installed by runtime profiles.
   `local-model` covers `torch`, `torchvision`, `transformers`, `tokenizers`,
-  `safetensors`, `diffusers`, `accelerate`, Pillow image decoding, and PEFT
-  support used by local safetensors chat, embedding, rerank,
-  `audio-transcription`, `vision-chat`, and Diffusers `image-generation`
-  models.
+  `safetensors`, `diffusers`, `accelerate`, Pillow image decoding, MLX media
+  packages including MFLUX, and PEFT support used by local safetensors chat,
+  embedding, rerank, `audio-transcription`, `vision-chat`, Diffusers
+  `image-generation`, and MLX `image-generation` models.
 - Media file decoding dependencies are system tools on `PATH`. Current
   `audio-transcription` jobs store the uploaded file in a daemon workspace and
   pass that file path to the Transformers ASR pipeline, which expects `ffmpeg`
@@ -201,17 +199,19 @@ Vision chat currently uses Python/Pillow/torchvision image processing through
 the `local-model` profile and does not require a system decoder like `ffmpeg`
 for PNG, JPEG, or WebP inputs.
 
-Image generation currently uses Python Diffusers/Pillow through the
-`local-model` profile and does not require a system decoder like `ffmpeg` for
-text-to-image output. Some Diffusers repositories ship fp16 weights by default;
-Tentgent loads CPU and Apple MPS image-generation runs as fp32 for stability and
-CUDA runs as fp16 by default. Override the backend device with
+Image generation currently uses Python Diffusers/Pillow for Diffusers models and
+MFLUX for MLX Flux-family models through the `local-model` profile. It does not
+require a system decoder like `ffmpeg` for text-to-image output. Some Diffusers
+repositories ship fp16 weights by default; Tentgent loads CPU and Apple MPS
+image-generation runs as fp32 for stability and CUDA runs as fp16 by default.
+Override the Diffusers backend device with
 `TENTGENT_IMAGE_GENERATION_DEVICE=cpu`, `mps`, or `cuda`, and override dtype
 with `TENTGENT_IMAGE_GENERATION_TORCH_DTYPE=float32` or `float16` only when
-debugging model/runtime compatibility. Future `audio-speech` and
-video-oriented routes may add more capability-specific checks. Those checks
-should stay warning-level unless the user is actively running a feature that
-requires them.
+debugging model/runtime compatibility. MFLUX image generation is Apple Silicon
+only and requires MLX model packages that match the MFLUX Flux loader. Future
+`audio-speech` and video-oriented routes may add more capability-specific
+checks. Those checks should stay warning-level unless the user is actively
+running a feature that requires them.
 
 ## Keychain Prompts
 

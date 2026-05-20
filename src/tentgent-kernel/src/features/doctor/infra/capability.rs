@@ -99,6 +99,7 @@ fn backend_label(backend: BackendKind) -> &'static str {
         BackendKind::Mlx => "mlx",
         BackendKind::MlxVlm => "mlx-vlm",
         BackendKind::MlxAudio => "mlx-audio",
+        BackendKind::MlxDiffusion => "mlx-diffusion",
         BackendKind::Training => "training",
         BackendKind::Embedding => "embedding",
         BackendKind::Rerank => "rerank",

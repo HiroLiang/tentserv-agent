@@ -124,8 +124,9 @@ job API for local safetensors ASR models. `vision-chat` is available through
 `tentgent vision chat` and daemon `POST /v1/vision/chat` for local safetensors
 image-plus-text models. `image-generation` is available through
 `tentgent image generate` and daemon `POST /v1/images/generations/job` for
-local Diffusers text-to-image models. `audio-speech` remains metadata-only
-until its payload and artifact contract is implemented.
+local Diffusers text-to-image models and Apple Silicon MFLUX `mlx-diffusion`
+models. `audio-speech` remains metadata-only until its payload and artifact
+contract is implemented.
 
 List and inspect models:
 
@@ -331,8 +332,10 @@ The command always writes to `--output` and fails before running if that file
 already exists. Supported output formats are `png` and `jpg`. Width and height
 must be between 64 and 1024 pixels and divisible by 8. Steps must be 1 through
 100, and guidance scale must be 0 through 30. Diffusers image generation
-defaults to the first available supported device, but you can force one command
-to CPU when debugging Apple MPS or CUDA issues:
+defaults to the first available supported device. MLX image-generation models
+with `mlx_runtime_family = mlx-diffusion` run through MFLUX on Apple Silicon
+macOS after the `local-model` runtime profile is bootstrapped. You can force
+one Diffusers command to CPU when debugging Apple MPS or CUDA issues:
 
 ```bash
 TENTGENT_IMAGE_GENERATION_DEVICE=cpu tentgent image generate \
@@ -346,6 +349,13 @@ Pull a tiny Diffusers plumbing fixture before local smoke tests:
 ```bash
 tentgent runtime bootstrap --profile local-model
 tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe --capability image-generation
+```
+
+Pull the current MLX image-generation smoke candidate when you have enough disk
+and memory for a multi-GiB Apple Silicon test:
+
+```bash
+tentgent model pull mlx-community/Flux-1.lite-8B-MLX-Q4 --capability image-generation
 ```
 
 For HTTP integrations, create an image generation job with JSON:

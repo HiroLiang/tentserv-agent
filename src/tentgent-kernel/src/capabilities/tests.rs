@@ -103,6 +103,15 @@ fn machine_capabilities_probe_uses_layout_and_platform_facts() {
             .state,
         CapabilityState::Unsupported
     );
+    assert_eq!(
+        capabilities
+            .backends
+            .iter()
+            .find(|backend| backend.backend == BackendKind::MlxDiffusion)
+            .expect("mlx-diffusion backend")
+            .state,
+        CapabilityState::Unsupported
+    );
 }
 
 #[test]
@@ -186,6 +195,10 @@ fn machine_capabilities_probe_maps_backend_import_checks() {
     );
     assert_eq!(
         backend_state(&capabilities, BackendKind::MlxAudio),
+        CapabilityState::Ready
+    );
+    assert_eq!(
+        backend_state(&capabilities, BackendKind::MlxDiffusion),
         CapabilityState::Ready
     );
     assert_eq!(

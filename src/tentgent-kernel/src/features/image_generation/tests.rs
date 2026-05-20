@@ -15,8 +15,8 @@ use crate::features::image_generation::ports::{
     ImageGenerationRuntimeRequest,
 };
 use crate::features::model::domain::{
-    default_model_capability_source, ModelCapability, ModelFormat, ModelInspection, ModelMetadata,
-    ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
+    default_model_capability_source, MlxRuntimeFamily, ModelCapability, ModelFormat,
+    ModelInspection, ModelMetadata, ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
 };
 use crate::features::model::usecases::{
     ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
@@ -103,6 +103,82 @@ fn std_image_generation_model_resolver_accepts_diffusers_model() {
             model_capabilities: vec![ModelCapability::ImageGeneration],
         }
     );
+}
+
+#[test]
+fn image_generation_backend_maps_mlx_diffusion_family_only() {
+    assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family(ModelFormat::Diffusers, None),
+        Some(ImageGenerationBackend::DiffusersTextToImage)
+    );
+    assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family(
+            ModelFormat::Mlx,
+            Some(MlxRuntimeFamily::Diffusion)
+        ),
+        Some(ImageGenerationBackend::MlxDiffusionTextToImage)
+    );
+    assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family(
+            ModelFormat::Mlx,
+            Some(MlxRuntimeFamily::Vlm)
+        ),
+        None
+    );
+    assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family(ModelFormat::Mlx, None),
+        None
+    );
+}
+
+#[test]
+fn std_image_generation_model_resolver_accepts_mlx_diffusion_model() {
+    let catalog = FakeModelCatalog {
+        metadata: mlx_model_metadata(MlxRuntimeFamily::Diffusion),
+    };
+    let resolver = StdImageGenerationModelResolver::new(&catalog);
+
+    let result = resolver
+        .resolve_image_generation_model(ImageGenerationModelResolveRequest {
+            layout: layout_input(unique_path("image-generation-mlx-diffusion-home")),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+        })
+        .expect("resolve mlx image generation model");
+
+    assert_eq!(
+        result.target,
+        ImageGenerationRuntimeTarget::LocalModel {
+            model_ref: model_ref(),
+            backend: ImageGenerationBackend::MlxDiffusionTextToImage,
+            source_repo: Some("mlx-community/Flux-1.lite-8B-MLX-Q4".to_string()),
+            source_revision: Some("main".to_string()),
+            model_capabilities: vec![ModelCapability::ImageGeneration],
+        }
+    );
+}
+
+#[test]
+fn std_image_generation_model_resolver_rejects_non_diffusion_mlx_families() {
+    for family in [
+        MlxRuntimeFamily::Lm,
+        MlxRuntimeFamily::Vlm,
+        MlxRuntimeFamily::Audio,
+    ] {
+        let catalog = FakeModelCatalog {
+            metadata: mlx_model_metadata(family),
+        };
+        let resolver = StdImageGenerationModelResolver::new(&catalog);
+
+        let err = resolver
+            .resolve_image_generation_model(ImageGenerationModelResolveRequest {
+                layout: layout_input(unique_path("image-generation-non-diffusion-mlx-home")),
+                selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            })
+            .expect_err("non-diffusion mlx family");
+
+        assert!(matches!(err, KernelError::UnsupportedTarget(_)));
+        assert!(err.to_string().contains("MLX runtime family"));
+    }
 }
 
 #[test]
@@ -337,6 +413,25 @@ fn model_metadata(format: ModelFormat, capabilities: Vec<ModelCapability>) -> Mo
         detected_formats: vec![format],
         mlx_runtime_family: None,
         model_capabilities: capabilities,
+        model_capability_source: default_model_capability_source(),
+        file_count: 1,
+        total_bytes: 10,
+        imported_at: "2026-01-01T00:00:00Z".to_string(),
+    }
+}
+
+fn mlx_model_metadata(family: MlxRuntimeFamily) -> ModelMetadata {
+    ModelMetadata {
+        model_ref: model_ref(),
+        short_ref: model_ref().short_ref().to_string(),
+        source_kind: ModelSourceKind::HuggingFace,
+        source_repo: Some("mlx-community/Flux-1.lite-8B-MLX-Q4".to_string()),
+        source_revision: Some("main".to_string()),
+        source_path: None,
+        primary_format: ModelFormat::Mlx,
+        detected_formats: vec![ModelFormat::Mlx],
+        mlx_runtime_family: Some(family),
+        model_capabilities: vec![ModelCapability::ImageGeneration],
         model_capability_source: default_model_capability_source(),
         file_count: 1,
         total_bytes: 10,

@@ -398,18 +398,23 @@ Status: implemented and smoke-tested.
   Future model resource coordination should focus on mutation/exclusive-state
   tasks and optional operator-configured runtime capacity limits.
 
-#### M6K: MLX Image Generation Backend Decision
+#### M6K: MLX Image Generation Backend
 
-Status: planned decision and implementation split.
+Status: implemented and smoke-tested.
 
-- Decide and, if practical, implement an MLX image-generation backend parallel
-  to the current Diffusers backend.
+- Detailed plan:
+  [m6k-mlx-image-generation-backend-decision.md](./m6k-mlx-image-generation-backend-decision.md).
+- Implemented an MFLUX-backed MLX image-generation backend parallel to the
+  current Diffusers backend.
 - Keep the existing `image-generation` CLI and daemon job API unchanged.
-- Candidate runtime families include DiffusionKit or other MLX Stable
-  Diffusion-compatible runtimes. Do not route these through `mlx-lm`.
-- If the MLX image-generation runtime is not stable enough, record the blocker
-  explicitly and keep the completed M6G Diffusers path rather than blocking
-  user-visible image generation.
+- Runtime family: `mlx-diffusion`.
+- Selected runtime: MFLUX Flux-family text-to-image on Apple Silicon.
+- Current public smoke candidate:
+  `mlx-community/Flux-1.lite-8B-MLX-Q4`.
+- Smoke-tested through foreground CLI and daemon image-generation job routes
+  with short ref `96fdb6180caa`.
+- Keep the completed M6G Diffusers path as the small cross-platform image
+  baseline.
 - Do not start advanced image-generation slices M6L through M6O until the Apple
   Silicon backend decision is recorded.
 
@@ -542,10 +547,10 @@ Review target:
 - M6 in progress: kernel-owned job workspaces, audio transcription,
   file-upload job intake, foreground transcription CLI, native vision chat,
   text-to-image jobs, MLX runtime-family metadata, MLX vision chat, and MLX
-  audio transcription have completed their first implementation slices.
-- M6 remaining before M7: MLX image-generation decision, advanced image
-  workflows, audio speech, video decisions, and media serving/runtime stream
-  proxy decisions.
+  audio transcription have completed their first implementation slices. MFLUX
+  image generation is implemented with large-model smoke pending.
+- M6 remaining before M7: advanced image workflows, audio speech, video
+  decisions, and media serving/runtime stream proxy decisions.
 - M7: Developer ID signing and notarization pipeline for prerelease artifacts.
 - Post-M7 architecture work:
   [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)

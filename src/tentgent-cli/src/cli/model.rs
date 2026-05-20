@@ -683,6 +683,15 @@ fn model_backend_support_summary(metadata: &ModelMetadata) -> String {
         (ModelFormat::Mlx, Some(MlxRuntimeFamily::Audio)) => {
             "unsupported: MLX audio is supported only on Apple Silicon macOS".to_string()
         }
+        (ModelFormat::Mlx, Some(MlxRuntimeFamily::Diffusion))
+            if cfg!(all(target_os = "macos", target_arch = "aarch64")) =>
+        {
+            "dependency-gated: requires MLX image generation Python packages such as mlx and mflux"
+                .to_string()
+        }
+        (ModelFormat::Mlx, Some(MlxRuntimeFamily::Diffusion)) => {
+            "unsupported: MLX image generation is supported only on Apple Silicon macOS".to_string()
+        }
         _ => model_format_support_summary(metadata.primary_format),
     }
 }

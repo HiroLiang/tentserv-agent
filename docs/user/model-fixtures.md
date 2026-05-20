@@ -39,8 +39,8 @@ same command with:
 cargo run -p tentgent-cli --
 ```
 
-Prepare local-model dependencies when running local safetensors or Diffusers
-models:
+Prepare local-model dependencies when running local safetensors, Diffusers, or
+MLX media models:
 
 ```bash
 tentgent runtime bootstrap --profile local-model
@@ -266,8 +266,8 @@ For `mlx-community/*` repos, the same capability flag also records
 `vision-chat` on Apple Silicon after the `local-model` runtime profile is
 bootstrapped. `mlx-audio` can run native `audio-transcription` on Apple
 Silicon after the `local-model` runtime profile is bootstrapped.
-`mlx-diffusion` remains metadata-only until its dedicated Apple Silicon backend
-is implemented.
+`mlx-diffusion` can run native `image-generation` through MFLUX on Apple
+Silicon after the `local-model` runtime profile is bootstrapped.
 
 | Metadata capability | Candidate | Access | Pull command | Notes |
 | --- | --- | --- | --- | --- |
@@ -283,6 +283,7 @@ is implemented.
 | future video understanding | [`HuggingFaceTB/SmolVLM2-256M-Video-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Video-Instruct) | `public`, `planned` | no command until video workflow name is approved | Keep out of the first native endpoint unless video payload handling is approved. |
 | `image-generation` | [`hf-internal-testing/tiny-stable-diffusion-pipe`](https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe) | `public`, `internal-test`, `cli`, `daemon-job` | `tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe --capability image-generation` | Diffusers plumbing fixture only; not product-quality output. |
 | `image-generation` | [`segmind/tiny-sd`](https://huggingface.co/segmind/tiny-sd) | `public`, `cli`, `daemon-job` | `tentgent model pull segmind/tiny-sd --capability image-generation` | Tiny Stable Diffusion-style model; larger than the internal fixture and useful for follow-up smoke tests. |
+| `image-generation` | [`mlx-community/Flux-1.lite-8B-MLX-Q4`](https://huggingface.co/mlx-community/Flux-1.lite-8B-MLX-Q4) | `public`, `mlx-diffusion`, `cli`, `daemon-job`, `large` | `tentgent model pull mlx-community/Flux-1.lite-8B-MLX-Q4 --capability image-generation` | Apple Silicon MFLUX smoke candidate, about 7.5 GiB. Inspect should show `mlx_runtime_family = mlx-diffusion`. |
 
 ## Notes
 

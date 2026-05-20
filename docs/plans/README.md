@@ -77,6 +77,10 @@ one pass without a staged breakdown.
   `audio-transcription` CLI and daemon job route to `mlx-audio` models on
   Apple Silicon without adding new user-facing audio APIs, with CLI and daemon
   smoke evidence recorded.
+- [m6k-mlx-image-generation-backend-decision.md](./m6k-mlx-image-generation-backend-decision.md)
+  Implemented M6K decision/backend slice for routing Apple Silicon
+  `mlx-diffusion` image-generation models through MFLUX behind the existing
+  `tentgent image generate` and daemon image job surfaces.
 
 ## Recommended Order
 

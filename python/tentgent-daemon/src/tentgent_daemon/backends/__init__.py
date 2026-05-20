@@ -75,6 +75,10 @@ def create_vision_chat_backend(kind: BackendKind) -> VisionChatBackend:
 
 
 def create_image_generation_backend(kind: BackendKind) -> ImageGenerationBackend:
+    if kind == BackendKind.MLX_DIFFUSION:
+        from .mlx_diffusion import MfluxImageGenerationBackend
+
+        return MfluxImageGenerationBackend()
     if kind == BackendKind.DIFFUSERS:
         from .diffusers import DiffusersImageGenerationBackend
 

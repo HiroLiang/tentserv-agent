@@ -38,15 +38,18 @@ impl ImageGenerationModelResolver for StdImageGenerationModelResolver<'_> {
             )));
         }
 
-        let backend = ImageGenerationBackend::from_model_format(metadata.primary_format)
-            .ok_or_else(|| {
-                KernelError::UnsupportedTarget(format!(
-                    "image generation endpoint does not support `{}` model format{} yet for model `{}`",
-                    metadata.primary_format,
-                    mlx_runtime_family_suffix(metadata.mlx_runtime_family),
-                    metadata.model_ref
-                ))
-            })?;
+        let backend = ImageGenerationBackend::from_model_format_and_mlx_family(
+            metadata.primary_format,
+            metadata.mlx_runtime_family,
+        )
+        .ok_or_else(|| {
+            KernelError::UnsupportedTarget(format!(
+                "image generation endpoint does not support `{}` model format{} yet for model `{}`",
+                metadata.primary_format,
+                mlx_runtime_family_suffix(metadata.mlx_runtime_family),
+                metadata.model_ref
+            ))
+        })?;
         let target = ImageGenerationRuntimeTarget::LocalModel {
             model_ref: metadata.model_ref.clone(),
             backend,

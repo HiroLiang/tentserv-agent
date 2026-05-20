@@ -4,7 +4,7 @@ use std::{fmt, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::features::model::domain::{ModelCapability, ModelFormat, ModelRef};
+use crate::features::model::domain::{MlxRuntimeFamily, ModelCapability, ModelFormat, ModelRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -224,12 +224,14 @@ pub enum ImageGenerationOptionsError {
 #[serde(rename_all = "kebab-case")]
 pub enum ImageGenerationBackend {
     DiffusersTextToImage,
+    MlxDiffusionTextToImage,
 }
 
 impl ImageGenerationBackend {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::DiffusersTextToImage => "diffusers-text-to-image",
+            Self::MlxDiffusionTextToImage => "mlx-diffusion-text-to-image",
         }
     }
 
@@ -237,6 +239,24 @@ impl ImageGenerationBackend {
         match format {
             ModelFormat::Diffusers => Some(Self::DiffusersTextToImage),
             ModelFormat::Safetensors | ModelFormat::Gguf | ModelFormat::Mlx => None,
+        }
+    }
+
+    pub const fn from_model_format_and_mlx_family(
+        format: ModelFormat,
+        mlx_runtime_family: Option<MlxRuntimeFamily>,
+    ) -> Option<Self> {
+        match (format, mlx_runtime_family) {
+            (ModelFormat::Diffusers, _) => Some(Self::DiffusersTextToImage),
+            (ModelFormat::Mlx, Some(MlxRuntimeFamily::Diffusion)) => {
+                Some(Self::MlxDiffusionTextToImage)
+            }
+            (ModelFormat::Safetensors | ModelFormat::Gguf, _)
+            | (
+                ModelFormat::Mlx,
+                Some(MlxRuntimeFamily::Lm | MlxRuntimeFamily::Vlm | MlxRuntimeFamily::Audio),
+            )
+            | (ModelFormat::Mlx, None) => None,
         }
     }
 }

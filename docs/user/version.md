@@ -35,8 +35,8 @@ What changed:
   `POST /v1/vision/chat` for bounded single-image plus prompt requests against
   local `vision-chat` safetensors models.
 - Added foreground CLI `tentgent image generate` and daemon-native
-  `POST /v1/images/generations/job` for text-to-image Diffusers
-  `image-generation` models. Generated files are exposed through
+  `POST /v1/images/generations/job` for text-to-image Diffusers and Apple
+  Silicon MFLUX `image-generation` models. Generated files are exposed through
   `/v1/images/generations/job/{job_id}/files` and
   `/v1/images/generations/job/{job_id}/files/{file_id}`.
 - Added endpoint-family gates so chat routes require `chat` models and
@@ -62,9 +62,9 @@ Known limits:
   inpainting/masks, reference images, ControlNet, compatible OpenAI image APIs,
   and direct image model server routes are future slices.
 - MLX acceleration is implemented for chat, LoRA training, native
-  `vision-chat`, and native `audio-transcription` on Apple Silicon. The
-  image-generation MLX backend remains planned; the current image baseline uses
-  Diffusers.
+  `vision-chat`, native `audio-transcription`, and MFLUX-backed
+  `image-generation` on Apple Silicon. Diffusers remains the small
+  cross-platform image baseline.
 - Rerank scores are raw backend scores; compare them within one request/model
   family rather than across unrelated models.
 - The next release-engineering slice is Apple Developer ID signing,
@@ -366,7 +366,8 @@ Known limits:
 
 - macOS and Windows x86_64 are the first packaged install targets
 - MLX requires Apple Silicon macOS
-- MLX image generation remains planned after the current Diffusers baseline
+- MLX image generation is available for MFLUX Flux-family MLX models on Apple
+  Silicon macOS; Diffusers remains the small cross-platform image baseline
 - Windows runtime support is PEFT/safetensors-first; MLX is disabled
 - HTTP chat is currently non-streaming
 - `llama-cpp` external adapter execution is not implemented in this MVP

@@ -23,7 +23,7 @@ Current backend states:
 | `mlx` | `mlx` | `mlx-lm` | enabled | unsupported | unsupported | unsupported |
 | `mlx-vlm` | `mlx` | `mlx-vlm` | dependency-gated | unsupported | unsupported | unsupported |
 | `mlx-audio` | `mlx` | `mlx-audio` | dependency-gated | unsupported | unsupported | unsupported |
-| `mlx-diffusion` | `mlx` | `mlx-diffusion` | planned | unsupported | unsupported | unsupported |
+| `mlx-diffusion` | `mlx` | `mlx-diffusion` | dependency-gated | unsupported | unsupported | unsupported |
 | `transformers-peft` | `safetensors` | n/a | dependency-gated | dependency-gated | dependency-gated | dependency-gated |
 | `diffusers` | `diffusers` | n/a | dependency-gated | dependency-gated | dependency-gated | dependency-gated |
 | `llama-cpp` | `gguf` | n/a | dependency-gated | dependency-gated | dependency-gated | dependency-gated |
@@ -48,8 +48,8 @@ runtime family:
   `mlx-vlm` for native `vision-chat`
 - `primary_format = "mlx"` with `mlx_runtime_family = "mlx-audio"` uses
   `mlx-audio` for native `audio-transcription`
-- `primary_format = "mlx"` with `mlx-diffusion` is metadata-only until the
-  matching backend slice is implemented
+- `primary_format = "mlx"` with `mlx_runtime_family = "mlx-diffusion"` uses
+  MFLUX for native `image-generation` on Apple Silicon
 - `primary_format = "safetensors"` uses `transformers-peft`
 - `primary_format = "diffusers"` uses `diffusers`
 - `primary_format = "gguf"` uses `llama-cpp`

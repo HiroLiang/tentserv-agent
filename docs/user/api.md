@@ -194,9 +194,11 @@ Fields:
 | `guidance_scale` | no | number | Defaults to 7.5. Must be 0..30. |
 | `seed` | no | integer | Optional deterministic seed. |
 
-The daemon uses the same Diffusers runtime as the CLI. Set
-`TENTGENT_IMAGE_GENERATION_DEVICE=cpu`, `mps`, or `cuda` before daemon startup
-to force a device for image-generation jobs. Set
+The daemon uses the same image-generation runtime selection as the CLI:
+Diffusers models use the Diffusers backend, and MLX `mlx-diffusion` models use
+MFLUX on Apple Silicon macOS. Set `TENTGENT_IMAGE_GENERATION_DEVICE=cpu`,
+`mps`, or `cuda` before daemon startup to force a Diffusers device for
+image-generation jobs. Set
 `TENTGENT_IMAGE_GENERATION_TORCH_DTYPE=float32` or `float16` only for
 model/runtime compatibility debugging.
 

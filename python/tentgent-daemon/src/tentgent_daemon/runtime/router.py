@@ -84,7 +84,9 @@ def resolve_image_generation_backend(record: StoredModelRecord) -> BackendKind:
     if record.primary_format == "diffusers":
         return BackendKind.DIFFUSERS
     if record.primary_format == "mlx" and record.mlx_runtime_family == "mlx-diffusion":
-        _raise_planned_mlx_backend(record, "image generation", "mlx-diffusion")
+        backend = BackendKind.MLX_DIFFUSION
+        ensure_backend_supported(str(backend))
+        return backend
 
     raise ValueError(
         f"unsupported primary_format `{record.primary_format}` for image generation model `{record.model_ref}`"
