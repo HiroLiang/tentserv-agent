@@ -146,6 +146,7 @@ impl AdapterHfPullUseCase for StdAdapterHfPullUseCase<'_> {
                 resolved_revision: snapshot.resolved_revision,
             },
             base_model.as_ref(),
+            &request.options,
         )?;
 
         Ok(AdapterHfPullResult {

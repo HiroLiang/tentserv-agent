@@ -1,16 +1,63 @@
+use crate::features::adapter::usecases::{
+    AdapterCompatibilityCheckRequest, AdapterCompatibilityCheckUseCase,
+};
 use crate::features::model::domain::ModelCapability;
 use crate::features::model::usecases::{ModelCatalogReadUseCase, ModelInspectRequest};
 use crate::foundation::error::{KernelError, KernelResult};
 
-use super::super::domain::{ImageGenerationBackend, ImageGenerationRuntimeTarget};
+use super::super::domain::{
+    ImageGenerationBackend, ImageGenerationRuntimeTarget, ResolvedImageGenerationAdapter,
+};
 use super::super::ports::{
-    ImageGenerationModelResolveRequest, ImageGenerationModelResolveResult,
-    ImageGenerationModelResolver,
+    ImageGenerationAdapterResolveRequest, ImageGenerationAdapterResolveResult,
+    ImageGenerationAdapterResolver, ImageGenerationModelResolveRequest,
+    ImageGenerationModelResolveResult, ImageGenerationModelResolver,
 };
 
 /// Resolves image-generation model targets by adapting the model catalog use-case boundary.
 pub struct StdImageGenerationModelResolver<'a> {
     model_catalog: &'a dyn ModelCatalogReadUseCase,
+}
+
+/// Resolves image-generation adapters by adapting the adapter compatibility use-case boundary.
+pub struct StdImageGenerationAdapterResolver<'a> {
+    compatibility: &'a dyn AdapterCompatibilityCheckUseCase,
+}
+
+impl<'a> StdImageGenerationAdapterResolver<'a> {
+    pub fn new(compatibility: &'a dyn AdapterCompatibilityCheckUseCase) -> Self {
+        Self { compatibility }
+    }
+}
+
+impl ImageGenerationAdapterResolver for StdImageGenerationAdapterResolver<'_> {
+    fn resolve_image_generation_adapter(
+        &self,
+        request: ImageGenerationAdapterResolveRequest,
+    ) -> KernelResult<ImageGenerationAdapterResolveResult> {
+        let backend = request.target.backend;
+        let scale = request.lora_scale;
+        let result =
+            self.compatibility
+                .check_adapter_compatibility(AdapterCompatibilityCheckRequest {
+                    layout: request.layout,
+                    adapter_selector: request.selector,
+                    target: request.target,
+                })?;
+        let target = ResolvedImageGenerationAdapter {
+            adapter_ref: result.adapter.metadata.adapter_ref.clone(),
+            backend,
+            source_path: result.adapter.source_path.clone(),
+            weight_file: result.adapter.metadata.weight_file.clone(),
+            scale,
+        };
+
+        Ok(ImageGenerationAdapterResolveResult {
+            layout: result.layout,
+            adapter: result.adapter,
+            target,
+        })
+    }
 }
 
 impl<'a> StdImageGenerationModelResolver<'a> {

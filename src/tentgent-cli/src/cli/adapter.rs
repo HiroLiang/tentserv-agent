@@ -1,6 +1,8 @@
 use clap::CommandFactory;
 use miette::{miette, IntoDiagnostic, Result};
-use tentgent_kernel::features::adapter::domain::AdapterRefSelector;
+use tentgent_kernel::features::adapter::domain::{
+    AdapterBackendSupport, AdapterFormat, AdapterRefSelector, LoraScale,
+};
 use tentgent_kernel::features::adapter::infra::{
     FileAdapterBaseIndexStore, FileAdapterCatalogStore, FileAdapterContentStore,
     FileAdapterServerReferenceProbe, FileAdapterSourceIndexStore, StdAdapterIdentityGenerator,
@@ -9,10 +11,10 @@ use tentgent_kernel::features::adapter::infra::{
 };
 use tentgent_kernel::features::adapter::usecases::{
     AdapterBindRequest, AdapterBindUseCase, AdapterCatalogReadUseCase, AdapterHfPullRequest,
-    AdapterHfPullUseCase, AdapterInspectRequest, AdapterListRequest, AdapterLocalImportRequest,
-    AdapterLocalImportUseCase, AdapterRemoveRequest, AdapterRemoveUseCase, StdAdapterBindUseCase,
-    StdAdapterCatalogReadUseCase, StdAdapterHfPullUseCase, StdAdapterLocalImportUseCase,
-    StdAdapterRemoveUseCase,
+    AdapterHfPullUseCase, AdapterImportOptions, AdapterInspectRequest, AdapterListRequest,
+    AdapterLocalImportRequest, AdapterLocalImportUseCase, AdapterRemoveRequest,
+    AdapterRemoveUseCase, StdAdapterBindUseCase, StdAdapterCatalogReadUseCase,
+    StdAdapterHfPullUseCase, StdAdapterLocalImportUseCase, StdAdapterRemoveUseCase,
 };
 use tentgent_kernel::features::auth::domain::{AuthEnvLoadPolicy, Provider};
 use tentgent_kernel::features::auth::infra::{
@@ -21,7 +23,7 @@ use tentgent_kernel::features::auth::infra::{
 use tentgent_kernel::features::auth::usecases::{
     AuthSecretResolutionRequest, StdAuthSecretResolverUseCase,
 };
-use tentgent_kernel::features::model::domain::ModelRefSelector;
+use tentgent_kernel::features::model::domain::{ModelCapability, ModelRefSelector};
 use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::StdPythonRuntimeResolver;
@@ -45,6 +47,12 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
         AdapterCommands::Add {
             path,
             base_model_ref,
+            target_capability,
+            adapter_format,
+            backend_support,
+            weight_file,
+            trigger_word,
+            recommended_scale,
         } => {
             let base_model_selector = parse_optional_model_selector(
                 "add",
@@ -57,6 +65,14 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
                     layout: runtime_layout_input(LayoutResolveMode::Create),
                     source_path: path,
                     base_model_selector,
+                    options: adapter_import_options(
+                        target_capability.as_deref(),
+                        adapter_format.as_deref(),
+                        &backend_support,
+                        weight_file,
+                        trigger_word,
+                        recommended_scale,
+                    )?,
                 })
                 .into_diagnostic()?;
             render_import_outcome("Adapter imported", &result.outcome);
@@ -65,6 +81,12 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
             repo_id,
             revision,
             base_model_ref,
+            target_capability,
+            adapter_format,
+            backend_support,
+            weight_file,
+            trigger_word,
+            recommended_scale,
         } => {
             if is_help_token(&repo_id) {
                 print_adapter_subcommand_help("pull")?;
@@ -85,6 +107,14 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
                     repo_id: repo_id.clone(),
                     revision,
                     base_model_selector,
+                    options: adapter_import_options(
+                        target_capability.as_deref(),
+                        adapter_format.as_deref(),
+                        &backend_support,
+                        weight_file,
+                        trigger_word,
+                        recommended_scale,
+                    )?,
                     auth: AuthSecretResolutionRequest::for_secret_use(
                         Provider::HuggingFace,
                         AuthEnvLoadPolicy::CwdDotenvOverride,
@@ -321,6 +351,59 @@ fn parse_optional_model_selector(
     value
         .map(|value| parse_model_selector(command, value_name, value))
         .transpose()
+}
+
+fn adapter_import_options(
+    target_capability: Option<&str>,
+    adapter_format: Option<&str>,
+    backend_support: &[String],
+    weight_file: Option<String>,
+    trigger_word: Vec<String>,
+    recommended_scale: Option<f32>,
+) -> Result<AdapterImportOptions> {
+    let target_capability = target_capability
+        .map(|value| {
+            value
+                .parse::<ModelCapability>()
+                .map_err(|err| miette!("invalid --target-capability: {err}"))
+        })
+        .transpose()?;
+    let adapter_format = adapter_format
+        .map(|value| {
+            value
+                .parse::<AdapterFormat>()
+                .map_err(|err| miette!("invalid --adapter-format: {err}"))
+        })
+        .transpose()?;
+    let backend_support = backend_support
+        .iter()
+        .map(|value| {
+            value
+                .parse::<AdapterBackendSupport>()
+                .map_err(|err| miette!("invalid --backend-support: {err}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let trigger_words = trigger_word
+        .into_iter()
+        .filter_map(non_empty_string)
+        .collect::<Vec<_>>();
+    let recommended_scale = recommended_scale
+        .map(|value| LoraScale::new(value).map_err(|err| miette!("{err}")))
+        .transpose()?;
+
+    Ok(AdapterImportOptions {
+        target_capability,
+        adapter_format,
+        backend_support,
+        weight_file: weight_file.and_then(non_empty_string),
+        trigger_words,
+        recommended_scale,
+    })
+}
+
+fn non_empty_string(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 fn print_adapter_subcommand_help(name: &str) -> Result<()> {

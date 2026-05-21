@@ -23,6 +23,13 @@ use tentgent_kernel::{
             infra::StdChatAdapterResolver,
             ports::{ChatAdapterResolveRequest, ChatAdapterResolveResult, ChatAdapterResolver},
         },
+        image_generation::{
+            infra::StdImageGenerationAdapterResolver,
+            ports::{
+                ImageGenerationAdapterResolveRequest, ImageGenerationAdapterResolveResult,
+                ImageGenerationAdapterResolver,
+            },
+        },
         model::ports::ModelCatalogStore,
         runtime::ports::PythonRuntimeResolver,
     },
@@ -192,5 +199,14 @@ impl ChatAdapterResolver for AdapterKernelComponent {
         request: ChatAdapterResolveRequest,
     ) -> KernelResult<ChatAdapterResolveResult> {
         StdChatAdapterResolver::new(self).resolve_chat_adapter(request)
+    }
+}
+
+impl ImageGenerationAdapterResolver for AdapterKernelComponent {
+    fn resolve_image_generation_adapter(
+        &self,
+        request: ImageGenerationAdapterResolveRequest,
+    ) -> KernelResult<ImageGenerationAdapterResolveResult> {
+        StdImageGenerationAdapterResolver::new(self).resolve_image_generation_adapter(request)
     }
 }

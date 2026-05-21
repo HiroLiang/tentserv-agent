@@ -93,6 +93,7 @@ impl AdapterLocalImportUseCase for StdAdapterLocalImportUseCase<'_> {
                 original_path: request.source_path,
             },
             base_model.as_ref(),
+            &request.options,
         )?;
 
         Ok(AdapterLocalImportResult {

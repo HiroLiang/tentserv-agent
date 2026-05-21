@@ -167,6 +167,8 @@ Request body:
 ```json
 {
   "model_ref": "<image-generation-model-ref>",
+  "adapter_ref": "<optional-image-lora-adapter-ref>",
+  "lora_scale": 0.8,
   "prompt": "A small ceramic teapot on a wooden table",
   "negative_prompt": "optional negative prompt",
   "output_format": "png",
@@ -184,6 +186,8 @@ Fields:
 | Field | Required | Type | Notes |
 | --- | --- | --- | --- |
 | `model_ref` | yes | string | Local `image-generation` model ref or unique alias. |
+| `adapter_ref` | no | string | Optional managed image LoRA adapter ref or unique short-ref prefix. |
+| `lora_scale` | no | number | Optional LoRA scale. Defaults to `1.0` when `adapter_ref` is present; must be 0..4. |
 | `prompt` | yes | string | Text prompt for image generation. |
 | `negative_prompt` | no | string | Optional negative prompt. |
 | `output_format` | no | string | `png` or `jpg`; defaults to `png`. |
@@ -201,6 +205,8 @@ MFLUX on Apple Silicon macOS. Set `TENTGENT_IMAGE_GENERATION_DEVICE=cpu`,
 image-generation jobs. Set
 `TENTGENT_IMAGE_GENERATION_TORCH_DTYPE=float32` or `float16` only for
 model/runtime compatibility debugging.
+When `adapter_ref` is present, the daemon validates the adapter against the
+selected image-generation model and backend before runtime execution.
 
 Response:
 
@@ -427,11 +433,19 @@ workspace chunks or spool routes.
 | `GET` | `/v1/adapters` | None. |
 | `GET` | `/v1/adapters/{reference}` | None. |
 | `DELETE` | `/v1/adapters/{reference}` | None. |
-| `POST` | `/v1/adapters/import` | `{"path":"/absolute/adapter-dir","base_model_ref":"optional-base-model"}` |
-| `POST` | `/v1/adapters/pull` | `{"repo_id":"org/adapter","revision":"optional","base_model_ref":"optional-base-model"}` |
+| `POST` | `/v1/adapters/import` | `{"path":"/absolute/adapter-dir","base_model_ref":"optional-base-model","target_capability":"optional-capability","adapter_format":"optional-format","backend_support":["optional-backend"],"weight_file":"optional-file","trigger_words":["optional-token"],"recommended_scale":0.8}` |
+| `POST` | `/v1/adapters/pull` | `{"repo_id":"org/adapter","revision":"optional","base_model_ref":"optional-base-model","target_capability":"optional-capability","adapter_format":"optional-format","backend_support":["optional-backend"],"weight_file":"optional-file","trigger_words":["optional-token"],"recommended_scale":0.8}` |
 | `POST` | `/v1/adapters/import/jobs` | Same as `/v1/adapters/import`, returns a job. |
 | `POST` | `/v1/adapters/pull/jobs` | Same as `/v1/adapters/pull`, returns a job. |
 | `POST` | `/v1/adapters/{reference}/bind` | `{"base_model_ref":"<base-model-ref>"}` |
+
+Adapter import and pull metadata fields are optional. For image-generation LoRA
+adapters, set `target_capability` to `image-generation`, use `adapter_format`
+`diffusers-lora` or `mlx-diffusion-lora`, and include the corresponding
+`backend_support` value `diffusers` or `mlx-diffusion`. `weight_file` is
+required when the adapter source contains multiple candidate `.safetensors`
+files. The `/jobs` variants accept the same metadata fields and return a daemon
+job immediately.
 
 ## Datasets
 

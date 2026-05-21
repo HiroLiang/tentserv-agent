@@ -41,11 +41,15 @@ class StoredAdapterRecord:
     short_ref: str
     adapter_format: str
     adapter_type: str
+    target_capability: str | None
     base_model_ref: str | None
     base_model_source_repo: str | None
     base_model_source_revision: str | None
     model_family: str | None
     backend_support: tuple[str, ...]
+    weight_file: str | None
+    trigger_words: tuple[str, ...]
+    recommended_scale: float | None
     source_kind: str
     source_repo: str | None
     source_revision: str | None
@@ -163,6 +167,7 @@ def _read_record(adapter_dir: Path) -> StoredAdapterRecord:
         short_ref=_require_string(raw, "short_ref"),
         adapter_format=_require_string(raw, "adapter_format"),
         adapter_type=_require_string(raw, "adapter_type"),
+        target_capability=_optional_string(raw, "target_capability"),
         base_model_ref=_optional_string(raw, "base_model_ref"),
         base_model_source_repo=_optional_string(raw, "base_model_source_repo"),
         base_model_source_revision=_optional_string(raw, "base_model_source_revision"),
@@ -170,6 +175,11 @@ def _read_record(adapter_dir: Path) -> StoredAdapterRecord:
         backend_support=tuple(
             item for item in raw.get("backend_support", []) if isinstance(item, str)
         ),
+        weight_file=_optional_string(raw, "weight_file"),
+        trigger_words=tuple(
+            item for item in raw.get("trigger_words", []) if isinstance(item, str)
+        ),
+        recommended_scale=_optional_float(raw, "recommended_scale"),
         source_kind=_require_string(raw, "source_kind"),
         source_repo=_optional_string(raw, "source_repo"),
         source_revision=_optional_string(raw, "source_revision"),
@@ -186,6 +196,10 @@ def _read_record(adapter_dir: Path) -> StoredAdapterRecord:
 def _backend_support_name(backend: BackendKind) -> str:
     if backend == BackendKind.MLX:
         return "mlx"
+    if backend == BackendKind.MLX_DIFFUSION:
+        return "mlx-diffusion"
+    if backend == BackendKind.DIFFUSERS:
+        return "diffusers"
     if backend == BackendKind.TRANSFORMERS_PEFT:
         return "transformers-peft"
     if backend == BackendKind.LLAMA_CPP:
@@ -203,6 +217,13 @@ def _require_string(raw: dict[str, object], key: str) -> str:
 def _optional_string(raw: dict[str, object], key: str) -> str | None:
     value = raw.get(key)
     return value if isinstance(value, str) and value else None
+
+
+def _optional_float(raw: dict[str, object], key: str) -> float | None:
+    value = raw.get(key)
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 def _read_env_path(name: str) -> Path | None:

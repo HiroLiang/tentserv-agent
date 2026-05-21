@@ -106,6 +106,18 @@ impl<'a> PythonImageGenerationOnceRuntimeClient<'a> {
         if let Some(seed) = request.request.options.seed {
             command.arg("--seed").arg(seed.to_string());
         }
+        if let Some(adapter) = &request.request.target.adapter {
+            command
+                .arg("--adapter-ref")
+                .arg(adapter.adapter_ref.as_str())
+                .arg("--adapter-source-path")
+                .arg(&adapter.source_path)
+                .arg("--lora-scale")
+                .arg(adapter.scale.as_f32().to_string());
+            if let Some(weight_file) = &adapter.weight_file {
+                command.arg("--adapter-weight-file").arg(weight_file);
+            }
+        }
 
         Ok(command)
     }

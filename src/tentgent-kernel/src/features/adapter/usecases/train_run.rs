@@ -94,6 +94,7 @@ impl AdapterTrainRunImportUseCase for StdAdapterTrainRunImportUseCase<'_> {
                 config_ref: request.training_config_ref,
             },
             Some(&base_model),
+            &request.options,
         )?;
 
         Ok(AdapterTrainRunImportResult {

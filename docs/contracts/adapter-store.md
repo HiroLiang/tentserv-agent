@@ -52,11 +52,15 @@ TENTGENT_HOME/
 - `short_ref`
 - `adapter_format`
 - `adapter_type`
+- `target_capability`
 - `base_model_ref`
 - `base_model_source_repo`
 - `base_model_source_revision`
 - `model_family`
 - `backend_support`
+- `weight_file`
+- `trigger_words`
+- `recommended_scale`
 - `source_kind`
 - `source_repo`
 - `source_revision`
@@ -73,7 +77,17 @@ Notes:
 - `base_model_ref` should be preferred when the exact local base model is known.
 - `base_model_source_repo` and `base_model_source_revision` help match adapters pulled from Hugging Face when the local `model_ref` is not known yet.
 - `model_family` is a weaker compatibility hint and should not replace exact compatibility metadata.
-- `backend_support` should describe intended runtime support, such as `transformers-peft`, `mlx`, or `llama-cpp`.
+- `target_capability` describes the model capability the adapter should be used
+  with. Existing chat adapters may omit it and are treated as legacy chat
+  adapters by compatibility checks.
+- `backend_support` should describe intended runtime support, such as
+  `transformers-peft`, `mlx`, `diffusers`, `mlx-diffusion`, or `llama-cpp`.
+- `weight_file` is used by image LoRA adapters when the managed `source/`
+  directory contains one selected `.safetensors` file.
+- `trigger_words` are prompt hints only. Tentgent records and displays them but
+  does not inject them into prompts.
+- `recommended_scale` is a metadata hint. Requests still choose the actual
+  `lora_scale`.
 
 ## Compatibility Rule
 
@@ -90,6 +104,8 @@ Before a server uses an adapter, it should check:
 - the adapter exists in `adapters/store/<adapter_ref>/`
 - the server base model matches `base_model_ref` when that field is present
 - otherwise, the server can fall back to source repo and revision compatibility checks
+- the adapter target capability matches the request capability when
+  `target_capability` is present
 - the adapter backend support includes the server backend
 - the server policy allows that adapter
 
@@ -111,6 +127,16 @@ For PEFT-style LoRA adapters, `source/` commonly contains:
 - `README.md`
 
 Other backend-specific adapter formats may use different filenames. Tentgent should keep the raw adapter source intact and store Tentgent metadata beside it.
+
+For Diffusers image LoRA adapters, `source/` commonly contains:
+
+- `pytorch_lora_weights.safetensors`
+- `README.md`
+
+For MFLUX-backed MLX diffusion image LoRA adapters, `source/` may contain one
+Flux-compatible `.safetensors` file. If an image LoRA source contains multiple
+`.safetensors` files, import or pull should specify `--weight-file` so runtime
+execution uses one deterministic local managed file.
 
 ## Indexes
 
@@ -168,6 +194,8 @@ The first adapter-store implementation should support:
 - metadata inspection
 - explicit local base-model binding
 - compatibility checks for `safetensors + PEFT`
+- image-generation LoRA metadata and one selected local `.safetensors` weight
+  file for Diffusers or `mlx-diffusion` generation
 
 It should not require:
 

@@ -19,11 +19,20 @@ MAX_PROMPT_BYTES = 8 * 1024
 
 
 @dataclass(frozen=True)
+class ImageGenerationAdapterSelection:
+    adapter_ref: str
+    source_path: Path
+    lora_scale: float
+    weight_file: str | None = None
+
+
+@dataclass(frozen=True)
 class ImageGenerationRequest:
     model_ref: str
     prompt: str
     output_path: Path
     output_format: str
+    adapter: ImageGenerationAdapterSelection | None = None
     negative_prompt: str | None = None
     width: int = DEFAULT_WIDTH
     height: int = DEFAULT_HEIGHT
@@ -88,6 +97,12 @@ def build_image_generation_plan(
     validate_image_generation_dimensions(request.width, request.height)
     validate_image_generation_steps(request.steps)
     validate_image_generation_guidance_scale(request.guidance_scale)
+    if request.adapter is not None:
+        validate_lora_scale(request.adapter.lora_scale)
+        if not request.adapter.source_path.exists():
+            raise FileNotFoundError(
+                f"image LoRA adapter source `{request.adapter.source_path}` does not exist"
+            )
 
     return ImageGenerationPlan(
         request=ImageGenerationRequest(
@@ -96,6 +111,7 @@ def build_image_generation_plan(
             negative_prompt=negative_prompt,
             output_path=output_path,
             output_format=output_format,
+            adapter=request.adapter,
             width=request.width,
             height=request.height,
             steps=request.steps,
@@ -144,6 +160,11 @@ def validate_image_generation_guidance_scale(guidance_scale: float) -> None:
             "image generation guidance scale must be between 0 and 30; "
             f"got {guidance_scale}"
         )
+
+
+def validate_lora_scale(lora_scale: float) -> None:
+    if lora_scale != lora_scale or lora_scale < 0.0 or lora_scale > 4.0:
+        raise ValueError(f"image LoRA scale must be between 0 and 4; got {lora_scale}")
 
 
 def write_image_generation_output(

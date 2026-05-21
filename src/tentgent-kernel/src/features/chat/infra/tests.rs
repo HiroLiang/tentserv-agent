@@ -97,6 +97,7 @@ fn std_chat_adapter_resolver_maps_compatibility_result_to_chat_adapter() {
         base_model_source_repo: Some("org/model".to_string()),
         base_model_source_revision: Some("main".to_string()),
         base_model_capabilities: vec![ModelCapability::Chat],
+        required_capability: ModelCapability::Chat,
         backend: AdapterBackendSupport::TransformersPeft,
     };
 
@@ -362,11 +363,15 @@ fn adapter_inspection() -> AdapterInspection {
             short_ref: adapter_ref().short_ref().to_string(),
             adapter_format: AdapterFormat::Peft,
             adapter_type: AdapterType::Lora,
+            target_capability: Some(ModelCapability::Chat),
             base_model_ref: Some(model_ref()),
             base_model_source_repo: Some("org/model".to_string()),
             base_model_source_revision: Some("main".to_string()),
             model_family: None,
             backend_support: vec![AdapterBackendSupport::TransformersPeft],
+            weight_file: None,
+            trigger_words: Vec::new(),
+            recommended_scale: None,
             source_kind: AdapterSourceKind::Local,
             source_repo: None,
             source_revision: None,

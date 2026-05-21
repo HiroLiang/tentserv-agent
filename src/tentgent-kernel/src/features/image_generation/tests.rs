@@ -2,10 +2,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::features::adapter::domain::{AdapterBackendSupport, AdapterRef, LoraScale};
 use crate::features::image_generation::domain::{
     ImageGenerationBackend, ImageGenerationDimensions, ImageGenerationOptions,
     ImageGenerationOutputFormat, ImageGenerationPrompt, ImageGenerationRequest,
-    ImageGenerationResponse, ImageGenerationRuntimeTarget, ResolvedImageGenerationTarget,
+    ImageGenerationResponse, ImageGenerationRuntimeTarget, ResolvedImageGenerationAdapter,
+    ResolvedImageGenerationTarget,
 };
 use crate::features::image_generation::infra::{
     PythonImageGenerationOnceRuntimeClient, StdImageGenerationModelResolver,
@@ -307,6 +309,64 @@ async fn python_image_generation_once_client_runs_entrypoint_with_arguments() {
     assert!(args.contains("--seed\n42\n"));
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn python_image_generation_once_client_passes_adapter_arguments() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = unique_path("python-image-generation-adapter");
+    let home = root.join("home");
+    let project = root.join("project");
+    let env = root.join("env");
+    fs::create_dir_all(&home).expect("home");
+    fs::create_dir_all(&project).expect("project");
+    fs::create_dir_all(&env).expect("env");
+    let output_path = home.join("image.png");
+    let entrypoint = root.join("tentgent-image-generate-once");
+    fs::write(
+        &entrypoint,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"png\",\"media_type\":\"image/png\",\"output_path\":\"",
+    )
+    .expect("script prefix");
+    let mut script = fs::read_to_string(&entrypoint).expect("script read");
+    script.push_str(&output_path.display().to_string());
+    script.push_str("\",\"total_bytes\":12,\"width\":512,\"height\":768,\"seed\":42}'\n");
+    fs::write(&entrypoint, script).expect("script");
+    let mut permissions = fs::metadata(&entrypoint).expect("metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&entrypoint, permissions).expect("chmod");
+
+    let executable_resolver = FakeExecutableResolver { entrypoint };
+    let client = PythonImageGenerationOnceRuntimeClient::new(&executable_resolver);
+    let mut request = image_generation_request(&output_path);
+    request.target.adapter = Some(ResolvedImageGenerationAdapter {
+        adapter_ref: adapter_ref(),
+        backend: AdapterBackendSupport::Diffusers,
+        source_path: home.join("adapters/store/source"),
+        weight_file: Some("style.safetensors".to_string()),
+        scale: LoraScale::new(0.8).expect("scale"),
+    });
+
+    client
+        .generate_image(ImageGenerationRuntimeRequest {
+            layout: runtime_layout(&home),
+            runtime: python_runtime(&project, &env),
+            request,
+        })
+        .await
+        .expect("image generation");
+
+    let args = fs::read_to_string(home.join("args.txt")).expect("args");
+    assert!(args.contains("--adapter-ref\n"));
+    assert!(args.contains(&format!("{}\n", adapter_ref())));
+    assert!(args.contains("--adapter-source-path\n"));
+    assert!(args.contains("adapters/store/source\n"));
+    assert!(args.contains("--adapter-weight-file\n"));
+    assert!(args.contains("style.safetensors\n"));
+    assert!(args.contains("--lora-scale\n"));
+    assert!(args.contains("0.8\n"));
+}
+
 #[derive(Clone)]
 struct FakeModelCatalog {
     metadata: ModelMetadata,
@@ -386,6 +446,7 @@ fn image_generation_request(output_path: &Path) -> ImageGenerationRequest {
                 source_revision: Some("main".to_string()),
                 model_capabilities: vec![ModelCapability::ImageGeneration],
             },
+            adapter: None,
         },
         prompt: ImageGenerationPrompt::new("A neon city.", Some("blurry".to_string()))
             .expect("prompt"),
@@ -441,6 +502,10 @@ fn mlx_model_metadata(family: MlxRuntimeFamily) -> ModelMetadata {
 
 fn model_ref() -> ModelRef {
     ModelRef::parse("8".repeat(64)).expect("model ref")
+}
+
+fn adapter_ref() -> AdapterRef {
+    AdapterRef::parse("9".repeat(64)).expect("adapter ref")
 }
 
 fn layout_input(home: PathBuf) -> RuntimeLayoutInput {

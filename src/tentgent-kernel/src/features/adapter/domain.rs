@@ -22,6 +22,7 @@ pub const ADAPTER_METADATA_FILENAME: &str = "adapter.toml";
 pub const ADAPTER_MANIFEST_FILENAME: &str = "manifest.json";
 pub const PEFT_ADAPTER_MODEL_FILENAME: &str = "adapter_model.safetensors";
 pub const MLX_ADAPTERS_FILENAME: &str = "adapters.safetensors";
+pub const DIFFUSERS_LORA_WEIGHTS_FILENAME: &str = "pytorch_lora_weights.safetensors";
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AdapterRef(String);
@@ -176,6 +177,10 @@ pub enum AdapterFormat {
     Peft,
     #[serde(rename = "mlx")]
     Mlx,
+    #[serde(rename = "diffusers-lora")]
+    DiffusersLora,
+    #[serde(rename = "mlx-diffusion-lora")]
+    MlxDiffusionLora,
     #[serde(rename = "llama-cpp")]
     LlamaCpp,
 }
@@ -185,6 +190,8 @@ impl AdapterFormat {
         match self {
             Self::Peft => "peft",
             Self::Mlx => "mlx",
+            Self::DiffusersLora => "diffusers-lora",
+            Self::MlxDiffusionLora => "mlx-diffusion-lora",
             Self::LlamaCpp => "llama-cpp",
         }
     }
@@ -194,6 +201,32 @@ impl std::fmt::Display for AdapterFormat {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.as_str())
     }
+}
+
+impl std::str::FromStr for AdapterFormat {
+    type Err = AdapterFormatParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" => Err(AdapterFormatParseError::Empty),
+            "peft" => Ok(Self::Peft),
+            "mlx" => Ok(Self::Mlx),
+            "diffusers-lora" => Ok(Self::DiffusersLora),
+            "mlx-diffusion-lora" => Ok(Self::MlxDiffusionLora),
+            "llama-cpp" => Ok(Self::LlamaCpp),
+            _ => Err(AdapterFormatParseError::Unsupported {
+                value: value.trim().to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AdapterFormatParseError {
+    #[error("adapter format must not be blank")]
+    Empty,
+    #[error("unsupported adapter format `{value}`")]
+    Unsupported { value: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,6 +281,10 @@ pub enum AdapterBackendSupport {
     TransformersPeft,
     #[serde(rename = "mlx")]
     Mlx,
+    #[serde(rename = "diffusers")]
+    Diffusers,
+    #[serde(rename = "mlx-diffusion")]
+    MlxDiffusion,
     #[serde(rename = "llama-cpp")]
     LlamaCpp,
 }
@@ -257,6 +294,8 @@ impl AdapterBackendSupport {
         match self {
             Self::TransformersPeft => "transformers-peft",
             Self::Mlx => "mlx",
+            Self::Diffusers => "diffusers",
+            Self::MlxDiffusion => "mlx-diffusion",
             Self::LlamaCpp => "llama-cpp",
         }
     }
@@ -266,6 +305,90 @@ impl std::fmt::Display for AdapterBackendSupport {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.as_str())
     }
+}
+
+impl std::str::FromStr for AdapterBackendSupport {
+    type Err = AdapterBackendSupportParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" => Err(AdapterBackendSupportParseError::Empty),
+            "transformers-peft" => Ok(Self::TransformersPeft),
+            "mlx" => Ok(Self::Mlx),
+            "diffusers" => Ok(Self::Diffusers),
+            "mlx-diffusion" => Ok(Self::MlxDiffusion),
+            "llama-cpp" => Ok(Self::LlamaCpp),
+            _ => Err(AdapterBackendSupportParseError::Unsupported {
+                value: value.trim().to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AdapterBackendSupportParseError {
+    #[error("adapter backend support must not be blank")]
+    Empty,
+    #[error("unsupported adapter backend support `{value}`")]
+    Unsupported { value: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LoraScale(u32);
+
+impl LoraScale {
+    pub const DEFAULT: Self = Self(1000);
+    pub const MIN: f32 = 0.0;
+    pub const MAX: f32 = 4.0;
+    const FACTOR: f32 = 1000.0;
+
+    pub fn new(value: f32) -> Result<Self, LoraScaleError> {
+        if !value.is_finite() || !(Self::MIN..=Self::MAX).contains(&value) {
+            return Err(LoraScaleError::OutOfRange { value });
+        }
+        Ok(Self((value * Self::FACTOR).round() as u32))
+    }
+
+    pub fn as_f32(self) -> f32 {
+        self.0 as f32 / Self::FACTOR
+    }
+}
+
+impl Default for LoraScale {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl std::fmt::Display for LoraScale {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.as_f32())
+    }
+}
+
+impl Serialize for LoraScale {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_f32(self.as_f32())
+    }
+}
+
+impl<'de> Deserialize<'de> for LoraScale {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = f32::deserialize(deserializer)?;
+        Self::new(value).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum LoraScaleError {
+    #[error("LoRA scale must be between 0 and 4; got {value}")]
+    OutOfRange { value: f32 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -304,6 +427,14 @@ impl AdapterManifest {
             .iter()
             .any(|entry| entry.relative_path == expected)
     }
+
+    pub fn safetensors_paths(&self) -> Vec<String> {
+        self.files
+            .iter()
+            .filter(|entry| entry.relative_path.ends_with(".safetensors"))
+            .map(|entry| entry.relative_path.clone())
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -312,11 +443,19 @@ pub struct AdapterMetadata {
     pub short_ref: String,
     pub adapter_format: AdapterFormat,
     pub adapter_type: AdapterType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_capability: Option<ModelCapability>,
     pub base_model_ref: Option<ModelRef>,
     pub base_model_source_repo: Option<String>,
     pub base_model_source_revision: Option<String>,
     pub model_family: Option<String>,
     pub backend_support: Vec<AdapterBackendSupport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trigger_words: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_scale: Option<LoraScale>,
     pub source_kind: AdapterSourceKind,
     pub source_repo: Option<String>,
     pub source_revision: Option<String>,
@@ -544,6 +683,7 @@ pub struct AdapterCompatibilityTarget {
     pub base_model_source_repo: Option<String>,
     pub base_model_source_revision: Option<String>,
     pub base_model_capabilities: Vec<ModelCapability>,
+    pub required_capability: ModelCapability,
     pub backend: AdapterBackendSupport,
 }
 
@@ -557,12 +697,21 @@ pub fn validate_adapter_compatibility(
         });
     }
 
+    if let Some(adapter_capability) = metadata.target_capability {
+        if adapter_capability != target.required_capability {
+            return Err(AdapterCompatibilityError::TargetCapabilityMismatch {
+                adapter_capability: adapter_capability.as_str().to_string(),
+                required_capability: target.required_capability.as_str().to_string(),
+            });
+        }
+    }
+
     if !target
         .base_model_capabilities
-        .contains(&ModelCapability::Chat)
+        .contains(&target.required_capability)
     {
         return Err(AdapterCompatibilityError::UnsupportedBaseModelCapability {
-            required: ModelCapability::Chat.as_str().to_string(),
+            required: target.required_capability.as_str().to_string(),
         });
     }
 
@@ -615,6 +764,10 @@ pub fn validate_adapter_compatibility(
 pub fn detect_adapter_format(
     manifest: &AdapterManifest,
 ) -> Result<AdapterFormat, AdapterFormatSelectionError> {
+    if manifest.contains_path(DIFFUSERS_LORA_WEIGHTS_FILENAME) {
+        return Ok(AdapterFormat::DiffusersLora);
+    }
+
     if manifest.contains_path(PEFT_ADAPTER_MODEL_FILENAME) {
         return Ok(AdapterFormat::Peft);
     }
@@ -626,10 +779,86 @@ pub fn detect_adapter_format(
     Err(AdapterFormatSelectionError::UnsupportedLayout)
 }
 
+pub fn detect_image_adapter_format(
+    manifest: &AdapterManifest,
+    explicit_format: Option<AdapterFormat>,
+    explicit_backend_support: &[AdapterBackendSupport],
+) -> Result<AdapterFormat, AdapterFormatSelectionError> {
+    if let Some(format) = explicit_format {
+        return Ok(format);
+    }
+
+    if explicit_backend_support.contains(&AdapterBackendSupport::MlxDiffusion) {
+        return Ok(AdapterFormat::MlxDiffusionLora);
+    }
+    if explicit_backend_support.contains(&AdapterBackendSupport::Diffusers) {
+        return Ok(AdapterFormat::DiffusersLora);
+    }
+
+    if manifest.contains_path(DIFFUSERS_LORA_WEIGHTS_FILENAME) {
+        return Ok(AdapterFormat::DiffusersLora);
+    }
+
+    let safetensors = manifest.safetensors_paths();
+    match safetensors.as_slice() {
+        [_] => Ok(AdapterFormat::DiffusersLora),
+        [] => Err(AdapterFormatSelectionError::UnsupportedLayout),
+        _ => Err(AdapterFormatSelectionError::AmbiguousImageWeights {
+            candidates: safetensors.join(", "),
+        }),
+    }
+}
+
+pub fn select_adapter_weight_file(
+    manifest: &AdapterManifest,
+    explicit_weight_file: Option<&str>,
+    adapter_format: AdapterFormat,
+) -> Result<Option<String>, AdapterFormatSelectionError> {
+    let image_adapter = matches!(
+        adapter_format,
+        AdapterFormat::DiffusersLora | AdapterFormat::MlxDiffusionLora
+    );
+    if !image_adapter {
+        return Ok(None);
+    }
+
+    if let Some(weight_file) = explicit_weight_file
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !manifest.contains_path(weight_file) {
+            return Err(AdapterFormatSelectionError::WeightFileMissing {
+                weight_file: weight_file.to_string(),
+            });
+        }
+        if !weight_file.ends_with(".safetensors") {
+            return Err(AdapterFormatSelectionError::UnsupportedWeightFile {
+                weight_file: weight_file.to_string(),
+            });
+        }
+        return Ok(Some(weight_file.to_string()));
+    }
+
+    if manifest.contains_path(DIFFUSERS_LORA_WEIGHTS_FILENAME) {
+        return Ok(Some(DIFFUSERS_LORA_WEIGHTS_FILENAME.to_string()));
+    }
+
+    let safetensors = manifest.safetensors_paths();
+    match safetensors.as_slice() {
+        [weight_file] => Ok(Some(weight_file.clone())),
+        [] => Err(AdapterFormatSelectionError::UnsupportedLayout),
+        _ => Err(AdapterFormatSelectionError::AmbiguousImageWeights {
+            candidates: safetensors.join(", "),
+        }),
+    }
+}
+
 pub fn backend_support_for_format(format: AdapterFormat) -> Vec<AdapterBackendSupport> {
     match format {
         AdapterFormat::Peft => vec![AdapterBackendSupport::TransformersPeft],
         AdapterFormat::Mlx => vec![AdapterBackendSupport::Mlx],
+        AdapterFormat::DiffusersLora => vec![AdapterBackendSupport::Diffusers],
+        AdapterFormat::MlxDiffusionLora => vec![AdapterBackendSupport::MlxDiffusion],
         AdapterFormat::LlamaCpp => vec![AdapterBackendSupport::LlamaCpp],
     }
 }
@@ -649,14 +878,25 @@ fn short_display_ref(value: &str) -> String {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AdapterFormatSelectionError {
-    #[error("unsupported adapter layout; expected PEFT adapter_model.safetensors or MLX adapters.safetensors")]
+    #[error("unsupported adapter layout; expected PEFT adapter_model.safetensors, MLX adapters.safetensors, or one image LoRA .safetensors file")]
     UnsupportedLayout,
+    #[error("ambiguous image LoRA weights; specify one weight file from: {candidates}")]
+    AmbiguousImageWeights { candidates: String },
+    #[error("adapter weight file `{weight_file}` was not found in the adapter source")]
+    WeightFileMissing { weight_file: String },
+    #[error("adapter weight file `{weight_file}` is unsupported; expected a .safetensors file")]
+    UnsupportedWeightFile { weight_file: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AdapterCompatibilityError {
     #[error("adapter does not support backend {backend}")]
     UnsupportedBackend { backend: String },
+    #[error("adapter targets {adapter_capability}, but request requires {required_capability}")]
+    TargetCapabilityMismatch {
+        adapter_capability: String,
+        required_capability: String,
+    },
     #[error("adapter base model must support {required} capability")]
     UnsupportedBaseModelCapability { required: String },
     #[error("adapter base model ref {adapter_base_model_ref} does not match target base model ref {target_base_model_ref}")]

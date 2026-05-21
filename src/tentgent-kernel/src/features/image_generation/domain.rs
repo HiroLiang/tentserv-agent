@@ -4,6 +4,7 @@ use std::{fmt, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
+use crate::features::adapter::domain::{AdapterBackendSupport, AdapterRef, LoraScale};
 use crate::features::model::domain::{MlxRuntimeFamily, ModelCapability, ModelFormat, ModelRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -259,6 +260,13 @@ impl ImageGenerationBackend {
             | (ModelFormat::Mlx, None) => None,
         }
     }
+
+    pub const fn adapter_backend_support(self) -> AdapterBackendSupport {
+        match self {
+            Self::DiffusersTextToImage => AdapterBackendSupport::Diffusers,
+            Self::MlxDiffusionTextToImage => AdapterBackendSupport::MlxDiffusion,
+        }
+    }
 }
 
 impl fmt::Display for ImageGenerationBackend {
@@ -289,6 +297,16 @@ impl ImageGenerationRuntimeTarget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedImageGenerationTarget {
     pub runtime: ImageGenerationRuntimeTarget,
+    pub adapter: Option<ResolvedImageGenerationAdapter>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedImageGenerationAdapter {
+    pub adapter_ref: AdapterRef,
+    pub backend: AdapterBackendSupport,
+    pub source_path: PathBuf,
+    pub weight_file: Option<String>,
+    pub scale: LoraScale,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

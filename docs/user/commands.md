@@ -97,6 +97,18 @@ Direct release installers run this bootstrap by default. Use this command when
 you install from a package manager, intentionally skipped installer bootstrap,
 or need to resync Python dependencies after an upgrade.
 
+Clean up abandoned managed-store staging directories after an interrupted
+import or pull:
+
+```bash
+tentgent store gc
+tentgent store gc --apply
+```
+
+`tentgent store gc` is a dry run by default. It only targets direct children of
+`models/staging`, `adapters/staging`, and `datasets/staging`; hashed
+`store/<ref>` content is not removed.
+
 ## Models
 
 Import a local model:
@@ -344,6 +356,31 @@ TENTGENT_IMAGE_GENERATION_DEVICE=cpu tentgent image generate \
   --output avatar.png
 ```
 
+Use one managed image LoRA adapter by importing or pulling it first, then pass
+the adapter reference to the same image command:
+
+```bash
+tentgent adapter pull <hf-image-lora-repo> \
+  --base-model-ref <image-generation-model-ref> \
+  --target-capability image-generation \
+  --adapter-format diffusers-lora \
+  --backend-support diffusers \
+  --weight-file pytorch_lora_weights.safetensors \
+  --trigger-word "<optional-trigger>"
+
+tentgent image generate \
+  --model-ref <image-generation-model-ref> \
+  --adapter-ref <image-lora-adapter-ref> \
+  --lora-scale 0.8 \
+  --prompt "A smiling face avatar, <optional-trigger>" \
+  --output avatar.png
+```
+
+For MFLUX-backed `mlx-diffusion` models, use
+`--adapter-format mlx-diffusion-lora --backend-support mlx-diffusion` and a
+Flux-compatible local `.safetensors` weight file. Trigger words are hints only;
+Tentgent does not rewrite prompts.
+
 Pull a tiny Diffusers plumbing fixture before local smoke tests:
 
 ```bash
@@ -365,6 +402,8 @@ curl -sS http://127.0.0.1:8790/v1/images/generations/job \
   -H 'Content-Type: application/json' \
   -d '{
     "model_ref":"<image-generation-model-ref>",
+    "adapter_ref":"<optional-image-lora-adapter-ref>",
+    "lora_scale":0.8,
     "prompt":"A small ceramic teapot on a wooden table",
     "output_format":"png",
     "output_filename":"teapot.png",
@@ -713,6 +752,11 @@ curl -sS http://127.0.0.1:8790/v1/adapters/import \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{"path":"/absolute/path/on/daemon-host/adapter","base_model_ref":"<model-ref>"}'
+curl -sS http://127.0.0.1:8790/v1/adapters/pull \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"repo_id":"owner/image-lora","base_model_ref":"<image-model-ref>","target_capability":"image-generation","adapter_format":"diffusers-lora","backend_support":["diffusers"],"weight_file":"pytorch_lora_weights.safetensors","trigger_words":["optional trigger"],"recommended_scale":0.8}'
 curl -sS http://127.0.0.1:8790/v1/adapters/<adapter-ref>/bind \
   -X POST \
   -H 'Content-Type: application/json' \
@@ -850,6 +894,11 @@ tentgent adapter ls
 ```
 
 Adapter requests should visibly change answer style when the adapter is compatible with the base model.
+Image-generation LoRA adapters should include `--target-capability
+image-generation`, a backend such as `diffusers` or `mlx-diffusion`, and
+`--weight-file` when the source has more than one `.safetensors` file. The
+daemon `/v1/adapters/import`, `/v1/adapters/pull`, and their `/jobs` variants
+accept the same image LoRA metadata as JSON fields.
 
 ## Datasets
 

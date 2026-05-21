@@ -1,12 +1,16 @@
 //! Standard image generation use case orchestration.
 
+use crate::features::adapter::domain::AdapterCompatibilityTarget;
 use crate::features::image_generation::domain::{
-    ImageGenerationPrompt, ImageGenerationRequest, ResolvedImageGenerationTarget,
+    ImageGenerationPrompt, ImageGenerationRequest, ImageGenerationRuntimeTarget,
+    ResolvedImageGenerationTarget,
 };
 use crate::features::image_generation::ports::{
+    ImageGenerationAdapterResolveRequest, ImageGenerationAdapterResolver,
     ImageGenerationModelResolveRequest, ImageGenerationModelResolver, ImageGenerationRuntimeClient,
     ImageGenerationRuntimeRequest,
 };
+use crate::features::model::domain::ModelCapability;
 use crate::features::runtime::usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase};
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayoutInput;
@@ -21,6 +25,7 @@ use super::port::{
 pub struct StdImageGenerationUseCase<'a> {
     runtime_resolution: &'a dyn RuntimeResolutionUseCase,
     model_resolver: &'a dyn ImageGenerationModelResolver,
+    adapter_resolver: &'a dyn ImageGenerationAdapterResolver,
     runtime_client: &'a dyn ImageGenerationRuntimeClient,
 }
 
@@ -28,11 +33,13 @@ impl<'a> StdImageGenerationUseCase<'a> {
     pub fn new(
         runtime_resolution: &'a dyn RuntimeResolutionUseCase,
         model_resolver: &'a dyn ImageGenerationModelResolver,
+        adapter_resolver: &'a dyn ImageGenerationAdapterResolver,
         runtime_client: &'a dyn ImageGenerationRuntimeClient,
     ) -> Self {
         Self {
             runtime_resolution,
             model_resolver,
+            adapter_resolver,
             runtime_client,
         }
     }
@@ -57,12 +64,46 @@ impl ImageGenerationPreparationUseCase for StdImageGenerationUseCase<'_> {
         };
         let model = self.model_resolver.resolve_image_generation_model(
             ImageGenerationModelResolveRequest {
-                layout: resolved_layout_input,
+                layout: resolved_layout_input.clone(),
                 selector: request.model_selector,
             },
         )?;
+        let adapter = match (&request.adapter_selector, request.lora_scale, &model.target) {
+            (
+                Some(adapter_selector),
+                lora_scale,
+                ImageGenerationRuntimeTarget::LocalModel {
+                    model_ref,
+                    backend,
+                    source_repo,
+                    source_revision,
+                    model_capabilities,
+                },
+            ) => Some(self.adapter_resolver.resolve_image_generation_adapter(
+                ImageGenerationAdapterResolveRequest {
+                    layout: resolved_layout_input,
+                    selector: adapter_selector.clone(),
+                    target: AdapterCompatibilityTarget {
+                        base_model_ref: model_ref.clone(),
+                        base_model_source_repo: source_repo.clone(),
+                        base_model_source_revision: source_revision.clone(),
+                        base_model_capabilities: model_capabilities.clone(),
+                        required_capability: ModelCapability::ImageGeneration,
+                        backend: backend.adapter_backend_support(),
+                    },
+                    lora_scale: lora_scale.unwrap_or_default(),
+                },
+            )?),
+            (None, Some(_), _) => {
+                return Err(KernelError::UnsupportedTarget(
+                    "image generation LoRA scale requires an adapter reference".to_string(),
+                ));
+            }
+            (None, None, _) => None,
+        };
         let target = ResolvedImageGenerationTarget {
             runtime: model.target.clone(),
+            adapter: adapter.as_ref().map(|adapter| adapter.target.clone()),
         };
         let prompt = ImageGenerationPrompt::new(request.prompt, request.negative_prompt)
             .map_err(|error| KernelError::UnsupportedTarget(error.to_string()))?;

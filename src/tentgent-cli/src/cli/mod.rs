@@ -19,6 +19,7 @@ mod runtime_footprint;
 mod server;
 mod session;
 mod session_kernel;
+mod store;
 mod train;
 mod transcribe;
 mod vision;
@@ -50,6 +51,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Image { action } => image::handle_image_command(action).await?,
         Commands::Server { action } => server::handle_server_command(action).await?,
         Commands::Session { action } => session::handle_session_command(action).await?,
+        Commands::Store { action } => store::handle_store_command(action)?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
         Commands::Runtime { action } => runtime::handle_runtime_command(action)?,
         Commands::Train { action } => train::handle_train_command(action)?,
@@ -65,7 +67,7 @@ mod tests {
 
     use super::{
         app::Cli,
-        commands::{Commands, DaemonCommands},
+        commands::{Commands, DaemonCommands, StoreCommands},
     };
 
     #[test]
@@ -130,6 +132,32 @@ mod tests {
                 );
                 assert!(command.pretty);
             }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_store_gc_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "store",
+            "gc",
+            "--home",
+            "/tmp/tentgent",
+            "--apply",
+        ])
+        .expect("parse store gc");
+
+        match cli.command {
+            Commands::Store { action } => match action {
+                StoreCommands::Gc(command) => {
+                    assert_eq!(
+                        command.home.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent"))
+                    );
+                    assert!(command.apply);
+                }
+            },
             other => panic!("unexpected command: {other:?}"),
         }
     }

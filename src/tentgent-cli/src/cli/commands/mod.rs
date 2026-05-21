@@ -10,6 +10,7 @@ mod rerank;
 mod runtime;
 mod server;
 mod session;
+mod store;
 mod train;
 mod transcribe;
 mod vision;
@@ -27,6 +28,7 @@ pub use runtime::RuntimeBootstrapProfile;
 pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands, RuntimeStatusCommand};
 pub use server::{ServerCommands, ServerRunCommand};
 pub use session::SessionCommands;
+pub use store::{StoreCommands, StoreGcCommand};
 pub use train::{
     TrainCommands, TrainLoraCommands, TrainLoraPlanCommands, TrainLoraRunCommand,
     TrainLoraRunWorkerCommand,
@@ -130,6 +132,16 @@ pub enum Commands {
     Adapter {
         #[command(subcommand)]
         action: AdapterCommands,
+    },
+    /// Inspect and clean managed store maintenance state.
+    #[command(
+        name = "store",
+        about = "Inspect and clean managed store maintenance state.",
+        long_about = "Inspect and clean managed store maintenance state under TENTGENT_HOME. This does not remove hashed model, adapter, or dataset content; use the specific model, adapter, or dataset rm commands for canonical store objects."
+    )]
+    Store {
+        #[command(subcommand)]
+        action: StoreCommands,
     },
     /// Inspect and manage datasets for training and evaluation.
     #[command(

@@ -14,6 +14,7 @@ from tentgent_daemon.backends.mlx_diffusion import (
 )
 from tentgent_daemon.backends import create_image_generation_backend
 from tentgent_daemon.runtime.image_generation import (
+    ImageGenerationAdapterSelection,
     ImageGenerationRequest,
     build_image_generation_plan,
     image_generation_media_type,
@@ -300,6 +301,53 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
             self.assertEqual(result.media_type, "image/png")
             self.assertEqual(result.seed, 11)
 
+    def test_mflux_backend_passes_managed_lora_paths_and_scales(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "5" * 64
+            write_model_record(
+                home,
+                model_ref,
+                ["image-generation"],
+                primary_format="mlx",
+                detected_formats=["mlx"],
+                mlx_runtime_family="mlx-diffusion",
+                source_repo="mlx-community/Flux-1.lite-8B-MLX-Q4",
+            )
+            adapter_source = home / "adapters" / "store" / ("6" * 64) / "source"
+            adapter_source.mkdir(parents=True)
+            (adapter_source / "style.safetensors").write_bytes(b"lora")
+            with patch("tentgent_daemon.runtime.router.ensure_backend_supported"):
+                plan = build_image_generation_plan(
+                    ImageGenerationRequest(
+                        model_ref=model_ref,
+                        prompt="draw",
+                        output_path=home / "image.png",
+                        output_format="png",
+                        adapter=ImageGenerationAdapterSelection(
+                            adapter_ref="6" * 64,
+                            source_path=adapter_source,
+                            weight_file="style.safetensors",
+                            lora_scale=0.75,
+                        ),
+                    ),
+                    home=home,
+                )
+
+            with patch(
+                "tentgent_daemon.backends.mlx_diffusion._load_mflux_deps",
+                return_value=MfluxDeps(Flux1=FakeFlux1, ModelConfig=FakeModelConfig),
+            ):
+                backend = MfluxImageGenerationBackend()
+                backend.select_adapter(plan.request.adapter)
+                backend.load(plan.record)
+
+            self.assertEqual(
+                FakeFlux1.observed_lora_paths,
+                [adapter_source / "style.safetensors"],
+            )
+            self.assertEqual(FakeFlux1.observed_lora_scales, [0.75])
+
     def test_mflux_backend_requires_source_repo_for_model_family(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
@@ -369,6 +417,8 @@ class FakeGeneratedImage:
 class FakeFlux1:
     observed_model_path: Path | None = None
     observed_quantize: int | None = None
+    observed_lora_paths: list[Path] | None = None
+    observed_lora_scales: list[float] | None = None
     observed_generate: dict[str, object] = {}
 
     def __init__(
@@ -377,10 +427,16 @@ class FakeFlux1:
         model_config: object,
         quantize: int | None,
         model_path: str,
+        lora_paths: list[str] | None = None,
+        lora_scales: list[float] | None = None,
     ) -> None:
         self.model_config = model_config
         FakeFlux1.observed_model_path = Path(model_path)
         FakeFlux1.observed_quantize = quantize
+        FakeFlux1.observed_lora_paths = (
+            [Path(path) for path in lora_paths] if lora_paths else None
+        )
+        FakeFlux1.observed_lora_scales = lora_scales
 
     def generate_image(self, **kwargs: object) -> FakeGeneratedImage:
         FakeFlux1.observed_generate = kwargs

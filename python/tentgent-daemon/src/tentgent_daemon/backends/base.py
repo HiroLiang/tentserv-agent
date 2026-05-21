@@ -5,7 +5,11 @@ from dataclasses import dataclass
 
 from ..runtime.chat import ChatRequest
 from ..runtime.embedding import EmbeddingRequest
-from ..runtime.image_generation import ImageGenerationRequest, ImageGenerationResult
+from ..runtime.image_generation import (
+    ImageGenerationAdapterSelection,
+    ImageGenerationRequest,
+    ImageGenerationResult,
+)
 from ..runtime.rerank import RerankRequest, RerankResult
 from ..runtime.audio import AudioTranscriptionRequest, AudioTranscriptionResult
 from ..runtime.adapters import (
@@ -122,6 +126,15 @@ class ImageGenerationBackend:
     def release(self) -> None:
         """Release loaded runtime state when the server lifecycle decides to unload."""
         return None
+
+    def select_adapter(self, adapter: ImageGenerationAdapterSelection | None) -> None:
+        """Select the request image LoRA adapter, or clear adapter selection."""
+        if adapter is None:
+            return
+        raise AdapterExecutionNotImplementedError(
+            f"image LoRA adapter `{adapter.adapter_ref[:12]}` is recognized, but this "
+            "backend has not implemented image adapter execution yet."
+        )
 
     def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         raise NotImplementedError

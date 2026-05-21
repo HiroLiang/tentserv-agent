@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::features::adapter::domain::{
-    backend_support_for_format, detect_adapter_format, AdapterImportOutcome, AdapterMetadata,
-    AdapterSourceKind, AdapterStoreLayout, AdapterType, BaseModelAdapterIndex,
-    HfAdapterSourceIndex, LocalAdapterSourceIndex, TrainRunAdapterSourceIndex,
+    backend_support_for_format, detect_adapter_format, detect_image_adapter_format,
+    select_adapter_weight_file, AdapterImportOutcome, AdapterMetadata, AdapterSourceKind,
+    AdapterStoreLayout, AdapterType, BaseModelAdapterIndex, HfAdapterSourceIndex,
+    LocalAdapterSourceIndex, TrainRunAdapterSourceIndex,
 };
 use crate::features::adapter::ports::{
     AdapterBaseIndexStore, AdapterCatalogStore, AdapterContentStore, AdapterIdentityGenerator,
@@ -15,6 +16,8 @@ use crate::features::adapter::ports::{
 use crate::features::model::domain::{ModelMetadata, ModelStoreLayout};
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayout;
+
+use super::port::AdapterImportOptions;
 
 pub(super) enum AdapterImportSource {
     Local {
@@ -84,8 +87,9 @@ impl AdapterImportFinalizer<'_> {
         staged: &StagedAdapterSource,
         source: AdapterImportSource,
         base_model: Option<&ModelMetadata>,
+        options: &AdapterImportOptions,
     ) -> KernelResult<AdapterImportOutcome> {
-        let result = self.finalize_inner(store, staged, source, base_model);
+        let result = self.finalize_inner(store, staged, source, base_model, options);
         let cleanup = self.stager.discard_staging(staged);
 
         match (result, cleanup) {
@@ -101,6 +105,7 @@ impl AdapterImportFinalizer<'_> {
         staged: &StagedAdapterSource,
         source: AdapterImportSource,
         base_model: Option<&ModelMetadata>,
+        options: &AdapterImportOptions,
     ) -> KernelResult<AdapterImportOutcome> {
         let manifest = self.manifest_builder.build_manifest(&staged.source_dir)?;
         let source_metadata = self
@@ -108,15 +113,32 @@ impl AdapterImportFinalizer<'_> {
             .read_source_metadata(&staged.source_dir)?;
         validate_source_metadata(&source_metadata, base_model)?;
 
-        let adapter_format = detect_adapter_format(&manifest).map_err(|err| {
-            adapter_store_error(format!("adapter format detection failed: {err}"))
-        })?;
+        let adapter_format = match options.target_capability {
+            Some(crate::features::model::domain::ModelCapability::ImageGeneration) => {
+                detect_image_adapter_format(
+                    &manifest,
+                    options.adapter_format,
+                    &options.backend_support,
+                )
+            }
+            _ => options
+                .adapter_format
+                .map(Ok)
+                .unwrap_or_else(|| detect_adapter_format(&manifest)),
+        }
+        .map_err(|err| adapter_store_error(format!("adapter format detection failed: {err}")))?;
+        let weight_file =
+            select_adapter_weight_file(&manifest, options.weight_file.as_deref(), adapter_format)
+                .map_err(|err| {
+                adapter_store_error(format!("adapter weight selection failed: {err}"))
+            })?;
         let adapter_ref = self.identity.adapter_ref_for_manifest(&manifest)?;
         let store_path = store.adapter_dir(&adapter_ref);
 
         if self.content.adapter_content_exists(store, &adapter_ref)? {
             let mut metadata = self.catalog.load_adapter_metadata(store, &adapter_ref)?;
             apply_base_metadata(&mut metadata, &source_metadata, base_model);
+            apply_import_options(&mut metadata, options, adapter_format, weight_file.clone());
             apply_training_metadata(&mut metadata, &source);
             self.catalog.save_adapter_metadata(store, &metadata)?;
             let source_index_path = self.save_source_index(store, &metadata, &source)?;
@@ -139,11 +161,15 @@ impl AdapterImportFinalizer<'_> {
             short_ref: adapter_ref.short_ref().to_string(),
             adapter_format,
             adapter_type: AdapterType::Lora,
+            target_capability: None,
             base_model_ref: None,
             base_model_source_repo: None,
             base_model_source_revision: None,
             model_family: None,
-            backend_support: backend_support_for_format(adapter_format),
+            backend_support: backend_support_for_options(adapter_format, options),
+            weight_file: None,
+            trigger_words: Vec::new(),
+            recommended_scale: None,
             source_kind: source.kind(),
             source_repo: source.repo_id().map(str::to_string),
             source_revision: source.resolved_revision().map(str::to_string),
@@ -158,6 +184,7 @@ impl AdapterImportFinalizer<'_> {
             imported_at,
         };
         apply_base_metadata(&mut metadata, &source_metadata, base_model);
+        apply_import_options(&mut metadata, options, adapter_format, weight_file);
         apply_training_metadata(&mut metadata, &source);
 
         self.catalog.save_adapter_metadata(store, &metadata)?;
@@ -309,6 +336,39 @@ pub(super) fn apply_base_metadata(
     }
     if let Some(model_family) = source_metadata.model_family.as_deref() {
         metadata.model_family = Some(model_family.to_string());
+    }
+}
+
+fn apply_import_options(
+    metadata: &mut AdapterMetadata,
+    options: &AdapterImportOptions,
+    adapter_format: crate::features::adapter::domain::AdapterFormat,
+    weight_file: Option<String>,
+) {
+    metadata.adapter_format = adapter_format;
+    metadata.backend_support = backend_support_for_options(adapter_format, options);
+    if let Some(target_capability) = options.target_capability {
+        metadata.target_capability = Some(target_capability);
+    }
+    if weight_file.is_some() {
+        metadata.weight_file = weight_file;
+    }
+    if !options.trigger_words.is_empty() {
+        metadata.trigger_words = options.trigger_words.clone();
+    }
+    if let Some(scale) = options.recommended_scale {
+        metadata.recommended_scale = Some(scale);
+    }
+}
+
+fn backend_support_for_options(
+    adapter_format: crate::features::adapter::domain::AdapterFormat,
+    options: &AdapterImportOptions,
+) -> Vec<crate::features::adapter::domain::AdapterBackendSupport> {
+    if options.backend_support.is_empty() {
+        backend_support_for_format(adapter_format)
+    } else {
+        options.backend_support.clone()
     }
 }
 

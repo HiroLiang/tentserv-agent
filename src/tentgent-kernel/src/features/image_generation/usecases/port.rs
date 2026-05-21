@@ -2,6 +2,7 @@
 
 use std::{future::Future, path::PathBuf, pin::Pin};
 
+use crate::features::adapter::domain::{AdapterRefSelector, LoraScale};
 use crate::features::image_generation::domain::{
     ImageGenerationOptions, ImageGenerationOutputFormat, ImageGenerationRequest,
     ImageGenerationResponse,
@@ -20,6 +21,8 @@ pub struct ImageGenerationPreparationRequest {
     pub layout: RuntimeLayoutInput,
     pub runtime: PythonRuntimeResolutionInput,
     pub model_selector: ModelRefSelector,
+    pub adapter_selector: Option<AdapterRefSelector>,
+    pub lora_scale: Option<LoraScale>,
     pub prompt: String,
     pub negative_prompt: Option<String>,
     pub output_path: PathBuf,

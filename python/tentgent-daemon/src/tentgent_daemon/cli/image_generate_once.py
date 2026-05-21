@@ -12,6 +12,7 @@ from tentgent_daemon.runtime.image_generation import (
     DEFAULT_WIDTH,
     SUPPORTED_OUTPUT_FORMATS,
     ImageGenerationRequest,
+    ImageGenerationAdapterSelection,
     build_image_generation_plan,
     normalize_image_generation_output_format,
 )
@@ -41,6 +42,16 @@ def parse_args() -> argparse.Namespace:
         help="Classifier-free guidance scale",
     )
     parser.add_argument("--seed", type=int, help="Optional deterministic seed")
+    parser.add_argument("--adapter-ref", help="Optional image LoRA adapter ref")
+    parser.add_argument(
+        "--adapter-source-path",
+        help="Managed local adapter source directory or selected weight path",
+    )
+    parser.add_argument(
+        "--adapter-weight-file",
+        help="Optional LoRA weight path relative to --adapter-source-path",
+    )
+    parser.add_argument("--lora-scale", type=float, help="Optional LoRA scale")
     parser.add_argument("--home", help="Optional Tentgent runtime home override")
     parser.add_argument(
         "--plan-only",
@@ -53,12 +64,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     output_format = normalize_image_generation_output_format(args.format)
+    adapter = image_adapter_from_args(args)
     request = ImageGenerationRequest(
         model_ref=args.model_ref,
         prompt=args.prompt,
         negative_prompt=args.negative_prompt,
         output_path=Path(args.output_path),
         output_format=output_format,
+        adapter=adapter,
         width=args.width,
         height=args.height,
         steps=args.steps,
@@ -83,6 +96,18 @@ def main() -> int:
                     "steps": plan.request.steps,
                     "guidance_scale": plan.request.guidance_scale,
                     "seed": plan.request.seed,
+                    "adapter_ref": plan.request.adapter.adapter_ref
+                    if plan.request.adapter
+                    else None,
+                    "adapter_source_path": str(plan.request.adapter.source_path)
+                    if plan.request.adapter
+                    else None,
+                    "adapter_weight_file": plan.request.adapter.weight_file
+                    if plan.request.adapter
+                    else None,
+                    "lora_scale": plan.request.adapter.lora_scale
+                    if plan.request.adapter
+                    else None,
                 },
                 indent=2,
             )
@@ -90,6 +115,7 @@ def main() -> int:
         return 0
 
     backend = create_image_generation_backend(plan.backend)
+    backend.select_adapter(plan.request.adapter)
     backend.load(plan.record)
     result = backend.generate_image(plan.request)
     print(
@@ -109,6 +135,21 @@ def main() -> int:
         )
     )
     return 0
+
+
+def image_adapter_from_args(args: argparse.Namespace) -> ImageGenerationAdapterSelection | None:
+    if not args.adapter_ref and not args.adapter_source_path and args.lora_scale is None:
+        return None
+    if not args.adapter_ref or not args.adapter_source_path:
+        raise ValueError(
+            "--adapter-ref and --adapter-source-path are required when selecting image LoRA"
+        )
+    return ImageGenerationAdapterSelection(
+        adapter_ref=args.adapter_ref,
+        source_path=Path(args.adapter_source_path).expanduser().resolve(),
+        weight_file=args.adapter_weight_file,
+        lora_scale=args.lora_scale if args.lora_scale is not None else 1.0,
+    )
 
 
 if __name__ == "__main__":

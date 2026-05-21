@@ -13,7 +13,7 @@ use miette::{miette, IntoDiagnostic, Result};
 use serde_json::Value;
 use tentgent_kernel::features::adapter::domain::AdapterImportOutcome;
 use tentgent_kernel::features::adapter::usecases::{
-    AdapterTrainRunImportRequest, AdapterTrainRunImportUseCase,
+    AdapterImportOptions, AdapterTrainRunImportRequest, AdapterTrainRunImportUseCase,
 };
 use tentgent_kernel::features::model::domain::ModelRefSelector;
 use tentgent_kernel::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeSource};
@@ -362,6 +362,7 @@ fn import_train_run_adapter(
             training_dataset_ref: run.dataset_ref.clone(),
             training_run_ref: run.run_ref.clone(),
             training_config_ref: run.plan_ref.clone(),
+            options: AdapterImportOptions::default(),
         })
         .into_diagnostic()?;
 

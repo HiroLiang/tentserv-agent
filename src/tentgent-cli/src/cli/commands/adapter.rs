@@ -8,7 +8,7 @@ pub enum AdapterCommands {
     #[command(
         name = "add",
         about = "Import a local adapter directory into the managed adapter store.",
-        long_about = "Import a local adapter directory into the managed adapter store. The first implementation targets PEFT-style LoRA adapter directories and will store managed adapter metadata under TENTGENT_HOME/adapters."
+        long_about = "Import a local adapter directory into the managed adapter store. Tentgent stores managed adapter metadata under TENTGENT_HOME/adapters and supports PEFT chat adapters plus explicitly tagged image-generation LoRA adapters."
     )]
     Add {
         /// Local adapter directory to import.
@@ -17,6 +17,24 @@ pub enum AdapterCommands {
         /// Local base model reference this adapter was trained for.
         #[arg(short = 'b', long = "base-model-ref", value_name = "MODEL_REF")]
         base_model_ref: Option<String>,
+        /// Target model capability this adapter is intended for, such as image-generation.
+        #[arg(long = "target-capability", value_name = "CAPABILITY")]
+        target_capability: Option<String>,
+        /// Adapter format override, such as diffusers-lora or mlx-diffusion-lora.
+        #[arg(long = "adapter-format", value_name = "FORMAT")]
+        adapter_format: Option<String>,
+        /// Runtime backend support override. May be repeated.
+        #[arg(long = "backend-support", value_name = "BACKEND")]
+        backend_support: Vec<String>,
+        /// Relative path to the LoRA weight file inside the adapter source.
+        #[arg(long = "weight-file", value_name = "RELATIVE_PATH")]
+        weight_file: Option<String>,
+        /// Trigger word hint for image LoRA prompts. May be repeated.
+        #[arg(long = "trigger-word", value_name = "TEXT")]
+        trigger_word: Vec<String>,
+        /// Recommended LoRA scale to store as adapter metadata.
+        #[arg(long = "recommended-scale", value_name = "FLOAT")]
+        recommended_scale: Option<f32>,
     },
     /// Pull an adapter snapshot from Hugging Face into the managed adapter store.
     #[command(
@@ -35,6 +53,24 @@ pub enum AdapterCommands {
         /// Local base model reference this adapter was trained for.
         #[arg(short = 'b', long = "base-model-ref", value_name = "MODEL_REF")]
         base_model_ref: Option<String>,
+        /// Target model capability this adapter is intended for, such as image-generation.
+        #[arg(long = "target-capability", value_name = "CAPABILITY")]
+        target_capability: Option<String>,
+        /// Adapter format override, such as diffusers-lora or mlx-diffusion-lora.
+        #[arg(long = "adapter-format", value_name = "FORMAT")]
+        adapter_format: Option<String>,
+        /// Runtime backend support override. May be repeated.
+        #[arg(long = "backend-support", value_name = "BACKEND")]
+        backend_support: Vec<String>,
+        /// Relative path to the LoRA weight file inside the adapter source.
+        #[arg(long = "weight-file", value_name = "RELATIVE_PATH")]
+        weight_file: Option<String>,
+        /// Trigger word hint for image LoRA prompts. May be repeated.
+        #[arg(long = "trigger-word", value_name = "TEXT")]
+        trigger_word: Vec<String>,
+        /// Recommended LoRA scale to store as adapter metadata.
+        #[arg(long = "recommended-scale", value_name = "FLOAT")]
+        recommended_scale: Option<f32>,
     },
     /// List managed adapters.
     #[command(

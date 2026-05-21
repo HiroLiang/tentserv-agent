@@ -3,16 +3,27 @@
 use std::path::PathBuf;
 
 use crate::features::auth::usecases::AuthSecretResolutionRequest;
-use crate::features::model::domain::ModelRefSelector;
+use crate::features::model::domain::{ModelCapability, ModelRefSelector};
 use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput};
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
 
 use super::super::domain::{
-    AdapterBindOutcome, AdapterCompatibilityTarget, AdapterImportOutcome, AdapterInspection,
-    AdapterRefSelector, AdapterRemovalOutcome, AdapterStoreLayout, AdapterSummary,
-    HfAdapterPullProgress,
+    AdapterBackendSupport, AdapterBindOutcome, AdapterCompatibilityTarget, AdapterFormat,
+    AdapterImportOutcome, AdapterInspection, AdapterRefSelector, AdapterRemovalOutcome,
+    AdapterStoreLayout, AdapterSummary, HfAdapterPullProgress, LoraScale,
 };
+
+/// Optional metadata overrides for adapter imports and pulls.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AdapterImportOptions {
+    pub target_capability: Option<ModelCapability>,
+    pub adapter_format: Option<AdapterFormat>,
+    pub backend_support: Vec<AdapterBackendSupport>,
+    pub weight_file: Option<String>,
+    pub trigger_words: Vec<String>,
+    pub recommended_scale: Option<LoraScale>,
+}
 
 /// Request for listing stored adapters.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +60,7 @@ pub struct AdapterLocalImportRequest {
     pub layout: RuntimeLayoutInput,
     pub source_path: PathBuf,
     pub base_model_selector: Option<ModelRefSelector>,
+    pub options: AdapterImportOptions,
 }
 
 /// Result of importing a local adapter directory.
@@ -67,6 +79,7 @@ pub struct AdapterHfPullRequest {
     pub repo_id: String,
     pub revision: Option<String>,
     pub base_model_selector: Option<ModelRefSelector>,
+    pub options: AdapterImportOptions,
     pub auth: AuthSecretResolutionRequest,
 }
 
@@ -88,6 +101,7 @@ pub struct AdapterTrainRunImportRequest {
     pub training_dataset_ref: String,
     pub training_run_ref: String,
     pub training_config_ref: String,
+    pub options: AdapterImportOptions,
 }
 
 /// Result of importing a successful training-run adapter output.

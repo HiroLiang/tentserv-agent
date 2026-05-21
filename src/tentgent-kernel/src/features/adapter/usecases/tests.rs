@@ -40,8 +40,8 @@ use super::port::{
     AdapterBindRequest, AdapterBindResult, AdapterBindUseCase, AdapterCatalogReadUseCase,
     AdapterCompatibilityCheckRequest, AdapterCompatibilityCheckResult,
     AdapterCompatibilityCheckUseCase, AdapterHfPullRequest, AdapterHfPullResult,
-    AdapterHfPullUseCase, AdapterInspectRequest, AdapterInspectResult, AdapterListRequest,
-    AdapterListResult, AdapterLocalImportRequest, AdapterLocalImportResult,
+    AdapterHfPullUseCase, AdapterImportOptions, AdapterInspectRequest, AdapterInspectResult,
+    AdapterListRequest, AdapterListResult, AdapterLocalImportRequest, AdapterLocalImportResult,
     AdapterLocalImportUseCase, AdapterRemoveRequest, AdapterRemoveResult, AdapterRemoveUseCase,
     AdapterTrainRunImportRequest, AdapterTrainRunImportResult, AdapterTrainRunImportUseCase,
 };
@@ -79,6 +79,7 @@ fn adapter_usecase_ports_cover_catalog_import_pull_train_bind_check_and_remove_w
             layout: layout.clone(),
             source_path: PathBuf::from("/tmp/source-adapter"),
             base_model_selector: Some(base_model_selector.clone()),
+            options: AdapterImportOptions::default(),
         })
         .expect("import local adapter");
     assert!(!imported.outcome.deduplicated);
@@ -99,6 +100,7 @@ fn adapter_usecase_ports_cover_catalog_import_pull_train_bind_check_and_remove_w
                 repo_id: "org/adapter".to_string(),
                 revision: Some("main".to_string()),
                 base_model_selector: Some(base_model_selector.clone()),
+                options: AdapterImportOptions::default(),
                 auth: AuthSecretResolutionRequest::for_secret_use(
                     Provider::HuggingFace,
                     AuthEnvLoadPolicy::ProcessOnly,
@@ -121,6 +123,7 @@ fn adapter_usecase_ports_cover_catalog_import_pull_train_bind_check_and_remove_w
             training_dataset_ref: "dataset-ref".to_string(),
             training_run_ref: "run-ref".to_string(),
             training_config_ref: "config-ref".to_string(),
+            options: AdapterImportOptions::default(),
         })
         .expect("import train-run adapter");
     assert_eq!(
@@ -149,6 +152,7 @@ fn adapter_usecase_ports_cover_catalog_import_pull_train_bind_check_and_remove_w
                 base_model_source_repo: Some("org/base".to_string()),
                 base_model_source_revision: Some("base-sha".to_string()),
                 base_model_capabilities: vec![ModelCapability::Chat],
+                required_capability: ModelCapability::Chat,
                 backend: AdapterBackendSupport::TransformersPeft,
             },
         })
@@ -214,6 +218,7 @@ fn standard_adapter_usecases_import_list_bind_check_and_remove_local_adapter() {
             base_model_selector: Some(
                 ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
             ),
+            options: AdapterImportOptions::default(),
         })
         .expect("import local adapter");
     assert_eq!(
@@ -272,6 +277,7 @@ fn standard_adapter_usecases_import_list_bind_check_and_remove_local_adapter() {
                 base_model_source_repo: Some("org/base".to_string()),
                 base_model_source_revision: Some("base-sha".to_string()),
                 base_model_capabilities: vec![ModelCapability::Chat],
+                required_capability: ModelCapability::Chat,
                 backend: AdapterBackendSupport::TransformersPeft,
             },
         })
@@ -345,6 +351,7 @@ fn standard_hf_pull_usecase_resolves_runtime_auth_fetches_snapshot_and_imports()
                 repo_id: "org/adapter".to_string(),
                 revision: Some("main".to_string()),
                 base_model_selector: None,
+                options: AdapterImportOptions::default(),
                 auth: AuthSecretResolutionRequest::for_secret_use(
                     Provider::HuggingFace,
                     AuthEnvLoadPolicy::ProcessOnly,
@@ -422,6 +429,7 @@ fn standard_train_run_import_records_training_provenance() {
             training_dataset_ref: "dataset-ref".to_string(),
             training_run_ref: "run-ref".to_string(),
             training_config_ref: "config-ref".to_string(),
+            options: AdapterImportOptions::default(),
         })
         .expect("import train-run adapter");
 
@@ -609,11 +617,15 @@ fn metadata_fixture(source_kind: AdapterSourceKind) -> AdapterMetadata {
         short_ref: "a".repeat(SHORT_ADAPTER_REF_LENGTH),
         adapter_format: AdapterFormat::Peft,
         adapter_type: AdapterType::Lora,
+        target_capability: Some(ModelCapability::Chat),
         base_model_ref: Some(model_ref()),
         base_model_source_repo: Some("org/base".to_string()),
         base_model_source_revision: Some("base-sha".to_string()),
         model_family: Some("llama".to_string()),
         backend_support: vec![AdapterBackendSupport::TransformersPeft],
+        weight_file: None,
+        trigger_words: Vec::new(),
+        recommended_scale: None,
         source_kind,
         source_repo: (source_kind == AdapterSourceKind::HuggingFace)
             .then(|| "org/adapter".to_string()),

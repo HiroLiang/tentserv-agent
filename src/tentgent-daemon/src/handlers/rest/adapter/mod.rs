@@ -8,18 +8,22 @@ use axum::{
 use serde::Deserialize;
 use tentgent_kernel::{
     features::adapter::{
-        domain::{AdapterRefSelector, HfAdapterPullProgress},
+        domain::{
+            AdapterBackendSupport, AdapterFormat, AdapterRefSelector, HfAdapterPullProgress,
+            LoraScale,
+        },
         usecases::{
             AdapterBindRequest, AdapterBindUseCase, AdapterCatalogReadUseCase,
-            AdapterHfPullRequest, AdapterHfPullUseCase, AdapterInspectRequest, AdapterListRequest,
-            AdapterLocalImportRequest, AdapterLocalImportUseCase, AdapterRemoveRequest,
-            AdapterRemoveUseCase,
+            AdapterHfPullRequest, AdapterHfPullUseCase, AdapterImportOptions,
+            AdapterInspectRequest, AdapterListRequest, AdapterLocalImportRequest,
+            AdapterLocalImportUseCase, AdapterRemoveRequest, AdapterRemoveUseCase,
         },
     },
     features::auth::{
         domain::{AuthEnvLoadPolicy, Provider},
         usecases::AuthSecretResolutionRequest,
     },
+    features::model::domain::{ModelCapability, ModelRefSelector},
     features::runtime::domain::PythonRuntimeResolutionInput,
     foundation::{
         error::KernelError,
@@ -120,6 +124,7 @@ pub async fn import(
     State(state): State<RestState>,
     Json(request): Json<AdapterImportJobRequest>,
 ) -> Result<Json<AdapterMutationResponse>, RestError> {
+    let options = request.import_options()?;
     let source_path = canonical_import_path(&request.path)?;
     let base_model_selector =
         normalize_optional_model_ref(request.base_model_ref, "base_model_ref")?;
@@ -133,6 +138,7 @@ pub async fn import(
             layout: state.app().layout_input(LayoutResolveMode::Create),
             source_path,
             base_model_selector,
+            options,
         })
         .map_err(adapter_mutation_error)?;
 
@@ -146,6 +152,7 @@ pub async fn pull(
     State(state): State<RestState>,
     Json(request): Json<AdapterPullJobRequest>,
 ) -> Result<Json<AdapterMutationResponse>, RestError> {
+    let options = request.import_options()?;
     let repo_id = normalize_repo_id(&request.repo_id)?;
     let revision = normalize_revision(request.revision)?;
     let base_model_selector =
@@ -165,6 +172,7 @@ pub async fn pull(
                     repo_id,
                     revision,
                     base_model_selector,
+                    options,
                     auth: AuthSecretResolutionRequest::for_secret_use(
                         Provider::HuggingFace,
                         AuthEnvLoadPolicy::CwdDotenvOverride,
@@ -215,6 +223,7 @@ pub async fn import_job(
     State(state): State<RestState>,
     Json(request): Json<AdapterImportJobRequest>,
 ) -> Result<(StatusCode, Json<JobResponse>), RestError> {
+    let options = request.import_options()?;
     let source_path = canonical_import_path(&request.path)?;
     let base_model_selector =
         normalize_optional_model_ref(request.base_model_ref, "base_model_ref")?;
@@ -233,7 +242,13 @@ pub async fn import_job(
         .app()
         .job_runner()
         .spawn_blocking(registry, job_id, "importing adapter", move |_, _| {
-            run_adapter_import_job(task_state, layout, source_path, base_model_selector)
+            run_adapter_import_job(
+                task_state,
+                layout,
+                source_path,
+                base_model_selector,
+                options,
+            )
         });
 
     Ok((
@@ -246,6 +261,7 @@ pub async fn pull_job(
     State(state): State<RestState>,
     Json(request): Json<AdapterPullJobRequest>,
 ) -> Result<(StatusCode, Json<JobResponse>), RestError> {
+    let options = request.import_options()?;
     let repo_id = normalize_repo_id(&request.repo_id)?;
     let revision = normalize_revision(request.revision)?;
     let base_model_selector =
@@ -276,6 +292,7 @@ pub async fn pull_job(
                 repo_id,
                 revision,
                 base_model_selector,
+                options,
                 registry,
                 job_id,
             )
@@ -293,6 +310,14 @@ pub async fn pull_job(
 pub struct AdapterImportJobRequest {
     pub path: String,
     pub base_model_ref: Option<String>,
+    pub target_capability: Option<String>,
+    pub adapter_format: Option<String>,
+    #[serde(default)]
+    pub backend_support: Vec<String>,
+    pub weight_file: Option<String>,
+    #[serde(default)]
+    pub trigger_words: Vec<String>,
+    pub recommended_scale: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -301,6 +326,14 @@ pub struct AdapterPullJobRequest {
     pub repo_id: String,
     pub revision: Option<String>,
     pub base_model_ref: Option<String>,
+    pub target_capability: Option<String>,
+    pub adapter_format: Option<String>,
+    #[serde(default)]
+    pub backend_support: Vec<String>,
+    pub weight_file: Option<String>,
+    #[serde(default)]
+    pub trigger_words: Vec<String>,
+    pub recommended_scale: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -313,7 +346,8 @@ fn run_adapter_import_job(
     state: RestState,
     layout: RuntimeLayoutInput,
     source_path: std::path::PathBuf,
-    base_model_selector: Option<tentgent_kernel::features::model::domain::ModelRefSelector>,
+    base_model_selector: Option<ModelRefSelector>,
+    options: AdapterImportOptions,
 ) -> Result<JobCompletion, String> {
     let result = state
         .app()
@@ -325,6 +359,7 @@ fn run_adapter_import_job(
             layout,
             source_path,
             base_model_selector,
+            options,
         })
         .map_err(|error| error.to_string())?;
 
@@ -343,7 +378,8 @@ fn run_adapter_pull_job(
     layout: RuntimeLayoutInput,
     repo_id: String,
     revision: Option<String>,
-    base_model_selector: Option<tentgent_kernel::features::model::domain::ModelRefSelector>,
+    base_model_selector: Option<ModelRefSelector>,
+    options: AdapterImportOptions,
     registry: JobRegistry,
     job_id: JobId,
 ) -> Result<JobCompletion, String> {
@@ -359,6 +395,7 @@ fn run_adapter_pull_job(
                 repo_id,
                 revision,
                 base_model_selector,
+                options,
                 auth: AuthSecretResolutionRequest::for_secret_use(
                     Provider::HuggingFace,
                     AuthEnvLoadPolicy::CwdDotenvOverride,
@@ -378,6 +415,88 @@ fn run_adapter_pull_job(
                 .with_path(result.outcome.store_path.display().to_string()),
         ),
     )
+}
+
+impl AdapterImportJobRequest {
+    fn import_options(&self) -> Result<AdapterImportOptions, RestError> {
+        adapter_import_options(
+            self.target_capability.as_deref(),
+            self.adapter_format.as_deref(),
+            &self.backend_support,
+            self.weight_file.as_deref(),
+            &self.trigger_words,
+            self.recommended_scale,
+        )
+    }
+}
+
+impl AdapterPullJobRequest {
+    fn import_options(&self) -> Result<AdapterImportOptions, RestError> {
+        adapter_import_options(
+            self.target_capability.as_deref(),
+            self.adapter_format.as_deref(),
+            &self.backend_support,
+            self.weight_file.as_deref(),
+            &self.trigger_words,
+            self.recommended_scale,
+        )
+    }
+}
+
+fn adapter_import_options(
+    target_capability: Option<&str>,
+    adapter_format: Option<&str>,
+    backend_support: &[String],
+    weight_file: Option<&str>,
+    trigger_words: &[String],
+    recommended_scale: Option<f32>,
+) -> Result<AdapterImportOptions, RestError> {
+    let target_capability = target_capability
+        .map(|value| {
+            value.parse::<ModelCapability>().map_err(|err| {
+                RestError::bad_request("bad_request", format!("invalid target_capability: {err}"))
+            })
+        })
+        .transpose()?;
+    let adapter_format = adapter_format
+        .map(|value| {
+            value.parse::<AdapterFormat>().map_err(|err| {
+                RestError::bad_request("bad_request", format!("invalid adapter_format: {err}"))
+            })
+        })
+        .transpose()?;
+    let backend_support = backend_support
+        .iter()
+        .map(|value| {
+            value.parse::<AdapterBackendSupport>().map_err(|err| {
+                RestError::bad_request("bad_request", format!("invalid backend_support: {err}"))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let trigger_words = trigger_words
+        .iter()
+        .filter_map(|value| non_empty_string(value))
+        .collect::<Vec<_>>();
+    let recommended_scale = recommended_scale
+        .map(|value| {
+            LoraScale::new(value)
+                .map_err(|err| RestError::bad_request("bad_request", err.to_string()))
+        })
+        .transpose()?;
+
+    Ok(AdapterImportOptions {
+        target_capability,
+        adapter_format,
+        backend_support,
+        weight_file: weight_file.and_then(non_empty_string),
+        trigger_words,
+        recommended_scale,
+    })
+}
+
+fn non_empty_string(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 fn adapter_progress_update(progress: HfAdapterPullProgress) -> JobProgressUpdate {

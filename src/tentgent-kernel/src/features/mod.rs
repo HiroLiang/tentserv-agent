@@ -16,5 +16,6 @@ pub mod rerank;
 pub mod runtime;
 pub mod server;
 pub mod session;
+pub mod store;
 pub mod train;
 pub mod vision;

@@ -192,7 +192,7 @@ impl KernelComponents {
     }
 
     pub fn image_generation_usecase(&self) -> StdImageGenerationUseCase<'_> {
-        StdImageGenerationUseCase::new(&self.runtime, &self.models, &self.runtime)
+        StdImageGenerationUseCase::new(&self.runtime, &self.models, &self.adapters, &self.runtime)
     }
 
     pub fn server_usecase(&self) -> StdServerUseCase<'_> {

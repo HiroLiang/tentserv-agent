@@ -49,11 +49,15 @@ pub struct AdapterItem {
     pub format: String,
     #[serde(rename = "type")]
     pub adapter_type: String,
+    pub target_capability: Option<String>,
     pub base_model_ref: Option<String>,
     pub base_model_source_repo: Option<String>,
     pub base_model_source_revision: Option<String>,
     pub model_family: Option<String>,
     pub backend_support: Vec<String>,
+    pub weight_file: Option<String>,
+    pub trigger_words: Vec<String>,
+    pub recommended_scale: Option<f32>,
     pub source_kind: String,
     pub source_repo: Option<String>,
     pub source_revision: Option<String>,
@@ -142,6 +146,9 @@ fn adapter_item_from_parts(
         imported_at: metadata.imported_at,
         format: metadata.adapter_format.to_string(),
         adapter_type: metadata.adapter_type.to_string(),
+        target_capability: metadata
+            .target_capability
+            .map(|capability| capability.to_string()),
         base_model_ref: metadata
             .base_model_ref
             .map(|model_ref| model_ref.into_string()),
@@ -153,6 +160,9 @@ fn adapter_item_from_parts(
             .into_iter()
             .map(|backend| backend.to_string())
             .collect(),
+        weight_file: metadata.weight_file,
+        trigger_words: metadata.trigger_words,
+        recommended_scale: metadata.recommended_scale.map(|scale| scale.as_f32()),
         source_kind: metadata.source_kind.to_string(),
         source_repo: metadata.source_repo,
         source_revision: metadata.source_revision,

@@ -14,6 +14,7 @@ use axum::{
 use serde::Deserialize;
 use tentgent_kernel::{
     features::{
+        adapter::domain::{AdapterRefSelector, LoraScale},
         image_generation::{
             domain::{
                 ImageGenerationDimensions, ImageGenerationOptions, ImageGenerationOutputFormat,
@@ -124,6 +125,8 @@ pub async fn generation_job_file(
 #[serde(deny_unknown_fields)]
 pub struct ImageGenerationJobRequest {
     pub model_ref: String,
+    pub adapter_ref: Option<String>,
+    pub lora_scale: Option<f32>,
     pub prompt: String,
     pub negative_prompt: Option<String>,
     pub output_format: Option<String>,
@@ -139,6 +142,8 @@ pub struct ImageGenerationJobRequest {
 struct ParsedImageGenerationJobRequest {
     model_label: String,
     model_selector: ModelRefSelector,
+    adapter_selector: Option<AdapterRefSelector>,
+    lora_scale: Option<LoraScale>,
     prompt: String,
     negative_prompt: Option<String>,
     output_format: ImageGenerationOutputFormat,
@@ -153,6 +158,20 @@ impl ParsedImageGenerationJobRequest {
     ) -> Result<Self, RestError> {
         let model_label = request.model_ref.trim().to_string();
         let model_selector = model_selector(state, &model_label)?;
+        let adapter_selector = optional_trimmed_string(request.adapter_ref)
+            .map(|value| {
+                AdapterRefSelector::parse(value.as_str()).map_err(|error| {
+                    RestError::bad_request("bad_request", format!("invalid `adapter_ref`: {error}"))
+                })
+            })
+            .transpose()?;
+        let lora_scale = request
+            .lora_scale
+            .map(|value| {
+                LoraScale::new(value)
+                    .map_err(|error| RestError::bad_request("bad_request", error.to_string()))
+            })
+            .transpose()?;
         let prompt = optional_trimmed_string(Some(request.prompt))
             .ok_or_else(|| RestError::bad_request("bad_request", "`prompt` is required"))?;
         let output_format = request
@@ -185,6 +204,8 @@ impl ParsedImageGenerationJobRequest {
         Ok(Self {
             model_label,
             model_selector,
+            adapter_selector,
+            lora_scale,
             prompt,
             negative_prompt: optional_trimmed_string(request.negative_prompt),
             output_format,
@@ -273,6 +294,8 @@ fn run_image_generation_job(
                     layout,
                     runtime: PythonRuntimeResolutionInput::default(),
                     model_selector: request.model_selector,
+                    adapter_selector: request.adapter_selector,
+                    lora_scale: request.lora_scale,
                     prompt: request.prompt,
                     negative_prompt: request.negative_prompt,
                     output_path: output_path.clone(),

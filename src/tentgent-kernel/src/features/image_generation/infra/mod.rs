@@ -3,5 +3,5 @@
 mod resolver;
 mod runtime;
 
-pub use resolver::StdImageGenerationModelResolver;
+pub use resolver::{StdImageGenerationAdapterResolver, StdImageGenerationModelResolver};
 pub use runtime::PythonImageGenerationOnceRuntimeClient;

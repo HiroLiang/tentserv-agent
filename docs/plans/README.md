@@ -81,6 +81,12 @@ one pass without a staged breakdown.
   Implemented M6K decision/backend slice for routing Apple Silicon
   `mlx-diffusion` image-generation models through MFLUX behind the existing
   `tentgent image generate` and daemon image job surfaces.
+- [m6l-image-generation-lora.md](./m6l-image-generation-lora.md)
+  Implemented and unit-tested M6L slice for adding one managed
+  image-generation LoRA adapter to the existing native text-to-image CLI and
+  daemon job surfaces, with image-specific adapter compatibility and
+  Diffusers/MFLUX runtime wiring. Repeatable public LoRA smoke fixture is still
+  pending.
 
 ## Recommended Order
 
@@ -96,9 +102,12 @@ one pass without a staged breakdown.
 
 - [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)
   Future marker only, not initialized for execution: model compatibility
-  probe/cache, dynamic runtime transduction, optional shared compatibility
-  registry, model resource coordination, and conversion boundaries after the
-  current M6-to-M7 release track.
+  probe/cache, model and LoRA adapter compatibility management, SQLite-backed
+  metadata/proof store, dynamic runtime transduction, optional shared
+  compatibility registry, model resource coordination, and conversion
+  boundaries after the current M6-to-M7 release track. Rename this marker when
+  it is initialized after M7 so the plan name covers model/adapter
+  compatibility management, not only runtime compatibility or storage.
 
 ## Deferred Plans
 

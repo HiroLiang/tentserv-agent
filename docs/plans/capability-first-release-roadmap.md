@@ -21,9 +21,10 @@ separate release, Linux, daemon-runtime, packaging, and model-capability plans i
   practical MLX runtime exists for a media workflow, add it as a parallel local
   backend instead of leaving that workflow CPU-only on Apple Studio, Mac mini,
   or MacBook-class hardware.
-- Keep full cross-runtime compatibility, dynamic runtime transduction, shared
-  compatibility registry, and broad model resource coordination out of the
-  M6-to-M7 release track. Track those as post-M7 architecture work.
+- Keep full cross-runtime compatibility, durable runtime proof storage,
+  model/LoRA adapter compatibility management, dynamic runtime transduction,
+  shared compatibility registry, and broad model resource coordination out of
+  the M6-to-M7 release track. Track those as post-M7 architecture work.
 - Run Apple Developer ID signing and notarization before beta or release
   candidate tags, not after the first stable release.
 
@@ -420,15 +421,28 @@ Status: implemented and smoke-tested.
 
 #### M6L: Image Generation LoRA
 
-Status: planned.
+Status: implemented and unit-tested; public LoRA fixture smoke pending.
 
+- Detailed plan:
+  [m6l-image-generation-lora.md](./m6l-image-generation-lora.md).
 - Add image-generation adapter selection for Diffusers pipelines and any
   approved MLX image backend.
-- Validate adapter/base model compatibility for image-generation models instead
-  of reusing chat LoRA assumptions.
-- Support LoRA weight scale and clear trigger-word documentation when known.
-- Keep multi-LoRA stacking out of the first LoRA slice unless the runtime path
-  is already simple.
+- Extend the existing native `tentgent image generate` command and
+  `POST /v1/images/generations/job` route with one optional adapter reference
+  and LoRA scale instead of adding a separate image LoRA endpoint.
+- Generalize adapter compatibility so image-generation adapters do not reuse the
+  current chat-only LoRA assumption.
+- Add image LoRA adapter metadata for target capability, backend support,
+  selected weight file, trigger-word hints, and optional recommended scale.
+- Expose that metadata through CLI adapter import/pull and daemon adapter
+  import/pull, including detached job variants.
+- Support Diffusers image LoRA and the approved MFLUX `mlx-diffusion` path when
+  a compatible local managed adapter file can be proven.
+- Current implementation passes managed local adapter weight paths through both
+  Diffusers and MFLUX. A small public LoRA fixture still needs to be pinned for
+  repeatable real-model smoke.
+- Keep multi-LoRA stacking, image LoRA training, prompt auto-injection,
+  image-to-image, masks, reference images, and ControlNet out of this slice.
 
 #### M6M: Image-To-Image
 
@@ -554,9 +568,11 @@ Review target:
 - M7: Developer ID signing and notarization pipeline for prerelease artifacts.
 - Post-M7 architecture work:
   [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)
-  tracks full model compatibility, dynamic runtime transduction, compatibility
-  probe/cache, optional shared registry, resource coordination, and conversion
-  boundaries. It is not part of the current M6-to-M7 release track.
+  tracks full model compatibility, LoRA adapter compatibility management,
+  SQLite-backed metadata/proof storage, dynamic runtime transduction,
+  compatibility probe/cache, optional shared registry, resource coordination,
+  and conversion boundaries. It is not part of the current M6-to-M7 release
+  track, and should be renamed when initialized after M7.
 - Beta/RC: chat, embedding, rerank, and the completed M6 multimodal surfaces
   are documented with smoke evidence and known limits.
 

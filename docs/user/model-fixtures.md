@@ -151,6 +151,8 @@ Image generation CLI:
 ```bash
 tentgent image generate \
   --model-ref <image-generation-model-ref> \
+  --adapter-ref <optional-image-lora-adapter-ref> \
+  --lora-scale 0.8 \
   --prompt "A small ceramic teapot on a wooden table" \
   --output image.png \
   --format png \
@@ -268,6 +270,10 @@ bootstrapped. `mlx-audio` can run native `audio-transcription` on Apple
 Silicon after the `local-model` runtime profile is bootstrapped.
 `mlx-diffusion` can run native `image-generation` through MFLUX on Apple
 Silicon after the `local-model` runtime profile is bootstrapped.
+Image-generation LoRA adapters can be used with the same CLI and daemon image
+job surfaces after they are imported or pulled into the managed adapter store.
+Use explicit `--target-capability image-generation`, backend support, and
+`--weight-file` metadata for adapter repos with ambiguous `.safetensors` files.
 
 | Metadata capability | Candidate | Access | Pull command | Notes |
 | --- | --- | --- | --- | --- |
@@ -284,6 +290,10 @@ Silicon after the `local-model` runtime profile is bootstrapped.
 | `image-generation` | [`hf-internal-testing/tiny-stable-diffusion-pipe`](https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe) | `public`, `internal-test`, `cli`, `daemon-job` | `tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe --capability image-generation` | Diffusers plumbing fixture only; not product-quality output. |
 | `image-generation` | [`segmind/tiny-sd`](https://huggingface.co/segmind/tiny-sd) | `public`, `cli`, `daemon-job` | `tentgent model pull segmind/tiny-sd --capability image-generation` | Tiny Stable Diffusion-style model; larger than the internal fixture and useful for follow-up smoke tests. |
 | `image-generation` | [`mlx-community/Flux-1.lite-8B-MLX-Q4`](https://huggingface.co/mlx-community/Flux-1.lite-8B-MLX-Q4) | `public`, `mlx-diffusion`, `cli`, `daemon-job`, `large` | `tentgent model pull mlx-community/Flux-1.lite-8B-MLX-Q4 --capability image-generation` | Apple Silicon MFLUX smoke candidate, about 7.5 GiB. Inspect should show `mlx_runtime_family = mlx-diffusion`. |
+
+No small, project-verified public image LoRA fixture is pinned yet. When adding
+one, record the base model, adapter pull command, required `--weight-file`,
+trigger-word hints, and whether it works through Diffusers, MFLUX, or both.
 
 ## Notes
 

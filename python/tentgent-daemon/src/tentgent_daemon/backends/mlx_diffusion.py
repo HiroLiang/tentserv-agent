@@ -6,6 +6,7 @@ from typing import Any
 
 from .base import ImageGenerationBackend
 from ..runtime.image_generation import (
+    ImageGenerationAdapterSelection,
     ImageGenerationRequest,
     ImageGenerationResult,
     image_generation_media_type,
@@ -26,6 +27,7 @@ class MfluxImageGenerationBackend(ImageGenerationBackend):
         self._deps = _load_mflux_deps()
         self._record: StoredModelRecord | None = None
         self._model: Any | None = None
+        self._adapter: ImageGenerationAdapterSelection | None = None
 
     def load(self, record: StoredModelRecord) -> None:
         if not record.source_repo:
@@ -35,12 +37,26 @@ class MfluxImageGenerationBackend(ImageGenerationBackend):
             )
         model_config = _mflux_flux_model_config(record, self._deps.ModelConfig)
         quantize = _mflux_quantize_bits(record)
+        lora_paths = None
+        lora_scales = None
+        if self._adapter is not None:
+            lora_paths = [str(_adapter_weight_path(self._adapter))]
+            lora_scales = [self._adapter.lora_scale]
         self._model = self._deps.Flux1(
             model_config=model_config,
             quantize=quantize,
             model_path=str(record.variant_source_path),
+            lora_paths=lora_paths,
+            lora_scales=lora_scales,
         )
         self._record = record
+
+    def select_adapter(self, adapter: ImageGenerationAdapterSelection | None) -> None:
+        if self._model is not None:
+            raise RuntimeError(
+                "MFLUX image generation requires selecting LoRA adapters before load()."
+            )
+        self._adapter = adapter
 
     def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         model = self._require_loaded()
@@ -62,6 +78,7 @@ class MfluxImageGenerationBackend(ImageGenerationBackend):
     def release(self) -> None:
         self._record = None
         self._model = None
+        self._adapter = None
         try:
             import mlx.core as mx
 
@@ -78,6 +95,26 @@ class MfluxImageGenerationBackend(ImageGenerationBackend):
                 "call load() before generate_image()."
             )
         return self._model
+
+
+def _adapter_weight_path(adapter: ImageGenerationAdapterSelection) -> Any:
+    source_path = adapter.source_path
+    if adapter.weight_file:
+        return source_path / adapter.weight_file
+    if source_path.is_file():
+        return source_path
+    candidates = sorted(source_path.rglob("*.safetensors"))
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise FileNotFoundError(
+            f"image LoRA adapter `{adapter.adapter_ref[:12]}` has no .safetensors weights"
+        )
+    names = ", ".join(str(path.relative_to(source_path)) for path in candidates)
+    raise ValueError(
+        f"image LoRA adapter `{adapter.adapter_ref[:12]}` has multiple .safetensors "
+        f"weights; select one in adapter metadata. Candidates: {names}"
+    )
 
 
 def _load_mflux_deps() -> MfluxDeps:

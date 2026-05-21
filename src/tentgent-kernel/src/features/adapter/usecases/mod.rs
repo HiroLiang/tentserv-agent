@@ -21,8 +21,8 @@ pub use port::{
     AdapterBindRequest, AdapterBindResult, AdapterBindUseCase, AdapterCatalogReadUseCase,
     AdapterCompatibilityCheckRequest, AdapterCompatibilityCheckResult,
     AdapterCompatibilityCheckUseCase, AdapterHfPullRequest, AdapterHfPullResult,
-    AdapterHfPullUseCase, AdapterInspectRequest, AdapterInspectResult, AdapterListRequest,
-    AdapterListResult, AdapterLocalImportRequest, AdapterLocalImportResult,
+    AdapterHfPullUseCase, AdapterImportOptions, AdapterInspectRequest, AdapterInspectResult,
+    AdapterListRequest, AdapterListResult, AdapterLocalImportRequest, AdapterLocalImportResult,
     AdapterLocalImportUseCase, AdapterRemoveRequest, AdapterRemoveResult, AdapterRemoveUseCase,
     AdapterTrainRunImportRequest, AdapterTrainRunImportResult, AdapterTrainRunImportUseCase,
 };

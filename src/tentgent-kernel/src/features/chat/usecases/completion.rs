@@ -86,6 +86,8 @@ impl ChatPreparationUseCase for StdChatUseCase<'_> {
                                 base_model_source_repo: source_repo.clone(),
                                 base_model_source_revision: source_revision.clone(),
                                 base_model_capabilities: model_capabilities.clone(),
+                                required_capability:
+                                    crate::features::model::domain::ModelCapability::Chat,
                                 backend: backend.adapter_backend_support(),
                             },
                         },

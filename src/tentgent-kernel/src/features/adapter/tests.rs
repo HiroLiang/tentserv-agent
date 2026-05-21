@@ -6,13 +6,14 @@ use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
 
 use super::domain::{
-    backend_support_for_format, detect_adapter_format, escape_huggingface_repo_id,
-    validate_adapter_compatibility, AdapterBackendSupport, AdapterCompatibilityError,
-    AdapterCompatibilityTarget, AdapterFormat, AdapterInspection, AdapterManifest,
-    AdapterManifestEntry, AdapterMetadata, AdapterRef, AdapterRefParseError, AdapterRefSelector,
-    AdapterSourceKind, AdapterStoreLayout, AdapterSummary, AdapterType, BaseModelAdapterIndex,
-    HfAdapterPullProgress, HfAdapterSourceIndex, LocalAdapterSourceIndex,
-    TrainRunAdapterSourceIndex, ADAPTER_MANIFEST_FILENAME, ADAPTER_METADATA_FILENAME,
+    backend_support_for_format, detect_adapter_format, detect_image_adapter_format,
+    escape_huggingface_repo_id, select_adapter_weight_file, validate_adapter_compatibility,
+    AdapterBackendSupport, AdapterCompatibilityError, AdapterCompatibilityTarget, AdapterFormat,
+    AdapterInspection, AdapterManifest, AdapterManifestEntry, AdapterMetadata, AdapterRef,
+    AdapterRefParseError, AdapterRefSelector, AdapterSourceKind, AdapterStoreLayout,
+    AdapterSummary, AdapterType, BaseModelAdapterIndex, HfAdapterPullProgress,
+    HfAdapterSourceIndex, LocalAdapterSourceIndex, TrainRunAdapterSourceIndex,
+    ADAPTER_MANIFEST_FILENAME, ADAPTER_METADATA_FILENAME, DIFFUSERS_LORA_WEIGHTS_FILENAME,
     HUGGINGFACE_SOURCE_DIRNAME, LOCAL_SOURCE_DIRNAME, MLX_ADAPTERS_FILENAME,
     PEFT_ADAPTER_MODEL_FILENAME, SHORT_ADAPTER_REF_LENGTH, SOURCE_DIRNAME, STAGING_DIRNAME,
     STORE_DIRNAME, TRAIN_RUN_SOURCE_DIRNAME,
@@ -148,6 +149,33 @@ fn adapter_format_detection_maps_known_files_to_backend_support() {
 }
 
 #[test]
+fn image_lora_format_detection_selects_weight_file_and_backend_support() {
+    let diffusers = AdapterManifest {
+        files: vec![manifest_entry(DIFFUSERS_LORA_WEIGHTS_FILENAME, 8)],
+    };
+    let single_file = AdapterManifest {
+        files: vec![manifest_entry("style.safetensors", 8)],
+    };
+
+    assert_eq!(
+        detect_image_adapter_format(&diffusers, None, &[]),
+        Ok(AdapterFormat::DiffusersLora)
+    );
+    assert_eq!(
+        select_adapter_weight_file(&diffusers, None, AdapterFormat::DiffusersLora),
+        Ok(Some(DIFFUSERS_LORA_WEIGHTS_FILENAME.to_string()))
+    );
+    assert_eq!(
+        detect_image_adapter_format(&single_file, None, &[AdapterBackendSupport::MlxDiffusion],),
+        Ok(AdapterFormat::MlxDiffusionLora)
+    );
+    assert_eq!(
+        backend_support_for_format(AdapterFormat::MlxDiffusionLora),
+        vec![AdapterBackendSupport::MlxDiffusion]
+    );
+}
+
+#[test]
 fn adapter_manifest_sorts_counts_and_sums_files_without_io() {
     let manifest = AdapterManifest {
         files: vec![
@@ -172,11 +200,15 @@ fn adapter_metadata_reports_source_base_and_short_ref_consistency() {
         short_ref: "c".repeat(SHORT_ADAPTER_REF_LENGTH),
         adapter_format: AdapterFormat::Peft,
         adapter_type: AdapterType::Lora,
+        target_capability: Some(ModelCapability::Chat),
         base_model_ref: None,
         base_model_source_repo: Some("org/base".to_string()),
         base_model_source_revision: Some("base-sha".to_string()),
         model_family: Some("llama".to_string()),
         backend_support: vec![AdapterBackendSupport::TransformersPeft],
+        weight_file: None,
+        trigger_words: Vec::new(),
+        recommended_scale: None,
         source_kind: AdapterSourceKind::HuggingFace,
         source_repo: Some("org/adapter".to_string()),
         source_revision: Some("adapter-sha".to_string()),
@@ -203,6 +235,7 @@ fn adapter_compatibility_requires_backend_and_base_model_proof() {
         base_model_source_repo: Some("org/base".to_string()),
         base_model_source_revision: Some("base-sha".to_string()),
         base_model_capabilities: vec![ModelCapability::Chat],
+        required_capability: ModelCapability::Chat,
         backend: AdapterBackendSupport::TransformersPeft,
     };
 
@@ -238,6 +271,7 @@ fn exact_base_model_ref_compatibility_wins_over_source_hints() {
         base_model_source_repo: Some("different/base".to_string()),
         base_model_source_revision: Some("different-sha".to_string()),
         base_model_capabilities: vec![ModelCapability::Chat],
+        required_capability: ModelCapability::Chat,
         backend: AdapterBackendSupport::TransformersPeft,
     };
 
@@ -253,6 +287,7 @@ fn adapter_compatibility_rejects_non_chat_base_models() {
         base_model_source_repo: Some("org/base".to_string()),
         base_model_source_revision: Some("base-sha".to_string()),
         base_model_capabilities: vec![ModelCapability::Embedding],
+        required_capability: ModelCapability::Chat,
         backend: AdapterBackendSupport::TransformersPeft,
     };
 
@@ -260,6 +295,40 @@ fn adapter_compatibility_rejects_non_chat_base_models() {
         validate_adapter_compatibility(&metadata, &target),
         Err(AdapterCompatibilityError::UnsupportedBaseModelCapability {
             required: "chat".to_string()
+        })
+    );
+}
+
+#[test]
+fn image_adapter_compatibility_uses_image_generation_capability() {
+    let base_model_ref = ModelRef::parse("f".repeat(64)).expect("model ref");
+    let mut metadata = metadata_fixture(Some(base_model_ref.clone()));
+    metadata.target_capability = Some(ModelCapability::ImageGeneration);
+    metadata.adapter_format = AdapterFormat::DiffusersLora;
+    metadata.backend_support = vec![AdapterBackendSupport::Diffusers];
+    metadata.weight_file = Some("style.safetensors".to_string());
+
+    let target = AdapterCompatibilityTarget {
+        base_model_ref,
+        base_model_source_repo: Some("org/base".to_string()),
+        base_model_source_revision: Some("base-sha".to_string()),
+        base_model_capabilities: vec![ModelCapability::ImageGeneration],
+        required_capability: ModelCapability::ImageGeneration,
+        backend: AdapterBackendSupport::Diffusers,
+    };
+
+    assert_eq!(validate_adapter_compatibility(&metadata, &target), Ok(()));
+
+    let chat_target = AdapterCompatibilityTarget {
+        required_capability: ModelCapability::Chat,
+        base_model_capabilities: vec![ModelCapability::Chat],
+        ..target
+    };
+    assert_eq!(
+        validate_adapter_compatibility(&metadata, &chat_target),
+        Err(AdapterCompatibilityError::TargetCapabilityMismatch {
+            adapter_capability: "image-generation".to_string(),
+            required_capability: "chat".to_string()
         })
     );
 }
@@ -465,11 +534,15 @@ fn metadata_fixture(base_model_ref: Option<ModelRef>) -> AdapterMetadata {
         short_ref: "a".repeat(SHORT_ADAPTER_REF_LENGTH),
         adapter_format: AdapterFormat::Peft,
         adapter_type: AdapterType::Lora,
+        target_capability: Some(ModelCapability::Chat),
         base_model_ref,
         base_model_source_repo: Some("org/base".to_string()),
         base_model_source_revision: Some("base-sha".to_string()),
         model_family: Some("llama".to_string()),
         backend_support: vec![AdapterBackendSupport::TransformersPeft],
+        weight_file: None,
+        trigger_words: Vec::new(),
+        recommended_scale: None,
         source_kind: AdapterSourceKind::Local,
         source_repo: None,
         source_revision: None,

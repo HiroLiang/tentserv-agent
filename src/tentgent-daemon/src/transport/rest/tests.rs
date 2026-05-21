@@ -1495,6 +1495,40 @@ async fn sync_store_routes_validate_requests_before_mutation() {
         .oneshot(
             Request::builder()
                 .method("POST")
+                .uri("/v1/adapters/pull")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"repo_id":"org/adapter","target_capability":"image-generation","adapter_format":"image-lora"}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/adapters/pull/jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"repo_id":"org/adapter","target_capability":"image-generation","adapter_format":"diffusers-lora","recommended_scale":8.0}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
                 .uri("/v1/models/pull")
                 .header("content-type", "application/json")
                 .body(Body::from(

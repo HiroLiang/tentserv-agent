@@ -133,6 +133,29 @@ Within that directory, `uv/` stores pinned installer bootstrap tooling and shoul
 rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 ```
 
+## Store Staging Cleanup
+
+Interrupted model, adapter, or dataset imports can leave partial files under
+managed staging directories before Tentgent has computed a content hash and
+installed a canonical `store/<ref>` entry.
+
+Inspect abandoned staging directories without deleting anything:
+
+```bash
+tentgent store gc
+```
+
+Delete the listed staging directories:
+
+```bash
+tentgent store gc --apply
+```
+
+This command only removes direct children of `models/staging`,
+`adapters/staging`, and `datasets/staging`. It does not remove hashed model,
+adapter, or dataset content under `store/<ref>`; use the specific `model rm`,
+`adapter rm`, or `dataset rm` commands for canonical objects.
+
 ## Backend Status
 
 - `tentgent doctor` runs installation and runtime health checks.

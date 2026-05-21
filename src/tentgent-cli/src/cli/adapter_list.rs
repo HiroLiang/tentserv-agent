@@ -30,6 +30,7 @@ pub fn render_adapter_list(adapters: &[AdapterSummary]) {
         .set_header(vec![
             "short_ref",
             "format",
+            "target",
             "base",
             "source_kind",
             "source",
@@ -41,6 +42,13 @@ pub fn render_adapter_list(adapters: &[AdapterSummary]) {
         table.add_row(vec![
             Cell::new(&adapter.metadata.short_ref),
             Cell::new(adapter.metadata.adapter_format.as_str()),
+            Cell::new(
+                adapter
+                    .metadata
+                    .target_capability
+                    .map(|capability| capability.as_str().to_string())
+                    .unwrap_or_else(|| "chat".to_string()),
+            ),
             Cell::new(base_summary(&adapter.metadata)),
             Cell::new(adapter.metadata.source_kind.as_str()),
             Cell::new(source_summary(&adapter.metadata)),

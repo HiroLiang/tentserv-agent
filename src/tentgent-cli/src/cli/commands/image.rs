@@ -24,6 +24,12 @@ pub struct ImageGenerateCommand {
     /// Optional negative prompt.
     #[arg(long = "negative-prompt", value_name = "TEXT")]
     pub negative_prompt: Option<String>,
+    /// Optional managed image LoRA adapter reference.
+    #[arg(long = "adapter-ref", value_name = "ADAPTER_REF")]
+    pub adapter_ref: Option<String>,
+    /// Optional LoRA scale. Requires --adapter-ref.
+    #[arg(long = "lora-scale", value_name = "FLOAT")]
+    pub lora_scale: Option<f32>,
     /// Local output path. Existing files are never overwritten.
     #[arg(short = 'o', long = "output", value_name = "OUTPUT_PATH")]
     pub output: PathBuf,

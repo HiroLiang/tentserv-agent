@@ -162,6 +162,12 @@ fn add_adapter_metadata_rows(table: &mut Table, metadata: &AdapterMetadata) {
         Cell::new("adapter_type"),
         Cell::new(metadata.adapter_type.as_str()),
     ]);
+    if let Some(capability) = metadata.target_capability {
+        table.add_row(vec![
+            Cell::new("target_capability"),
+            Cell::new(capability.as_str()),
+        ]);
+    }
 
     if let Some(base_model_ref) = &metadata.base_model_ref {
         table.add_row(vec![
@@ -193,6 +199,18 @@ fn add_adapter_metadata_rows(table: &mut Table, metadata: &AdapterMetadata) {
                 .join(", "),
         ),
     ]);
+    if let Some(weight_file) = &metadata.weight_file {
+        table.add_row(vec![Cell::new("weight_file"), Cell::new(weight_file)]);
+    }
+    if !metadata.trigger_words.is_empty() {
+        table.add_row(vec![
+            Cell::new("trigger_words"),
+            Cell::new(metadata.trigger_words.join(", ")),
+        ]);
+    }
+    if let Some(scale) = metadata.recommended_scale {
+        table.add_row(vec![Cell::new("recommended_scale"), Cell::new(scale)]);
+    }
     table.add_row(vec![
         Cell::new("source_kind"),
         Cell::new(metadata.source_kind.as_str()),

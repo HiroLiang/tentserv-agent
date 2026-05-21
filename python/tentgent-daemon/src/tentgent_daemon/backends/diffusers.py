@@ -7,6 +7,7 @@ from typing import Any
 
 from .base import ImageGenerationBackend
 from ..runtime.image_generation import (
+    ImageGenerationAdapterSelection,
     ImageGenerationRequest,
     ImageGenerationResult,
     write_image_generation_output,
@@ -27,6 +28,7 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
         self._record: StoredModelRecord | None = None
         self._pipeline: Any | None = None
         self._device = _detect_device(self._deps.torch)
+        self._adapter: ImageGenerationAdapterSelection | None = None
 
     def load(self, record: StoredModelRecord) -> None:
         load_kwargs = _diffusers_load_kwargs(record, self._deps.torch, self._device)
@@ -41,6 +43,12 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
 
         self._record = record
         self._pipeline = pipeline
+        self._apply_selected_adapter()
+
+    def select_adapter(self, adapter: ImageGenerationAdapterSelection | None) -> None:
+        self._adapter = adapter
+        if self._pipeline is not None:
+            self._apply_selected_adapter()
 
     def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         pipeline = self._require_loaded()
@@ -57,15 +65,37 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
             kwargs["generator"] = self._deps.torch.Generator(device="cpu").manual_seed(
                 request.seed
             )
+        if self._adapter is not None and not hasattr(pipeline, "set_adapters"):
+            kwargs["cross_attention_kwargs"] = {"scale": self._adapter.lora_scale}
 
         with self._deps.torch.inference_mode():
             raw_result = pipeline(**kwargs)
         image = raw_result.images[0]
         return write_image_generation_output(request, image)
 
+    def _apply_selected_adapter(self) -> None:
+        if self._adapter is None:
+            return
+        pipeline = self._require_loaded()
+        if not hasattr(pipeline, "load_lora_weights"):
+            raise RuntimeError(
+                "Diffusers image generation pipeline for "
+                f"`{self._record.short_ref if self._record else 'unknown'}` does not "
+                "support LoRA weights."
+            )
+        weight_path = _adapter_weight_path(self._adapter)
+        pipeline.load_lora_weights(
+            str(weight_path.parent),
+            weight_name=weight_path.name,
+            adapter_name="tentgent",
+        )
+        if hasattr(pipeline, "set_adapters"):
+            pipeline.set_adapters(["tentgent"], adapter_weights=[self._adapter.lora_scale])
+
     def release(self) -> None:
         self._record = None
         self._pipeline = None
+        self._adapter = None
 
         torch = self._deps.torch
         if torch.cuda.is_available():
@@ -80,6 +110,26 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
                 "call load() before generate_image()."
             )
         return self._pipeline
+
+
+def _adapter_weight_path(adapter: ImageGenerationAdapterSelection) -> os.PathLike[str]:
+    source_path = adapter.source_path
+    if adapter.weight_file:
+        return source_path / adapter.weight_file
+    if source_path.is_file():
+        return source_path
+    candidates = sorted(source_path.rglob("*.safetensors"))
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise FileNotFoundError(
+            f"image LoRA adapter `{adapter.adapter_ref[:12]}` has no .safetensors weights"
+        )
+    names = ", ".join(str(path.relative_to(source_path)) for path in candidates)
+    raise ValueError(
+        f"image LoRA adapter `{adapter.adapter_ref[:12]}` has multiple .safetensors "
+        f"weights; select one in adapter metadata. Candidates: {names}"
+    )
 
 
 def _load_diffusers_deps() -> DiffusersDeps:

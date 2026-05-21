@@ -5,9 +5,15 @@ use std::{
 };
 
 use miette::{miette, IntoDiagnostic, Result};
+use tentgent_kernel::features::adapter::domain::{AdapterRefSelector, LoraScale};
+use tentgent_kernel::features::adapter::infra::FileAdapterCatalogStore;
+use tentgent_kernel::features::adapter::usecases::StdAdapterCompatibilityCheckUseCase;
 use tentgent_kernel::features::image_generation::{
     domain::{ImageGenerationDimensions, ImageGenerationOptions, ImageGenerationOutputFormat},
-    infra::{PythonImageGenerationOnceRuntimeClient, StdImageGenerationModelResolver},
+    infra::{
+        PythonImageGenerationOnceRuntimeClient, StdImageGenerationAdapterResolver,
+        StdImageGenerationModelResolver,
+    },
     usecases::{
         ImageGenerationPreparationRequest, ImageGenerationUseCase, StdImageGenerationUseCase,
     },
@@ -43,9 +49,16 @@ async fn handle_image_generate_command(command: ImageGenerateCommand) -> Result<
     let model_catalog =
         StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
     let model_resolver = StdImageGenerationModelResolver::new(&model_catalog);
+    let adapter_compatibility =
+        StdAdapterCompatibilityCheckUseCase::new(&kernel.layout_resolver, &kernel.adapter_catalog);
+    let adapter_resolver = StdImageGenerationAdapterResolver::new(&adapter_compatibility);
     let runtime_client = PythonImageGenerationOnceRuntimeClient::new(&kernel.executable_resolver);
-    let generator =
-        StdImageGenerationUseCase::new(&runtime_resolution, &model_resolver, &runtime_client);
+    let generator = StdImageGenerationUseCase::new(
+        &runtime_resolution,
+        &model_resolver,
+        &adapter_resolver,
+        &runtime_client,
+    );
 
     let result = match generator.generate_image(request).await {
         Ok(result) => result,
@@ -63,6 +76,7 @@ struct CliImageGenerationKernel {
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
     model_catalog: FileModelCatalogStore,
+    adapter_catalog: FileAdapterCatalogStore,
 }
 
 impl CliImageGenerationKernel {
@@ -72,6 +86,7 @@ impl CliImageGenerationKernel {
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
             model_catalog: FileModelCatalogStore,
+            adapter_catalog: FileAdapterCatalogStore,
         }
     }
 }
@@ -83,6 +98,17 @@ fn image_generate_request(
 ) -> Result<ImageGenerationPreparationRequest> {
     let model_selector = ModelRefSelector::parse(&command.model_ref)
         .map_err(|err| miette!("failed to parse model ref for image generation: {err}"))?;
+    let adapter_selector = command
+        .adapter_ref
+        .as_deref()
+        .map(AdapterRefSelector::parse)
+        .transpose()
+        .map_err(|err| miette!("failed to parse image LoRA adapter ref: {err}"))?;
+    let lora_scale = command
+        .lora_scale
+        .map(LoraScale::new)
+        .transpose()
+        .map_err(|err| miette!("{err}"))?;
     let prompt = non_empty_string(command.prompt.clone())
         .ok_or_else(|| miette!("image generation prompt must not be empty"))?;
     let dimensions = ImageGenerationDimensions::new(command.width, command.height)
@@ -99,6 +125,8 @@ fn image_generate_request(
         layout: runtime_layout_input(command.home.as_deref()),
         runtime: PythonRuntimeResolutionInput::default(),
         model_selector,
+        adapter_selector,
+        lora_scale,
         prompt,
         negative_prompt: command.negative_prompt.clone().and_then(non_empty_string),
         output_path,
