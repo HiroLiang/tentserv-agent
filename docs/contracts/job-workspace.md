@@ -179,7 +179,9 @@ Starting detached/background work belongs to a feature endpoint:
 
 ```text
 POST /v1/audio/transcriptions/job
-POST /v1/images/generations/jobs
+POST /v1/images/generations/job
+POST /v1/images/transforms/job
+POST /v1/images/inpaint/job
 ```
 
 Result retrieval should be owned by the workflow that understands the output
@@ -187,8 +189,12 @@ format:
 
 ```text
 GET /v1/audio/transcriptions/job/{job_id}/result
-GET /v1/images/generations/jobs/{job_id}/files
-GET /v1/images/generations/jobs/{job_id}/files/{file_id}
+GET /v1/images/generations/job/{job_id}/files
+GET /v1/images/generations/job/{job_id}/files/{file_id}
+GET /v1/images/transforms/job/{job_id}/files
+GET /v1/images/transforms/job/{job_id}/files/{file_id}
+GET /v1/images/inpaint/job/{job_id}/files
+GET /v1/images/inpaint/job/{job_id}/files/{file_id}
 ```
 
 The kernel may expose generic result-file use cases and ports, but public HTTP

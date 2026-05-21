@@ -469,13 +469,28 @@ Status: implemented and unit-tested; real-model smoke pending. Details in
 
 #### M6N: Inpainting And Masks
 
-Status: planned.
+Status: implemented and unit-tested; real-model smoke pending. Details in
+[m6n-inpainting-and-masks.md](./m6n-inpainting-and-masks.md).
 
-- Add original image plus mask plus prompt.
-- Define accepted mask formats and whether white/black means repaint or keep.
-- Validate image/mask dimensions before runtime.
-- Keep this separate from M6M because mask semantics and user errors need their
-  own tests and docs.
+- Add masked inpainting under the existing `image-generation` capability:
+  one base image plus one mask plus prompt produces one output image artifact.
+- Add foreground CLI `tentgent image inpaint` with local base-image path,
+  local mask-image path, protected output path, optional negative prompt,
+  optional one image LoRA adapter, and Diffusers-compatible `strength`
+  validation.
+- Add native daemon multipart route `POST /v1/images/inpaint/job`; daemon
+  receives base image and mask bytes, writes both into the job workspace,
+  starts the worker only after upload persistence, and exposes workflow-owned
+  result file routes.
+- Define mask semantics explicitly: white pixels repaint and black pixels keep
+  the original image. Runtime normalizes masks to binary grayscale and rejects
+  image/mask dimension mismatches before model loading.
+- Implement Diffusers inpainting through `AutoPipelineForInpainting`.
+- Implement the MFLUX Flux Fill path with a compatibility guard that rejects
+  non-fill-looking MLX diffusion models before runtime execution.
+- Keep mask inversion, mask blur/feather controls, automatic segmentation,
+  reference images, ControlNet, multi-image input, OpenAI-compatible image
+  edits APIs, and direct server routes out of this slice.
 
 #### M6O: Reference Images And ControlNet
 

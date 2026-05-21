@@ -33,12 +33,15 @@ use tentgent_kernel::foundation::layout::{
     LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver,
 };
 
-use super::commands::{ImageCommands, ImageGenerateCommand, ImageTransformCommand};
+use super::commands::{
+    ImageCommands, ImageGenerateCommand, ImageInpaintCommand, ImageTransformCommand,
+};
 
 pub async fn handle_image_command(command: ImageCommands) -> Result<()> {
     match command {
         ImageCommands::Generate(command) => handle_image_generate_command(command).await,
         ImageCommands::Transform(command) => handle_image_transform_command(command).await,
+        ImageCommands::Inpaint(command) => handle_image_inpaint_command(command).await,
     }
 }
 
@@ -79,6 +82,39 @@ async fn handle_image_transform_command(command: ImageTransformCommand) -> Resul
     let output_format = parse_output_format(&command.format)?;
     let output = ImageGenerateOutputTarget::prepare(&command.output, output_format)?;
     let request = image_transform_request(&command, output.runtime_path.clone(), output_format)?;
+
+    let kernel = CliImageGenerationKernel::new();
+    let runtime_resolution =
+        StdRuntimeResolutionUseCase::new(&kernel.layout_resolver, &kernel.runtime_resolver);
+    let model_catalog =
+        StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
+    let model_resolver = StdImageGenerationModelResolver::new(&model_catalog);
+    let adapter_compatibility =
+        StdAdapterCompatibilityCheckUseCase::new(&kernel.layout_resolver, &kernel.adapter_catalog);
+    let adapter_resolver = StdImageGenerationAdapterResolver::new(&adapter_compatibility);
+    let runtime_client = PythonImageGenerationOnceRuntimeClient::new(&kernel.executable_resolver);
+    let generator = StdImageGenerationUseCase::new(
+        &runtime_resolution,
+        &model_resolver,
+        &adapter_resolver,
+        &runtime_client,
+    );
+
+    let result = match generator.generate_image(request).await {
+        Ok(result) => result,
+        Err(error) => {
+            output.cleanup_temp();
+            return Err(image_generation_runtime_report(error.to_string()));
+        }
+    };
+
+    output.finish(&result.response.output_path)
+}
+
+async fn handle_image_inpaint_command(command: ImageInpaintCommand) -> Result<()> {
+    let output_format = parse_output_format(&command.format)?;
+    let output = ImageGenerateOutputTarget::prepare(&command.output, output_format)?;
+    let request = image_inpaint_request(&command, output.runtime_path.clone(), output_format)?;
 
     let kernel = CliImageGenerationKernel::new();
     let runtime_resolution =
@@ -222,6 +258,76 @@ fn image_transform_request(
         input: ImageGenerationInput::ImageToImage {
             image_path: input_image,
             media_type: Some(media_type),
+            strength,
+        },
+        prompt,
+        negative_prompt: command.negative_prompt.clone().and_then(non_empty_string),
+        output_path,
+        output_format,
+        options,
+    })
+}
+
+fn image_inpaint_request(
+    command: &ImageInpaintCommand,
+    output_path: PathBuf,
+    output_format: ImageGenerationOutputFormat,
+) -> Result<ImageGenerationPreparationRequest> {
+    let model_selector = ModelRefSelector::parse(&command.model_ref)
+        .map_err(|err| miette!("failed to parse model ref for image inpaint: {err}"))?;
+    let adapter_selector = command
+        .adapter_ref
+        .as_deref()
+        .map(AdapterRefSelector::parse)
+        .transpose()
+        .map_err(|err| miette!("failed to parse image LoRA adapter ref: {err}"))?;
+    let lora_scale = command
+        .lora_scale
+        .map(LoraScale::new)
+        .transpose()
+        .map_err(|err| miette!("{err}"))?;
+    let input_image = prepare_input_image_path(&command.input_image)?;
+    let image_media_type = image_media_type_from_extension(&input_image)
+        .ok_or_else(|| {
+            miette!(
+                "input image must be PNG, JPEG, or WebP: {}",
+                input_image.display()
+            )
+        })?
+        .to_string();
+    let mask_image = prepare_input_image_path(&command.mask_image)?;
+    let mask_media_type = image_media_type_from_extension(&mask_image)
+        .ok_or_else(|| {
+            miette!(
+                "mask image must be PNG, JPEG, or WebP: {}",
+                mask_image.display()
+            )
+        })?
+        .to_string();
+    let strength = ImageTransformStrength::new(command.strength).map_err(|err| miette!("{err}"))?;
+    let prompt = non_empty_string(command.prompt.clone())
+        .ok_or_else(|| miette!("image inpaint prompt must not be empty"))?;
+    let dimensions = ImageGenerationDimensions::new(command.width, command.height)
+        .map_err(|err| miette!("{err}"))?;
+    let options = ImageGenerationOptions::new(
+        dimensions,
+        command.steps,
+        command.guidance_scale,
+        command.seed,
+    )
+    .map_err(|err| miette!("{err}"))?;
+
+    Ok(ImageGenerationPreparationRequest {
+        layout: runtime_layout_input(command.home.as_deref()),
+        runtime: PythonRuntimeResolutionInput::default(),
+        model_selector,
+        adapter_selector,
+        lora_scale,
+        input: ImageGenerationInput::Inpaint {
+            image_path: input_image,
+            image_media_type: Some(image_media_type),
+            mask_path: mask_image,
+            mask_media_type: Some(mask_media_type),
             strength,
         },
         prompt,

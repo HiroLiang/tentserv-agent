@@ -92,6 +92,12 @@ one pass without a staged breakdown.
   foreground `tentgent image transform`, daemon multipart transform jobs,
   `strength` validation, Diffusers img2img support, and MLX/MFLUX support when
   the local runtime API can be verified. Real-model smoke remains pending.
+- [m6n-inpainting-and-masks.md](./m6n-inpainting-and-masks.md)
+  Implemented and unit-tested M6N execution slice for masked image inpainting:
+  foreground `tentgent image inpaint`, daemon multipart `image` plus `mask`
+  jobs, white repaint / black keep mask semantics, Diffusers inpainting
+  support, and MFLUX Flux Fill support with a fill-model compatibility guard.
+  Real-model smoke remains pending.
 
 ## Recommended Order
 

@@ -8,6 +8,7 @@ from tentgent_daemon.backends import create_image_generation_backend
 from tentgent_daemon.runtime.image_generation import (
     DEFAULT_GUIDANCE_SCALE,
     DEFAULT_HEIGHT,
+    DEFAULT_INPAINT_STRENGTH,
     DEFAULT_STEPS,
     DEFAULT_TRANSFORM_STRENGTH,
     DEFAULT_WIDTH,
@@ -21,7 +22,10 @@ from tentgent_daemon.runtime.image_generation import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a Tentgent text-to-image request from a stored model reference."
+        description=(
+            "Run a Tentgent image generation, image-to-image, or inpainting "
+            "request from a stored model reference."
+        )
     )
     parser.add_argument("--model-ref", required=True, help="Stored Tentgent model ref")
     parser.add_argument("--prompt", required=True, help="Text prompt for image generation")
@@ -35,12 +39,21 @@ def parse_args() -> argparse.Namespace:
         help="Optional input image media type for diagnostics",
     )
     parser.add_argument(
+        "--mask-image-path",
+        help="Optional local mask image path for inpainting",
+    )
+    parser.add_argument(
+        "--mask-image-media-type",
+        help="Optional mask image media type for diagnostics",
+    )
+    parser.add_argument(
         "--strength",
         type=float,
         default=None,
         help=(
-            "Image-to-image denoising strength. Defaults to "
-            f"{DEFAULT_TRANSFORM_STRENGTH} when --input-image-path is set."
+            "Image denoising strength. Defaults to "
+            f"{DEFAULT_TRANSFORM_STRENGTH} for image-to-image and "
+            f"{DEFAULT_INPAINT_STRENGTH} for inpainting."
         ),
     )
     parser.add_argument("--output-path", required=True, help="Generated image output path")
@@ -91,6 +104,8 @@ def main() -> int:
         output_format=output_format,
         input_image_path=Path(args.input_image_path) if args.input_image_path else None,
         input_image_media_type=args.input_image_media_type,
+        mask_image_path=Path(args.mask_image_path) if args.mask_image_path else None,
+        mask_image_media_type=args.mask_image_media_type,
         strength=args.strength,
         adapter=adapter,
         width=args.width,
@@ -116,6 +131,10 @@ def main() -> int:
                     if plan.request.input_image_path
                     else None,
                     "input_image_media_type": plan.request.input_image_media_type,
+                    "mask_image_path": str(plan.request.mask_image_path)
+                    if plan.request.mask_image_path
+                    else None,
+                    "mask_image_media_type": plan.request.mask_image_media_type,
                     "strength": plan.request.strength,
                     "width": plan.request.width,
                     "height": plan.request.height,

@@ -404,6 +404,34 @@ much as possible, while `1.0` lets the model regenerate most of the image.
 The same optional `--adapter-ref` and `--lora-scale` flags work for compatible
 image LoRA adapters.
 
+Repaint only the white area of one mask image:
+
+```bash
+tentgent image inpaint \
+  --model-ref <image-generation-model-ref> \
+  --input-image input.png \
+  --mask-image mask.png \
+  --prompt "Replace the masked area with a small ceramic teapot" \
+  --strength 1.0 \
+  --output inpainted.png \
+  --format png \
+  --width 512 \
+  --height 512 \
+  --steps 20
+```
+
+`tentgent image inpaint` is foreground-only like the other image commands. The
+base image and mask must be PNG, JPEG, or WebP files. Mask semantics are
+`white = repaint` and `black = keep`; Tentgent normalizes the mask to binary
+grayscale before runtime execution. The input image and mask must decode to
+the same dimensions before the runtime resizes them to the requested output
+size. `--strength` defaults to `1.0`, must be `0.0..=1.0`, and uses the same
+Diffusers-style denoising meaning as `image transform`.
+
+MLX inpainting requires a Flux Fill-compatible `mlx-diffusion` model; general
+Flux text-to-image models are rejected for this workflow instead of guessed
+through an incompatible runtime path.
+
 Pull a tiny Diffusers plumbing fixture before local smoke tests:
 
 ```bash
@@ -466,6 +494,24 @@ curl -sS http://127.0.0.1:8790/v1/images/transforms/job \
 curl -sS http://127.0.0.1:8790/v1/images/transforms/job/<job-id>/files
 curl -sS http://127.0.0.1:8790/v1/images/transforms/job/<job-id>/files/transformed.png \
   -o transformed.png
+```
+
+For HTTP inpainting integrations, upload both the base image and mask bytes.
+The daemon stores both files in the job workspace before starting the model:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/images/inpaint/job \
+  -F image=@/absolute/path/input.png \
+  -F mask=@/absolute/path/mask.png \
+  -F model_ref=<image-generation-model-ref> \
+  -F prompt='Replace the masked area with a small ceramic teapot' \
+  -F strength=1.0 \
+  -F output_format=png \
+  -F output_filename=inpainted.png
+
+curl -sS http://127.0.0.1:8790/v1/images/inpaint/job/<job-id>/files
+curl -sS http://127.0.0.1:8790/v1/images/inpaint/job/<job-id>/files/inpainted.png \
+  -o inpainted.png
 ```
 
 ## Server

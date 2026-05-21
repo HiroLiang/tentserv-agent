@@ -176,6 +176,22 @@ tentgent image transform \
   --steps 20
 ```
 
+Masked inpainting CLI:
+
+```bash
+tentgent image inpaint \
+  --model-ref <image-generation-model-ref> \
+  --input-image /absolute/path/input.png \
+  --mask-image /absolute/path/mask.png \
+  --prompt "Replace the masked area with a small ceramic teapot" \
+  --strength 1.0 \
+  --output inpainted.png \
+  --format png \
+  --width 512 \
+  --height 512 \
+  --steps 20
+```
+
 Daemon REST for repeated local tests:
 
 ```bash
@@ -269,6 +285,23 @@ curl -sS http://127.0.0.1:8790/v1/images/transforms/job/<job-id>/files/transform
   -o transformed.png
 ```
 
+Image inpaint daemon job:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/images/inpaint/job \
+  -F image=@/absolute/path/input.png \
+  -F mask=@/absolute/path/mask.png \
+  -F model_ref=<image-generation-model-ref> \
+  -F prompt='Replace the masked area with a small ceramic teapot' \
+  -F strength=1.0 \
+  -F output_format=png \
+  -F output_filename=inpainted.png
+
+curl -sS http://127.0.0.1:8790/v1/images/inpaint/job/<job-id>/files
+curl -sS http://127.0.0.1:8790/v1/images/inpaint/job/<job-id>/files/inpainted.png \
+  -o inpainted.png
+```
+
 ## Current Fixture Models
 
 These rows are for local smoke tests, not product defaults.
@@ -290,9 +323,9 @@ These rows are for local smoke tests, not product defaults.
 Audio transcription candidates can run through `tentgent transcribe` and the
 daemon job route. Vision chat candidates can run through `tentgent vision chat`
 and daemon `POST /v1/vision/chat`. Image generation candidates can run through
-`tentgent image generate`, `tentgent image transform`, daemon
-`POST /v1/images/generations/job`, and daemon
-`POST /v1/images/transforms/job`.
+`tentgent image generate`, `tentgent image transform`, `tentgent image
+inpaint`, daemon `POST /v1/images/generations/job`, daemon
+`POST /v1/images/transforms/job`, and daemon `POST /v1/images/inpaint/job`.
 Other candidates are for metadata and contract planning. Pulling them with
 their media `--capability` values records model intent only; it does not make
 non-transcription, non-vision, non-image workflows runnable yet.
@@ -307,6 +340,12 @@ Image-generation LoRA adapters can be used with the same CLI and daemon image
 job surfaces after they are imported or pulled into the managed adapter store.
 Use explicit `--target-capability image-generation`, backend support, and
 `--weight-file` metadata for adapter repos with ambiguous `.safetensors` files.
+
+Masked inpainting additionally requires an inpainting-capable Diffusers
+pipeline or a Flux Fill-compatible MLX diffusion model. The general
+`Flux-1.lite` MFLUX fixture is text-to-image/image-to-image oriented and should
+be expected to fail fast on inpainting until a fill-compatible fixture is
+pinned.
 
 | Metadata capability | Candidate | Access | Pull command | Notes |
 | --- | --- | --- | --- | --- |

@@ -383,6 +383,76 @@ mod tests {
     }
 
     #[test]
+    fn parses_image_inpaint_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "image",
+            "inpaint",
+            "--model-ref",
+            "abc123",
+            "--input-image",
+            "input.png",
+            "--mask-image",
+            "mask.png",
+            "--prompt",
+            "Replace the white mask area.",
+            "--negative-prompt",
+            "blurry",
+            "--adapter-ref",
+            "def456",
+            "--lora-scale",
+            "0.8",
+            "--strength",
+            "0.9",
+            "--output",
+            "image.png",
+            "--format",
+            "jpg",
+            "--width",
+            "512",
+            "--height",
+            "768",
+            "--steps",
+            "25",
+            "--guidance-scale",
+            "6.5",
+            "--seed",
+            "42",
+            "--home",
+            "/tmp/tentgent",
+        ])
+        .expect("parse image inpaint command");
+
+        match cli.command {
+            Commands::Image { action } => match action {
+                super::commands::ImageCommands::Inpaint(command) => {
+                    assert_eq!(command.model_ref, "abc123");
+                    assert_eq!(command.input_image, std::path::Path::new("input.png"));
+                    assert_eq!(command.mask_image, std::path::Path::new("mask.png"));
+                    assert_eq!(command.prompt, "Replace the white mask area.");
+                    assert_eq!(command.negative_prompt.as_deref(), Some("blurry"));
+                    assert_eq!(command.adapter_ref.as_deref(), Some("def456"));
+                    assert_eq!(command.lora_scale, Some(0.8));
+                    assert_eq!(command.strength, 0.9);
+                    assert_eq!(command.output, std::path::Path::new("image.png"));
+                    assert_eq!(command.format, "jpg");
+                    assert_eq!(command.width, 512);
+                    assert_eq!(command.height, 768);
+                    assert_eq!(command.steps, 25);
+                    assert_eq!(command.guidance_scale, 6.5);
+                    assert_eq!(command.seed, Some(42));
+                    assert_eq!(
+                        command.home.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent"))
+                    );
+                }
+                other => panic!("unexpected image command: {other:?}"),
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parses_daemon_start() {
         let cli = Cli::try_parse_from([
             "tentgent",

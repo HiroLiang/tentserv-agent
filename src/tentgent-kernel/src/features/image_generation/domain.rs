@@ -226,6 +226,7 @@ pub enum ImageGenerationOptionsError {
 pub enum ImageGenerationWorkflowKind {
     TextToImage,
     ImageToImage,
+    Inpaint,
 }
 
 impl ImageGenerationWorkflowKind {
@@ -233,6 +234,7 @@ impl ImageGenerationWorkflowKind {
         match self {
             Self::TextToImage => "text-to-image",
             Self::ImageToImage => "image-to-image",
+            Self::Inpaint => "inpaint",
         }
     }
 }
@@ -272,7 +274,7 @@ impl Default for ImageTransformStrength {
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ImageTransformStrengthError {
-    #[error("image transform strength must be between 0 and 1; got {strength}")]
+    #[error("image denoising strength must be between 0 and 1; got {strength}")]
     OutOfRange { strength: f32 },
 }
 
@@ -281,8 +283,10 @@ pub enum ImageTransformStrengthError {
 pub enum ImageGenerationBackend {
     DiffusersTextToImage,
     DiffusersImageToImage,
+    DiffusersInpaint,
     MlxDiffusionTextToImage,
     MlxDiffusionImageToImage,
+    MlxDiffusionInpaint,
 }
 
 impl ImageGenerationBackend {
@@ -290,8 +294,10 @@ impl ImageGenerationBackend {
         match self {
             Self::DiffusersTextToImage => "diffusers-text-to-image",
             Self::DiffusersImageToImage => "diffusers-image-to-image",
+            Self::DiffusersInpaint => "diffusers-inpaint",
             Self::MlxDiffusionTextToImage => "mlx-diffusion-text-to-image",
             Self::MlxDiffusionImageToImage => "mlx-diffusion-image-to-image",
+            Self::MlxDiffusionInpaint => "mlx-diffusion-inpaint",
         }
     }
 
@@ -322,10 +328,12 @@ impl ImageGenerationBackend {
             (ModelFormat::Diffusers, _) => match workflow {
                 ImageGenerationWorkflowKind::TextToImage => Some(Self::DiffusersTextToImage),
                 ImageGenerationWorkflowKind::ImageToImage => Some(Self::DiffusersImageToImage),
+                ImageGenerationWorkflowKind::Inpaint => Some(Self::DiffusersInpaint),
             },
             (ModelFormat::Mlx, Some(MlxRuntimeFamily::Diffusion)) => match workflow {
                 ImageGenerationWorkflowKind::TextToImage => Some(Self::MlxDiffusionTextToImage),
                 ImageGenerationWorkflowKind::ImageToImage => Some(Self::MlxDiffusionImageToImage),
+                ImageGenerationWorkflowKind::Inpaint => Some(Self::MlxDiffusionInpaint),
             },
             (ModelFormat::Safetensors | ModelFormat::Gguf, _)
             | (
@@ -338,12 +346,12 @@ impl ImageGenerationBackend {
 
     pub const fn adapter_backend_support(self) -> AdapterBackendSupport {
         match self {
-            Self::DiffusersTextToImage | Self::DiffusersImageToImage => {
+            Self::DiffusersTextToImage | Self::DiffusersImageToImage | Self::DiffusersInpaint => {
                 AdapterBackendSupport::Diffusers
             }
-            Self::MlxDiffusionTextToImage | Self::MlxDiffusionImageToImage => {
-                AdapterBackendSupport::MlxDiffusion
-            }
+            Self::MlxDiffusionTextToImage
+            | Self::MlxDiffusionImageToImage
+            | Self::MlxDiffusionInpaint => AdapterBackendSupport::MlxDiffusion,
         }
     }
 }
@@ -397,6 +405,13 @@ pub enum ImageGenerationInput {
         media_type: Option<String>,
         strength: ImageTransformStrength,
     },
+    Inpaint {
+        image_path: PathBuf,
+        image_media_type: Option<String>,
+        mask_path: PathBuf,
+        mask_media_type: Option<String>,
+        strength: ImageTransformStrength,
+    },
 }
 
 impl ImageGenerationInput {
@@ -404,6 +419,7 @@ impl ImageGenerationInput {
         match self {
             Self::TextToImage => ImageGenerationWorkflowKind::TextToImage,
             Self::ImageToImage { .. } => ImageGenerationWorkflowKind::ImageToImage,
+            Self::Inpaint { .. } => ImageGenerationWorkflowKind::Inpaint,
         }
     }
 }

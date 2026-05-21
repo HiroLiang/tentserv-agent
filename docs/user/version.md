@@ -44,6 +44,12 @@ What changed:
   against local `image-generation` models. Transform result files are exposed
   through `/v1/images/transforms/job/{job_id}/files` and
   `/v1/images/transforms/job/{job_id}/files/{file_id}`.
+- Added foreground CLI `tentgent image inpaint` and daemon-native
+  `POST /v1/images/inpaint/job` for masked inpainting jobs against local
+  `image-generation` models. Mask semantics are `white = repaint` and
+  `black = keep`. Inpaint result files are exposed through
+  `/v1/images/inpaint/job/{job_id}/files` and
+  `/v1/images/inpaint/job/{job_id}/files/{file_id}`.
 - Added endpoint-family gates so chat routes require `chat` models and
   embedding/rerank routes require matching model capabilities before runtime
   dispatch.
@@ -63,9 +69,10 @@ Known limits:
 - Audio transcription is batch file transcription. Multipart upload/result
   reads are transport-stream-friendly memory boundaries, not realtime model
   streaming. Live dictation and live translation remain future work.
-- Image generation is text-to-image only. Image LoRA, image-to-image,
-  inpainting/masks, reference images, ControlNet, compatible OpenAI image APIs,
-  and direct image model server routes are future slices.
+- Image generation supports text-to-image, one-input-image transform, one-mask
+  inpainting, and one managed image LoRA adapter. Reference images, ControlNet,
+  compatible OpenAI image APIs, direct image model server routes, image LoRA
+  training, and broader compatibility proof storage are future slices.
 - MLX acceleration is implemented for chat, LoRA training, native
   `vision-chat`, native `audio-transcription`, and MFLUX-backed
   `image-generation` on Apple Silicon. Diffusers remains the small

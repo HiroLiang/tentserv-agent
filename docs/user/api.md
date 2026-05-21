@@ -327,6 +327,81 @@ GET /v1/images/transforms/job/{job_id}/files/{file_id}
 Before completion, file routes return HTTP `409` with `result_pending`.
 Terminal failures mirror the text-to-image job behavior.
 
+## Image Inpaint Jobs
+
+Canonical masked inpainting uses a workflow job:
+
+```http
+POST /v1/images/inpaint/job
+Content-Type: multipart/form-data
+```
+
+The request uploads one base image and one mask image as bytes, not
+client-local paths. Mask semantics are `white = repaint` and `black = keep`.
+Tentgent normalizes the mask to binary grayscale before runtime execution.
+
+Multipart fields:
+
+| Field | Required | Type | Notes |
+| --- | --- | --- | --- |
+| `image` | yes | file bytes | PNG, JPEG, or WebP base image. |
+| `mask` | yes | file bytes | PNG, JPEG, or WebP mask image. White pixels repaint; black pixels keep. |
+| `model_ref` | yes | string | Local `image-generation` model ref or unique alias. |
+| `adapter_ref` | no | string | Optional managed image LoRA adapter ref or unique short-ref prefix. |
+| `lora_scale` | no | number | Optional LoRA scale. Defaults to `1.0` when `adapter_ref` is present; must be 0..4. |
+| `prompt` | yes | string | Text prompt describing the repaint. |
+| `negative_prompt` | no | string | Optional negative prompt when the selected backend supports it. |
+| `strength` | no | number | Defaults to `1.0`. Must be 0..1. `0.0` preserves the masked area most; `1.0` repaints most. |
+| `output_format` | no | string | `png` or `jpg`; defaults to `png`. |
+| `output_filename` | no | string | File name only, not a path. Defaults to `image.<format>`. |
+| `width` | no | integer | Defaults to 512. Must be 64..1024 and divisible by 8. |
+| `height` | no | integer | Defaults to 512. Must be 64..1024 and divisible by 8. |
+| `steps` | no | integer | Defaults to 20. Must be 1..100. |
+| `guidance_scale` | no | number | Defaults to 7.5. Must be 0..30. |
+| `seed` | no | integer | Optional deterministic seed. |
+
+Validation happens before model loading where practical:
+
+- `image` and `mask` are both required and must be non-empty.
+- Both file parts must be PNG, JPEG, or WebP by content type or file name.
+- The Python runtime decodes both files with Pillow and requires matching
+  decoded dimensions before resizing both to the requested output size.
+- Diffusers inpainting receives `strength` directly.
+- MFLUX inpainting requires a Flux Fill-compatible MLX model and maps
+  Tentgent strength to the MFLUX image-influence parameter.
+
+Response shape matches other image generation jobs:
+
+```json
+{
+  "job": {
+    "job_id": "job-...",
+    "kind": "image_generation",
+    "status": "queued",
+    "target": {
+      "section": "image",
+      "reference": "<model-ref>",
+      "path": null
+    }
+  }
+}
+```
+
+List inpainted files after completion:
+
+```http
+GET /v1/images/inpaint/job/{job_id}/files
+```
+
+Download one inpainted file:
+
+```http
+GET /v1/images/inpaint/job/{job_id}/files/{file_id}
+```
+
+Before completion, file routes return HTTP `409` with `result_pending`.
+Terminal failures mirror the text-to-image job behavior.
+
 ## Embeddings
 
 ```http

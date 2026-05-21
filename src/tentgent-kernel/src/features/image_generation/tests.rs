@@ -132,11 +132,27 @@ fn image_generation_backend_maps_mlx_diffusion_family_only() {
     );
     assert_eq!(
         ImageGenerationBackend::from_model_format_and_mlx_family_for_workflow(
+            ModelFormat::Diffusers,
+            None,
+            ImageGenerationWorkflowKind::Inpaint
+        ),
+        Some(ImageGenerationBackend::DiffusersInpaint)
+    );
+    assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family_for_workflow(
             ModelFormat::Mlx,
             Some(MlxRuntimeFamily::Diffusion),
             ImageGenerationWorkflowKind::ImageToImage
         ),
         Some(ImageGenerationBackend::MlxDiffusionImageToImage)
+    );
+    assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family_for_workflow(
+            ModelFormat::Mlx,
+            Some(MlxRuntimeFamily::Diffusion),
+            ImageGenerationWorkflowKind::Inpaint
+        ),
+        Some(ImageGenerationBackend::MlxDiffusionInpaint)
     );
     assert_eq!(
         ImageGenerationBackend::from_model_format_and_mlx_family(
@@ -394,6 +410,67 @@ async fn python_image_generation_once_client_passes_image_to_image_arguments() {
     assert!(args.contains("input.png\n"));
     assert!(args.contains("--input-image-media-type\nimage/png\n"));
     assert!(args.contains("--strength\n0.7\n"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn python_image_generation_once_client_passes_inpaint_arguments() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = unique_path("python-image-inpaint");
+    let home = root.join("home");
+    let project = root.join("project");
+    let env = root.join("env");
+    fs::create_dir_all(&home).expect("home");
+    fs::create_dir_all(&project).expect("project");
+    fs::create_dir_all(&env).expect("env");
+    let output_path = home.join("image.png");
+    let input_path = home.join("input.png");
+    let mask_path = home.join("mask.png");
+    fs::write(&input_path, b"input").expect("input");
+    fs::write(&mask_path, b"mask").expect("mask");
+    let entrypoint = root.join("tentgent-image-generate-once");
+    fs::write(
+        &entrypoint,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"png\",\"media_type\":\"image/png\",\"output_path\":\"",
+    )
+    .expect("script prefix");
+    let mut script = fs::read_to_string(&entrypoint).expect("script read");
+    script.push_str(&output_path.display().to_string());
+    script.push_str("\",\"total_bytes\":12,\"width\":512,\"height\":768,\"seed\":42}'\n");
+    fs::write(&entrypoint, script).expect("script");
+    let mut permissions = fs::metadata(&entrypoint).expect("metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&entrypoint, permissions).expect("chmod");
+
+    let executable_resolver = FakeExecutableResolver { entrypoint };
+    let client = PythonImageGenerationOnceRuntimeClient::new(&executable_resolver);
+    let mut request = image_generation_request(&output_path);
+    request.input = ImageGenerationInput::Inpaint {
+        image_path: input_path.clone(),
+        image_media_type: Some("image/png".to_string()),
+        mask_path: mask_path.clone(),
+        mask_media_type: Some("image/png".to_string()),
+        strength: ImageTransformStrength::new(0.9).expect("strength"),
+    };
+
+    client
+        .generate_image(ImageGenerationRuntimeRequest {
+            layout: runtime_layout(&home),
+            runtime: python_runtime(&project, &env),
+            request,
+        })
+        .await
+        .expect("image inpaint");
+
+    let args = fs::read_to_string(home.join("args.txt")).expect("args");
+    assert!(args.contains("--input-image-path\n"));
+    assert!(args.contains("input.png\n"));
+    assert!(args.contains("--input-image-media-type\nimage/png\n"));
+    assert!(args.contains("--mask-image-path\n"));
+    assert!(args.contains("mask.png\n"));
+    assert!(args.contains("--mask-image-media-type\nimage/png\n"));
+    assert!(args.contains("--strength\n0.9\n"));
 }
 
 #[cfg(unix)]

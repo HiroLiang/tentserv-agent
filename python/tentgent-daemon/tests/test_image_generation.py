@@ -149,6 +149,58 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
             self.assertEqual(plan.request.input_image_media_type, "image/png")
             self.assertEqual(plan.request.strength, 0.7)
 
+    def test_build_plan_accepts_inpaint_input_mask_and_default_strength(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "6" * 64
+            write_model_record(home, model_ref, ["image-generation"])
+            input_image = home / "input.png"
+            mask_image = home / "mask.png"
+            write_test_png(input_image, size=(64, 64), color=(255, 255, 255))
+            write_test_png(mask_image, size=(64, 64), color=(255, 255, 255))
+
+            plan = build_image_generation_plan(
+                ImageGenerationRequest(
+                    model_ref=model_ref,
+                    prompt="paint the masked area",
+                    input_image_path=input_image,
+                    input_image_media_type="image/png",
+                    mask_image_path=mask_image,
+                    mask_image_media_type="image/png",
+                    output_path=home / "image.png",
+                    output_format="png",
+                ),
+                home=home,
+            )
+
+            self.assertEqual(plan.request.input_image_path, input_image.resolve())
+            self.assertEqual(plan.request.mask_image_path, mask_image.resolve())
+            self.assertEqual(plan.request.mask_image_media_type, "image/png")
+            self.assertEqual(plan.request.strength, 1.0)
+
+    def test_build_plan_rejects_inpaint_dimension_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "0" * 64
+            write_model_record(home, model_ref, ["image-generation"])
+            input_image = home / "input.png"
+            mask_image = home / "mask.png"
+            write_test_png(input_image, size=(64, 64), color=(255, 255, 255))
+            write_test_png(mask_image, size=(128, 64), color=(255, 255, 255))
+
+            with self.assertRaisesRegex(ValueError, "matching dimensions"):
+                build_image_generation_plan(
+                    ImageGenerationRequest(
+                        model_ref=model_ref,
+                        prompt="paint the masked area",
+                        input_image_path=input_image,
+                        mask_image_path=mask_image,
+                        output_path=home / "image.png",
+                        output_format="png",
+                    ),
+                    home=home,
+                )
+
     def test_build_plan_rejects_invalid_image_transform_strength(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
@@ -345,7 +397,11 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
 
             with patch(
                 "tentgent_daemon.backends.mlx_diffusion._load_mflux_deps",
-                return_value=MfluxDeps(Flux1=FakeFlux1, ModelConfig=FakeModelConfig),
+                return_value=MfluxDeps(
+                    Flux1=FakeFlux1,
+                    Flux1Fill=FakeFlux1Fill,
+                    ModelConfig=FakeModelConfig,
+                ),
             ):
                 backend = MfluxImageGenerationBackend()
                 backend.load(plan.record)
@@ -398,7 +454,11 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
 
             with patch(
                 "tentgent_daemon.backends.mlx_diffusion._load_mflux_deps",
-                return_value=MfluxDeps(Flux1=FakeFlux1, ModelConfig=FakeModelConfig),
+                return_value=MfluxDeps(
+                    Flux1=FakeFlux1,
+                    Flux1Fill=FakeFlux1Fill,
+                    ModelConfig=FakeModelConfig,
+                ),
             ):
                 backend = MfluxImageGenerationBackend()
                 backend.load(plan.record)
@@ -406,6 +466,67 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
 
             self.assertEqual(FakeFlux1.observed_generate["image_path"], input_image.resolve())
             self.assertEqual(FakeFlux1.observed_generate["image_strength"], 0.75)
+
+    def test_mflux_backend_maps_inpaint_to_flux_fill_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "9" * 64
+            input_image = home / "input.png"
+            mask_image = home / "mask.png"
+            write_test_png(input_image, size=(64, 64), color=(255, 255, 255))
+            write_test_png(mask_image, size=(64, 64), color=(255, 255, 255))
+            write_model_record(
+                home,
+                model_ref,
+                ["image-generation"],
+                primary_format="mlx",
+                detected_formats=["mlx"],
+                mlx_runtime_family="mlx-diffusion",
+                source_repo="mlx-community/Flux.1-Fill-dev-MLX-Q4",
+            )
+            with patch("tentgent_daemon.runtime.router.ensure_backend_supported"):
+                plan = build_image_generation_plan(
+                    ImageGenerationRequest(
+                        model_ref=model_ref,
+                        prompt="paint a blue window",
+                        input_image_path=input_image,
+                        mask_image_path=mask_image,
+                        strength=0.8,
+                        output_path=home / "image.png",
+                        output_format="png",
+                        seed=13,
+                    ),
+                    home=home,
+                )
+
+            with patch(
+                "tentgent_daemon.backends.mlx_diffusion._load_mflux_deps",
+                return_value=MfluxDeps(
+                    Flux1=FakeFlux1,
+                    Flux1Fill=FakeFlux1Fill,
+                    ModelConfig=FakeModelConfig,
+                ),
+            ):
+                backend = MfluxImageGenerationBackend()
+                backend.load(plan.record)
+                backend.generate_image(plan.request)
+
+            self.assertEqual(
+                FakeFlux1Fill.observed_generate["image_path"],
+                input_image.resolve(),
+            )
+            self.assertEqual(
+                Path(str(FakeFlux1Fill.observed_generate["masked_image_path"])).name,
+                ".image.png.tentgent-mask.png",
+            )
+            self.assertAlmostEqual(
+                FakeFlux1Fill.observed_generate["image_strength"],
+                0.2,
+            )
+            self.assertTrue(plan.request.output_path.is_file())
+            self.assertFalse(
+                plan.request.output_path.with_name(".image.png.tentgent-mask.png").exists()
+            )
 
     def test_mflux_backend_passes_managed_lora_paths_and_scales(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -442,11 +563,16 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
 
             with patch(
                 "tentgent_daemon.backends.mlx_diffusion._load_mflux_deps",
-                return_value=MfluxDeps(Flux1=FakeFlux1, ModelConfig=FakeModelConfig),
+                return_value=MfluxDeps(
+                    Flux1=FakeFlux1,
+                    Flux1Fill=FakeFlux1Fill,
+                    ModelConfig=FakeModelConfig,
+                ),
             ):
                 backend = MfluxImageGenerationBackend()
                 backend.select_adapter(plan.request.adapter)
                 backend.load(plan.record)
+                backend.generate_image(plan.request)
 
             self.assertEqual(
                 FakeFlux1.observed_lora_paths,
@@ -480,7 +606,11 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
 
             with patch(
                 "tentgent_daemon.backends.mlx_diffusion._load_mflux_deps",
-                return_value=MfluxDeps(Flux1=FakeFlux1, ModelConfig=FakeModelConfig),
+                return_value=MfluxDeps(
+                    Flux1=FakeFlux1,
+                    Flux1Fill=FakeFlux1Fill,
+                    ModelConfig=FakeModelConfig,
+                ),
             ):
                 backend = MfluxImageGenerationBackend()
                 with self.assertRaisesRegex(RuntimeError, "source repo metadata"):
@@ -500,7 +630,11 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
     def test_backend_factory_creates_mflux_backend(self) -> None:
         with patch(
             "tentgent_daemon.backends.mlx_diffusion._load_mflux_deps",
-            return_value=MfluxDeps(Flux1=FakeFlux1, ModelConfig=FakeModelConfig),
+            return_value=MfluxDeps(
+                Flux1=FakeFlux1,
+                Flux1Fill=FakeFlux1Fill,
+                ModelConfig=FakeModelConfig,
+            ),
         ):
             backend = create_image_generation_backend("mlx_diffusion")
 
@@ -546,6 +680,35 @@ class FakeFlux1:
 
     def generate_image(self, **kwargs: object) -> FakeGeneratedImage:
         FakeFlux1.observed_generate = kwargs
+        return FakeGeneratedImage()
+
+
+class FakeFlux1Fill:
+    observed_model_path: Path | None = None
+    observed_quantize: int | None = None
+    observed_lora_paths: list[Path] | None = None
+    observed_lora_scales: list[float] | None = None
+    observed_generate: dict[str, object] = {}
+
+    def __init__(
+        self,
+        *,
+        model_config: object,
+        quantize: int | None,
+        model_path: str,
+        lora_paths: list[str] | None = None,
+        lora_scales: list[float] | None = None,
+    ) -> None:
+        self.model_config = model_config
+        FakeFlux1Fill.observed_model_path = Path(model_path)
+        FakeFlux1Fill.observed_quantize = quantize
+        FakeFlux1Fill.observed_lora_paths = (
+            [Path(path) for path in lora_paths] if lora_paths else None
+        )
+        FakeFlux1Fill.observed_lora_scales = lora_scales
+
+    def generate_image(self, **kwargs: object) -> FakeGeneratedImage:
+        FakeFlux1Fill.observed_generate = kwargs
         return FakeGeneratedImage()
 
 
@@ -611,6 +774,21 @@ imported_at = "2026-05-01T00:00:00Z"
         encoding="utf-8",
     )
     (store_dir / "manifest.json").write_text("{}", encoding="utf-8")
+
+
+def write_test_png(
+    path: Path,
+    *,
+    size: tuple[int, int],
+    color: tuple[int, int, int],
+) -> None:
+    try:
+        from PIL import Image
+    except ModuleNotFoundError as exc:
+        raise unittest.SkipTest("Pillow is required for inpaint image tests") from exc
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", size, color).save(path)
 
 
 def stored_model_record(

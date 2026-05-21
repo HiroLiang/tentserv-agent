@@ -106,19 +106,42 @@ impl<'a> PythonImageGenerationOnceRuntimeClient<'a> {
         if let Some(seed) = request.request.options.seed {
             command.arg("--seed").arg(seed.to_string());
         }
-        if let ImageGenerationInput::ImageToImage {
-            image_path,
-            media_type,
-            strength,
-        } = &request.request.input
-        {
-            command
-                .arg("--input-image-path")
-                .arg(image_path)
-                .arg("--strength")
-                .arg(strength.as_f32().to_string());
-            if let Some(media_type) = media_type {
-                command.arg("--input-image-media-type").arg(media_type);
+        match &request.request.input {
+            ImageGenerationInput::TextToImage => {}
+            ImageGenerationInput::ImageToImage {
+                image_path,
+                media_type,
+                strength,
+            } => {
+                command
+                    .arg("--input-image-path")
+                    .arg(image_path)
+                    .arg("--strength")
+                    .arg(strength.as_f32().to_string());
+                if let Some(media_type) = media_type {
+                    command.arg("--input-image-media-type").arg(media_type);
+                }
+            }
+            ImageGenerationInput::Inpaint {
+                image_path,
+                image_media_type,
+                mask_path,
+                mask_media_type,
+                strength,
+            } => {
+                command
+                    .arg("--input-image-path")
+                    .arg(image_path)
+                    .arg("--mask-image-path")
+                    .arg(mask_path)
+                    .arg("--strength")
+                    .arg(strength.as_f32().to_string());
+                if let Some(media_type) = image_media_type {
+                    command.arg("--input-image-media-type").arg(media_type);
+                }
+                if let Some(media_type) = mask_media_type {
+                    command.arg("--mask-image-media-type").arg(media_type);
+                }
             }
         }
         if let Some(adapter) = &request.request.target.adapter {

@@ -10,6 +10,7 @@ from ..runtime.image_generation import (
     ImageGenerationAdapterSelection,
     ImageGenerationRequest,
     ImageGenerationResult,
+    load_normalized_inpaint_images,
     write_image_generation_output,
 )
 from ..runtime.profile_deps import missing_profile_dependency
@@ -21,6 +22,7 @@ class DiffusersDeps:
     torch: Any
     DiffusionPipeline: Any
     AutoPipelineForImage2Image: Any
+    AutoPipelineForInpainting: Any
     PILImage: Any
 
 
@@ -48,11 +50,7 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
             return self._pipeline
 
         load_kwargs = _diffusers_load_kwargs(self._record, self._deps.torch, self._device)
-        pipeline_class = (
-            self._deps.AutoPipelineForImage2Image
-            if workflow == "image-to-image"
-            else self._deps.DiffusionPipeline
-        )
+        pipeline_class = _pipeline_class_for_workflow(self._deps, workflow)
         pipeline = pipeline_class.from_pretrained(
             str(self._record.variant_source_path),
             local_files_only=True,
@@ -73,7 +71,7 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
             self._apply_selected_adapter()
 
     def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
-        workflow = "image-to-image" if request.input_image_path is not None else "text-to-image"
+        workflow = _workflow_for_request(request)
         pipeline = self._load_pipeline(workflow)
         kwargs: dict[str, object] = {
             "prompt": request.prompt,
@@ -86,13 +84,23 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
             kwargs["negative_prompt"] = request.negative_prompt
         if request.input_image_path is not None:
             if request.strength is None:
-                raise ValueError("image transform strength is required")
-            kwargs["image"] = _load_transform_image(
-                self._deps.PILImage,
-                request.input_image_path,
-                request.width,
-                request.height,
-            )
+                raise ValueError("image denoising strength is required")
+            if request.mask_image_path is not None:
+                image, mask_image = load_normalized_inpaint_images(
+                    request.input_image_path,
+                    request.mask_image_path,
+                    request.width,
+                    request.height,
+                )
+                kwargs["image"] = image
+                kwargs["mask_image"] = mask_image
+            else:
+                kwargs["image"] = _load_transform_image(
+                    self._deps.PILImage,
+                    request.input_image_path,
+                    request.width,
+                    request.height,
+                )
             kwargs["strength"] = request.strength
         if request.seed is not None:
             kwargs["generator"] = self._deps.torch.Generator(device="cpu").manual_seed(
@@ -169,17 +177,28 @@ def _adapter_weight_path(adapter: ImageGenerationAdapterSelection) -> os.PathLik
 def _load_diffusers_deps() -> DiffusersDeps:
     try:
         import torch
-        from diffusers import AutoPipelineForImage2Image, DiffusionPipeline
+        from diffusers import (
+            AutoPipelineForImage2Image,
+            AutoPipelineForInpainting,
+            DiffusionPipeline,
+        )
         from PIL import Image as PILImage
     except ModuleNotFoundError as exc:
         if exc.name in {"torch", "diffusers", "PIL"}:
             raise missing_profile_dependency("local-model", exc.name) from exc
         raise
+    except ImportError as exc:
+        raise RuntimeError(
+            "Diffusers image generation requires a recent local-model runtime "
+            "with text-to-image, image-to-image, and inpainting pipeline support. "
+            "Run `tentgent runtime bootstrap --profile local-model`."
+        ) from exc
 
     return DiffusersDeps(
         torch=torch,
         DiffusionPipeline=DiffusionPipeline,
         AutoPipelineForImage2Image=AutoPipelineForImage2Image,
+        AutoPipelineForInpainting=AutoPipelineForInpainting,
         PILImage=PILImage,
     )
 
@@ -195,6 +214,22 @@ def _load_transform_image(
         if image.size != (width, height):
             image = image.resize((width, height))
         return image
+
+
+def _workflow_for_request(request: ImageGenerationRequest) -> str:
+    if request.mask_image_path is not None:
+        return "inpaint"
+    if request.input_image_path is not None:
+        return "image-to-image"
+    return "text-to-image"
+
+
+def _pipeline_class_for_workflow(deps: DiffusersDeps, workflow: str) -> Any:
+    if workflow == "inpaint":
+        return deps.AutoPipelineForInpainting
+    if workflow == "image-to-image":
+        return deps.AutoPipelineForImage2Image
+    return deps.DiffusionPipeline
 
 
 def _diffusers_load_kwargs(

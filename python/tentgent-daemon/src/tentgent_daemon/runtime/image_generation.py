@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .records import StoredModelRecord, load_model_record
 from .router import BackendKind, resolve_image_generation_backend
+from .profile_deps import missing_profile_dependency
 
 
 PNG_FORMAT = "png"
@@ -16,6 +18,7 @@ DEFAULT_HEIGHT = 512
 DEFAULT_STEPS = 20
 DEFAULT_GUIDANCE_SCALE = 7.5
 DEFAULT_TRANSFORM_STRENGTH = 0.6
+DEFAULT_INPAINT_STRENGTH = 1.0
 MAX_PROMPT_BYTES = 8 * 1024
 
 
@@ -35,6 +38,8 @@ class ImageGenerationRequest:
     output_format: str
     input_image_path: Path | None = None
     input_image_media_type: str | None = None
+    mask_image_path: Path | None = None
+    mask_image_media_type: str | None = None
     strength: float | None = None
     adapter: ImageGenerationAdapterSelection | None = None
     negative_prompt: str | None = None
@@ -102,7 +107,13 @@ def build_image_generation_plan(
     validate_image_generation_steps(request.steps)
     validate_image_generation_guidance_scale(request.guidance_scale)
     input_image_path = normalize_input_image_path(request.input_image_path)
-    strength = normalize_transform_strength(request.strength, input_image_path)
+    mask_image_path = normalize_mask_image_path(request.mask_image_path)
+    strength = normalize_denoise_strength(
+        request.strength,
+        input_image_path,
+        mask_image_path,
+    )
+    validate_image_generation_input_pair(input_image_path, mask_image_path)
     if request.adapter is not None:
         validate_lora_scale(request.adapter.lora_scale)
         if not request.adapter.source_path.exists():
@@ -120,6 +131,10 @@ def build_image_generation_plan(
             input_image_path=input_image_path,
             input_image_media_type=normalize_input_image_media_type(
                 request.input_image_media_type
+            ),
+            mask_image_path=mask_image_path,
+            mask_image_media_type=normalize_input_image_media_type(
+                request.mask_image_media_type
             ),
             strength=strength,
             adapter=request.adapter,
@@ -186,6 +201,19 @@ def normalize_input_image_path(input_image_path: Path | None) -> Path | None:
     return path
 
 
+def normalize_mask_image_path(mask_image_path: Path | None) -> Path | None:
+    if mask_image_path is None:
+        return None
+    path = mask_image_path.expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"image inpaint mask image `{path}` does not exist")
+    if not path.is_file():
+        raise ValueError(f"image inpaint mask image `{path}` is not a file")
+    if path.stat().st_size == 0:
+        raise ValueError(f"image inpaint mask image `{path}` must not be empty")
+    return path
+
+
 def normalize_input_image_media_type(value: str | None) -> str | None:
     if value is None:
         return None
@@ -193,24 +221,48 @@ def normalize_input_image_media_type(value: str | None) -> str | None:
     return normalized or None
 
 
-def normalize_transform_strength(
+def normalize_denoise_strength(
     strength: float | None,
     input_image_path: Path | None,
+    mask_image_path: Path | None,
 ) -> float | None:
     if input_image_path is None:
+        if mask_image_path is not None:
+            raise ValueError("image inpaint mask requires --input-image-path")
         if strength is not None:
-            raise ValueError(
-                "image transform strength requires --input-image-path"
-            )
+            raise ValueError("image denoising strength requires --input-image-path")
         return None
 
     if strength is None:
-        strength = DEFAULT_TRANSFORM_STRENGTH
-    if strength != strength or strength < 0.0 or strength > 1.0:
-        raise ValueError(
-            f"image transform strength must be between 0 and 1; got {strength}"
+        strength = (
+            DEFAULT_INPAINT_STRENGTH
+            if mask_image_path is not None
+            else DEFAULT_TRANSFORM_STRENGTH
         )
+    if strength != strength or strength < 0.0 or strength > 1.0:
+        raise ValueError(f"image denoising strength must be between 0 and 1; got {strength}")
     return strength
+
+
+def validate_image_generation_input_pair(
+    input_image_path: Path | None,
+    mask_image_path: Path | None,
+) -> None:
+    if mask_image_path is None:
+        return
+    if input_image_path is None:
+        raise ValueError("image inpaint mask requires --input-image-path")
+
+    image = _load_pillow_image()
+    with image.open(input_image_path) as input_image:
+        input_size = input_image.size
+    with image.open(mask_image_path) as mask_image:
+        mask_size = mask_image.size
+    if input_size != mask_size:
+        raise ValueError(
+            "image inpaint input image and mask image must have matching dimensions; "
+            f"got image {input_size[0]}x{input_size[1]} and mask {mask_size[0]}x{mask_size[1]}"
+        )
 
 
 def validate_lora_scale(lora_scale: float) -> None:
@@ -238,6 +290,39 @@ def write_image_generation_output(
         height=request.height,
         seed=request.seed,
     )
+
+
+def load_normalized_inpaint_images(
+    image_path: Path,
+    mask_path: Path,
+    width: int,
+    height: int,
+) -> tuple[Any, Any]:
+    image_module = _load_pillow_image()
+    with image_module.open(image_path) as image:
+        base_image = image.convert("RGB")
+        if base_image.size != (width, height):
+            base_image = base_image.resize((width, height))
+    with image_module.open(mask_path) as mask:
+        mask_image = normalize_inpaint_mask(mask, width, height)
+    return base_image, mask_image
+
+
+def normalize_inpaint_mask(mask: Any, width: int, height: int) -> Any:
+    mask_image = mask.convert("L")
+    if mask_image.size != (width, height):
+        mask_image = mask_image.resize((width, height))
+    return mask_image.point(lambda value: 255 if value >= 128 else 0)
+
+
+def _load_pillow_image() -> Any:
+    try:
+        from PIL import Image
+    except ModuleNotFoundError as exc:
+        if exc.name == "PIL":
+            raise missing_profile_dependency("local-model", exc.name) from exc
+        raise
+    return Image
 
 
 def _validate_side(axis: str, value: int) -> None:

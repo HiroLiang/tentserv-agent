@@ -1299,6 +1299,105 @@ async fn image_transform_job_validates_multipart_fields() {
 }
 
 #[tokio::test]
+async fn image_inpaint_job_accepts_image_and_mask_upload_request() {
+    let requested_home = unique_home("image-inpaint-upload");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let boundary = "tentgent-image-inpaint";
+    let model_ref = "c".repeat(64);
+    let body = multipart_body(
+        boundary,
+        &[
+            MultipartPart::file("image", "input.png", "image/png", b"image-bytes"),
+            MultipartPart::file("mask", "input.png", "image/png", b"mask-bytes"),
+            MultipartPart::text("model_ref", &model_ref),
+            MultipartPart::text("prompt", "paint a blue window"),
+            MultipartPart::text("strength", "1.0"),
+            MultipartPart::text("output_filename", "inpaint.png"),
+        ],
+    );
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/images/inpaint/job")
+                .header(
+                    CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = json_body(response).await;
+    let job_id = body["job"]["job_id"].as_str().expect("job id");
+    assert_eq!(body["job"]["kind"], "image_generation");
+    assert_eq!(body["job"]["target"]["section"], "image");
+    assert_eq!(body["job"]["target"]["reference"], model_ref);
+    let input_dir = state
+        .app()
+        .layout()
+        .runtime_dir
+        .join("jobs")
+        .join(job_id)
+        .join("workspace")
+        .join("input");
+    assert_eq!(
+        fs::read(input_dir.join("input.png")).expect("input image"),
+        b"image-bytes"
+    );
+    assert_eq!(
+        fs::read(input_dir.join("mask-input.png")).expect("mask image"),
+        b"mask-bytes"
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn image_inpaint_job_requires_mask_upload() {
+    let requested_home = unique_home("image-inpaint-validation");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let boundary = "tentgent-image-inpaint-validation";
+    let model_ref = "d".repeat(64);
+    let body = multipart_body(
+        boundary,
+        &[
+            MultipartPart::file("image", "input.png", "image/png", b"image-bytes"),
+            MultipartPart::text("model_ref", &model_ref),
+            MultipartPart::text("prompt", "paint a blue window"),
+        ],
+    );
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/images/inpaint/job")
+                .header(
+                    CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(body["message"].as_str().expect("message").contains("mask"));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn jobs_returns_empty_registry_for_isolated_home() {
     let requested_home = unique_home("jobs-empty");
     let state = rest_state_for_home(requested_home);
