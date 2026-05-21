@@ -120,6 +120,11 @@ one pass without a staged breakdown.
   contracts, test-only model fixture gating, encoder and temporary-disk
   boundaries, and the current decision to avoid public `video-generation`
   capability/API/CLI exposure until a practical small local fixture is approved.
+- [m6s-media-serving-and-runtime-stream-proxy-decision.md](./m6s-media-serving-and-runtime-stream-proxy-decision.md)
+  Deferred M6S decision record: keep M6 direct server support limited to
+  `chat`, `embedding`, and `rerank`; keep media artifact workflows as daemon
+  jobs; move media-serving wrappers and runtime stream proxy design to the
+  post-M7 architecture track.
 
 ## Recommended Order
 
@@ -136,11 +141,12 @@ one pass without a staged breakdown.
 - [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)
   Future marker only, not initialized for execution: model compatibility
   probe/cache, model and LoRA adapter compatibility management, SQLite-backed
-  metadata/proof store, dynamic runtime transduction, optional shared
-  compatibility registry, model resource coordination, and conversion
-  boundaries after the current M6-to-M7 release track. Rename this marker when
-  it is initialized after M7 so the plan name covers model/adapter
-  compatibility management, not only runtime compatibility or storage.
+  metadata/proof store, dynamic runtime transduction, media-serving wrappers,
+  runtime stream proxy decisions, optional shared compatibility registry, model
+  resource coordination, and conversion boundaries after the current M6-to-M7
+  release track. Rename this marker when it is initialized after M7 so the plan
+  name covers model/adapter compatibility and serving management, not only
+  runtime compatibility or storage.
 
 ## Deferred Plans
 

@@ -10,9 +10,10 @@ Post-M7 initialization note: when this marker becomes executable work, rename th
 plan to reflect the broader compatibility-management architecture, for example
 `post-m7-model-adapter-compatibility-management.md` or a similarly explicit
 name. The future plan should cover model and LoRA adapter compatibility
-management, runtime routing, and the metadata/proof store that makes those
-decisions durable. SQLite is one implementation tool for the durable state
-layer; it is not the whole architecture.
+management, runtime routing, media-serving wrappers, runtime stream proxy
+decisions, and the metadata/proof store that makes those decisions durable.
+SQLite is one implementation tool for the durable state layer; it is not the
+whole architecture.
 
 ## Purpose
 
@@ -56,6 +57,14 @@ adapters on a given machine.
   adapters, jobs, and backend versions.
 - Operators need optional runtime capacity controls, but read-only inference
   should remain concurrent by default.
+- Some long-lived server capabilities may need explicit wrapping rather than
+  direct Python route exposure. For example, future `vision-chat` and
+  `audio-transcription` serving must decide whether media upload, temp-file
+  cleanup, and route-family dispatch belong in the Python server process, a
+  daemon sidecar wrapper, or a separate serving runtime.
+- Runtime stream proxying needs typed route contracts. A generic byte tunnel
+  would leak backend-specific protocols and blur Tentgent's stable API
+  boundary.
 - A future shared compatibility registry may help users avoid repeating known
   broken model/runtime combinations, but local runtime versions and local probes
   must remain authoritative.
@@ -181,6 +190,26 @@ adapters on a given machine.
   including per-backend and per-model concurrency caps when configured.
 - Make cancellation, daemon shutdown, and garbage collection cooperate with
   active leases and retained job artifacts.
+
+### Media Serving Wrappers And Runtime Stream Proxy
+
+- Decide which media capabilities deserve long-lived `tentgent server` routes
+  and which must remain durable daemon job workflows.
+- Keep existing direct server capabilities `chat`, `embedding`, and `rerank`
+  stable while evaluating media route expansion separately.
+- Treat `vision-chat` and `audio-transcription` as candidate direct serving
+  wrappers only after M7.
+- Keep `audio-speech`, image generation/editing, video understanding, and video
+  generation as durable job workflows unless a later plan proves a bounded
+  direct route is safer and clearer.
+- Decide whether media serving should live directly in the Python server, be
+  mediated by the Rust daemon as a sidecar wrapper, or move to a separate
+  serving runtime.
+- Define request-scoped upload/temp-file cleanup, direct server upload limits,
+  wrong-route errors, and health/readiness fields before adding media server
+  routes.
+- Avoid generic opaque runtime stream proxying. Prefer typed streaming contracts
+  such as chat SSE or a future explicit speech streaming route.
 
 ### Conversion And Metadata Boundaries
 

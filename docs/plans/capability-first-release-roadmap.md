@@ -577,21 +577,19 @@ Status: implemented as an internal contract slice. Details in
 
 #### M6S: Media Serving And Runtime Stream Proxy Decision
 
-Status: planned decision and implementation split.
+Status: deferred to post-M7. Details in
+[m6s-media-serving-and-runtime-stream-proxy-decision.md](./m6s-media-serving-and-runtime-stream-proxy-decision.md).
 
-- Decide which media capabilities get long-lived `tentgent server` routes and
-  which remain durable job workflows.
-- Server route families are selected by capability. Chat servers expose chat
-  routes, embedding servers expose `/v1/embeddings`, rerank servers expose
-  `/v1/rerank`, and audio transcription servers may expose
-  `/v1/audio/transcriptions`.
-- Unsupported route families should return `404` or endpoint-specific
-  unsupported errors.
-- Direct serving is for warm models and bounded requests. Long-running
-  generation, very large uploads, resumable work, and durable artifacts should
-  remain job workflows.
-- Opaque backend proxying is advanced later work and must not be the default
-  user API.
+- Do not add new media direct server routes before M7.
+- Keep existing server route families for `chat`, `embedding`, and `rerank`.
+- Keep `vision-chat` and `audio-transcription` direct server wrapping as
+  post-M7 candidates, not M6 implementation work.
+- Keep `audio-speech`, `image-generation`, `video-understanding`, and future
+  `video-generation` as durable job workflows.
+- Move media-serving wrappers, route-family expansion, and runtime stream proxy
+  decisions into the post-M7 runtime compatibility architecture track.
+- Opaque backend proxying is advanced later work and must not be added before
+  M7.
 
 Review target:
 
@@ -622,9 +620,11 @@ Review target:
   image-to-image, inpainting, ControlNet-style image control, MLX
   runtime-family metadata, MLX vision chat, MLX audio transcription, and MFLUX
   image generation have completed their first implementation slices.
-- M6 remaining before M7: video decisions and media serving/runtime stream
-  proxy decisions.
-- M7: Developer ID signing and notarization pipeline for prerelease artifacts.
+- M6 remaining before M7: no product workflow implementation blockers are
+  currently planned. Video generation remains internal/test-only, and media
+  serving/runtime stream proxy work is deferred to post-M7 architecture.
+- M7: Developer ID signing and notarization pipeline for prerelease macOS
+  artifacts.
 - Post-M7 architecture work:
   [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)
   tracks full model compatibility, LoRA adapter compatibility management,
