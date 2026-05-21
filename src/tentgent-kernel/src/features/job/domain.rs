@@ -50,6 +50,7 @@ impl JobKind {
     pub const AUDIO_SPEECH: &'static str = "audio_speech";
     pub const AUDIO_TRANSCRIPTION: &'static str = "audio_transcription";
     pub const IMAGE_GENERATION: &'static str = "image_generation";
+    pub const VIDEO_UNDERSTANDING: &'static str = "video_understanding";
     pub const MODEL_PULL: &'static str = "model_pull";
     pub const MODEL_IMPORT: &'static str = "model_import";
     pub const ADAPTER_PULL: &'static str = "adapter_pull";
@@ -74,6 +75,10 @@ impl JobKind {
 
     pub fn image_generation() -> Self {
         Self::new(Self::IMAGE_GENERATION)
+    }
+
+    pub fn video_understanding() -> Self {
+        Self::new(Self::VIDEO_UNDERSTANDING)
     }
 
     pub fn model_pull() -> Self {

@@ -110,6 +110,11 @@ one pass without a staged breakdown.
   foreground `tentgent speak`, daemon JSON `POST /v1/audio/speech/job`,
   workflow-owned WAV result download, Transformers TTS baseline, and MLX audio
   TTS planned-backend boundary without realtime speech streaming.
+- [m6q-video-understanding-jobs.md](./m6q-video-understanding-jobs.md)
+  Planned M6Q execution slice for native `video-understanding` jobs:
+  foreground `tentgent video understand`, daemon multipart
+  `POST /v1/video/understanding/job`, workflow-owned text-like result
+  download, bounded decode/sampling, and a Transformers video VLM fixture gate.
 
 ## Recommended Order
 

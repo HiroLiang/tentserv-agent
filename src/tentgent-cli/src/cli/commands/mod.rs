@@ -14,6 +14,7 @@ mod speak;
 mod store;
 mod train;
 mod transcribe;
+mod video;
 mod vision;
 
 pub use adapter::AdapterCommands;
@@ -39,6 +40,7 @@ pub use train::{
     TrainLoraRunWorkerCommand,
 };
 pub use transcribe::TranscribeCommand;
+pub use video::{VideoCommands, VideoUnderstandCommand};
 pub use vision::{VisionChatCommand, VisionCommands};
 
 use clap::{Args, Subcommand};
@@ -124,6 +126,16 @@ pub enum Commands {
     Vision {
         #[command(subcommand)]
         action: VisionCommands,
+    },
+    /// Run local video understanding workflows.
+    #[command(
+        name = "video",
+        about = "Run local video understanding workflows.",
+        long_about = "Run local video understanding workflows. The first supported workflow is `tentgent video understand`, which samples bounded frames from one local video, resolves a stored video-understanding model, and asks one prompt about the video."
+    )]
+    Video {
+        #[command(subcommand)]
+        action: VideoCommands,
     },
     /// Run local image generation workflows.
     #[command(

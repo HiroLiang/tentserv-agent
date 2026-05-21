@@ -43,6 +43,13 @@ use tentgent_kernel::{
             ports::{RerankModelResolveRequest, RerankModelResolveResult, RerankModelResolver},
         },
         runtime::ports::PythonRuntimeResolver,
+        video_understanding::{
+            infra::StdVideoUnderstandingModelResolver,
+            ports::{
+                VideoUnderstandingModelResolveRequest, VideoUnderstandingModelResolveResult,
+                VideoUnderstandingModelResolver,
+            },
+        },
         vision::{
             infra::StdVisionChatModelResolver,
             ports::{
@@ -206,6 +213,15 @@ impl VisionChatModelResolver for ModelKernelComponent {
         request: VisionChatModelResolveRequest,
     ) -> KernelResult<VisionChatModelResolveResult> {
         StdVisionChatModelResolver::new(self).resolve_vision_chat_model(request)
+    }
+}
+
+impl VideoUnderstandingModelResolver for ModelKernelComponent {
+    fn resolve_video_understanding_model(
+        &self,
+        request: VideoUnderstandingModelResolveRequest,
+    ) -> KernelResult<VideoUnderstandingModelResolveResult> {
+        StdVideoUnderstandingModelResolver::new(self).resolve_video_understanding_model(request)
     }
 }
 

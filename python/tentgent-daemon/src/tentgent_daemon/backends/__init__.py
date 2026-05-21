@@ -8,6 +8,7 @@ from .base import (
     EmbeddingBackend,
     ImageGenerationBackend,
     RerankBackend,
+    VideoUnderstandingBackend,
     VisionChatBackend,
 )
 
@@ -88,6 +89,19 @@ def create_vision_chat_backend(kind: BackendKind) -> VisionChatBackend:
     raise ValueError(f"unsupported vision chat backend kind `{kind}`")
 
 
+def create_video_understanding_backend(kind: BackendKind) -> VideoUnderstandingBackend:
+    if kind == BackendKind.MLX_VLM:
+        from .mlx_vlm import MlxVlmVideoUnderstandingBackend
+
+        return MlxVlmVideoUnderstandingBackend()
+    if kind == BackendKind.TRANSFORMERS_PEFT:
+        from .transformers_peft import TransformersPeftVideoUnderstandingBackend
+
+        return TransformersPeftVideoUnderstandingBackend()
+
+    raise ValueError(f"unsupported video understanding backend kind `{kind}`")
+
+
 def create_image_generation_backend(kind: BackendKind) -> ImageGenerationBackend:
     if kind == BackendKind.MLX_DIFFUSION:
         from .mlx_diffusion import MfluxImageGenerationBackend
@@ -108,6 +122,7 @@ __all__ = [
     "RerankBackend",
     "AudioTranscriptionBackend",
     "AudioSpeechBackend",
+    "VideoUnderstandingBackend",
     "VisionChatBackend",
     "create_backend",
     "create_audio_transcription_backend",
@@ -115,5 +130,6 @@ __all__ = [
     "create_embedding_backend",
     "create_image_generation_backend",
     "create_rerank_backend",
+    "create_video_understanding_backend",
     "create_vision_chat_backend",
 ]

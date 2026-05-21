@@ -69,6 +69,14 @@ What changed:
   `POST /v1/audio/speech/job` for text-to-speech jobs against local
   `audio-speech` Transformers models. M6P writes WAV artifacts only; result
   bytes are exposed through `GET /v1/audio/speech/job/{job_id}/result`.
+- Added foreground CLI `tentgent video understand` and daemon-native
+  `POST /v1/video/understanding/job` for batch video-to-text jobs against local
+  `video-understanding` models. M6Q samples bounded frames from an uploaded or
+  local video, runs the selected model, and exposes result bytes through
+  `GET /v1/video/understanding/job/{job_id}/result`.
+- Added `TENTGENT_VIDEO_UPLOAD_MAX_BYTES` as a separate daemon upload limit for
+  video file parts, defaulting to 512 MiB. Audio and image multipart uploads
+  continue to use `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting to 20 MiB.
 
 Known limits:
 
@@ -83,6 +91,11 @@ Known limits:
   speech-to-speech, voice cloning, SSML, and MP3 output remain future work.
   MLX text-to-speech is a planned backend until a stable local `mlx-audio` TTS
   path is verified.
+- Video understanding is batch frame-sampled analysis, not realtime video
+  streaming. The first runnable baseline uses the local-model Python runtime's
+  OpenCV-backed decoder; codec/container support depends on the packaged
+  OpenCV/FFmpeg build and OS platform. MLX video understanding remains planned
+  until a stable MLX video path is verified.
 - Image generation supports text-to-image, one-input-image transform, one-mask
   inpainting, one managed image LoRA adapter, and one typed ControlNet-style
   control image workflow. Generic reference-image composition, multi-control

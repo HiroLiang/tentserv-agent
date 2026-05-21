@@ -9,11 +9,13 @@ use tracing::Level;
 
 use crate::handlers::rest::{
     adapter, audio, auth, chat, daemon, dataset, doctor, embedding, health, images, jobs, model,
-    rerank, server, session, status, train, vision,
+    rerank, server, session, status, train, video, vision,
 };
 
 use super::{
-    limits::media_upload_body_limit_bytes, security::authorize_daemon_token, state::RestState,
+    limits::{media_upload_body_limit_bytes, video_upload_body_limit_bytes},
+    security::authorize_daemon_token,
+    state::RestState,
 };
 
 pub fn build_router(state: RestState) -> Router {
@@ -42,6 +44,7 @@ fn v1_routes() -> Router<RestState> {
         .merge(embedding_routes())
         .merge(rerank_routes())
         .merge(vision_routes())
+        .merge(video_routes())
         .merge(image_routes())
         .merge(audio_routes())
         .merge(job_routes())
@@ -82,6 +85,19 @@ fn vision_routes() -> Router<RestState> {
     Router::new()
         .route("/v1/vision/chat", post(vision::chat))
         .layer(DefaultBodyLimit::max(media_upload_body_limit_bytes()))
+}
+
+fn video_routes() -> Router<RestState> {
+    Router::new()
+        .route(
+            "/v1/video/understanding/job",
+            post(video::create_understanding_job_from_upload),
+        )
+        .route(
+            "/v1/video/understanding/job/{job_id}/result",
+            get(video::understanding_job_result),
+        )
+        .layer(DefaultBodyLimit::max(video_upload_body_limit_bytes()))
 }
 
 fn image_routes() -> Router<RestState> {

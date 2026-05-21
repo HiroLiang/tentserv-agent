@@ -139,6 +139,7 @@ pub enum RuntimeEntrypoint {
     RerankOnce,
     Server,
     TrainLoraRun,
+    VideoUnderstandingOnce,
     VisionChatOnce,
 }
 
@@ -156,6 +157,7 @@ impl RuntimeEntrypoint {
             Self::RerankOnce => "tentgent-rerank-once",
             Self::Server => "tentgent-server",
             Self::TrainLoraRun => "tentgent-train-lora-run",
+            Self::VideoUnderstandingOnce => "tentgent-video-understanding",
             Self::VisionChatOnce => "tentgent-vision-chat-once",
         }
     }

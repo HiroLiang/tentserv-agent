@@ -11,6 +11,7 @@ from tentgent_daemon.runtime.router import (
     resolve_audio_transcription_backend,
     resolve_backend,
     resolve_image_generation_backend,
+    resolve_video_understanding_backend,
     resolve_vision_chat_backend,
 )
 
@@ -54,6 +55,20 @@ class RuntimeRouterTests(unittest.TestCase):
                         primary_format="mlx",
                         mlx_runtime_family="mlx-vlm",
                         model_capabilities=("vision-chat",),
+                    )
+                ),
+                BackendKind.MLX_VLM,
+            )
+            ensure.assert_called_once_with("mlx_vlm")
+
+    def test_mlx_vlm_video_understanding_backend_resolves(self) -> None:
+        with patch("tentgent_daemon.runtime.router.ensure_backend_supported") as ensure:
+            self.assertEqual(
+                resolve_video_understanding_backend(
+                    stored_model_record(
+                        primary_format="mlx",
+                        mlx_runtime_family="mlx-vlm",
+                        model_capabilities=("video-understanding",),
                     )
                 ),
                 BackendKind.MLX_VLM,
@@ -115,6 +130,15 @@ class RuntimeRouterTests(unittest.TestCase):
                 )
             ),
             BackendKind.DIFFUSERS,
+        )
+        self.assertEqual(
+            resolve_video_understanding_backend(
+                stored_model_record(
+                    primary_format="safetensors",
+                    model_capabilities=("video-understanding",),
+                )
+            ),
+            BackendKind.TRANSFORMERS_PEFT,
         )
 
 

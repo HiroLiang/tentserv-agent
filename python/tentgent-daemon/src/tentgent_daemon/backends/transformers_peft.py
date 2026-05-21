@@ -14,6 +14,7 @@ from .base import (
     EmbeddingBackend,
     EmbeddingResult,
     RerankBackend,
+    VideoUnderstandingBackend,
     VisionChatBackend,
 )
 from ..runtime.adapters import StoredAdapterRecord
@@ -32,6 +33,11 @@ from ..runtime.embedding import EmbeddingRequest
 from ..runtime.profile_deps import missing_profile_dependency
 from ..runtime.rerank import RerankRequest, RerankResult, ranked_scores
 from ..runtime.records import StoredModelRecord
+from ..runtime.video_understanding import (
+    VideoUnderstandingRequest,
+    VideoUnderstandingResult,
+    video_understanding_media_type,
+)
 from ..runtime.vision import (
     VisionChatRequest,
     VisionChatResult,
@@ -637,6 +643,87 @@ class TransformersPeftVisionChatBackend(VisionChatBackend):
         return self._processor, self._model
 
 
+class TransformersPeftVideoUnderstandingBackend(VideoUnderstandingBackend):
+    def __init__(self) -> None:
+        self._deps = _load_transformers_peft_deps()
+        self._record: StoredModelRecord | None = None
+        self._processor: Any | None = None
+        self._model: Any | None = None
+        self._device = _detect_device(self._deps.torch)
+
+    def load(self, record: StoredModelRecord) -> None:
+        load_path = str(record.variant_source_path)
+        processor = self._deps.AutoProcessor.from_pretrained(
+            load_path,
+            trust_remote_code=True,
+        )
+        model_cls = _vision_model_class(self._deps)
+        model = model_cls.from_pretrained(
+            load_path,
+            trust_remote_code=True,
+        )
+        model.to(self._device)
+        model.eval()
+
+        self._record = record
+        self._processor = processor
+        self._model = model
+
+    def understand_video(
+        self,
+        request: VideoUnderstandingRequest,
+    ) -> VideoUnderstandingResult:
+        processor, model = self._require_loaded()
+        frames = _sample_video_frames(self._deps, request)
+        prompt = _render_video_prompt(processor, request, len(frames))
+        encoded = processor(
+            text=prompt,
+            images=frames,
+            return_tensors="pt",
+        )
+        encoded = {
+            key: value.to(self._device) if hasattr(value, "to") else value
+            for key, value in encoded.items()
+        }
+        generate_kwargs = _video_generate_kwargs(processor, encoded, request)
+
+        with self._deps.torch.inference_mode():
+            output_ids = model.generate(**generate_kwargs)
+
+        prompt_length = 0
+        input_ids = encoded.get("input_ids")
+        if input_ids is not None:
+            prompt_length = input_ids.shape[-1]
+        generated_ids = output_ids[:, prompt_length:] if prompt_length else output_ids
+        text = _decode_vision_output(processor, generated_ids).strip()
+        return VideoUnderstandingResult(
+            output_format=request.output_format,
+            media_type=video_understanding_media_type(request.output_format),
+            text=text,
+            finish_reason="stop",
+            sampled_frames=len(frames),
+        )
+
+    def release(self) -> None:
+        self._record = None
+        self._processor = None
+        self._model = None
+
+        torch = self._deps.torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+
+    def _require_loaded(self) -> tuple[Any, Any]:
+        if self._record is None or self._processor is None or self._model is None:
+            raise RuntimeError(
+                "Transformers video understanding backend is not loaded yet; "
+                "call load() before understand_video()."
+            )
+        return self._processor, self._model
+
+
 def _render_prompt(
     tokenizer: Any,
     messages: tuple[Message, ...],
@@ -712,6 +799,41 @@ def _render_vision_prompt(processor: Any, request: VisionChatRequest) -> str:
     return request.prompt.strip()
 
 
+def _render_video_prompt(
+    processor: Any,
+    request: VideoUnderstandingRequest,
+    frame_count: int,
+) -> str:
+    content: list[dict[str, object]] = [
+        {"type": "image"} for _ in range(max(frame_count, 1))
+    ]
+    content.append({"type": "text", "text": request.prompt})
+    messages: list[dict[str, object]] = []
+    if request.system_prompt:
+        messages.append(
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": request.system_prompt}],
+            }
+        )
+    messages.append({"role": "user", "content": content})
+
+    apply_chat_template = getattr(processor, "apply_chat_template", None)
+    if callable(apply_chat_template):
+        return str(
+            apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        )
+
+    prefix = ""
+    if request.system_prompt:
+        prefix = f"{request.system_prompt.strip()}\n\n"
+    return f"{prefix}{request.prompt.strip()}"
+
+
 def _vision_generate_kwargs(
     processor: Any,
     encoded: dict[str, Any],
@@ -735,6 +857,137 @@ def _vision_generate_kwargs(
     if do_sample:
         kwargs["temperature"] = temperature
     return kwargs
+
+
+def _video_generate_kwargs(
+    processor: Any,
+    encoded: dict[str, Any],
+    request: VideoUnderstandingRequest,
+) -> dict[str, Any]:
+    max_new_tokens = request.max_tokens or 128
+    temperature = 0.0 if request.temperature is None else request.temperature
+    do_sample = temperature > 0
+    kwargs: dict[str, Any] = {
+        **encoded,
+        "max_new_tokens": max_new_tokens,
+        "do_sample": do_sample,
+    }
+    tokenizer = getattr(processor, "tokenizer", None)
+    pad_token_id = getattr(tokenizer, "pad_token_id", None)
+    eos_token_id = getattr(tokenizer, "eos_token_id", None)
+    if pad_token_id is not None:
+        kwargs["pad_token_id"] = pad_token_id
+    if eos_token_id is not None:
+        kwargs["eos_token_id"] = eos_token_id
+    if do_sample:
+        kwargs["temperature"] = temperature
+    return kwargs
+
+
+def _sample_video_frames(
+    deps: TransformersPeftDeps,
+    request: VideoUnderstandingRequest,
+) -> list[Any]:
+    try:
+        import cv2
+    except ModuleNotFoundError as exc:
+        raise missing_profile_dependency("local-model", "opencv-python") from exc
+
+    capture = cv2.VideoCapture(str(request.video_path))
+    if not capture.isOpened():
+        raise RuntimeError(
+            f"video decoder could not open `{request.video_path}`; verify the "
+            "container/codec is supported by the installed OpenCV/FFmpeg build"
+        )
+
+    try:
+        fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+        frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        sample_fps = request.sampling.sample_fps or 1.0
+        max_frames = request.sampling.max_frames or 32
+        max_edge = request.sampling.max_frame_edge or 768
+        start_seconds = request.sampling.clip_start_seconds or 0.0
+        duration_seconds = request.sampling.clip_duration_seconds
+
+        if fps > 0:
+            start_frame = max(0, int(round(start_seconds * fps)))
+            step = max(1, int(round(fps / sample_fps)))
+            if duration_seconds is not None:
+                end_frame = start_frame + max(1, int(round(duration_seconds * fps)))
+            elif frame_count > 0:
+                end_frame = frame_count
+            else:
+                end_frame = start_frame + step * max_frames
+            if frame_count > 0:
+                end_frame = min(end_frame, frame_count)
+            positions = range(start_frame, max(start_frame + 1, end_frame), step)
+            frames = _read_positioned_frames(deps, capture, cv2, positions, max_frames, max_edge)
+        else:
+            frames = _read_sequential_frames(deps, capture, cv2, max_frames, max_edge)
+    finally:
+        capture.release()
+
+    if not frames:
+        raise RuntimeError(
+            f"video decoder produced no frames from `{request.video_path}`; "
+            "verify the file is not empty and the codec is supported"
+        )
+    return frames
+
+
+def _read_positioned_frames(
+    deps: TransformersPeftDeps,
+    capture: Any,
+    cv2: Any,
+    positions: range,
+    max_frames: int,
+    max_edge: int,
+) -> list[Any]:
+    frames: list[Any] = []
+    for position in positions:
+        if len(frames) >= max_frames:
+            break
+        capture.set(cv2.CAP_PROP_POS_FRAMES, position)
+        ok, frame = capture.read()
+        if not ok:
+            continue
+        frames.append(_opencv_frame_to_pil(deps, cv2, frame, max_edge))
+    return frames
+
+
+def _read_sequential_frames(
+    deps: TransformersPeftDeps,
+    capture: Any,
+    cv2: Any,
+    max_frames: int,
+    max_edge: int,
+) -> list[Any]:
+    frames: list[Any] = []
+    while len(frames) < max_frames:
+        ok, frame = capture.read()
+        if not ok:
+            break
+        frames.append(_opencv_frame_to_pil(deps, cv2, frame, max_edge))
+    return frames
+
+
+def _opencv_frame_to_pil(
+    deps: TransformersPeftDeps,
+    cv2: Any,
+    frame: Any,
+    max_edge: int,
+) -> Any:
+    height, width = frame.shape[:2]
+    largest = max(width, height)
+    if largest > max_edge:
+        scale = max_edge / float(largest)
+        frame = cv2.resize(
+            frame,
+            (max(1, int(width * scale)), max(1, int(height * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    return deps.Image.fromarray(rgb)
 
 
 def _decode_vision_output(processor: Any, generated_ids: Any) -> str:

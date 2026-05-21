@@ -10,6 +10,9 @@ This document defines the stable HTTP daemon boundary for the Rust
 - Expose native model chat at `POST /v1/chat`, including Server-Sent Events.
 - Expose native local embeddings at `POST /v1/embeddings`.
 - Expose native local rerank at `POST /v1/rerank`.
+- Expose native media workflows through workflow-specific routes, including
+  audio transcription, audio speech, vision chat, image generation/editing, and
+  video understanding.
 - Expose limited OpenAI, Claude, and Gemini compatible chat routes that translate
   DTO and SSE shapes only.
 - Expose daemon health, status, read-only store discovery, controlled server

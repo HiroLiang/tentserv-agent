@@ -3,9 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .base import VisionChatBackend
+from .base import VideoUnderstandingBackend, VisionChatBackend
 from ..runtime.profile_deps import missing_profile_dependency
 from ..runtime.records import StoredModelRecord
+from ..runtime.video_understanding import (
+    VideoUnderstandingRequest,
+    VideoUnderstandingResult,
+)
 from ..runtime.vision import (
     VisionChatRequest,
     VisionChatResult,
@@ -80,6 +84,25 @@ class MlxVlmVisionChatBackend(VisionChatBackend):
                 "call load() before generate_vision_chat()."
             )
         return self._model, self._processor, self._config
+
+
+class MlxVlmVideoUnderstandingBackend(VideoUnderstandingBackend):
+    def __init__(self) -> None:
+        _load_mlx_vlm_deps()
+        self._record: StoredModelRecord | None = None
+
+    def load(self, record: StoredModelRecord) -> None:
+        self._record = record
+
+    def understand_video(
+        self,
+        request: VideoUnderstandingRequest,
+    ) -> VideoUnderstandingResult:
+        raise RuntimeError(
+            "MLX VLM video understanding is planned but not implemented in this "
+            "slice; use a safetensors Transformers video-understanding model or "
+            "track the follow-up MLX video backend work."
+        )
 
 
 def _load_mlx_vlm_deps() -> MlxVlmDeps:

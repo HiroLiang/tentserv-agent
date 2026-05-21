@@ -55,6 +55,7 @@ use tentgent_kernel::{
             usecases::StdSessionUseCase,
         },
         train::usecases::{StdLoraTrainPlanUseCase, StdLoraTrainRunUseCase},
+        video_understanding::usecases::StdVideoUnderstandingUseCase,
         vision::usecases::StdVisionChatUseCase,
     },
     foundation::{
@@ -193,6 +194,10 @@ impl KernelComponents {
 
     pub fn vision_chat_usecase(&self) -> StdVisionChatUseCase<'_> {
         StdVisionChatUseCase::new(&self.runtime, &self.models, &self.runtime)
+    }
+
+    pub fn video_understanding_usecase(&self) -> StdVideoUnderstandingUseCase<'_> {
+        StdVideoUnderstandingUseCase::new(&self.runtime, &self.models, &self.runtime)
     }
 
     pub fn image_generation_usecase(&self) -> StdImageGenerationUseCase<'_> {

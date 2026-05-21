@@ -42,18 +42,21 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
 
 - CLI media commands such as `tentgent transcribe`, `tentgent speak`,
   `tentgent vision chat`, `tentgent image generate`, `tentgent image
-  transform`, `tentgent image inpaint`, and `tentgent image control` read local
-  files, text, or prompts from the caller's machine and run in the foreground.
+  transform`, `tentgent image inpaint`, `tentgent image control`, and
+  `tentgent video understand` read local files, text, or prompts from the
+  caller's machine and run in the foreground.
 - Daemon media endpoints receive multipart file bytes. `curl -F
-  file=@/path/audio.mp3` and `curl -F image=@/path/image.png` are client-side
-  shorthand for reading local files; the daemon does not receive or trust the
-  original client path.
+  file=@/path/audio.mp3`, `curl -F image=@/path/image.png`, and `curl -F
+  file=@/path/video.mp4` are client-side shorthand for reading local files; the
+  daemon does not receive or trust the original client path.
 - Audio transcription, audio speech, and image generation/editing daemon
-  requests create workflow jobs. Vision chat daemon requests are bounded
-  synchronous requests.
-- Multipart media uploads share the daemon-wide
-  `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` file-part cap, which defaults to 20 MiB
-  and returns HTTP `413` with `upload_too_large` when exceeded.
+  requests create workflow jobs. Video understanding also creates a workflow
+  job. Vision chat daemon requests are bounded synchronous requests.
+- Multipart audio and image uploads share
+  `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, which defaults to 20 MiB and returns HTTP
+  `413` with `upload_too_large` when exceeded. Video uploads use the separate
+  `TENTGENT_VIDEO_UPLOAD_MAX_BYTES` cap, which defaults to 512 MiB and returns
+  `video_upload_too_large` when exceeded.
 - Recommended small local model fixtures and copy-paste smoke commands live in
   [model-fixtures.md](./model-fixtures.md).
 

@@ -184,6 +184,7 @@ POST /v1/images/generations/job
 POST /v1/images/transforms/job
 POST /v1/images/inpaint/job
 POST /v1/images/control/job
+POST /v1/video/understanding/job
 ```
 
 Result retrieval should be owned by the workflow that understands the output
@@ -200,6 +201,7 @@ GET /v1/images/inpaint/job/{job_id}/files
 GET /v1/images/inpaint/job/{job_id}/files/{file_id}
 GET /v1/images/control/job/{job_id}/files
 GET /v1/images/control/job/{job_id}/files/{file_id}
+GET /v1/video/understanding/job/{job_id}/result
 ```
 
 The kernel may expose generic result-file use cases and ports, but public HTTP

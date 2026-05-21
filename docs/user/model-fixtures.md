@@ -2,9 +2,9 @@
 
 Use this guide when you want small models for local smoke tests. `chat`,
 `embedding`, `rerank`, `audio-transcription`, `audio-speech`, `vision-chat`,
-and `image-generation` are runnable endpoint families. Future media capability
-values can be stored as model metadata when added, but they need dedicated
-runtime endpoints before they are runnable.
+`video-understanding`, and `image-generation` are runnable endpoint families.
+Future media capability values can be stored as model metadata when added, but
+they need dedicated runtime endpoints before they are runnable.
 
 ## Access Labels
 
@@ -83,17 +83,18 @@ rerank
 audio-transcription
 audio-speech
 vision-chat
+video-understanding
 image-generation
 ```
 
 `chat`, `embedding`, `rerank`, `audio-transcription`, `audio-speech`,
-`vision-chat`, and `image-generation` have foreground CLI runtime paths today.
-`audio-transcription` has a daemon file-upload job runtime path for HTTP
-integrations. `audio-speech` has a daemon JSON job runtime path.
-`vision-chat` has a bounded daemon multipart route. `image-generation` has
-daemon job routes and generated-file download routes. Direct local server
-routes are available for chat, embedding, and rerank; audio, vision, and image
-server routes are planned separately.
+`vision-chat`, `video-understanding`, and `image-generation` have foreground
+CLI runtime paths today. `audio-transcription` and `video-understanding` have
+daemon file-upload job runtime paths for HTTP integrations. `audio-speech` has
+a daemon JSON job runtime path. `vision-chat` has a bounded daemon multipart
+route. `image-generation` has daemon job routes and generated-file download
+routes. Direct local server routes are available for chat, embedding, and
+rerank; audio, vision, video, and image server routes are planned separately.
 
 ## Runnable Smoke Commands
 
@@ -143,6 +144,19 @@ tentgent vision chat /absolute/path/image.png \
   --prompt "Describe this image in one sentence." \
   --output answer.md \
   --format md
+```
+
+Video understanding CLI:
+
+```bash
+tentgent video understand /absolute/path/video.mp4 \
+  --model-ref <video-understanding-model-ref> \
+  --prompt "Describe this video briefly." \
+  --output video-understanding.txt \
+  --format text \
+  --sample-fps 0.5 \
+  --max-frames 4 \
+  --max-frame-edge 384
 ```
 
 Image generation CLI:
@@ -292,6 +306,28 @@ Multipart media uploads share the daemon-wide `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`
 cap, which defaults to 20 MiB. Direct OpenAI, Claude, and Gemini compatible
 multimodal payloads remain out of scope for this fixture page.
 
+Video understanding daemon job:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/video/understanding/job \
+  -F model_ref=<video-understanding-model-ref> \
+  -F prompt='Describe this video briefly.' \
+  -F output_format=text \
+  -F sample_fps=0.5 \
+  -F max_frames=4 \
+  -F max_frame_edge=384 \
+  -F file=@/absolute/path/video.mp4
+
+curl -sS \
+  'http://127.0.0.1:8790/v1/video/understanding/job/<job-id>/result?cursor=0&max_chunks=32' \
+  -o video-understanding.txt
+```
+
+Video understanding accepts one video per job and samples bounded frames before
+calling the selected model. Video uploads use
+`TENTGENT_VIDEO_UPLOAD_MAX_BYTES`, defaulting to 512 MiB, because video files
+are commonly much larger than audio/image fixture inputs.
+
 Image generation daemon job:
 
 ```bash
@@ -391,7 +427,9 @@ These rows are for local smoke tests, not product defaults.
 
 Audio transcription candidates can run through `tentgent transcribe` and the
 daemon job route. Vision chat candidates can run through `tentgent vision chat`
-and daemon `POST /v1/vision/chat`. Image generation candidates can run through
+and daemon `POST /v1/vision/chat`. Video understanding candidates can run
+through `tentgent video understand` and daemon
+`POST /v1/video/understanding/job`. Image generation candidates can run through
 `tentgent image generate`, `tentgent image transform`, `tentgent image
 inpaint`, `tentgent image control`, daemon
 `POST /v1/images/generations/job`, daemon `POST /v1/images/transforms/job`,
@@ -435,7 +473,7 @@ pinned.
 | `audio-speech` | [`suno/bark-small`](https://huggingface.co/suno/bark-small) | `public`, `candidate`, `transformers-tts` | `tentgent model pull suno/bark-small --capability audio-speech` | MIT-licensed TTS pipeline candidate; heavier than MMS-TTS and not the first smoke fixture. |
 | `vision-chat` | [`HuggingFaceTB/SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) | `public`, `cli`, `daemon` | `tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat` | Small image+text to text model for Transformers VQA/captioning smoke tests. |
 | `vision-chat` | [`mlx-community/SmolVLM-256M-Instruct-bf16`](https://huggingface.co/mlx-community/SmolVLM-256M-Instruct-bf16) | `public`, `mlx-vlm`, `cli`, `daemon` | `tentgent model pull mlx-community/SmolVLM-256M-Instruct-bf16 --capability vision-chat` | Small Apple Silicon MLX VLM smoke target; inspect should show `mlx_runtime_family = mlx-vlm`. |
-| future video understanding | [`HuggingFaceTB/SmolVLM2-256M-Video-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Video-Instruct) | `public`, `planned` | no command until video workflow name is approved | Keep out of the first native endpoint unless video payload handling is approved. |
+| `video-understanding` | [`HuggingFaceTB/SmolVLM2-256M-Video-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Video-Instruct) | `public`, `cli`, `daemon-job` | `tentgent model pull HuggingFaceTB/SmolVLM2-256M-Video-Instruct --capability video-understanding` | Small Apache-2.0 video-aware VLM fixture. M6Q samples bounded frames with the local-model Python decoder before calling the model. |
 | `image-generation` | [`hf-internal-testing/tiny-stable-diffusion-pipe`](https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe) | `public`, `internal-test`, `cli`, `daemon-job` | `tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe --capability image-generation` | Diffusers plumbing fixture only; not product-quality output. |
 | `image-generation` | [`hf-internal-testing/tiny-stable-diffusion-pipe-no-safety`](https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-no-safety) | `public`, `internal-test`, `cli`, `daemon-job`, `controlnet-smoke-base` | `tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe-no-safety --capability image-generation` | Tiny Diffusers base model verified with `hf-internal-testing/tiny-controlnet`; use `64x64` and `2` steps for smoke tests. |
 | `image-generation` | [`segmind/tiny-sd`](https://huggingface.co/segmind/tiny-sd) | `public`, `cli`, `daemon-job` | `tentgent model pull segmind/tiny-sd --capability image-generation` | Tiny Stable Diffusion-style model; larger than the internal fixture and useful for follow-up smoke tests. |

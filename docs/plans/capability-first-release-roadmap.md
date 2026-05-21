@@ -536,18 +536,25 @@ Status: implemented for the Transformers text-to-speech path. Details in
 
 #### M6Q: Video Understanding
 
-Status: planned, contract first.
+Status: planned, contract first. Details in
+[m6q-video-understanding-jobs.md](./m6q-video-understanding-jobs.md).
 
-- Add video plus prompt to text/JSON/Markdown understanding jobs only after the
-  payload and result contract is approved.
-- Candidate API: `POST /v1/video/understanding/job`.
-- Primary input should be multipart video bytes, with trusted local path only
-  as a local/debug fallback if kept.
-- Workers must decode/sample frames or clips with bounds such as `fps`, max
-  frame count, max pixels, and timeout.
+- Add a dedicated `video-understanding` capability rather than overloading
+  `vision-chat`.
+- Public workflow: `tentgent video understand` and
+  `POST /v1/video/understanding/job`.
+- Primary daemon input is multipart video bytes. CLI input is a local path and
+  runs in the foreground.
+- Result API: `GET /v1/video/understanding/job/{job_id}/result`.
+- Output formats are text-like: `text`, `md`, and `json`.
+- Use a dedicated video upload cap, `TENTGENT_VIDEO_UPLOAD_MAX_BYTES`, instead
+  of raising the generic image/audio media upload cap.
+- Workers must decode/sample frames or clips with bounds such as sample FPS,
+  max frame count, max frame edge, clip start/duration, and timeout.
 - Do not load whole videos into memory.
 - Keep this contract-only if no practical small local model/runtime fixture is
-  approved.
+  approved. Primary fixture candidate is
+  `HuggingFaceTB/SmolVLM2-256M-Video-Instruct`.
 
 #### M6R: Video Generation Artifact Decision
 

@@ -109,6 +109,7 @@ Initial capability values:
 - `audio-transcription`
 - `audio-speech`
 - `vision-chat`
+- `video-understanding`
 - `image-generation`
 
 Existing metadata without `model_capabilities` should be read as `["chat"]`.
@@ -131,9 +132,10 @@ sequence-classification paired with ranking metadata can classify `rerank`;
 `text-generation`, `conversational`, or a tokenizer `chat_template` can
 classify `chat`. Conflicting or weak evidence must not be guessed.
 
-Media capabilities are explicit-only in M6A: Hugging Face audio, image, or
-vision pipeline tags must not auto-classify a model as `audio-transcription`,
-`audio-speech`, `vision-chat`, or `image-generation`.
+Media capabilities are explicit-only in M6A: Hugging Face audio, image, video,
+or vision pipeline tags must not auto-classify a model as
+`audio-transcription`, `audio-speech`, `vision-chat`, `video-understanding`, or
+`image-generation`.
 
 Capability assignment precedence is:
 
@@ -161,7 +163,8 @@ itself mean the model should be loaded through `mlx-lm`.
 family when Tentgent can infer exactly one family from the model capabilities:
 
 - `mlx-lm` for `chat`
-- `mlx-vlm` for `vision-chat`
+- `mlx-vlm` for `vision-chat`, and as planned metadata for
+  `video-understanding` until a stable local MLX video backend is verified
 - `mlx-audio` for `audio-transcription`, and as planned metadata for
   `audio-speech` until a stable local MLX TTS backend is verified
 - `mlx-diffusion` for `image-generation`
@@ -193,9 +196,10 @@ it.
 Capability metadata is endpoint-gating metadata. Chat endpoints accept only
 models advertising `chat`; the embedding endpoint accepts only models
 advertising `embedding`; the rerank endpoint accepts only models advertising
-`rerank`. M6A media capability values are persisted metadata only. They do not
-enable audio, image, video, direct server, or daemon runtime endpoints until a
-later contract explicitly implements those surfaces.
+`rerank`. Media endpoint families require matching media capabilities before
+runtime dispatch, including `audio-transcription`, `audio-speech`,
+`vision-chat`, `video-understanding`, and `image-generation`. Direct local
+server routes for media families remain separate contracts.
 
 ## Hugging Face Pull Contract
 

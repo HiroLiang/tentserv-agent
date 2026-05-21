@@ -9,6 +9,8 @@ Use it when you want one local tool to:
 - pull and deduplicate local models, adapters, and datasets
 - run one-shot chat or long-lived local chat servers
 - expose local workflows through a loopback HTTP API
+- run local media workflows such as audio transcription, speech synthesis,
+  image generation/editing, vision chat, and video understanding
 - synthesize, validate, evaluate, export, and diff datasets
 - create LoRA train plans, launch runs, and inspect run logs or metrics
 - keep bounded local chat sessions as short-term working context
@@ -248,16 +250,18 @@ the lower-level daemon transport contract, see
 ## Media CLI And API Rules
 
 - CLI media commands such as `tentgent transcribe`, `tentgent speak`,
-  `tentgent vision chat`, and `tentgent image generate` read local files,
-  text, or prompts directly from the caller's machine.
+  `tentgent vision chat`, `tentgent video understand`, and `tentgent image
+  generate` read local files, text, or prompts directly from the caller's
+  machine.
 - Daemon file-upload media endpoints receive multipart file bytes; curl
   `@/path/file` syntax is client-side file reading, not a daemon path contract.
-- Audio transcription, audio speech, and image generation/editing daemon
-  routes return jobs. Native daemon vision chat is a bounded synchronous
-  request.
-- Multipart media upload size is controlled by
-  `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting to 20 MiB. Oversized uploads
-  return HTTP `413` with `upload_too_large`.
+- Audio transcription, audio speech, video understanding, and image
+  generation/editing daemon routes return jobs. Native daemon vision chat is a
+  bounded synchronous request.
+- Audio/image multipart upload size is controlled by
+  `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting to 20 MiB. Video uploads use
+  `TENTGENT_VIDEO_UPLOAD_MAX_BYTES`, defaulting to 512 MiB. Oversized uploads
+  return HTTP `413` with workflow-specific error codes.
 
 See [docs/user/commands.md](./docs/user/commands.md) for CLI examples,
 [docs/user/api.md](./docs/user/api.md) for request shapes, and

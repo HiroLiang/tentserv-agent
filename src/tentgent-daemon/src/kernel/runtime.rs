@@ -59,6 +59,14 @@ use tentgent_kernel::{
                 StdRuntimeStateUseCase,
             },
         },
+        video_understanding::{
+            domain::VideoUnderstandingResponse,
+            infra::PythonVideoUnderstandingOnceRuntimeClient,
+            ports::{
+                VideoUnderstandingPortFuture, VideoUnderstandingRuntimeClient,
+                VideoUnderstandingRuntimeRequest,
+            },
+        },
         vision::{
             domain::VisionChatResponse,
             infra::PythonVisionChatOnceRuntimeClient,
@@ -276,6 +284,19 @@ impl VisionChatRuntimeClient for RuntimeKernelComponent {
         Box::pin(async move {
             PythonVisionChatOnceRuntimeClient::new(self)
                 .generate_vision_chat(request)
+                .await
+        })
+    }
+}
+
+impl VideoUnderstandingRuntimeClient for RuntimeKernelComponent {
+    fn understand_video(
+        &'_ self,
+        request: VideoUnderstandingRuntimeRequest,
+    ) -> VideoUnderstandingPortFuture<'_, VideoUnderstandingResponse> {
+        Box::pin(async move {
+            PythonVideoUnderstandingOnceRuntimeClient::new(self)
+                .understand_video(request)
                 .await
         })
     }

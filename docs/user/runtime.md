@@ -58,9 +58,15 @@ Daemon media upload limits:
   multipart media endpoints such as audio transcription upload and native
   vision chat upload.
 - The default is 20 MiB.
+- `TENTGENT_VIDEO_UPLOAD_MAX_BYTES` sets the file-part byte cap for
+  `/v1/video/understanding/job`.
+- The video default is 512 MiB because video inputs are commonly much larger
+  than audio or image fixtures.
 - The value is a positive integer in bytes. Invalid, empty, or zero values fall
   back to the default and are logged as warnings by the daemon.
-- Requests above the cap return HTTP `413` with `upload_too_large`.
+- Audio/image requests above their cap return HTTP `413` with
+  `upload_too_large`; video requests above the video cap return
+  `video_upload_too_large`.
 
 MLX model metadata:
 
@@ -68,6 +74,9 @@ MLX model metadata:
   model maps to a specific runtime family.
 - `mlx-lm` is the current runnable MLX chat path.
 - `mlx-vlm` is the Apple Silicon MLX VLM path for native `vision-chat`.
+  MLX `video-understanding` is accepted as a planned VLM family target, but the
+  first M6Q runnable baseline uses safetensors Transformers plus sampled
+  frames.
 - `mlx-audio` is the Apple Silicon MLX path for native
   `audio-transcription`; MLX `audio-speech` remains planned until a stable TTS
   API is verified.

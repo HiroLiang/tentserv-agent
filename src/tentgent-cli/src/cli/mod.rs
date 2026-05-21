@@ -23,6 +23,7 @@ mod speak;
 mod store;
 mod train;
 mod transcribe;
+mod video;
 mod vision;
 
 use clap::{CommandFactory, Parser};
@@ -50,6 +51,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Transcribe(command) => transcribe::handle_transcribe_command(command).await?,
         Commands::Speak(command) => speak::handle_speak_command(command).await?,
         Commands::Vision { action } => vision::handle_vision_command(action).await?,
+        Commands::Video { action } => video::handle_video_command(action).await?,
         Commands::Image { action } => image::handle_image_command(action).await?,
         Commands::Server { action } => server::handle_server_command(action).await?,
         Commands::Session { action } => session::handle_session_command(action).await?,
@@ -292,6 +294,62 @@ mod tests {
                     assert_eq!(command.format, "md");
                     assert_eq!(command.max_tokens, Some(64));
                     assert_eq!(command.temperature, Some(0.2));
+                    assert_eq!(
+                        command.home.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent"))
+                    );
+                }
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_video_understand_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "video",
+            "understand",
+            "video.mp4",
+            "--model-ref",
+            "abc123",
+            "--prompt",
+            "Describe it.",
+            "--output",
+            "answer.json",
+            "--format",
+            "json",
+            "--sample-fps",
+            "0.5",
+            "--max-frames",
+            "4",
+            "--max-frame-edge",
+            "384",
+            "--clip-start-seconds",
+            "1.5",
+            "--clip-duration-seconds",
+            "3",
+            "--home",
+            "/tmp/tentgent",
+        ])
+        .expect("parse video understand command");
+
+        match cli.command {
+            Commands::Video { action } => match action {
+                super::commands::VideoCommands::Understand(command) => {
+                    assert_eq!(command.video_path, std::path::Path::new("video.mp4"));
+                    assert_eq!(command.model_ref, "abc123");
+                    assert_eq!(command.prompt, "Describe it.");
+                    assert_eq!(
+                        command.output.as_deref(),
+                        Some(std::path::Path::new("answer.json"))
+                    );
+                    assert_eq!(command.format, "json");
+                    assert_eq!(command.sample_fps, Some(0.5));
+                    assert_eq!(command.max_frames, Some(4));
+                    assert_eq!(command.max_frame_edge, Some(384));
+                    assert_eq!(command.clip_start_seconds, Some(1.5));
+                    assert_eq!(command.clip_duration_seconds, Some(3.0));
                     assert_eq!(
                         command.home.as_deref(),
                         Some(std::path::Path::new("/tmp/tentgent"))

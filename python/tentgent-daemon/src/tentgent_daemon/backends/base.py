@@ -18,6 +18,10 @@ from ..runtime.adapters import (
     StoredAdapterRecord,
 )
 from ..runtime.records import StoredModelRecord
+from ..runtime.video_understanding import (
+    VideoUnderstandingRequest,
+    VideoUnderstandingResult,
+)
 from ..runtime.vision import VisionChatRequest, VisionChatResult
 
 
@@ -132,6 +136,23 @@ class VisionChatBackend:
         return None
 
     def generate_vision_chat(self, request: VisionChatRequest) -> VisionChatResult:
+        raise NotImplementedError
+
+
+class VideoUnderstandingBackend:
+    """Minimal backend contract for local video-plus-text inference."""
+
+    def load(self, record: StoredModelRecord) -> None:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        """Release loaded runtime state when the server lifecycle decides to unload."""
+        return None
+
+    def understand_video(
+        self,
+        request: VideoUnderstandingRequest,
+    ) -> VideoUnderstandingResult:
         raise NotImplementedError
 
 

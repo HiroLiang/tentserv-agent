@@ -220,7 +220,7 @@ impl MlxRuntimeFamily {
         match capability {
             ModelCapability::Chat => Some(Self::Lm),
             ModelCapability::AudioTranscription | ModelCapability::AudioSpeech => Some(Self::Audio),
-            ModelCapability::VisionChat => Some(Self::Vlm),
+            ModelCapability::VisionChat | ModelCapability::VideoUnderstanding => Some(Self::Vlm),
             ModelCapability::ImageGeneration => Some(Self::Diffusion),
             ModelCapability::Embedding | ModelCapability::Rerank => None,
         }
@@ -242,6 +242,7 @@ pub enum ModelCapability {
     AudioTranscription,
     AudioSpeech,
     VisionChat,
+    VideoUnderstanding,
     ImageGeneration,
 }
 
@@ -254,6 +255,7 @@ impl ModelCapability {
             Self::AudioTranscription => "audio-transcription",
             Self::AudioSpeech => "audio-speech",
             Self::VisionChat => "vision-chat",
+            Self::VideoUnderstanding => "video-understanding",
             Self::ImageGeneration => "image-generation",
         }
     }
@@ -278,6 +280,7 @@ impl std::str::FromStr for ModelCapability {
             "audio-transcription" => Ok(Self::AudioTranscription),
             "audio-speech" => Ok(Self::AudioSpeech),
             "vision-chat" => Ok(Self::VisionChat),
+            "video-understanding" => Ok(Self::VideoUnderstanding),
             "image-generation" => Ok(Self::ImageGeneration),
             _ => Err(ModelCapabilityParseError::Unsupported {
                 value: value.trim().to_string(),
@@ -289,11 +292,11 @@ impl std::str::FromStr for ModelCapability {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ModelCapabilityParseError {
     #[error(
-        "model capability must not be blank; expected one of: chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, image-generation"
+        "model capability must not be blank; expected one of: chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, video-understanding, image-generation"
     )]
     Empty,
     #[error(
-        "unsupported model capability `{value}`; expected one of: chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, image-generation"
+        "unsupported model capability `{value}`; expected one of: chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, video-understanding, image-generation"
     )]
     Unsupported { value: String },
 }

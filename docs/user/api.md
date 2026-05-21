@@ -24,8 +24,8 @@ use this shape:
 }
 ```
 
-Multipart media endpoints use one daemon-wide upload cap for received file
-bytes:
+Multipart audio/image endpoints use one daemon-wide upload cap for received
+file bytes:
 
 - The default is 20 MiB.
 - Operators can adjust it with `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` before
@@ -33,11 +33,15 @@ bytes:
 - The cap applies to multipart file parts such as `image` on `/v1/vision/chat`
   and `file` on `/v1/audio/transcriptions/job`. JSON-only routes such as
   `/v1/audio/speech/job` use their own request limits.
+- Video understanding uses a separate cap because video files are commonly much
+  larger. `TENTGENT_VIDEO_UPLOAD_MAX_BYTES` defaults to 512 MiB and applies to
+  `file` on `/v1/video/understanding/job`.
 - The cap is an HTTP intake guard, not a model context limit. Model-specific
-  image size, audio duration, token, or memory failures still come from the
-  selected runtime.
-- When the uploaded file part exceeds the cap, the daemon returns HTTP `413`
-  with `upload_too_large`.
+  image size, audio/video duration, token, or memory failures still come from
+  the selected runtime.
+- When an uploaded audio/image file part exceeds the cap, the daemon returns
+  HTTP `413` with `upload_too_large`. When a video file exceeds the video cap,
+  the daemon returns `video_upload_too_large`.
 
 Example:
 
@@ -45,6 +49,15 @@ Example:
 {
   "error": "upload_too_large",
   "message": "`image` upload exceeds the daemon media upload limit of 20971520 bytes; set TENTGENT_MEDIA_UPLOAD_MAX_BYTES to adjust this limit"
+}
+```
+
+Video example:
+
+```json
+{
+  "error": "video_upload_too_large",
+  "message": "`file` upload exceeds the daemon video upload limit of 536870912 bytes; set TENTGENT_VIDEO_UPLOAD_MAX_BYTES to adjust this limit"
 }
 ```
 
@@ -153,6 +166,89 @@ Response:
 
 OpenAI, Claude, and Gemini compatible multimodal payloads are not accepted yet.
 Those adapters should map into this native vision contract in a later slice.
+
+## Video Understanding Jobs
+
+Canonical video understanding uses a workflow job:
+
+```http
+POST /v1/video/understanding/job
+Content-Type: multipart/form-data
+```
+
+Multipart fields:
+
+| Field | Required | Type | Notes |
+| --- | --- | --- | --- |
+| `file` | yes | file bytes | Video bytes. The daemon does not receive or trust the client's local path. |
+| `model_ref` | yes | text | Local `video-understanding` model ref or unique alias. |
+| `prompt` | yes | text | User prompt for the video. |
+| `system_prompt` | no | text | Optional instruction prefix. |
+| `output_format` | no | text | `text`, `json`, or `md`; defaults to `text`. |
+| `output_filename` | no | text | File name only, not a path. Defaults to `video-understanding.<format>`. |
+| `max_tokens` | no | integer text | Optional generation cap. |
+| `temperature` | no | float text | Optional sampling temperature. |
+| `sample_fps` | no | float text | Frame sampling rate. Defaults to 1.0; valid range is 0.1..4.0. |
+| `max_frames` | no | integer text | Sampled frame cap. Defaults to 32; valid range is 1..128. |
+| `max_frame_edge` | no | integer text | Resize sampled frames by largest edge. Defaults to 768; valid range is 128..1536. |
+| `clip_start_seconds` | no | float text | Optional non-negative clip start offset. |
+| `clip_duration_seconds` | no | float text | Optional positive clip duration. |
+
+`file` must appear exactly once. Send multiple videos as multiple jobs, or
+merge them client-side when one combined analysis is intended. The daemon stores
+the uploaded bytes in the job workspace, samples bounded frames through the
+Python local-model runtime, and then calls the selected
+`video-understanding` model. This is not realtime video streaming.
+
+The first runnable baseline samples frames using the local-model Python
+runtime's OpenCV-backed decoder. Codec/container support depends on the
+packaged OpenCV/FFmpeg build and OS platform. Missing Python decoder packages
+and unsupported system codecs fail the job with runtime error details.
+
+`curl` example:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/video/understanding/job \
+  -F model_ref=<video-understanding-model-ref> \
+  -F prompt='Describe this video briefly.' \
+  -F output_format=text \
+  -F sample_fps=0.5 \
+  -F max_frames=4 \
+  -F max_frame_edge=384 \
+  -F file=@/absolute/path/video.mp4
+```
+
+Response:
+
+```json
+{
+  "job": {
+    "job_id": "job-...",
+    "kind": "video_understanding",
+    "status": "queued",
+    "target": {
+      "section": "video",
+      "reference": "<model-ref>",
+      "path": "<daemon-internal-workspace-input-path>"
+    }
+  }
+}
+```
+
+Read status and result:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
+curl -sS \
+  'http://127.0.0.1:8790/v1/video/understanding/job/<job-id>/result?cursor=0&max_chunks=32' \
+  -o video-understanding.txt
+```
+
+Result route behavior matches audio transcription: queued/running jobs return
+`409 result_pending`; failed, interrupted, or canceled jobs return a terminal
+conflict; ready results return bytes with `Content-Type`,
+`Content-Disposition`, `x-tentgent-next-cursor`, `x-tentgent-result-done`, and
+`x-tentgent-chunks-read`.
 
 ## Image Generation Jobs
 

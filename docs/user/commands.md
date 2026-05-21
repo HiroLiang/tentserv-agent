@@ -14,12 +14,14 @@ Most common options have short aliases, such as `-m` for model/message-like inpu
   formats print to stdout when the format supports terminal output.
 - Daemon media endpoints receive multipart file bytes, not client-local paths.
   `curl -F file=@/path/audio.mp3` and `curl -F image=@/path/image.png` are curl
-  syntax for reading local bytes into the request.
-- Audio transcription and image generation daemon routes create workflow jobs
-  and expose result bytes or files through result routes. Native vision chat
-  daemon uploads are bounded synchronous requests.
-- Multipart media uploads share `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting
-  to 20 MiB. Exceeding the cap returns HTTP `413` with `upload_too_large`.
+  syntax for reading local bytes into the request; the same applies to
+  `curl -F file=@/path/video.mp4`.
+- Audio transcription, video understanding, and image generation daemon routes
+  create workflow jobs and expose result bytes or files through result routes.
+  Native vision chat daemon uploads are bounded synchronous requests.
+- Audio/image multipart uploads share `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`,
+  defaulting to 20 MiB. Video uploads use `TENTGENT_VIDEO_UPLOAD_MAX_BYTES`,
+  defaulting to 512 MiB. Exceeding either cap returns HTTP `413`.
 
 ## Auth
 
@@ -396,6 +398,65 @@ needed for PNG, JPEG, or WebP. OpenAI, Claude, and Gemini compatible
 multimodal payloads are still text-only rejected until a later compatibility
 slice. The same daemon-wide media upload cap applies here; set
 `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` before daemon startup to adjust it.
+
+## Video Understanding
+
+Run foreground video understanding without starting the daemon:
+
+```bash
+tentgent video understand /absolute/path/video.mp4 \
+  --model-ref <video-understanding-model-ref> \
+  --prompt "Describe this video briefly." \
+  --output answer.txt \
+  --format text \
+  --sample-fps 0.5 \
+  --max-frames 4 \
+  --max-frame-edge 384
+```
+
+With `--output`, the command writes only to the requested file and prints a
+short completion message. It fails if the output file already exists. Without
+`--output`, `text` and `md` print the generated answer to stdout; `json` prints
+the response envelope, including `sampled_frames`.
+
+Pull a small model before running local video understanding:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent model pull HuggingFaceTB/SmolVLM2-256M-Video-Instruct \
+  --capability video-understanding
+```
+
+For HTTP integrations, send the video as multipart form data. The daemon
+creates a job, writes the uploaded bytes into the job workspace, samples
+bounded frames, runs the selected model, and serves result bytes through the
+workflow result route:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/video/understanding/job \
+  -F model_ref=<video-understanding-model-ref> \
+  -F prompt='Describe this video briefly.' \
+  -F output_format=text \
+  -F sample_fps=0.5 \
+  -F max_frames=4 \
+  -F max_frame_edge=384 \
+  -F file=@/absolute/path/video.mp4
+```
+
+Inspect the job and read result bytes:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
+
+curl -sS \
+  'http://127.0.0.1:8790/v1/video/understanding/job/<job-id>/result?cursor=0&max_chunks=32' \
+  -o video-understanding.txt
+```
+
+Video understanding is batch frame-sampled analysis, not realtime video
+streaming. Upload/result reads are transport-stream-friendly memory
+boundaries. Video uploads use `TENTGENT_VIDEO_UPLOAD_MAX_BYTES`, defaulting to
+512 MiB, instead of the smaller audio/image media cap.
 
 ## Image Generation
 
