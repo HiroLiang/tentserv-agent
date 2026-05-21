@@ -115,6 +115,11 @@ one pass without a staged breakdown.
   foreground `tentgent video understand`, daemon multipart
   `POST /v1/video/understanding/job`, workflow-owned text-like result
   download, bounded decode/sampling, and a Transformers video VLM fixture gate.
+- [m6r-video-generation-artifact-decision.md](./m6r-video-generation-artifact-decision.md)
+  Implemented M6R internal contract slice for video-generation artifact
+  contracts, test-only model fixture gating, encoder and temporary-disk
+  boundaries, and the current decision to avoid public `video-generation`
+  capability/API/CLI exposure until a practical small local fixture is approved.
 
 ## Recommended Order
 

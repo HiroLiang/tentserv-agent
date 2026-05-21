@@ -558,16 +558,22 @@ Status: planned, contract first. Details in
 
 #### M6R: Video Generation Artifact Decision
 
-Status: decision slice, not implementation by default.
+Status: implemented as an internal contract slice. Details in
+[m6r-video-generation-artifact-decision.md](./m6r-video-generation-artifact-decision.md).
 
-- Decide whether local video generation belongs in this release line.
-- If approved, it must be job-only and produce playable files such as `mp4` or
-  `webm`.
-- Define encoder dependencies, hardware expectations, temporary disk usage,
-  cleanup retention, and output artifact shape before runtime work.
+- Added the kernel-internal video-generation artifact contract only:
+  output format, prompt, dimensions, bounded generation options, text-to-video
+  input marker, artifact plan, and artifact metadata.
+- Current fixture conclusion: no suitable small real Hugging Face fixture is
+  approved for public local smoke testing. Tiny dummy pipelines may only prove
+  plumbing and must not be presented as usable video-generation support.
+- If a future fixture is approved, the public workflow must be job-only and
+  produce playable files such as `mp4` or `webm`.
+- Encoder dependencies, hardware expectations, temporary disk usage, cleanup
+  retention, and output artifact shape are captured before runtime work.
 - Raw frames are debug/advanced artifacts only.
-- If no-go, keep `video-generation` out of accepted capability values until a
-  later milestone.
+- Keep `video-generation` out of accepted public capability values, user-facing
+  CLI commands, and daemon routes until a real fixture gate passes.
 
 #### M6S: Media Serving And Runtime Stream Proxy Decision
 

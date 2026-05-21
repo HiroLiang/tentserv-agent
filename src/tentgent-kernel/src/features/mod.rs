@@ -18,5 +18,6 @@ pub mod server;
 pub mod session;
 pub mod store;
 pub mod train;
+pub mod video_generation;
 pub mod video_understanding;
 pub mod vision;
