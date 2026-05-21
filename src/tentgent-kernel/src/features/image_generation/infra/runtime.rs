@@ -7,8 +7,8 @@ use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::foundation::error::{KernelError, KernelResult};
 
 use super::super::domain::{
-    ImageGenerationOutputFormat, ImageGenerationRequest, ImageGenerationResponse,
-    ImageGenerationRuntimeTarget,
+    ImageGenerationInput, ImageGenerationOutputFormat, ImageGenerationRequest,
+    ImageGenerationResponse, ImageGenerationRuntimeTarget,
 };
 use super::super::ports::{
     ImageGenerationPortFuture, ImageGenerationRuntimeClient, ImageGenerationRuntimeRequest,
@@ -105,6 +105,21 @@ impl<'a> PythonImageGenerationOnceRuntimeClient<'a> {
         }
         if let Some(seed) = request.request.options.seed {
             command.arg("--seed").arg(seed.to_string());
+        }
+        if let ImageGenerationInput::ImageToImage {
+            image_path,
+            media_type,
+            strength,
+        } = &request.request.input
+        {
+            command
+                .arg("--input-image-path")
+                .arg(image_path)
+                .arg("--strength")
+                .arg(strength.as_f32().to_string());
+            if let Some(media_type) = media_type {
+                command.arg("--input-image-media-type").arg(media_type);
+            }
         }
         if let Some(adapter) = &request.request.target.adapter {
             command

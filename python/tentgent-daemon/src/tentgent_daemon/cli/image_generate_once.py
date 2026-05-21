@@ -9,6 +9,7 @@ from tentgent_daemon.runtime.image_generation import (
     DEFAULT_GUIDANCE_SCALE,
     DEFAULT_HEIGHT,
     DEFAULT_STEPS,
+    DEFAULT_TRANSFORM_STRENGTH,
     DEFAULT_WIDTH,
     SUPPORTED_OUTPUT_FORMATS,
     ImageGenerationRequest,
@@ -25,6 +26,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-ref", required=True, help="Stored Tentgent model ref")
     parser.add_argument("--prompt", required=True, help="Text prompt for image generation")
     parser.add_argument("--negative-prompt", help="Optional negative prompt")
+    parser.add_argument(
+        "--input-image-path",
+        help="Optional local input image path for image-to-image transforms",
+    )
+    parser.add_argument(
+        "--input-image-media-type",
+        help="Optional input image media type for diagnostics",
+    )
+    parser.add_argument(
+        "--strength",
+        type=float,
+        default=None,
+        help=(
+            "Image-to-image denoising strength. Defaults to "
+            f"{DEFAULT_TRANSFORM_STRENGTH} when --input-image-path is set."
+        ),
+    )
     parser.add_argument("--output-path", required=True, help="Generated image output path")
     parser.add_argument(
         "--format",
@@ -71,6 +89,9 @@ def main() -> int:
         negative_prompt=args.negative_prompt,
         output_path=Path(args.output_path),
         output_format=output_format,
+        input_image_path=Path(args.input_image_path) if args.input_image_path else None,
+        input_image_media_type=args.input_image_media_type,
+        strength=args.strength,
         adapter=adapter,
         width=args.width,
         height=args.height,
@@ -91,6 +112,11 @@ def main() -> int:
                     "load_path": str(plan.load_path),
                     "output_path": str(plan.request.output_path),
                     "output_format": plan.request.output_format,
+                    "input_image_path": str(plan.request.input_image_path)
+                    if plan.request.input_image_path
+                    else None,
+                    "input_image_media_type": plan.request.input_image_media_type,
+                    "strength": plan.request.strength,
                     "width": plan.request.width,
                     "height": plan.request.height,
                     "steps": plan.request.steps,

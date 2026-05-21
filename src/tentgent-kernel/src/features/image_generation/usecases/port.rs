@@ -4,8 +4,8 @@ use std::{future::Future, path::PathBuf, pin::Pin};
 
 use crate::features::adapter::domain::{AdapterRefSelector, LoraScale};
 use crate::features::image_generation::domain::{
-    ImageGenerationOptions, ImageGenerationOutputFormat, ImageGenerationRequest,
-    ImageGenerationResponse,
+    ImageGenerationInput, ImageGenerationOptions, ImageGenerationOutputFormat,
+    ImageGenerationRequest, ImageGenerationResponse,
 };
 use crate::features::model::domain::{ModelInspection, ModelRefSelector};
 use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput};
@@ -15,7 +15,7 @@ use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
 /// Boxed async return type used by image-generation use cases that execute runtime work.
 pub type ImageGenerationUseCaseFuture<'a, T> = Pin<Box<dyn Future<Output = KernelResult<T>> + 'a>>;
 
-/// Request for preparing one text-to-image generation request.
+/// Request for preparing one image-generation workflow request.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImageGenerationPreparationRequest {
     pub layout: RuntimeLayoutInput,
@@ -23,6 +23,7 @@ pub struct ImageGenerationPreparationRequest {
     pub model_selector: ModelRefSelector,
     pub adapter_selector: Option<AdapterRefSelector>,
     pub lora_scale: Option<LoraScale>,
+    pub input: ImageGenerationInput,
     pub prompt: String,
     pub negative_prompt: Option<String>,
     pub output_path: PathBuf,
@@ -55,7 +56,7 @@ pub trait ImageGenerationPreparationUseCase {
     ) -> KernelResult<ImageGenerationPreparationResult>;
 }
 
-/// Use-case boundary for one-shot text-to-image inference.
+/// Use-case boundary for one-shot image-generation inference.
 pub trait ImageGenerationUseCase {
     /// Resolves target/runtime and writes one generated image output file.
     fn generate_image(

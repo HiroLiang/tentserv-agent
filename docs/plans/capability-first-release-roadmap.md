@@ -446,12 +446,26 @@ Status: implemented and unit-tested; public LoRA fixture smoke pending.
 
 #### M6M: Image-To-Image
 
-Status: planned.
+Status: implemented and unit-tested; real-model smoke pending. Details in
+[m6m-image-to-image.md](./m6m-image-to-image.md).
 
-- Add one input image plus prompt to produce a modified output image.
-- Reuse daemon multipart upload rules and job workspace input storage.
-- Add image-to-image parameters such as `strength` with explicit validation.
-- Keep generated output routes aligned with text-to-image result file routes.
+- Add one-input-image transforms under the existing `image-generation`
+  capability: one input image plus prompt produces one output image artifact.
+- Add foreground CLI `tentgent image transform` with local input path, protected
+  output path, optional negative prompt, optional one image LoRA adapter, and
+  Diffusers-compatible `strength` validation.
+- Add native daemon multipart route `POST /v1/images/transforms/job`; daemon
+  receives image bytes, writes them into the job workspace, starts the worker
+  only after upload persistence, and exposes workflow-owned result file routes.
+- Keep generated output routes aligned with M6G while keeping transform routes
+  distinct from text-to-image generation routes.
+- Implement Diffusers image-to-image through the local Python runtime. Implement
+  the MFLUX image-to-image path only if the installed runtime exposes a stable
+  local-model/local-image API; otherwise return a clear unsupported-backend
+  error and keep the gap documented.
+- Keep masks, inpainting, reference images, ControlNet, multi-image input,
+  OpenAI-compatible image edits APIs, and direct server routes out of this
+  slice.
 
 #### M6N: Inpainting And Masks
 

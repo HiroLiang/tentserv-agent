@@ -20,6 +20,8 @@ from ..runtime.records import StoredModelRecord
 class DiffusersDeps:
     torch: Any
     DiffusionPipeline: Any
+    AutoPipelineForImage2Image: Any
+    PILImage: Any
 
 
 class DiffusersImageGenerationBackend(ImageGenerationBackend):
@@ -27,13 +29,32 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
         self._deps = _load_diffusers_deps()
         self._record: StoredModelRecord | None = None
         self._pipeline: Any | None = None
+        self._pipeline_workflow: str | None = None
         self._device = _detect_device(self._deps.torch)
         self._adapter: ImageGenerationAdapterSelection | None = None
 
     def load(self, record: StoredModelRecord) -> None:
-        load_kwargs = _diffusers_load_kwargs(record, self._deps.torch, self._device)
-        pipeline = self._deps.DiffusionPipeline.from_pretrained(
-            str(record.variant_source_path),
+        self._record = record
+        self._pipeline = None
+        self._pipeline_workflow = None
+
+    def _load_pipeline(self, workflow: str) -> Any:
+        if self._record is None:
+            raise RuntimeError(
+                "Diffusers image generation backend is not loaded yet; "
+                "call load() before generate_image()."
+            )
+        if self._pipeline is not None and self._pipeline_workflow == workflow:
+            return self._pipeline
+
+        load_kwargs = _diffusers_load_kwargs(self._record, self._deps.torch, self._device)
+        pipeline_class = (
+            self._deps.AutoPipelineForImage2Image
+            if workflow == "image-to-image"
+            else self._deps.DiffusionPipeline
+        )
+        pipeline = pipeline_class.from_pretrained(
+            str(self._record.variant_source_path),
             local_files_only=True,
             **load_kwargs,
         )
@@ -41,9 +62,10 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
         if hasattr(pipeline, "enable_attention_slicing"):
             pipeline.enable_attention_slicing()
 
-        self._record = record
         self._pipeline = pipeline
+        self._pipeline_workflow = workflow
         self._apply_selected_adapter()
+        return pipeline
 
     def select_adapter(self, adapter: ImageGenerationAdapterSelection | None) -> None:
         self._adapter = adapter
@@ -51,7 +73,8 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
             self._apply_selected_adapter()
 
     def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
-        pipeline = self._require_loaded()
+        workflow = "image-to-image" if request.input_image_path is not None else "text-to-image"
+        pipeline = self._load_pipeline(workflow)
         kwargs: dict[str, object] = {
             "prompt": request.prompt,
             "width": request.width,
@@ -61,6 +84,16 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
         }
         if request.negative_prompt:
             kwargs["negative_prompt"] = request.negative_prompt
+        if request.input_image_path is not None:
+            if request.strength is None:
+                raise ValueError("image transform strength is required")
+            kwargs["image"] = _load_transform_image(
+                self._deps.PILImage,
+                request.input_image_path,
+                request.width,
+                request.height,
+            )
+            kwargs["strength"] = request.strength
         if request.seed is not None:
             kwargs["generator"] = self._deps.torch.Generator(device="cpu").manual_seed(
                 request.seed
@@ -95,6 +128,7 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
     def release(self) -> None:
         self._record = None
         self._pipeline = None
+        self._pipeline_workflow = None
         self._adapter = None
 
         torch = self._deps.torch
@@ -135,13 +169,32 @@ def _adapter_weight_path(adapter: ImageGenerationAdapterSelection) -> os.PathLik
 def _load_diffusers_deps() -> DiffusersDeps:
     try:
         import torch
-        from diffusers import DiffusionPipeline
+        from diffusers import AutoPipelineForImage2Image, DiffusionPipeline
+        from PIL import Image as PILImage
     except ModuleNotFoundError as exc:
-        if exc.name in {"torch", "diffusers"}:
+        if exc.name in {"torch", "diffusers", "PIL"}:
             raise missing_profile_dependency("local-model", exc.name) from exc
         raise
 
-    return DiffusersDeps(torch=torch, DiffusionPipeline=DiffusionPipeline)
+    return DiffusersDeps(
+        torch=torch,
+        DiffusionPipeline=DiffusionPipeline,
+        AutoPipelineForImage2Image=AutoPipelineForImage2Image,
+        PILImage=PILImage,
+    )
+
+
+def _load_transform_image(
+    pil_image: Any,
+    image_path: os.PathLike[str],
+    width: int,
+    height: int,
+) -> Any:
+    with pil_image.open(image_path) as image:
+        image = image.convert("RGB")
+        if image.size != (width, height):
+            image = image.resize((width, height))
+        return image
 
 
 def _diffusers_load_kwargs(

@@ -39,6 +39,11 @@ What changed:
   Silicon MFLUX `image-generation` models. Generated files are exposed through
   `/v1/images/generations/job/{job_id}/files` and
   `/v1/images/generations/job/{job_id}/files/{file_id}`.
+- Added foreground CLI `tentgent image transform` and daemon-native
+  `POST /v1/images/transforms/job` for one-input-image image-to-image jobs
+  against local `image-generation` models. Transform result files are exposed
+  through `/v1/images/transforms/job/{job_id}/files` and
+  `/v1/images/transforms/job/{job_id}/files/{file_id}`.
 - Added endpoint-family gates so chat routes require `chat` models and
   embedding/rerank routes require matching model capabilities before runtime
   dispatch.

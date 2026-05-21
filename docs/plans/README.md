@@ -87,6 +87,11 @@ one pass without a staged breakdown.
   daemon job surfaces, with image-specific adapter compatibility and
   Diffusers/MFLUX runtime wiring. Repeatable public LoRA smoke fixture is still
   pending.
+- [m6m-image-to-image.md](./m6m-image-to-image.md)
+  Implemented and unit-tested M6M slice for one-input-image image-to-image transforms:
+  foreground `tentgent image transform`, daemon multipart transform jobs,
+  `strength` validation, Diffusers img2img support, and MLX/MFLUX support when
+  the local runtime API can be verified. Real-model smoke remains pending.
 
 ## Recommended Order
 

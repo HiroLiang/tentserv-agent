@@ -72,6 +72,8 @@ class MfluxImageGenerationBackend(ImageGenerationBackend):
             num_inference_steps=request.steps,
             guidance=request.guidance_scale,
             negative_prompt=request.negative_prompt,
+            image_path=request.input_image_path,
+            image_strength=_mflux_image_strength(request),
         )
         return _write_mflux_image_output(output_request, generated)
 
@@ -163,6 +165,14 @@ def _mflux_quantize_bits(record: StoredModelRecord) -> int | None:
     if "q4" in label or "4bit" in label or "4-bit" in label:
         return 4
     return None
+
+
+def _mflux_image_strength(request: ImageGenerationRequest) -> float | None:
+    if request.input_image_path is None:
+        return None
+    if request.strength is None:
+        raise ValueError("image transform strength is required")
+    return 1.0 - request.strength
 
 
 def _write_mflux_image_output(

@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use axum::{
     body::{to_bytes, Body},
-    http::{header::CONTENT_TYPE, Request, StatusCode},
+    http::{header::CONTENT_TYPE, Method, Request, StatusCode},
 };
 use serde_json::Value;
 use tentgent_kernel::{
@@ -1198,6 +1198,102 @@ async fn image_generation_result_file_lists_and_downloads_workspace_file() {
     );
     let body = sse_body(response).await;
     assert_eq!(body.as_bytes(), b"png-bytes");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn image_transform_job_accepts_multipart_upload_request() {
+    let requested_home = unique_home("image-transform-upload");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let boundary = "tentgent-image-transform";
+    let model_ref = "a".repeat(64);
+    let body = multipart_body(
+        boundary,
+        &[
+            MultipartPart::file("image", "input.png", "image/png", b"png-bytes"),
+            MultipartPart::text("model_ref", &model_ref),
+            MultipartPart::text("prompt", "make it watercolor"),
+            MultipartPart::text("strength", "0.7"),
+            MultipartPart::text("output_filename", "transform.png"),
+        ],
+    );
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/images/transforms/job")
+                .header(
+                    CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = json_body(response).await;
+    let job_id = body["job"]["job_id"].as_str().expect("job id");
+    assert_eq!(body["job"]["kind"], "image_generation");
+    assert_eq!(body["job"]["target"]["section"], "image");
+    assert_eq!(body["job"]["target"]["reference"], model_ref);
+    let input_path = state
+        .app()
+        .layout()
+        .runtime_dir
+        .join("jobs")
+        .join(job_id)
+        .join("workspace")
+        .join("input")
+        .join("input.png");
+    assert_eq!(fs::read(input_path).expect("input image"), b"png-bytes");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn image_transform_job_validates_multipart_fields() {
+    let requested_home = unique_home("image-transform-validation");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let boundary = "tentgent-image-transform-validation";
+    let model_ref = "b".repeat(64);
+    let body = multipart_body(
+        boundary,
+        &[
+            MultipartPart::file("image", "input.png", "image/png", b"png-bytes"),
+            MultipartPart::text("model_ref", &model_ref),
+            MultipartPart::text("prompt", "make it watercolor"),
+            MultipartPart::text("strength", "1.5"),
+        ],
+    );
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/v1/images/transforms/job")
+                .header(
+                    CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("strength"));
 
     let _ = fs::remove_dir_all(home);
 }

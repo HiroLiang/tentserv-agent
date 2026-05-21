@@ -258,6 +258,75 @@ File download returns the image bytes with `Content-Type`,
 Before completion, file routes return HTTP `409` with `result_pending`.
 Failed, interrupted, or canceled jobs return clear terminal conflict errors.
 
+## Image Transform Jobs
+
+Canonical image-to-image transform uses a workflow job:
+
+```http
+POST /v1/images/transforms/job
+Content-Type: multipart/form-data
+```
+
+The request uploads image bytes, not a client-local path. In curl,
+`-F image=@/absolute/path/input.png` is client-side shorthand for reading that
+file and sending bytes to the daemon.
+
+Multipart fields:
+
+| Field | Required | Type | Notes |
+| --- | --- | --- | --- |
+| `image` | yes | file bytes | PNG, JPEG, or WebP input image. |
+| `model_ref` | yes | string | Local `image-generation` model ref or unique alias. |
+| `adapter_ref` | no | string | Optional managed image LoRA adapter ref or unique short-ref prefix. |
+| `lora_scale` | no | number | Optional LoRA scale. Defaults to `1.0` when `adapter_ref` is present; must be 0..4. |
+| `prompt` | yes | string | Text prompt describing the transform. |
+| `negative_prompt` | no | string | Optional negative prompt. |
+| `strength` | no | number | Defaults to `0.6`. Must be 0..1. `0.0` preserves input most; `1.0` regenerates most. |
+| `output_format` | no | string | `png` or `jpg`; defaults to `png`. |
+| `output_filename` | no | string | File name only, not a path. Defaults to `image.<format>`. |
+| `width` | no | integer | Defaults to 512. Must be 64..1024 and divisible by 8. |
+| `height` | no | integer | Defaults to 512. Must be 64..1024 and divisible by 8. |
+| `steps` | no | integer | Defaults to 20. Must be 1..100. |
+| `guidance_scale` | no | number | Defaults to 7.5. Must be 0..30. |
+| `seed` | no | integer | Optional deterministic seed. |
+
+The daemon persists the uploaded image into the job workspace before the worker
+starts. Diffusers image-to-image receives `strength` directly. MFLUX-backed
+`mlx-diffusion` models receive the equivalent image-influence value through
+MFLUX after Tentgent maps the public Diffusers-style strength.
+
+Response shape matches text-to-image jobs:
+
+```json
+{
+  "job": {
+    "job_id": "job-...",
+    "kind": "image_generation",
+    "status": "queued",
+    "target": {
+      "section": "image",
+      "reference": "<model-ref>",
+      "path": null
+    }
+  }
+}
+```
+
+List transformed files after completion:
+
+```http
+GET /v1/images/transforms/job/{job_id}/files
+```
+
+Download one transformed file:
+
+```http
+GET /v1/images/transforms/job/{job_id}/files/{file_id}
+```
+
+Before completion, file routes return HTTP `409` with `result_pending`.
+Terminal failures mirror the text-to-image job behavior.
+
 ## Embeddings
 
 ```http

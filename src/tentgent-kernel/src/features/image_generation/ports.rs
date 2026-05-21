@@ -12,7 +12,7 @@ use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
 
 use super::domain::{
     ImageGenerationRequest, ImageGenerationResponse, ImageGenerationRuntimeTarget,
-    ResolvedImageGenerationAdapter,
+    ImageGenerationWorkflowKind, ResolvedImageGenerationAdapter,
 };
 
 pub type ImageGenerationPortFuture<'a, T> = Pin<Box<dyn Future<Output = KernelResult<T>> + 'a>>;
@@ -21,6 +21,7 @@ pub type ImageGenerationPortFuture<'a, T> = Pin<Box<dyn Future<Output = KernelRe
 pub struct ImageGenerationModelResolveRequest {
     pub layout: RuntimeLayoutInput,
     pub selector: ModelRefSelector,
+    pub workflow: ImageGenerationWorkflowKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

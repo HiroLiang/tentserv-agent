@@ -223,16 +223,75 @@ pub enum ImageGenerationOptionsError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum ImageGenerationWorkflowKind {
+    TextToImage,
+    ImageToImage,
+}
+
+impl ImageGenerationWorkflowKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TextToImage => "text-to-image",
+            Self::ImageToImage => "image-to-image",
+        }
+    }
+}
+
+impl fmt::Display for ImageGenerationWorkflowKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ImageTransformStrength(f32);
+
+impl ImageTransformStrength {
+    pub const DEFAULT: f32 = 0.6;
+    pub const MIN: f32 = 0.0;
+    pub const MAX: f32 = 1.0;
+
+    pub fn new(value: f32) -> Result<Self, ImageTransformStrengthError> {
+        if !value.is_finite() || !(Self::MIN..=Self::MAX).contains(&value) {
+            return Err(ImageTransformStrengthError::OutOfRange { strength: value });
+        }
+        Ok(Self(value))
+    }
+
+    pub const fn as_f32(self) -> f32 {
+        self.0
+    }
+}
+
+impl Default for ImageTransformStrength {
+    fn default() -> Self {
+        Self(Self::DEFAULT)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum ImageTransformStrengthError {
+    #[error("image transform strength must be between 0 and 1; got {strength}")]
+    OutOfRange { strength: f32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ImageGenerationBackend {
     DiffusersTextToImage,
+    DiffusersImageToImage,
     MlxDiffusionTextToImage,
+    MlxDiffusionImageToImage,
 }
 
 impl ImageGenerationBackend {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::DiffusersTextToImage => "diffusers-text-to-image",
+            Self::DiffusersImageToImage => "diffusers-image-to-image",
             Self::MlxDiffusionTextToImage => "mlx-diffusion-text-to-image",
+            Self::MlxDiffusionImageToImage => "mlx-diffusion-image-to-image",
         }
     }
 
@@ -247,11 +306,27 @@ impl ImageGenerationBackend {
         format: ModelFormat,
         mlx_runtime_family: Option<MlxRuntimeFamily>,
     ) -> Option<Self> {
+        Self::from_model_format_and_mlx_family_for_workflow(
+            format,
+            mlx_runtime_family,
+            ImageGenerationWorkflowKind::TextToImage,
+        )
+    }
+
+    pub const fn from_model_format_and_mlx_family_for_workflow(
+        format: ModelFormat,
+        mlx_runtime_family: Option<MlxRuntimeFamily>,
+        workflow: ImageGenerationWorkflowKind,
+    ) -> Option<Self> {
         match (format, mlx_runtime_family) {
-            (ModelFormat::Diffusers, _) => Some(Self::DiffusersTextToImage),
-            (ModelFormat::Mlx, Some(MlxRuntimeFamily::Diffusion)) => {
-                Some(Self::MlxDiffusionTextToImage)
-            }
+            (ModelFormat::Diffusers, _) => match workflow {
+                ImageGenerationWorkflowKind::TextToImage => Some(Self::DiffusersTextToImage),
+                ImageGenerationWorkflowKind::ImageToImage => Some(Self::DiffusersImageToImage),
+            },
+            (ModelFormat::Mlx, Some(MlxRuntimeFamily::Diffusion)) => match workflow {
+                ImageGenerationWorkflowKind::TextToImage => Some(Self::MlxDiffusionTextToImage),
+                ImageGenerationWorkflowKind::ImageToImage => Some(Self::MlxDiffusionImageToImage),
+            },
             (ModelFormat::Safetensors | ModelFormat::Gguf, _)
             | (
                 ModelFormat::Mlx,
@@ -263,8 +338,12 @@ impl ImageGenerationBackend {
 
     pub const fn adapter_backend_support(self) -> AdapterBackendSupport {
         match self {
-            Self::DiffusersTextToImage => AdapterBackendSupport::Diffusers,
-            Self::MlxDiffusionTextToImage => AdapterBackendSupport::MlxDiffusion,
+            Self::DiffusersTextToImage | Self::DiffusersImageToImage => {
+                AdapterBackendSupport::Diffusers
+            }
+            Self::MlxDiffusionTextToImage | Self::MlxDiffusionImageToImage => {
+                AdapterBackendSupport::MlxDiffusion
+            }
         }
     }
 }
@@ -310,8 +389,35 @@ pub struct ResolvedImageGenerationAdapter {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ImageGenerationInput {
+    TextToImage,
+    ImageToImage {
+        image_path: PathBuf,
+        media_type: Option<String>,
+        strength: ImageTransformStrength,
+    },
+}
+
+impl ImageGenerationInput {
+    pub const fn workflow_kind(&self) -> ImageGenerationWorkflowKind {
+        match self {
+            Self::TextToImage => ImageGenerationWorkflowKind::TextToImage,
+            Self::ImageToImage { .. } => ImageGenerationWorkflowKind::ImageToImage,
+        }
+    }
+}
+
+impl Default for ImageGenerationInput {
+    fn default() -> Self {
+        Self::TextToImage
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageGenerationRequest {
     pub target: ResolvedImageGenerationTarget,
+    pub input: ImageGenerationInput,
     pub prompt: ImageGenerationPrompt,
     pub output_path: PathBuf,
     pub output_format: ImageGenerationOutputFormat,

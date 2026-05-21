@@ -98,6 +98,19 @@ fn image_routes() -> Router<RestState> {
             "/v1/images/generations/job/{job_id}/files/{file_id}",
             get(images::generation_job_file),
         )
+        .route(
+            "/v1/images/transforms/job",
+            post(images::create_transform_job),
+        )
+        .route(
+            "/v1/images/transforms/job/{job_id}/files",
+            get(images::transform_job_files),
+        )
+        .route(
+            "/v1/images/transforms/job/{job_id}/files/{file_id}",
+            get(images::transform_job_file),
+        )
+        .layer(DefaultBodyLimit::max(media_upload_body_limit_bytes()))
 }
 
 fn audio_routes() -> Router<RestState> {

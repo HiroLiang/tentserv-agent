@@ -85,15 +85,17 @@ impl ImageGenerationModelResolver for StdImageGenerationModelResolver<'_> {
             )));
         }
 
-        let backend = ImageGenerationBackend::from_model_format_and_mlx_family(
+        let backend = ImageGenerationBackend::from_model_format_and_mlx_family_for_workflow(
             metadata.primary_format,
             metadata.mlx_runtime_family,
+            request.workflow,
         )
         .ok_or_else(|| {
             KernelError::UnsupportedTarget(format!(
-                "image generation endpoint does not support `{}` model format{} yet for model `{}`",
+                "image generation endpoint does not support `{}` model format{} for `{}` workflow yet for model `{}`",
                 metadata.primary_format,
                 mlx_runtime_family_suffix(metadata.mlx_runtime_family),
+                request.workflow,
                 metadata.model_ref
             ))
         })?;

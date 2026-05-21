@@ -161,6 +161,21 @@ tentgent image generate \
   --steps 20
 ```
 
+Image-to-image transform CLI:
+
+```bash
+tentgent image transform \
+  --model-ref <image-generation-model-ref> \
+  --input-image /absolute/path/input.png \
+  --prompt "Turn this into a watercolor illustration" \
+  --strength 0.6 \
+  --output transformed.png \
+  --format png \
+  --width 512 \
+  --height 512 \
+  --steps 20
+```
+
 Daemon REST for repeated local tests:
 
 ```bash
@@ -238,6 +253,22 @@ curl -sS http://127.0.0.1:8790/v1/images/generations/job/<job-id>/files/teapot.p
   -o teapot.png
 ```
 
+Image transform daemon job:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/images/transforms/job \
+  -F image=@/absolute/path/input.png \
+  -F model_ref=<image-generation-model-ref> \
+  -F prompt='Turn this into a watercolor illustration' \
+  -F strength=0.6 \
+  -F output_format=png \
+  -F output_filename=transformed.png
+
+curl -sS http://127.0.0.1:8790/v1/images/transforms/job/<job-id>/files
+curl -sS http://127.0.0.1:8790/v1/images/transforms/job/<job-id>/files/transformed.png \
+  -o transformed.png
+```
+
 ## Current Fixture Models
 
 These rows are for local smoke tests, not product defaults.
@@ -259,7 +290,9 @@ These rows are for local smoke tests, not product defaults.
 Audio transcription candidates can run through `tentgent transcribe` and the
 daemon job route. Vision chat candidates can run through `tentgent vision chat`
 and daemon `POST /v1/vision/chat`. Image generation candidates can run through
-`tentgent image generate` and daemon `POST /v1/images/generations/job`.
+`tentgent image generate`, `tentgent image transform`, daemon
+`POST /v1/images/generations/job`, and daemon
+`POST /v1/images/transforms/job`.
 Other candidates are for metadata and contract planning. Pulling them with
 their media `--capability` values records model intent only; it does not make
 non-transcription, non-vision, non-image workflows runnable yet.

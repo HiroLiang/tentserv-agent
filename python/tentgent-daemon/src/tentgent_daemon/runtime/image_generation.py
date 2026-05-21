@@ -15,6 +15,7 @@ DEFAULT_WIDTH = 512
 DEFAULT_HEIGHT = 512
 DEFAULT_STEPS = 20
 DEFAULT_GUIDANCE_SCALE = 7.5
+DEFAULT_TRANSFORM_STRENGTH = 0.6
 MAX_PROMPT_BYTES = 8 * 1024
 
 
@@ -32,6 +33,9 @@ class ImageGenerationRequest:
     prompt: str
     output_path: Path
     output_format: str
+    input_image_path: Path | None = None
+    input_image_media_type: str | None = None
+    strength: float | None = None
     adapter: ImageGenerationAdapterSelection | None = None
     negative_prompt: str | None = None
     width: int = DEFAULT_WIDTH
@@ -97,6 +101,8 @@ def build_image_generation_plan(
     validate_image_generation_dimensions(request.width, request.height)
     validate_image_generation_steps(request.steps)
     validate_image_generation_guidance_scale(request.guidance_scale)
+    input_image_path = normalize_input_image_path(request.input_image_path)
+    strength = normalize_transform_strength(request.strength, input_image_path)
     if request.adapter is not None:
         validate_lora_scale(request.adapter.lora_scale)
         if not request.adapter.source_path.exists():
@@ -111,6 +117,11 @@ def build_image_generation_plan(
             negative_prompt=negative_prompt,
             output_path=output_path,
             output_format=output_format,
+            input_image_path=input_image_path,
+            input_image_media_type=normalize_input_image_media_type(
+                request.input_image_media_type
+            ),
+            strength=strength,
             adapter=request.adapter,
             width=request.width,
             height=request.height,
@@ -160,6 +171,46 @@ def validate_image_generation_guidance_scale(guidance_scale: float) -> None:
             "image generation guidance scale must be between 0 and 30; "
             f"got {guidance_scale}"
         )
+
+
+def normalize_input_image_path(input_image_path: Path | None) -> Path | None:
+    if input_image_path is None:
+        return None
+    path = input_image_path.expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"image transform input image `{path}` does not exist")
+    if not path.is_file():
+        raise ValueError(f"image transform input image `{path}` is not a file")
+    if path.stat().st_size == 0:
+        raise ValueError(f"image transform input image `{path}` must not be empty")
+    return path
+
+
+def normalize_input_image_media_type(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower().split(";")[0]
+    return normalized or None
+
+
+def normalize_transform_strength(
+    strength: float | None,
+    input_image_path: Path | None,
+) -> float | None:
+    if input_image_path is None:
+        if strength is not None:
+            raise ValueError(
+                "image transform strength requires --input-image-path"
+            )
+        return None
+
+    if strength is None:
+        strength = DEFAULT_TRANSFORM_STRENGTH
+    if strength != strength or strength < 0.0 or strength > 1.0:
+        raise ValueError(
+            f"image transform strength must be between 0 and 1; got {strength}"
+        )
+    return strength
 
 
 def validate_lora_scale(lora_scale: float) -> None:

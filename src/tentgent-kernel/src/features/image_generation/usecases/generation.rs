@@ -21,7 +21,7 @@ use super::port::{
     ImageGenerationUseCaseFuture,
 };
 
-/// Standard orchestration for preparing and executing text-to-image requests.
+/// Standard orchestration for preparing and executing image-generation requests.
 pub struct StdImageGenerationUseCase<'a> {
     runtime_resolution: &'a dyn RuntimeResolutionUseCase,
     model_resolver: &'a dyn ImageGenerationModelResolver,
@@ -66,6 +66,7 @@ impl ImageGenerationPreparationUseCase for StdImageGenerationUseCase<'_> {
             ImageGenerationModelResolveRequest {
                 layout: resolved_layout_input.clone(),
                 selector: request.model_selector,
+                workflow: request.input.workflow_kind(),
             },
         )?;
         let adapter = match (&request.adapter_selector, request.lora_scale, &model.target) {
@@ -114,6 +115,7 @@ impl ImageGenerationPreparationUseCase for StdImageGenerationUseCase<'_> {
             model: model.model,
             request: ImageGenerationRequest {
                 target,
+                input: request.input,
                 prompt,
                 output_path: request.output_path,
                 output_format: request.output_format,

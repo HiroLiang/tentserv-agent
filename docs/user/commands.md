@@ -381,6 +381,29 @@ For MFLUX-backed `mlx-diffusion` models, use
 Flux-compatible local `.safetensors` weight file. Trigger words are hints only;
 Tentgent does not rewrite prompts.
 
+Transform one input image with a prompt:
+
+```bash
+tentgent image transform \
+  --model-ref <image-generation-model-ref> \
+  --input-image input.png \
+  --prompt "Turn this into a watercolor illustration" \
+  --strength 0.6 \
+  --output transformed.png \
+  --format png \
+  --width 512 \
+  --height 512 \
+  --steps 20
+```
+
+`tentgent image transform` is foreground-only like `image generate`: it reads
+the local `--input-image`, writes only to `--output`, and fails if the output
+file already exists. Input images must be PNG, JPEG, or WebP. `--strength`
+uses Diffusers image-to-image semantics: `0.0` preserves the input image as
+much as possible, while `1.0` lets the model regenerate most of the image.
+The same optional `--adapter-ref` and `--lora-scale` flags work for compatible
+image LoRA adapters.
+
 Pull a tiny Diffusers plumbing fixture before local smoke tests:
 
 ```bash
@@ -426,6 +449,24 @@ Reading result files before completion returns `result_pending`; inspect
 `/v1/jobs/<job-id>` for progress or terminal error details. The daemon stores
 generated files in the job workspace and exposes only the file listing and file
 download APIs.
+
+For HTTP image-to-image integrations, upload file bytes with multipart form
+data. The daemon writes the uploaded image into the job workspace before
+runtime execution starts; it does not accept client-local image paths:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/images/transforms/job \
+  -F image=@/absolute/path/input.png \
+  -F model_ref=<image-generation-model-ref> \
+  -F prompt='Turn this into a watercolor illustration' \
+  -F strength=0.6 \
+  -F output_format=png \
+  -F output_filename=transformed.png
+
+curl -sS http://127.0.0.1:8790/v1/images/transforms/job/<job-id>/files
+curl -sS http://127.0.0.1:8790/v1/images/transforms/job/<job-id>/files/transformed.png \
+  -o transformed.png
+```
 
 ## Server
 

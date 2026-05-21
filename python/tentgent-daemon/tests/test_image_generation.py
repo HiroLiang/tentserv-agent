@@ -124,6 +124,70 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
                     home=home,
                 )
 
+    def test_build_plan_accepts_image_to_image_input_and_strength(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "7" * 64
+            write_model_record(home, model_ref, ["image-generation"])
+            input_image = home / "input.png"
+            input_image.write_bytes(b"png-bytes")
+
+            plan = build_image_generation_plan(
+                ImageGenerationRequest(
+                    model_ref=model_ref,
+                    prompt="make it watercolor",
+                    input_image_path=input_image,
+                    input_image_media_type="image/png",
+                    strength=0.7,
+                    output_path=home / "image.png",
+                    output_format="png",
+                ),
+                home=home,
+            )
+
+            self.assertEqual(plan.request.input_image_path, input_image.resolve())
+            self.assertEqual(plan.request.input_image_media_type, "image/png")
+            self.assertEqual(plan.request.strength, 0.7)
+
+    def test_build_plan_rejects_invalid_image_transform_strength(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "8" * 64
+            write_model_record(home, model_ref, ["image-generation"])
+            input_image = home / "input.png"
+            input_image.write_bytes(b"png-bytes")
+
+            with self.assertRaisesRegex(ValueError, "strength"):
+                build_image_generation_plan(
+                    ImageGenerationRequest(
+                        model_ref=model_ref,
+                        prompt="make it watercolor",
+                        input_image_path=input_image,
+                        strength=1.1,
+                        output_path=home / "image.png",
+                        output_format="png",
+                    ),
+                    home=home,
+                )
+
+    def test_build_plan_rejects_strength_without_input_image(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "9" * 64
+            write_model_record(home, model_ref, ["image-generation"])
+
+            with self.assertRaisesRegex(ValueError, "input-image"):
+                build_image_generation_plan(
+                    ImageGenerationRequest(
+                        model_ref=model_ref,
+                        prompt="draw",
+                        strength=0.5,
+                        output_path=home / "image.png",
+                        output_format="png",
+                    ),
+                    home=home,
+                )
+
     def test_diffusers_loader_disables_missing_safety_checker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
@@ -297,9 +361,51 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
             self.assertEqual(FakeFlux1.observed_generate["num_inference_steps"], 2)
             self.assertEqual(FakeFlux1.observed_generate["guidance"], 4.0)
             self.assertEqual(FakeFlux1.observed_generate["seed"], 11)
+            self.assertIsNone(FakeFlux1.observed_generate["image_path"])
+            self.assertIsNone(FakeFlux1.observed_generate["image_strength"])
             self.assertTrue(plan.request.output_path.is_file())
             self.assertEqual(result.media_type, "image/png")
             self.assertEqual(result.seed, 11)
+
+    def test_mflux_backend_maps_image_to_image_strength_to_image_influence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "d" * 64
+            input_image = home / "input.png"
+            input_image.write_bytes(b"png-bytes")
+            write_model_record(
+                home,
+                model_ref,
+                ["image-generation"],
+                primary_format="mlx",
+                detected_formats=["mlx"],
+                mlx_runtime_family="mlx-diffusion",
+                source_repo="mlx-community/Flux-1.lite-8B-MLX-Q4",
+            )
+            with patch("tentgent_daemon.runtime.router.ensure_backend_supported"):
+                plan = build_image_generation_plan(
+                    ImageGenerationRequest(
+                        model_ref=model_ref,
+                        prompt="make it watercolor",
+                        input_image_path=input_image,
+                        strength=0.25,
+                        output_path=home / "image.png",
+                        output_format="png",
+                        seed=12,
+                    ),
+                    home=home,
+                )
+
+            with patch(
+                "tentgent_daemon.backends.mlx_diffusion._load_mflux_deps",
+                return_value=MfluxDeps(Flux1=FakeFlux1, ModelConfig=FakeModelConfig),
+            ):
+                backend = MfluxImageGenerationBackend()
+                backend.load(plan.record)
+                backend.generate_image(plan.request)
+
+            self.assertEqual(FakeFlux1.observed_generate["image_path"], input_image.resolve())
+            self.assertEqual(FakeFlux1.observed_generate["image_strength"], 0.75)
 
     def test_mflux_backend_passes_managed_lora_paths_and_scales(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

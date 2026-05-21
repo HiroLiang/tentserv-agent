@@ -4,9 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::adapter::domain::{AdapterBackendSupport, AdapterRef, LoraScale};
 use crate::features::image_generation::domain::{
-    ImageGenerationBackend, ImageGenerationDimensions, ImageGenerationOptions,
-    ImageGenerationOutputFormat, ImageGenerationPrompt, ImageGenerationRequest,
-    ImageGenerationResponse, ImageGenerationRuntimeTarget, ResolvedImageGenerationAdapter,
+    ImageGenerationBackend, ImageGenerationDimensions, ImageGenerationInput,
+    ImageGenerationOptions, ImageGenerationOutputFormat, ImageGenerationPrompt,
+    ImageGenerationRequest, ImageGenerationResponse, ImageGenerationRuntimeTarget,
+    ImageGenerationWorkflowKind, ImageTransformStrength, ResolvedImageGenerationAdapter,
     ResolvedImageGenerationTarget,
 };
 use crate::features::image_generation::infra::{
@@ -91,6 +92,7 @@ fn std_image_generation_model_resolver_accepts_diffusers_model() {
         .resolve_image_generation_model(ImageGenerationModelResolveRequest {
             layout: layout_input(unique_path("image-generation-model-home")),
             selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            workflow: ImageGenerationWorkflowKind::TextToImage,
         })
         .expect("resolve image generation model");
 
@@ -121,6 +123,22 @@ fn image_generation_backend_maps_mlx_diffusion_family_only() {
         Some(ImageGenerationBackend::MlxDiffusionTextToImage)
     );
     assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family_for_workflow(
+            ModelFormat::Diffusers,
+            None,
+            ImageGenerationWorkflowKind::ImageToImage
+        ),
+        Some(ImageGenerationBackend::DiffusersImageToImage)
+    );
+    assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family_for_workflow(
+            ModelFormat::Mlx,
+            Some(MlxRuntimeFamily::Diffusion),
+            ImageGenerationWorkflowKind::ImageToImage
+        ),
+        Some(ImageGenerationBackend::MlxDiffusionImageToImage)
+    );
+    assert_eq!(
         ImageGenerationBackend::from_model_format_and_mlx_family(
             ModelFormat::Mlx,
             Some(MlxRuntimeFamily::Vlm)
@@ -144,6 +162,7 @@ fn std_image_generation_model_resolver_accepts_mlx_diffusion_model() {
         .resolve_image_generation_model(ImageGenerationModelResolveRequest {
             layout: layout_input(unique_path("image-generation-mlx-diffusion-home")),
             selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            workflow: ImageGenerationWorkflowKind::TextToImage,
         })
         .expect("resolve mlx image generation model");
 
@@ -175,6 +194,7 @@ fn std_image_generation_model_resolver_rejects_non_diffusion_mlx_families() {
             .resolve_image_generation_model(ImageGenerationModelResolveRequest {
                 layout: layout_input(unique_path("image-generation-non-diffusion-mlx-home")),
                 selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+                workflow: ImageGenerationWorkflowKind::TextToImage,
             })
             .expect_err("non-diffusion mlx family");
 
@@ -202,6 +222,7 @@ fn std_image_generation_model_resolver_rejects_non_image_models() {
             .resolve_image_generation_model(ImageGenerationModelResolveRequest {
                 layout: layout_input(unique_path("image-generation-non-image-home")),
                 selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+                workflow: ImageGenerationWorkflowKind::TextToImage,
             })
             .expect_err("non-image model");
 
@@ -226,11 +247,23 @@ fn std_image_generation_model_resolver_rejects_unsupported_format() {
         .resolve_image_generation_model(ImageGenerationModelResolveRequest {
             layout: layout_input(unique_path("image-generation-safetensors-home")),
             selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            workflow: ImageGenerationWorkflowKind::TextToImage,
         })
         .expect_err("unsupported backend");
 
     assert!(matches!(err, KernelError::UnsupportedTarget(_)));
     assert!(err.to_string().contains("does not support `safetensors`"));
+}
+
+#[test]
+fn image_transform_strength_validates_diffusers_style_range() {
+    let strength = ImageTransformStrength::new(0.6).expect("strength");
+
+    assert_eq!(strength.as_f32(), 0.6);
+    assert_eq!(ImageTransformStrength::default().as_f32(), 0.6);
+    assert!(ImageTransformStrength::new(-0.1).is_err());
+    assert!(ImageTransformStrength::new(1.1).is_err());
+    assert!(ImageTransformStrength::new(f32::NAN).is_err());
 }
 
 #[cfg(unix)]
@@ -307,6 +340,60 @@ async fn python_image_generation_once_client_runs_entrypoint_with_arguments() {
     assert!(args.contains("--steps\n25\n"));
     assert!(args.contains("--guidance-scale\n6.5\n"));
     assert!(args.contains("--seed\n42\n"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn python_image_generation_once_client_passes_image_to_image_arguments() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = unique_path("python-image-transform");
+    let home = root.join("home");
+    let project = root.join("project");
+    let env = root.join("env");
+    fs::create_dir_all(&home).expect("home");
+    fs::create_dir_all(&project).expect("project");
+    fs::create_dir_all(&env).expect("env");
+    let output_path = home.join("image.png");
+    let input_path = home.join("input.png");
+    fs::write(&input_path, b"input").expect("input");
+    let entrypoint = root.join("tentgent-image-generate-once");
+    fs::write(
+        &entrypoint,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"png\",\"media_type\":\"image/png\",\"output_path\":\"",
+    )
+    .expect("script prefix");
+    let mut script = fs::read_to_string(&entrypoint).expect("script read");
+    script.push_str(&output_path.display().to_string());
+    script.push_str("\",\"total_bytes\":12,\"width\":512,\"height\":768,\"seed\":42}'\n");
+    fs::write(&entrypoint, script).expect("script");
+    let mut permissions = fs::metadata(&entrypoint).expect("metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&entrypoint, permissions).expect("chmod");
+
+    let executable_resolver = FakeExecutableResolver { entrypoint };
+    let client = PythonImageGenerationOnceRuntimeClient::new(&executable_resolver);
+    let mut request = image_generation_request(&output_path);
+    request.input = ImageGenerationInput::ImageToImage {
+        image_path: input_path.clone(),
+        media_type: Some("image/png".to_string()),
+        strength: ImageTransformStrength::new(0.7).expect("strength"),
+    };
+
+    client
+        .generate_image(ImageGenerationRuntimeRequest {
+            layout: runtime_layout(&home),
+            runtime: python_runtime(&project, &env),
+            request,
+        })
+        .await
+        .expect("image transform");
+
+    let args = fs::read_to_string(home.join("args.txt")).expect("args");
+    assert!(args.contains("--input-image-path\n"));
+    assert!(args.contains("input.png\n"));
+    assert!(args.contains("--input-image-media-type\nimage/png\n"));
+    assert!(args.contains("--strength\n0.7\n"));
 }
 
 #[cfg(unix)]
@@ -448,6 +535,7 @@ fn image_generation_request(output_path: &Path) -> ImageGenerationRequest {
             },
             adapter: None,
         },
+        input: ImageGenerationInput::TextToImage,
         prompt: ImageGenerationPrompt::new("A neon city.", Some("blurry".to_string()))
             .expect("prompt"),
         output_path: output_path.to_path_buf(),
