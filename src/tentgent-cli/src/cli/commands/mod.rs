@@ -21,7 +21,10 @@ pub use chat::ChatCommand;
 pub use daemon::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 pub use dataset::DatasetCommands;
 pub use embed::EmbedCommand;
-pub use image::{ImageCommands, ImageGenerateCommand, ImageInpaintCommand, ImageTransformCommand};
+pub use image::{
+    ImageCommands, ImageControlCommand, ImageGenerateCommand, ImageInpaintCommand,
+    ImageTransformCommand,
+};
 pub use model::ModelCommands;
 pub use rerank::RerankCommand;
 pub use runtime::RuntimeBootstrapProfile;

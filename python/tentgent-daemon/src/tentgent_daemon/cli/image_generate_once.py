@@ -9,12 +9,15 @@ from tentgent_daemon.runtime.image_generation import (
     DEFAULT_GUIDANCE_SCALE,
     DEFAULT_HEIGHT,
     DEFAULT_INPAINT_STRENGTH,
+    DEFAULT_CONTROL_KIND,
+    DEFAULT_CONTROL_STRENGTH,
     DEFAULT_STEPS,
     DEFAULT_TRANSFORM_STRENGTH,
     DEFAULT_WIDTH,
     SUPPORTED_OUTPUT_FORMATS,
     ImageGenerationRequest,
     ImageGenerationAdapterSelection,
+    ImageGenerationControlSelection,
     build_image_generation_plan,
     normalize_image_generation_output_format,
 )
@@ -23,8 +26,8 @@ from tentgent_daemon.runtime.image_generation import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Run a Tentgent image generation, image-to-image, or inpainting "
-            "request from a stored model reference."
+            "Run a Tentgent image generation, image-to-image, inpainting, or "
+            "controlled generation request from a stored model reference."
         )
     )
     parser.add_argument("--model-ref", required=True, help="Stored Tentgent model ref")
@@ -56,6 +59,25 @@ def parse_args() -> argparse.Namespace:
             f"{DEFAULT_INPAINT_STRENGTH} for inpainting."
         ),
     )
+    parser.add_argument(
+        "--control-image-path",
+        help="Optional local control image path for controlled generation",
+    )
+    parser.add_argument(
+        "--control-image-media-type",
+        help="Optional control image media type for diagnostics",
+    )
+    parser.add_argument(
+        "--control-kind",
+        default=None,
+        help=f"Control image kind. Defaults to {DEFAULT_CONTROL_KIND}.",
+    )
+    parser.add_argument(
+        "--control-strength",
+        type=float,
+        default=None,
+        help=f"Control influence strength. Defaults to {DEFAULT_CONTROL_STRENGTH}.",
+    )
     parser.add_argument("--output-path", required=True, help="Generated image output path")
     parser.add_argument(
         "--format",
@@ -83,6 +105,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional LoRA weight path relative to --adapter-source-path",
     )
     parser.add_argument("--lora-scale", type=float, help="Optional LoRA scale")
+    parser.add_argument("--control-ref", help="Optional ControlNet-style adapter ref")
+    parser.add_argument(
+        "--control-source-path",
+        help="Managed local ControlNet-style adapter source directory",
+    )
     parser.add_argument("--home", help="Optional Tentgent runtime home override")
     parser.add_argument(
         "--plan-only",
@@ -96,6 +123,7 @@ def main() -> int:
     args = parse_args()
     output_format = normalize_image_generation_output_format(args.format)
     adapter = image_adapter_from_args(args)
+    control = image_control_from_args(args)
     request = ImageGenerationRequest(
         model_ref=args.model_ref,
         prompt=args.prompt,
@@ -107,6 +135,13 @@ def main() -> int:
         mask_image_path=Path(args.mask_image_path) if args.mask_image_path else None,
         mask_image_media_type=args.mask_image_media_type,
         strength=args.strength,
+        control_image_path=Path(args.control_image_path)
+        if args.control_image_path
+        else None,
+        control_image_media_type=args.control_image_media_type,
+        control_kind=args.control_kind,
+        control_strength=args.control_strength,
+        control=control,
         adapter=adapter,
         width=args.width,
         height=args.height,
@@ -136,6 +171,18 @@ def main() -> int:
                     else None,
                     "mask_image_media_type": plan.request.mask_image_media_type,
                     "strength": plan.request.strength,
+                    "control_image_path": str(plan.request.control_image_path)
+                    if plan.request.control_image_path
+                    else None,
+                    "control_image_media_type": plan.request.control_image_media_type,
+                    "control_kind": plan.request.control_kind,
+                    "control_strength": plan.request.control_strength,
+                    "control_ref": plan.request.control.control_ref
+                    if plan.request.control
+                    else None,
+                    "control_source_path": str(plan.request.control.source_path)
+                    if plan.request.control
+                    else None,
                     "width": plan.request.width,
                     "height": plan.request.height,
                     "steps": plan.request.steps,
@@ -194,6 +241,20 @@ def image_adapter_from_args(args: argparse.Namespace) -> ImageGenerationAdapterS
         source_path=Path(args.adapter_source_path).expanduser().resolve(),
         weight_file=args.adapter_weight_file,
         lora_scale=args.lora_scale if args.lora_scale is not None else 1.0,
+    )
+
+
+def image_control_from_args(args: argparse.Namespace) -> ImageGenerationControlSelection | None:
+    if not args.control_ref and not args.control_source_path:
+        return None
+    if not args.control_ref or not args.control_source_path:
+        raise ValueError(
+            "--control-ref and --control-source-path are required when selecting image control"
+        )
+    return ImageGenerationControlSelection(
+        control_ref=args.control_ref,
+        source_path=Path(args.control_source_path).expanduser().resolve(),
+        control_kind=(args.control_kind or DEFAULT_CONTROL_KIND).strip().lower(),
     )
 
 

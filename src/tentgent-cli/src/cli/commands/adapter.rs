@@ -20,12 +20,18 @@ pub enum AdapterCommands {
         /// Target model capability this adapter is intended for, such as image-generation.
         #[arg(long = "target-capability", value_name = "CAPABILITY")]
         target_capability: Option<String>,
-        /// Adapter format override, such as diffusers-lora or mlx-diffusion-lora.
+        /// Adapter type override, such as lora or controlnet.
+        #[arg(long = "adapter-type", value_name = "TYPE")]
+        adapter_type: Option<String>,
+        /// Adapter format override, such as diffusers-lora, diffusers-controlnet, or mlx-diffusion-lora.
         #[arg(long = "adapter-format", value_name = "FORMAT")]
         adapter_format: Option<String>,
         /// Runtime backend support override. May be repeated.
         #[arg(long = "backend-support", value_name = "BACKEND")]
         backend_support: Vec<String>,
+        /// Control kind for ControlNet-style adapters, such as canny.
+        #[arg(long = "control-kind", value_name = "KIND")]
+        control_kind: Option<String>,
         /// Relative path to the LoRA weight file inside the adapter source.
         #[arg(long = "weight-file", value_name = "RELATIVE_PATH")]
         weight_file: Option<String>,
@@ -56,12 +62,18 @@ pub enum AdapterCommands {
         /// Target model capability this adapter is intended for, such as image-generation.
         #[arg(long = "target-capability", value_name = "CAPABILITY")]
         target_capability: Option<String>,
-        /// Adapter format override, such as diffusers-lora or mlx-diffusion-lora.
+        /// Adapter type override, such as lora or controlnet.
+        #[arg(long = "adapter-type", value_name = "TYPE")]
+        adapter_type: Option<String>,
+        /// Adapter format override, such as diffusers-lora, diffusers-controlnet, or mlx-diffusion-lora.
         #[arg(long = "adapter-format", value_name = "FORMAT")]
         adapter_format: Option<String>,
         /// Runtime backend support override. May be repeated.
         #[arg(long = "backend-support", value_name = "BACKEND")]
         backend_support: Vec<String>,
+        /// Control kind for ControlNet-style adapters, such as canny.
+        #[arg(long = "control-kind", value_name = "KIND")]
+        control_kind: Option<String>,
         /// Relative path to the LoRA weight file inside the adapter source.
         #[arg(long = "weight-file", value_name = "RELATIVE_PATH")]
         weight_file: Option<String>,

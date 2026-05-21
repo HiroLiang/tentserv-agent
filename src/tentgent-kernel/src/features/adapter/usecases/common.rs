@@ -4,9 +4,9 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::features::adapter::domain::{
     backend_support_for_format, detect_adapter_format, detect_image_adapter_format,
-    select_adapter_weight_file, AdapterImportOutcome, AdapterMetadata, AdapterSourceKind,
-    AdapterStoreLayout, AdapterType, BaseModelAdapterIndex, HfAdapterSourceIndex,
-    LocalAdapterSourceIndex, TrainRunAdapterSourceIndex,
+    select_adapter_weight_file, AdapterFormat, AdapterImportOutcome, AdapterMetadata,
+    AdapterSourceKind, AdapterStoreLayout, AdapterType, BaseModelAdapterIndex,
+    HfAdapterSourceIndex, LocalAdapterSourceIndex, TrainRunAdapterSourceIndex,
 };
 use crate::features::adapter::ports::{
     AdapterBaseIndexStore, AdapterCatalogStore, AdapterContentStore, AdapterIdentityGenerator,
@@ -160,13 +160,14 @@ impl AdapterImportFinalizer<'_> {
             adapter_ref: adapter_ref.clone(),
             short_ref: adapter_ref.short_ref().to_string(),
             adapter_format,
-            adapter_type: AdapterType::Lora,
+            adapter_type: adapter_type_for_options(adapter_format, options),
             target_capability: None,
             base_model_ref: None,
             base_model_source_repo: None,
             base_model_source_revision: None,
             model_family: None,
             backend_support: backend_support_for_options(adapter_format, options),
+            control_kind: None,
             weight_file: None,
             trigger_words: Vec::new(),
             recommended_scale: None,
@@ -342,14 +343,16 @@ pub(super) fn apply_base_metadata(
 fn apply_import_options(
     metadata: &mut AdapterMetadata,
     options: &AdapterImportOptions,
-    adapter_format: crate::features::adapter::domain::AdapterFormat,
+    adapter_format: AdapterFormat,
     weight_file: Option<String>,
 ) {
     metadata.adapter_format = adapter_format;
+    metadata.adapter_type = adapter_type_for_options(adapter_format, options);
     metadata.backend_support = backend_support_for_options(adapter_format, options);
     if let Some(target_capability) = options.target_capability {
         metadata.target_capability = Some(target_capability);
     }
+    metadata.control_kind = options.control_kind.clone();
     if weight_file.is_some() {
         metadata.weight_file = weight_file;
     }
@@ -362,7 +365,7 @@ fn apply_import_options(
 }
 
 fn backend_support_for_options(
-    adapter_format: crate::features::adapter::domain::AdapterFormat,
+    adapter_format: AdapterFormat,
     options: &AdapterImportOptions,
 ) -> Vec<crate::features::adapter::domain::AdapterBackendSupport> {
     if options.backend_support.is_empty() {
@@ -370,6 +373,20 @@ fn backend_support_for_options(
     } else {
         options.backend_support.clone()
     }
+}
+
+fn adapter_type_for_options(
+    adapter_format: AdapterFormat,
+    options: &AdapterImportOptions,
+) -> AdapterType {
+    options.adapter_type.unwrap_or(match adapter_format {
+        AdapterFormat::DiffusersControlNet => AdapterType::ControlNet,
+        AdapterFormat::Peft
+        | AdapterFormat::Mlx
+        | AdapterFormat::DiffusersLora
+        | AdapterFormat::MlxDiffusionLora
+        | AdapterFormat::LlamaCpp => AdapterType::Lora,
+    })
 }
 
 pub(super) fn base_index_for_metadata(

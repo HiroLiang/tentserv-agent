@@ -176,6 +176,30 @@ fn image_lora_format_detection_selects_weight_file_and_backend_support() {
 }
 
 #[test]
+fn diffusers_controlnet_format_is_control_adapter_without_lora_weight_selection() {
+    let manifest = AdapterManifest {
+        files: vec![manifest_entry("diffusion_pytorch_model.safetensors", 8)],
+    };
+
+    assert_eq!(
+        detect_image_adapter_format(&manifest, Some(AdapterFormat::DiffusersControlNet), &[]),
+        Ok(AdapterFormat::DiffusersControlNet)
+    );
+    assert_eq!(
+        select_adapter_weight_file(&manifest, None, AdapterFormat::DiffusersControlNet),
+        Ok(None)
+    );
+    assert_eq!(
+        backend_support_for_format(AdapterFormat::DiffusersControlNet),
+        vec![AdapterBackendSupport::Diffusers]
+    );
+    assert_eq!(
+        "controlnet".parse::<AdapterType>().expect("controlnet"),
+        AdapterType::ControlNet
+    );
+}
+
+#[test]
 fn adapter_manifest_sorts_counts_and_sums_files_without_io() {
     let manifest = AdapterManifest {
         files: vec![
@@ -206,6 +230,7 @@ fn adapter_metadata_reports_source_base_and_short_ref_consistency() {
         base_model_source_revision: Some("base-sha".to_string()),
         model_family: Some("llama".to_string()),
         backend_support: vec![AdapterBackendSupport::TransformersPeft],
+        control_kind: None,
         weight_file: None,
         trigger_words: Vec::new(),
         recommended_scale: None,
@@ -540,6 +565,7 @@ fn metadata_fixture(base_model_ref: Option<ModelRef>) -> AdapterMetadata {
         base_model_source_revision: Some("base-sha".to_string()),
         model_family: Some("llama".to_string()),
         backend_support: vec![AdapterBackendSupport::TransformersPeft],
+        control_kind: None,
         weight_file: None,
         trigger_words: Vec::new(),
         recommended_scale: None,

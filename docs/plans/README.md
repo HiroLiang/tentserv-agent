@@ -98,6 +98,13 @@ one pass without a staged breakdown.
   jobs, white repaint / black keep mask semantics, Diffusers inpainting
   support, and MFLUX Flux Fill support with a fill-model compatibility guard.
   Real-model smoke remains pending.
+- [m6o-reference-images-and-controlnet.md](./m6o-reference-images-and-controlnet.md)
+  Implemented, unit-tested, and tiny-fixture smoke-tested M6O execution slice
+  for typed controlled image generation: foreground `tentgent image control`,
+  daemon multipart control-image jobs, managed ControlNet-style control assets,
+  Diffusers ControlNet runtime support, and a documented boundary that keeps
+  generic reference-image composition deferred until a concrete backend
+  contract is proven.
 
 ## Recommended Order
 

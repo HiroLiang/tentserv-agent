@@ -199,6 +199,9 @@ fn add_adapter_metadata_rows(table: &mut Table, metadata: &AdapterMetadata) {
                 .join(", "),
         ),
     ]);
+    if let Some(control_kind) = &metadata.control_kind {
+        table.add_row(vec![Cell::new("control_kind"), Cell::new(control_kind)]);
+    }
     if let Some(weight_file) = &metadata.weight_file {
         table.add_row(vec![Cell::new("weight_file"), Cell::new(weight_file)]);
     }

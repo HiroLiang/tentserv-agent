@@ -506,6 +506,7 @@ fn adapter_inspection(layout: &RuntimeLayout) -> AdapterInspection {
             base_model_source_revision: Some("main".to_string()),
             model_family: None,
             backend_support: vec![AdapterBackendSupport::TransformersPeft],
+            control_kind: None,
             weight_file: None,
             trigger_words: Vec::new(),
             recommended_scale: None,

@@ -19,6 +19,8 @@ DEFAULT_STEPS = 20
 DEFAULT_GUIDANCE_SCALE = 7.5
 DEFAULT_TRANSFORM_STRENGTH = 0.6
 DEFAULT_INPAINT_STRENGTH = 1.0
+DEFAULT_CONTROL_KIND = "canny"
+DEFAULT_CONTROL_STRENGTH = 1.0
 MAX_PROMPT_BYTES = 8 * 1024
 
 
@@ -28,6 +30,13 @@ class ImageGenerationAdapterSelection:
     source_path: Path
     lora_scale: float
     weight_file: str | None = None
+
+
+@dataclass(frozen=True)
+class ImageGenerationControlSelection:
+    control_ref: str
+    source_path: Path
+    control_kind: str
 
 
 @dataclass(frozen=True)
@@ -41,6 +50,11 @@ class ImageGenerationRequest:
     mask_image_path: Path | None = None
     mask_image_media_type: str | None = None
     strength: float | None = None
+    control_image_path: Path | None = None
+    control_image_media_type: str | None = None
+    control_kind: str | None = None
+    control_strength: float | None = None
+    control: ImageGenerationControlSelection | None = None
     adapter: ImageGenerationAdapterSelection | None = None
     negative_prompt: str | None = None
     width: int = DEFAULT_WIDTH
@@ -108,18 +122,39 @@ def build_image_generation_plan(
     validate_image_generation_guidance_scale(request.guidance_scale)
     input_image_path = normalize_input_image_path(request.input_image_path)
     mask_image_path = normalize_mask_image_path(request.mask_image_path)
+    control_image_path = normalize_control_image_path(request.control_image_path)
     strength = normalize_denoise_strength(
         request.strength,
         input_image_path,
         mask_image_path,
+        control_image_path,
     )
-    validate_image_generation_input_pair(input_image_path, mask_image_path)
+    control_kind = normalize_control_kind(request.control_kind, control_image_path)
+    control_strength = normalize_control_strength(
+        request.control_strength,
+        control_image_path,
+    )
+    validate_image_generation_input_pair(input_image_path, mask_image_path, control_image_path)
     if request.adapter is not None:
         validate_lora_scale(request.adapter.lora_scale)
         if not request.adapter.source_path.exists():
             raise FileNotFoundError(
                 f"image LoRA adapter source `{request.adapter.source_path}` does not exist"
             )
+    if request.control is not None:
+        if control_image_path is None:
+            raise ValueError("image control adapter requires --control-image-path")
+        if request.control.source_path.exists() is False:
+            raise FileNotFoundError(
+                f"image control adapter source `{request.control.source_path}` does not exist"
+            )
+        if request.control.control_kind != control_kind:
+            raise ValueError(
+                "image control adapter kind "
+                f"`{request.control.control_kind}` does not match request `{control_kind}`"
+            )
+    if control_image_path is not None and request.control is None:
+        raise ValueError("image control input requires --control-ref")
 
     return ImageGenerationPlan(
         request=ImageGenerationRequest(
@@ -137,6 +172,13 @@ def build_image_generation_plan(
                 request.mask_image_media_type
             ),
             strength=strength,
+            control_image_path=control_image_path,
+            control_image_media_type=normalize_input_image_media_type(
+                request.control_image_media_type
+            ),
+            control_kind=control_kind,
+            control_strength=control_strength,
+            control=request.control,
             adapter=request.adapter,
             width=request.width,
             height=request.height,
@@ -214,6 +256,19 @@ def normalize_mask_image_path(mask_image_path: Path | None) -> Path | None:
     return path
 
 
+def normalize_control_image_path(control_image_path: Path | None) -> Path | None:
+    if control_image_path is None:
+        return None
+    path = control_image_path.expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"image control input image `{path}` does not exist")
+    if not path.is_file():
+        raise ValueError(f"image control input image `{path}` is not a file")
+    if path.stat().st_size == 0:
+        raise ValueError(f"image control input image `{path}` must not be empty")
+    return path
+
+
 def normalize_input_image_media_type(value: str | None) -> str | None:
     if value is None:
         return None
@@ -225,7 +280,12 @@ def normalize_denoise_strength(
     strength: float | None,
     input_image_path: Path | None,
     mask_image_path: Path | None,
+    control_image_path: Path | None = None,
 ) -> float | None:
+    if control_image_path is not None:
+        if strength is not None:
+            raise ValueError("image denoising strength cannot be used with image control")
+        return None
     if input_image_path is None:
         if mask_image_path is not None:
             raise ValueError("image inpaint mask requires --input-image-path")
@@ -244,10 +304,45 @@ def normalize_denoise_strength(
     return strength
 
 
+def normalize_control_kind(
+    control_kind: str | None,
+    control_image_path: Path | None,
+) -> str | None:
+    if control_image_path is None:
+        if control_kind is not None:
+            raise ValueError("image control kind requires --control-image-path")
+        return None
+    normalized = (control_kind or DEFAULT_CONTROL_KIND).strip().lower()
+    if normalized != "canny":
+        raise ValueError(
+            f"unsupported image control kind `{control_kind}`; expected one of: canny"
+        )
+    return normalized
+
+
+def normalize_control_strength(
+    control_strength: float | None,
+    control_image_path: Path | None,
+) -> float | None:
+    if control_image_path is None:
+        if control_strength is not None:
+            raise ValueError("image control strength requires --control-image-path")
+        return None
+    value = DEFAULT_CONTROL_STRENGTH if control_strength is None else control_strength
+    if value != value or value < 0.0 or value > 2.0:
+        raise ValueError(f"image control strength must be between 0 and 2; got {value}")
+    return value
+
+
 def validate_image_generation_input_pair(
     input_image_path: Path | None,
     mask_image_path: Path | None,
+    control_image_path: Path | None = None,
 ) -> None:
+    if control_image_path is not None:
+        if input_image_path is not None or mask_image_path is not None:
+            raise ValueError("image control input cannot be combined with image-to-image or inpaint")
+        return
     if mask_image_path is None:
         return
     if input_image_path is None:
@@ -306,6 +401,19 @@ def load_normalized_inpaint_images(
     with image_module.open(mask_path) as mask:
         mask_image = normalize_inpaint_mask(mask, width, height)
     return base_image, mask_image
+
+
+def load_normalized_control_image(
+    image_path: Path,
+    width: int,
+    height: int,
+) -> Any:
+    image_module = _load_pillow_image()
+    with image_module.open(image_path) as image:
+        control_image = image.convert("RGB")
+        if control_image.size != (width, height):
+            control_image = control_image.resize((width, height))
+        return control_image
 
 
 def normalize_inpaint_mask(mask: Any, width: int, height: int) -> Any:

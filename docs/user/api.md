@@ -402,6 +402,83 @@ GET /v1/images/inpaint/job/{job_id}/files/{file_id}
 Before completion, file routes return HTTP `409` with `result_pending`.
 Terminal failures mirror the text-to-image job behavior.
 
+## Image Control Jobs
+
+Canonical controlled image generation uses a workflow job:
+
+```http
+POST /v1/images/control/job
+Content-Type: multipart/form-data
+```
+
+The request uploads one control image as bytes, not a client-local path. The
+control image is paired with a managed ControlNet-style adapter referenced by
+`control_ref`. This is separate from the optional image LoRA `adapter_ref`.
+
+Multipart fields:
+
+| Field | Required | Type | Notes |
+| --- | --- | --- | --- |
+| `control_image` | yes | file bytes | PNG, JPEG, or WebP control image. |
+| `model_ref` | yes | string | Local `image-generation` model ref or unique alias. |
+| `control_ref` | yes | string | Managed ControlNet-style adapter ref or unique short-ref prefix. |
+| `control_kind` | no | string | Defaults to `canny`; M6O supports `canny`. |
+| `control_strength` | no | number | Defaults to `1.0`. Must be 0..2. Maps to Diffusers ControlNet conditioning scale. |
+| `adapter_ref` | no | string | Optional managed image LoRA adapter ref or unique short-ref prefix. |
+| `lora_scale` | no | number | Optional LoRA scale. Defaults to `1.0` when `adapter_ref` is present; must be 0..4. |
+| `prompt` | yes | string | Text prompt for the generated image. |
+| `negative_prompt` | no | string | Optional negative prompt when the selected backend supports it. |
+| `output_format` | no | string | `png` or `jpg`; defaults to `png`. |
+| `output_filename` | no | string | File name only, not a path. Defaults to `image.<format>`. |
+| `width` | no | integer | Defaults to 512. Must be 64..1024 and divisible by 8. |
+| `height` | no | integer | Defaults to 512. Must be 64..1024 and divisible by 8. |
+| `steps` | no | integer | Defaults to 20. Must be 1..100. |
+| `guidance_scale` | no | number | Defaults to 7.5. Must be 0..30. |
+| `seed` | no | integer | Optional deterministic seed. |
+
+M6O expects the uploaded image to already be the control representation for the
+selected `control_kind`; the daemon does not auto-run canny/depth/pose
+preprocessors. Diffusers ControlNet is the first supported backend path. MLX
+diffusion control returns an unsupported-backend error until a stable local
+ControlNet-capable runtime is integrated.
+
+For tiny ControlNet smoke fixtures, pass explicit small dimensions such as
+`width=64`, `height=64`, and `steps=2`. The default `512x512` and `20` steps are
+intended for normal image jobs and may be slow or exceed backend memory limits
+on PyTorch MPS.
+
+Response shape matches other image generation jobs:
+
+```json
+{
+  "job": {
+    "job_id": "job-...",
+    "kind": "image_generation",
+    "status": "queued",
+    "target": {
+      "section": "image",
+      "reference": "<model-ref>",
+      "path": null
+    }
+  }
+}
+```
+
+List controlled generation files after completion:
+
+```http
+GET /v1/images/control/job/{job_id}/files
+```
+
+Download one controlled generation file:
+
+```http
+GET /v1/images/control/job/{job_id}/files/{file_id}
+```
+
+Before completion, file routes return HTTP `409` with `result_pending`.
+Terminal failures mirror the text-to-image job behavior.
+
 ## Embeddings
 
 ```http
@@ -577,8 +654,8 @@ workspace chunks or spool routes.
 | `GET` | `/v1/adapters` | None. |
 | `GET` | `/v1/adapters/{reference}` | None. |
 | `DELETE` | `/v1/adapters/{reference}` | None. |
-| `POST` | `/v1/adapters/import` | `{"path":"/absolute/adapter-dir","base_model_ref":"optional-base-model","target_capability":"optional-capability","adapter_format":"optional-format","backend_support":["optional-backend"],"weight_file":"optional-file","trigger_words":["optional-token"],"recommended_scale":0.8}` |
-| `POST` | `/v1/adapters/pull` | `{"repo_id":"org/adapter","revision":"optional","base_model_ref":"optional-base-model","target_capability":"optional-capability","adapter_format":"optional-format","backend_support":["optional-backend"],"weight_file":"optional-file","trigger_words":["optional-token"],"recommended_scale":0.8}` |
+| `POST` | `/v1/adapters/import` | `{"path":"/absolute/adapter-dir","base_model_ref":"optional-base-model","target_capability":"optional-capability","adapter_type":"optional-type","adapter_format":"optional-format","backend_support":["optional-backend"],"control_kind":"optional-kind","weight_file":"optional-file","trigger_words":["optional-token"],"recommended_scale":0.8}` |
+| `POST` | `/v1/adapters/pull` | `{"repo_id":"org/adapter","revision":"optional","base_model_ref":"optional-base-model","target_capability":"optional-capability","adapter_type":"optional-type","adapter_format":"optional-format","backend_support":["optional-backend"],"control_kind":"optional-kind","weight_file":"optional-file","trigger_words":["optional-token"],"recommended_scale":0.8}` |
 | `POST` | `/v1/adapters/import/jobs` | Same as `/v1/adapters/import`, returns a job. |
 | `POST` | `/v1/adapters/pull/jobs` | Same as `/v1/adapters/pull`, returns a job. |
 | `POST` | `/v1/adapters/{reference}/bind` | `{"base_model_ref":"<base-model-ref>"}` |
@@ -590,6 +667,11 @@ adapters, set `target_capability` to `image-generation`, use `adapter_format`
 required when the adapter source contains multiple candidate `.safetensors`
 files. The `/jobs` variants accept the same metadata fields and return a daemon
 job immediately.
+
+For ControlNet-style image control adapters, set `target_capability` to
+`image-generation`, `adapter_type` to `controlnet`, `adapter_format` to
+`diffusers-controlnet`, `backend_support` to `["diffusers"]`, and
+`control_kind` to a supported kind such as `canny`.
 
 ## Datasets
 

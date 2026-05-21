@@ -9,8 +9,8 @@ use serde::Deserialize;
 use tentgent_kernel::{
     features::adapter::{
         domain::{
-            AdapterBackendSupport, AdapterFormat, AdapterRefSelector, HfAdapterPullProgress,
-            LoraScale,
+            AdapterBackendSupport, AdapterFormat, AdapterRefSelector, AdapterType,
+            HfAdapterPullProgress, LoraScale,
         },
         usecases::{
             AdapterBindRequest, AdapterBindUseCase, AdapterCatalogReadUseCase,
@@ -311,9 +311,11 @@ pub struct AdapterImportJobRequest {
     pub path: String,
     pub base_model_ref: Option<String>,
     pub target_capability: Option<String>,
+    pub adapter_type: Option<String>,
     pub adapter_format: Option<String>,
     #[serde(default)]
     pub backend_support: Vec<String>,
+    pub control_kind: Option<String>,
     pub weight_file: Option<String>,
     #[serde(default)]
     pub trigger_words: Vec<String>,
@@ -327,9 +329,11 @@ pub struct AdapterPullJobRequest {
     pub revision: Option<String>,
     pub base_model_ref: Option<String>,
     pub target_capability: Option<String>,
+    pub adapter_type: Option<String>,
     pub adapter_format: Option<String>,
     #[serde(default)]
     pub backend_support: Vec<String>,
+    pub control_kind: Option<String>,
     pub weight_file: Option<String>,
     #[serde(default)]
     pub trigger_words: Vec<String>,
@@ -421,8 +425,10 @@ impl AdapterImportJobRequest {
     fn import_options(&self) -> Result<AdapterImportOptions, RestError> {
         adapter_import_options(
             self.target_capability.as_deref(),
+            self.adapter_type.as_deref(),
             self.adapter_format.as_deref(),
             &self.backend_support,
+            self.control_kind.as_deref(),
             self.weight_file.as_deref(),
             &self.trigger_words,
             self.recommended_scale,
@@ -434,8 +440,10 @@ impl AdapterPullJobRequest {
     fn import_options(&self) -> Result<AdapterImportOptions, RestError> {
         adapter_import_options(
             self.target_capability.as_deref(),
+            self.adapter_type.as_deref(),
             self.adapter_format.as_deref(),
             &self.backend_support,
+            self.control_kind.as_deref(),
             self.weight_file.as_deref(),
             &self.trigger_words,
             self.recommended_scale,
@@ -445,8 +453,10 @@ impl AdapterPullJobRequest {
 
 fn adapter_import_options(
     target_capability: Option<&str>,
+    adapter_type: Option<&str>,
     adapter_format: Option<&str>,
     backend_support: &[String],
+    control_kind: Option<&str>,
     weight_file: Option<&str>,
     trigger_words: &[String],
     recommended_scale: Option<f32>,
@@ -455,6 +465,13 @@ fn adapter_import_options(
         .map(|value| {
             value.parse::<ModelCapability>().map_err(|err| {
                 RestError::bad_request("bad_request", format!("invalid target_capability: {err}"))
+            })
+        })
+        .transpose()?;
+    let adapter_type = adapter_type
+        .map(|value| {
+            value.parse::<AdapterType>().map_err(|err| {
+                RestError::bad_request("bad_request", format!("invalid adapter_type: {err}"))
             })
         })
         .transpose()?;
@@ -485,9 +502,11 @@ fn adapter_import_options(
         .transpose()?;
 
     Ok(AdapterImportOptions {
+        adapter_type,
         target_capability,
         adapter_format,
         backend_support,
+        control_kind: control_kind.and_then(non_empty_string),
         weight_file: weight_file.and_then(non_empty_string),
         trigger_words,
         recommended_scale,

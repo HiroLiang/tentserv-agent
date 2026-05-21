@@ -42,8 +42,8 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
 
 - CLI media commands such as `tentgent transcribe`, `tentgent vision chat`,
   `tentgent image generate`, `tentgent image transform`, and
-  `tentgent image inpaint` read local files or prompts from the caller's
-  machine and run in the foreground.
+  `tentgent image inpaint`, and `tentgent image control` read local files or
+  prompts from the caller's machine and run in the foreground.
 - Daemon media endpoints receive multipart file bytes. `curl -F
   file=@/path/audio.mp3` and `curl -F image=@/path/image.png` are client-side
   shorthand for reading local files; the daemon does not receive or trust the

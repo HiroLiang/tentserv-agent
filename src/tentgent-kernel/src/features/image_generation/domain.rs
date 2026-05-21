@@ -227,6 +227,7 @@ pub enum ImageGenerationWorkflowKind {
     TextToImage,
     ImageToImage,
     Inpaint,
+    Control,
 }
 
 impl ImageGenerationWorkflowKind {
@@ -235,6 +236,7 @@ impl ImageGenerationWorkflowKind {
             Self::TextToImage => "text-to-image",
             Self::ImageToImage => "image-to-image",
             Self::Inpaint => "inpaint",
+            Self::Control => "control",
         }
     }
 }
@@ -280,10 +282,86 @@ pub enum ImageTransformStrengthError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum ImageControlKind {
+    Canny,
+}
+
+impl ImageControlKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Canny => "canny",
+        }
+    }
+}
+
+impl fmt::Display for ImageControlKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for ImageControlKind {
+    type Err = ImageControlKindParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" => Err(ImageControlKindParseError::Empty),
+            "canny" => Ok(Self::Canny),
+            _ => Err(ImageControlKindParseError::Unsupported {
+                value: value.trim().to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ImageControlKindParseError {
+    #[error("image control kind must not be blank; expected one of: canny")]
+    Empty,
+    #[error("unsupported image control kind `{value}`; expected one of: canny")]
+    Unsupported { value: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ImageControlStrength(f32);
+
+impl ImageControlStrength {
+    pub const DEFAULT: f32 = 1.0;
+    pub const MIN: f32 = 0.0;
+    pub const MAX: f32 = 2.0;
+
+    pub fn new(value: f32) -> Result<Self, ImageControlStrengthError> {
+        if !value.is_finite() || !(Self::MIN..=Self::MAX).contains(&value) {
+            return Err(ImageControlStrengthError::OutOfRange { strength: value });
+        }
+        Ok(Self(value))
+    }
+
+    pub const fn as_f32(self) -> f32 {
+        self.0
+    }
+}
+
+impl Default for ImageControlStrength {
+    fn default() -> Self {
+        Self(Self::DEFAULT)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum ImageControlStrengthError {
+    #[error("image control strength must be between 0 and 2; got {strength}")]
+    OutOfRange { strength: f32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ImageGenerationBackend {
     DiffusersTextToImage,
     DiffusersImageToImage,
     DiffusersInpaint,
+    DiffusersControl,
     MlxDiffusionTextToImage,
     MlxDiffusionImageToImage,
     MlxDiffusionInpaint,
@@ -295,6 +373,7 @@ impl ImageGenerationBackend {
             Self::DiffusersTextToImage => "diffusers-text-to-image",
             Self::DiffusersImageToImage => "diffusers-image-to-image",
             Self::DiffusersInpaint => "diffusers-inpaint",
+            Self::DiffusersControl => "diffusers-control",
             Self::MlxDiffusionTextToImage => "mlx-diffusion-text-to-image",
             Self::MlxDiffusionImageToImage => "mlx-diffusion-image-to-image",
             Self::MlxDiffusionInpaint => "mlx-diffusion-inpaint",
@@ -329,11 +408,13 @@ impl ImageGenerationBackend {
                 ImageGenerationWorkflowKind::TextToImage => Some(Self::DiffusersTextToImage),
                 ImageGenerationWorkflowKind::ImageToImage => Some(Self::DiffusersImageToImage),
                 ImageGenerationWorkflowKind::Inpaint => Some(Self::DiffusersInpaint),
+                ImageGenerationWorkflowKind::Control => Some(Self::DiffusersControl),
             },
             (ModelFormat::Mlx, Some(MlxRuntimeFamily::Diffusion)) => match workflow {
                 ImageGenerationWorkflowKind::TextToImage => Some(Self::MlxDiffusionTextToImage),
                 ImageGenerationWorkflowKind::ImageToImage => Some(Self::MlxDiffusionImageToImage),
                 ImageGenerationWorkflowKind::Inpaint => Some(Self::MlxDiffusionInpaint),
+                ImageGenerationWorkflowKind::Control => None,
             },
             (ModelFormat::Safetensors | ModelFormat::Gguf, _)
             | (
@@ -349,6 +430,7 @@ impl ImageGenerationBackend {
             Self::DiffusersTextToImage | Self::DiffusersImageToImage | Self::DiffusersInpaint => {
                 AdapterBackendSupport::Diffusers
             }
+            Self::DiffusersControl => AdapterBackendSupport::Diffusers,
             Self::MlxDiffusionTextToImage
             | Self::MlxDiffusionImageToImage
             | Self::MlxDiffusionInpaint => AdapterBackendSupport::MlxDiffusion,
@@ -385,6 +467,7 @@ impl ImageGenerationRuntimeTarget {
 pub struct ResolvedImageGenerationTarget {
     pub runtime: ImageGenerationRuntimeTarget,
     pub adapter: Option<ResolvedImageGenerationAdapter>,
+    pub control: Option<ResolvedImageGenerationControl>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -394,6 +477,14 @@ pub struct ResolvedImageGenerationAdapter {
     pub source_path: PathBuf,
     pub weight_file: Option<String>,
     pub scale: LoraScale,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedImageGenerationControl {
+    pub adapter_ref: AdapterRef,
+    pub backend: AdapterBackendSupport,
+    pub source_path: PathBuf,
+    pub control_kind: ImageControlKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -412,6 +503,12 @@ pub enum ImageGenerationInput {
         mask_media_type: Option<String>,
         strength: ImageTransformStrength,
     },
+    Control {
+        control_image_path: PathBuf,
+        control_image_media_type: Option<String>,
+        control_kind: ImageControlKind,
+        control_strength: ImageControlStrength,
+    },
 }
 
 impl ImageGenerationInput {
@@ -420,6 +517,7 @@ impl ImageGenerationInput {
             Self::TextToImage => ImageGenerationWorkflowKind::TextToImage,
             Self::ImageToImage { .. } => ImageGenerationWorkflowKind::ImageToImage,
             Self::Inpaint { .. } => ImageGenerationWorkflowKind::Inpaint,
+            Self::Control { .. } => ImageGenerationWorkflowKind::Control,
         }
     }
 }

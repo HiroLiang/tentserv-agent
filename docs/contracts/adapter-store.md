@@ -58,6 +58,7 @@ TENTGENT_HOME/
 - `base_model_source_revision`
 - `model_family`
 - `backend_support`
+- `control_kind`
 - `weight_file`
 - `trigger_words`
 - `recommended_scale`
@@ -82,6 +83,8 @@ Notes:
   adapters by compatibility checks.
 - `backend_support` should describe intended runtime support, such as
   `transformers-peft`, `mlx`, `diffusers`, `mlx-diffusion`, or `llama-cpp`.
+- `control_kind` is used by ControlNet-style image control adapters. M6O
+  supports `canny`.
 - `weight_file` is used by image LoRA adapters when the managed `source/`
   directory contains one selected `.safetensors` file.
 - `trigger_words` are prompt hints only. Tentgent records and displays them but
@@ -107,6 +110,10 @@ Before a server uses an adapter, it should check:
 - the adapter target capability matches the request capability when
   `target_capability` is present
 - the adapter backend support includes the server backend
+- the adapter type matches the workflow: `lora` for LoRA selection and
+  `controlnet` for image control selection
+- ControlNet-style image control requests must match the adapter
+  `control_kind`
 - the server policy allows that adapter
 
 The first implementation should be conservative. If compatibility cannot be proven, reject the request with a clear error.
@@ -137,6 +144,19 @@ For MFLUX-backed MLX diffusion image LoRA adapters, `source/` may contain one
 Flux-compatible `.safetensors` file. If an image LoRA source contains multiple
 `.safetensors` files, import or pull should specify `--weight-file` so runtime
 execution uses one deterministic local managed file.
+
+For Diffusers ControlNet-style image control adapters, `source/` is the raw
+ControlNet repository snapshot and should be imported or pulled with:
+
+- `adapter_type = "controlnet"`
+- `adapter_format = "diffusers-controlnet"`
+- `target_capability = "image-generation"`
+- `backend_support = ["diffusers"]`
+- `control_kind = "canny"` for the first supported workflow
+
+ControlNet adapters are not LoRA adapters. Runtime execution combines one base
+image-generation model, one optional image LoRA adapter, one ControlNet adapter,
+and one uploaded control image.
 
 ## Indexes
 

@@ -4,11 +4,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::adapter::domain::{AdapterBackendSupport, AdapterRef, LoraScale};
 use crate::features::image_generation::domain::{
-    ImageGenerationBackend, ImageGenerationDimensions, ImageGenerationInput,
-    ImageGenerationOptions, ImageGenerationOutputFormat, ImageGenerationPrompt,
-    ImageGenerationRequest, ImageGenerationResponse, ImageGenerationRuntimeTarget,
-    ImageGenerationWorkflowKind, ImageTransformStrength, ResolvedImageGenerationAdapter,
-    ResolvedImageGenerationTarget,
+    ImageControlKind, ImageControlStrength, ImageGenerationBackend, ImageGenerationDimensions,
+    ImageGenerationInput, ImageGenerationOptions, ImageGenerationOutputFormat,
+    ImageGenerationPrompt, ImageGenerationRequest, ImageGenerationResponse,
+    ImageGenerationRuntimeTarget, ImageGenerationWorkflowKind, ImageTransformStrength,
+    ResolvedImageGenerationAdapter, ResolvedImageGenerationControl, ResolvedImageGenerationTarget,
 };
 use crate::features::image_generation::infra::{
     PythonImageGenerationOnceRuntimeClient, StdImageGenerationModelResolver,
@@ -140,6 +140,14 @@ fn image_generation_backend_maps_mlx_diffusion_family_only() {
     );
     assert_eq!(
         ImageGenerationBackend::from_model_format_and_mlx_family_for_workflow(
+            ModelFormat::Diffusers,
+            None,
+            ImageGenerationWorkflowKind::Control
+        ),
+        Some(ImageGenerationBackend::DiffusersControl)
+    );
+    assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family_for_workflow(
             ModelFormat::Mlx,
             Some(MlxRuntimeFamily::Diffusion),
             ImageGenerationWorkflowKind::ImageToImage
@@ -153,6 +161,14 @@ fn image_generation_backend_maps_mlx_diffusion_family_only() {
             ImageGenerationWorkflowKind::Inpaint
         ),
         Some(ImageGenerationBackend::MlxDiffusionInpaint)
+    );
+    assert_eq!(
+        ImageGenerationBackend::from_model_format_and_mlx_family_for_workflow(
+            ModelFormat::Mlx,
+            Some(MlxRuntimeFamily::Diffusion),
+            ImageGenerationWorkflowKind::Control
+        ),
+        None
     );
     assert_eq!(
         ImageGenerationBackend::from_model_format_and_mlx_family(
@@ -280,6 +296,22 @@ fn image_transform_strength_validates_diffusers_style_range() {
     assert!(ImageTransformStrength::new(-0.1).is_err());
     assert!(ImageTransformStrength::new(1.1).is_err());
     assert!(ImageTransformStrength::new(f32::NAN).is_err());
+}
+
+#[test]
+fn image_control_kind_and_strength_validate_public_contract() {
+    assert_eq!(
+        "canny".parse::<ImageControlKind>().expect("canny"),
+        ImageControlKind::Canny
+    );
+    assert!("depth".parse::<ImageControlKind>().is_err());
+
+    let strength = ImageControlStrength::new(1.25).expect("control strength");
+    assert_eq!(strength.as_f32(), 1.25);
+    assert_eq!(ImageControlStrength::default().as_f32(), 1.0);
+    assert!(ImageControlStrength::new(-0.1).is_err());
+    assert!(ImageControlStrength::new(2.1).is_err());
+    assert!(ImageControlStrength::new(f32::NAN).is_err());
 }
 
 #[cfg(unix)]
@@ -531,6 +563,72 @@ async fn python_image_generation_once_client_passes_adapter_arguments() {
     assert!(args.contains("0.8\n"));
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn python_image_generation_once_client_passes_control_arguments() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = unique_path("python-image-control");
+    let home = root.join("home");
+    let project = root.join("project");
+    let env = root.join("env");
+    fs::create_dir_all(&home).expect("home");
+    fs::create_dir_all(&project).expect("project");
+    fs::create_dir_all(&env).expect("env");
+    let output_path = home.join("image.png");
+    let control_image = home.join("control.png");
+    fs::write(&control_image, b"control").expect("control");
+    let entrypoint = root.join("tentgent-image-generate-once");
+    fs::write(
+        &entrypoint,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"png\",\"media_type\":\"image/png\",\"output_path\":\"",
+    )
+    .expect("script prefix");
+    let mut script = fs::read_to_string(&entrypoint).expect("script read");
+    script.push_str(&output_path.display().to_string());
+    script.push_str("\",\"total_bytes\":12,\"width\":512,\"height\":768,\"seed\":42}'\n");
+    fs::write(&entrypoint, script).expect("script");
+    let mut permissions = fs::metadata(&entrypoint).expect("metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&entrypoint, permissions).expect("chmod");
+
+    let executable_resolver = FakeExecutableResolver { entrypoint };
+    let client = PythonImageGenerationOnceRuntimeClient::new(&executable_resolver);
+    let mut request = image_generation_request(&output_path);
+    request.input = ImageGenerationInput::Control {
+        control_image_path: control_image.clone(),
+        control_image_media_type: Some("image/png".to_string()),
+        control_kind: ImageControlKind::Canny,
+        control_strength: ImageControlStrength::new(1.2).expect("strength"),
+    };
+    request.target.control = Some(ResolvedImageGenerationControl {
+        adapter_ref: adapter_ref(),
+        backend: AdapterBackendSupport::Diffusers,
+        source_path: home.join("adapters/store/control/source"),
+        control_kind: ImageControlKind::Canny,
+    });
+
+    client
+        .generate_image(ImageGenerationRuntimeRequest {
+            layout: runtime_layout(&home),
+            runtime: python_runtime(&project, &env),
+            request,
+        })
+        .await
+        .expect("image control");
+
+    let args = fs::read_to_string(home.join("args.txt")).expect("args");
+    assert!(args.contains("--control-image-path\n"));
+    assert!(args.contains("control.png\n"));
+    assert!(args.contains("--control-image-media-type\nimage/png\n"));
+    assert!(args.contains("--control-kind\ncanny\n"));
+    assert!(args.contains("--control-strength\n1.2\n"));
+    assert!(args.contains("--control-ref\n"));
+    assert!(args.contains(&format!("{}\n", adapter_ref())));
+    assert!(args.contains("--control-source-path\n"));
+    assert!(args.contains("adapters/store/control/source\n"));
+}
+
 #[derive(Clone)]
 struct FakeModelCatalog {
     metadata: ModelMetadata,
@@ -611,6 +709,7 @@ fn image_generation_request(output_path: &Path) -> ImageGenerationRequest {
                 model_capabilities: vec![ModelCapability::ImageGeneration],
             },
             adapter: None,
+            control: None,
         },
         input: ImageGenerationInput::TextToImage,
         prompt: ImageGenerationPrompt::new("A neon city.", Some("blurry".to_string()))

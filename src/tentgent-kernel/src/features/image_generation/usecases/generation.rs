@@ -2,13 +2,13 @@
 
 use crate::features::adapter::domain::AdapterCompatibilityTarget;
 use crate::features::image_generation::domain::{
-    ImageGenerationPrompt, ImageGenerationRequest, ImageGenerationRuntimeTarget,
-    ResolvedImageGenerationTarget,
+    ImageControlKind, ImageGenerationInput, ImageGenerationPrompt, ImageGenerationRequest,
+    ImageGenerationRuntimeTarget, ResolvedImageGenerationTarget,
 };
 use crate::features::image_generation::ports::{
     ImageGenerationAdapterResolveRequest, ImageGenerationAdapterResolver,
-    ImageGenerationModelResolveRequest, ImageGenerationModelResolver, ImageGenerationRuntimeClient,
-    ImageGenerationRuntimeRequest,
+    ImageGenerationControlResolveRequest, ImageGenerationModelResolveRequest,
+    ImageGenerationModelResolver, ImageGenerationRuntimeClient, ImageGenerationRuntimeRequest,
 };
 use crate::features::model::domain::ModelCapability;
 use crate::features::runtime::usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase};
@@ -82,7 +82,7 @@ impl ImageGenerationPreparationUseCase for StdImageGenerationUseCase<'_> {
                 },
             ) => Some(self.adapter_resolver.resolve_image_generation_adapter(
                 ImageGenerationAdapterResolveRequest {
-                    layout: resolved_layout_input,
+                    layout: resolved_layout_input.clone(),
                     selector: adapter_selector.clone(),
                     target: AdapterCompatibilityTarget {
                         base_model_ref: model_ref.clone(),
@@ -102,9 +102,49 @@ impl ImageGenerationPreparationUseCase for StdImageGenerationUseCase<'_> {
             }
             (None, None, _) => None,
         };
+        let control = match (&request.control_selector, &model.target) {
+            (
+                Some(control_selector),
+                ImageGenerationRuntimeTarget::LocalModel {
+                    model_ref,
+                    backend,
+                    source_repo,
+                    source_revision,
+                    model_capabilities,
+                },
+            ) => {
+                let Some(control_kind) = control_kind_for_input(&request.input) else {
+                    return Err(KernelError::UnsupportedTarget(
+                        "image control adapter requires a control image input".to_string(),
+                    ));
+                };
+                Some(self.adapter_resolver.resolve_image_generation_control(
+                    ImageGenerationControlResolveRequest {
+                        layout: resolved_layout_input,
+                        selector: control_selector.clone(),
+                        target: AdapterCompatibilityTarget {
+                            base_model_ref: model_ref.clone(),
+                            base_model_source_repo: source_repo.clone(),
+                            base_model_source_revision: source_revision.clone(),
+                            base_model_capabilities: model_capabilities.clone(),
+                            required_capability: ModelCapability::ImageGeneration,
+                            backend: backend.adapter_backend_support(),
+                        },
+                        control_kind,
+                    },
+                )?)
+            }
+            (None, _) => None,
+        };
+        if matches!(&request.input, ImageGenerationInput::Control { .. }) && control.is_none() {
+            return Err(KernelError::UnsupportedTarget(
+                "image control input requires a control adapter reference".to_string(),
+            ));
+        }
         let target = ResolvedImageGenerationTarget {
             runtime: model.target.clone(),
             adapter: adapter.as_ref().map(|adapter| adapter.target.clone()),
+            control: control.as_ref().map(|control| control.target.clone()),
         };
         let prompt = ImageGenerationPrompt::new(request.prompt, request.negative_prompt)
             .map_err(|error| KernelError::UnsupportedTarget(error.to_string()))?;
@@ -122,6 +162,15 @@ impl ImageGenerationPreparationUseCase for StdImageGenerationUseCase<'_> {
                 options: request.options,
             },
         })
+    }
+}
+
+fn control_kind_for_input(input: &ImageGenerationInput) -> Option<ImageControlKind> {
+    match input {
+        ImageGenerationInput::Control { control_kind, .. } => Some(*control_kind),
+        ImageGenerationInput::TextToImage
+        | ImageGenerationInput::ImageToImage { .. }
+        | ImageGenerationInput::Inpaint { .. } => None,
     }
 }
 

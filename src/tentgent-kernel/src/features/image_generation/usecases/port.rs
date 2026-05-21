@@ -23,6 +23,7 @@ pub struct ImageGenerationPreparationRequest {
     pub model_selector: ModelRefSelector,
     pub adapter_selector: Option<AdapterRefSelector>,
     pub lora_scale: Option<LoraScale>,
+    pub control_selector: Option<AdapterRefSelector>,
     pub input: ImageGenerationInput,
     pub prompt: String,
     pub negative_prompt: Option<String>,

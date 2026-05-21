@@ -623,6 +623,7 @@ fn metadata_fixture(source_kind: AdapterSourceKind) -> AdapterMetadata {
         base_model_source_revision: Some("base-sha".to_string()),
         model_family: Some("llama".to_string()),
         backend_support: vec![AdapterBackendSupport::TransformersPeft],
+        control_kind: None,
         weight_file: None,
         trigger_words: Vec::new(),
         recommended_scale: None,

@@ -494,16 +494,26 @@ Status: implemented and unit-tested; real-model smoke pending. Details in
 
 #### M6O: Reference Images And ControlNet
 
-Status: planned.
+Status: implemented, unit-tested, and tiny-fixture smoke-tested. Details in
+[m6o-reference-images-and-controlnet.md](./m6o-reference-images-and-controlnet.md).
 
-- Add controlled generation inputs after simpler image input contracts are
-  stable.
-- Treat reference images as model/pipeline-specific unless a common contract is
-  proven.
-- Treat ControlNet as a separate control model/input family with explicit
-  dependency, preprocessing, and compatibility checks.
-- Do not merge this into the baseline text-to-image route without a clear typed
-  request shape.
+- Added a typed controlled image-generation workflow after simpler image input
+  contracts stabilized.
+- Public workflow: `tentgent image control` and
+  `POST /v1/images/control/job`, with one prompt, one typed control image, one
+  managed ControlNet-style control asset, and one output image.
+- Treats the base image model, optional image LoRA adapter, and ControlNet-style
+  control asset as separate compatibility surfaces.
+- Keeps ControlNet assets in managed adapter/control metadata rather than
+  pretending they are normal base image models or LoRA adapters.
+- Treats generic reference-image composition as model/pipeline-specific until a
+  concrete contract is proven; do not add a generic `reference_image` field in
+  this slice.
+- Does not merge controlled generation into the baseline text-to-image route
+  without this typed request shape.
+- Verified daemon smoke with
+  `hf-internal-testing/tiny-stable-diffusion-pipe-no-safety` plus
+  `hf-internal-testing/tiny-controlnet` at `64x64`, `2` steps.
 
 #### M6P: Audio Speech Jobs
 

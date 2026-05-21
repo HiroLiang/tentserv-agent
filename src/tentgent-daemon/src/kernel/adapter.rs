@@ -27,7 +27,8 @@ use tentgent_kernel::{
             infra::StdImageGenerationAdapterResolver,
             ports::{
                 ImageGenerationAdapterResolveRequest, ImageGenerationAdapterResolveResult,
-                ImageGenerationAdapterResolver,
+                ImageGenerationAdapterResolver, ImageGenerationControlResolveRequest,
+                ImageGenerationControlResolveResult,
             },
         },
         model::ports::ModelCatalogStore,
@@ -208,5 +209,12 @@ impl ImageGenerationAdapterResolver for AdapterKernelComponent {
         request: ImageGenerationAdapterResolveRequest,
     ) -> KernelResult<ImageGenerationAdapterResolveResult> {
         StdImageGenerationAdapterResolver::new(self).resolve_image_generation_adapter(request)
+    }
+
+    fn resolve_image_generation_control(
+        &self,
+        request: ImageGenerationControlResolveRequest,
+    ) -> KernelResult<ImageGenerationControlResolveResult> {
+        StdImageGenerationAdapterResolver::new(self).resolve_image_generation_control(request)
     }
 }

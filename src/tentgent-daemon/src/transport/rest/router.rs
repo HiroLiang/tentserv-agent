@@ -119,6 +119,15 @@ fn image_routes() -> Router<RestState> {
             "/v1/images/inpaint/job/{job_id}/files/{file_id}",
             get(images::inpaint_job_file),
         )
+        .route("/v1/images/control/job", post(images::create_control_job))
+        .route(
+            "/v1/images/control/job/{job_id}/files",
+            get(images::control_job_files),
+        )
+        .route(
+            "/v1/images/control/job/{job_id}/files/{file_id}",
+            get(images::control_job_file),
+        )
         .layer(DefaultBodyLimit::max(media_upload_body_limit_bytes()))
 }
 

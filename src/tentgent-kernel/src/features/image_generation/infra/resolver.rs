@@ -1,3 +1,4 @@
+use crate::features::adapter::domain::{AdapterFormat, AdapterType};
 use crate::features::adapter::usecases::{
     AdapterCompatibilityCheckRequest, AdapterCompatibilityCheckUseCase,
 };
@@ -7,10 +8,12 @@ use crate::foundation::error::{KernelError, KernelResult};
 
 use super::super::domain::{
     ImageGenerationBackend, ImageGenerationRuntimeTarget, ResolvedImageGenerationAdapter,
+    ResolvedImageGenerationControl,
 };
 use super::super::ports::{
     ImageGenerationAdapterResolveRequest, ImageGenerationAdapterResolveResult,
-    ImageGenerationAdapterResolver, ImageGenerationModelResolveRequest,
+    ImageGenerationAdapterResolver, ImageGenerationControlResolveRequest,
+    ImageGenerationControlResolveResult, ImageGenerationModelResolveRequest,
     ImageGenerationModelResolveResult, ImageGenerationModelResolver,
 };
 
@@ -44,6 +47,12 @@ impl ImageGenerationAdapterResolver for StdImageGenerationAdapterResolver<'_> {
                     adapter_selector: request.selector,
                     target: request.target,
                 })?;
+        if result.adapter.metadata.adapter_type != AdapterType::Lora {
+            return Err(KernelError::UnsupportedTarget(format!(
+                "image LoRA adapter requires adapter type `lora`, but adapter `{}` is `{}`",
+                result.adapter.metadata.short_ref, result.adapter.metadata.adapter_type
+            )));
+        }
         let target = ResolvedImageGenerationAdapter {
             adapter_ref: result.adapter.metadata.adapter_ref.clone(),
             backend,
@@ -56,6 +65,60 @@ impl ImageGenerationAdapterResolver for StdImageGenerationAdapterResolver<'_> {
             layout: result.layout,
             adapter: result.adapter,
             target,
+        })
+    }
+
+    fn resolve_image_generation_control(
+        &self,
+        request: ImageGenerationControlResolveRequest,
+    ) -> KernelResult<ImageGenerationControlResolveResult> {
+        let backend = request.target.backend;
+        let control_kind = request.control_kind;
+        let result =
+            self.compatibility
+                .check_adapter_compatibility(AdapterCompatibilityCheckRequest {
+                    layout: request.layout,
+                    adapter_selector: request.selector,
+                    target: request.target,
+                })?;
+        let metadata = &result.adapter.metadata;
+        if metadata.adapter_type != AdapterType::ControlNet {
+            return Err(KernelError::UnsupportedTarget(format!(
+                "image control requires adapter type `controlnet`, but adapter `{}` is `{}`",
+                metadata.short_ref, metadata.adapter_type
+            )));
+        }
+        if metadata.adapter_format != AdapterFormat::DiffusersControlNet {
+            return Err(KernelError::UnsupportedTarget(format!(
+                "image control requires adapter format `diffusers-controlnet`, but adapter `{}` is `{}`",
+                metadata.short_ref, metadata.adapter_format
+            )));
+        }
+        match metadata.control_kind.as_deref() {
+            Some(value) if value == control_kind.as_str() => {}
+            Some(value) => {
+                return Err(KernelError::UnsupportedTarget(format!(
+                    "image control adapter `{}` is for control kind `{value}`, but request requires `{control_kind}`",
+                    metadata.short_ref
+                )));
+            }
+            None => {
+                return Err(KernelError::UnsupportedTarget(format!(
+                    "image control adapter `{}` is missing control_kind metadata",
+                    metadata.short_ref
+                )));
+            }
+        }
+
+        Ok(ImageGenerationControlResolveResult {
+            layout: result.layout,
+            adapter: result.adapter.clone(),
+            target: ResolvedImageGenerationControl {
+                adapter_ref: result.adapter.metadata.adapter_ref.clone(),
+                backend,
+                source_path: result.adapter.source_path,
+                control_kind,
+            },
         })
     }
 }

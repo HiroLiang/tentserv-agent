@@ -50,6 +50,12 @@ What changed:
   `black = keep`. Inpaint result files are exposed through
   `/v1/images/inpaint/job/{job_id}/files` and
   `/v1/images/inpaint/job/{job_id}/files/{file_id}`.
+- Added foreground CLI `tentgent image control` and daemon-native
+  `POST /v1/images/control/job` for typed controlled image generation against
+  local `image-generation` models plus managed ControlNet-style adapters.
+  M6O supports `control_kind = canny`; result files are exposed through
+  `/v1/images/control/job/{job_id}/files` and
+  `/v1/images/control/job/{job_id}/files/{file_id}`.
 - Added endpoint-family gates so chat routes require `chat` models and
   embedding/rerank routes require matching model capabilities before runtime
   dispatch.
@@ -70,9 +76,11 @@ Known limits:
   reads are transport-stream-friendly memory boundaries, not realtime model
   streaming. Live dictation and live translation remain future work.
 - Image generation supports text-to-image, one-input-image transform, one-mask
-  inpainting, and one managed image LoRA adapter. Reference images, ControlNet,
-  compatible OpenAI image APIs, direct image model server routes, image LoRA
-  training, and broader compatibility proof storage are future slices.
+  inpainting, one managed image LoRA adapter, and one typed ControlNet-style
+  control image workflow. Generic reference-image composition, multi-control
+  inputs, automatic canny/depth/pose preprocessing, compatible OpenAI image
+  APIs, direct image model server routes, image LoRA training, and broader
+  compatibility proof storage are future slices.
 - MLX acceleration is implemented for chat, LoRA training, native
   `vision-chat`, native `audio-transcription`, and MFLUX-backed
   `image-generation` on Apple Silicon. Diffusers remains the small

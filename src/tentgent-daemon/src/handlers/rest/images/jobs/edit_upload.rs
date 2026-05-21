@@ -5,8 +5,8 @@ use axum::extract::{multipart::Field, Multipart};
 use tentgent_kernel::features::{
     adapter::domain::{AdapterRefSelector, LoraScale},
     image_generation::domain::{
-        ImageGenerationDimensions, ImageGenerationInput, ImageGenerationOptions,
-        ImageGenerationOutputFormat, ImageTransformStrength,
+        ImageControlKind, ImageControlStrength, ImageGenerationDimensions, ImageGenerationInput,
+        ImageGenerationOptions, ImageGenerationOutputFormat, ImageTransformStrength,
     },
     job::{
         domain::JobWorkspaceStreamSummary, infra::FileJobWorkspaceStore, ports::JobWorkspacePort,
@@ -41,12 +41,16 @@ pub(super) struct ParsedImageTransformUpload {
 struct ImageTransformFields {
     image: Option<UploadedTransformImage>,
     mask: Option<UploadedTransformImage>,
+    control_image: Option<UploadedTransformImage>,
     model_ref: Option<String>,
     adapter_ref: Option<String>,
+    control_ref: Option<String>,
     lora_scale: Option<f32>,
     prompt: Option<String>,
     negative_prompt: Option<String>,
     strength: Option<f32>,
+    control_kind: Option<String>,
+    control_strength: Option<f32>,
     output_format: Option<String>,
     output_filename: Option<String>,
     width: Option<u32>,
@@ -68,6 +72,7 @@ struct UploadedTransformImage {
 enum ImageEditWorkflow {
     Transform,
     Inpaint,
+    Control,
 }
 
 impl ImageEditWorkflow {
@@ -75,6 +80,7 @@ impl ImageEditWorkflow {
         match self {
             Self::Transform => "image-transform",
             Self::Inpaint => "image-inpaint",
+            Self::Control => "image-control",
         }
     }
 
@@ -82,6 +88,7 @@ impl ImageEditWorkflow {
         match self {
             Self::Transform => "image_transform_upload_failed",
             Self::Inpaint => "image_inpaint_upload_failed",
+            Self::Control => "image_control_upload_failed",
         }
     }
 
@@ -89,6 +96,7 @@ impl ImageEditWorkflow {
         match self {
             Self::Transform => "image transform",
             Self::Inpaint => "image inpaint",
+            Self::Control => "image control",
         }
     }
 
@@ -96,6 +104,7 @@ impl ImageEditWorkflow {
         match self {
             Self::Transform => ImageTransformStrength::DEFAULT,
             Self::Inpaint => 1.0,
+            Self::Control => ImageTransformStrength::DEFAULT,
         }
     }
 }
@@ -112,6 +121,13 @@ pub(super) async fn parse_image_inpaint_upload(
     multipart: Multipart,
 ) -> Result<ParsedImageTransformUpload, RestError> {
     parse_image_edit_upload(state, multipart, ImageEditWorkflow::Inpaint).await
+}
+
+pub(super) async fn parse_image_control_upload(
+    state: &RestState,
+    multipart: Multipart,
+) -> Result<ParsedImageTransformUpload, RestError> {
+    parse_image_edit_upload(state, multipart, ImageEditWorkflow::Control).await
 }
 
 async fn parse_image_edit_upload(
@@ -174,7 +190,7 @@ async fn parse_image_transform_upload_in_dir(
             })?
             .to_string();
         match name.as_str() {
-            "image" => {
+            "image" if workflow != ImageEditWorkflow::Control => {
                 if fields.image.is_some() {
                     cleanup_temp_dir(temp_dir).await;
                     return Err(RestError::bad_request(
@@ -214,8 +230,31 @@ async fn parse_image_transform_upload_in_dir(
                     .await?,
                 );
             }
+            "control_image" if workflow == ImageEditWorkflow::Control => {
+                if fields.control_image.is_some() {
+                    cleanup_temp_dir(temp_dir).await;
+                    return Err(RestError::bad_request(
+                        "bad_request",
+                        "`control_image` must appear exactly once",
+                    ));
+                }
+                fields.control_image = Some(
+                    write_uploaded_transform_image(
+                        temp_dir,
+                        field,
+                        max_upload_bytes,
+                        "control_image",
+                        "control-input",
+                        workflow,
+                    )
+                    .await?,
+                );
+            }
             "model_ref" => set_text_field(&mut fields.model_ref, "model_ref", field).await?,
             "adapter_ref" => set_text_field(&mut fields.adapter_ref, "adapter_ref", field).await?,
+            "control_ref" if workflow == ImageEditWorkflow::Control => {
+                set_text_field(&mut fields.control_ref, "control_ref", field).await?
+            }
             "prompt" => set_text_field(&mut fields.prompt, "prompt", field).await?,
             "negative_prompt" => {
                 set_text_field(&mut fields.negative_prompt, "negative_prompt", field).await?
@@ -230,9 +269,18 @@ async fn parse_image_transform_upload_in_dir(
                 fields.lora_scale =
                     Some(parse_single_f32_field(fields.lora_scale, "lora_scale", field).await?);
             }
-            "strength" => {
+            "strength" if workflow != ImageEditWorkflow::Control => {
                 fields.strength =
                     Some(parse_single_f32_field(fields.strength, "strength", field).await?);
+            }
+            "control_kind" if workflow == ImageEditWorkflow::Control => {
+                set_text_field(&mut fields.control_kind, "control_kind", field).await?
+            }
+            "control_strength" if workflow == ImageEditWorkflow::Control => {
+                fields.control_strength = Some(
+                    parse_single_f32_field(fields.control_strength, "control_strength", field)
+                        .await?,
+                );
             }
             "width" => {
                 fields.width = Some(parse_single_u32_field(fields.width, "width", field).await?);
@@ -264,17 +312,29 @@ async fn parse_image_transform_upload_in_dir(
         }
     }
 
-    let image = fields
-        .image
-        .ok_or_else(|| RestError::bad_request("bad_request", "`image` is required"))?;
+    let image = match workflow {
+        ImageEditWorkflow::Transform | ImageEditWorkflow::Inpaint => Some(
+            fields
+                .image
+                .ok_or_else(|| RestError::bad_request("bad_request", "`image` is required"))?,
+        ),
+        ImageEditWorkflow::Control => None,
+    };
     let mask = match workflow {
-        ImageEditWorkflow::Transform => None,
+        ImageEditWorkflow::Transform | ImageEditWorkflow::Control => None,
         ImageEditWorkflow::Inpaint => Some(
             fields
                 .mask
                 .ok_or_else(|| RestError::bad_request("bad_request", "`mask` is required"))?,
         ),
     };
+    let control_image =
+        match workflow {
+            ImageEditWorkflow::Control => Some(fields.control_image.ok_or_else(|| {
+                RestError::bad_request("bad_request", "`control_image` is required")
+            })?),
+            ImageEditWorkflow::Transform | ImageEditWorkflow::Inpaint => None,
+        };
     let model_label = optional_trimmed_string(fields.model_ref)
         .ok_or_else(|| RestError::bad_request("bad_request", "`model_ref` is required"))?;
     let model_selector = model_selector(state, &model_label)?;
@@ -285,6 +345,19 @@ async fn parse_image_transform_upload_in_dir(
             })
         })
         .transpose()?;
+    let control_selector = optional_trimmed_string(fields.control_ref)
+        .map(|value| {
+            AdapterRefSelector::parse(value.as_str()).map_err(|error| {
+                RestError::bad_request("bad_request", format!("invalid `control_ref`: {error}"))
+            })
+        })
+        .transpose()?;
+    if workflow == ImageEditWorkflow::Control && control_selector.is_none() {
+        return Err(RestError::bad_request(
+            "bad_request",
+            "`control_ref` is required",
+        ));
+    }
     let lora_scale = fields
         .lora_scale
         .map(|value| {
@@ -323,20 +396,50 @@ async fn parse_image_transform_upload_in_dir(
     let strength =
         ImageTransformStrength::new(fields.strength.unwrap_or(workflow.default_strength()))
             .map_err(|error| RestError::bad_request("bad_request", error.to_string()))?;
-    let input_summary = edit_input_summary(&image, mask.as_ref());
-    let input = match mask {
-        Some(mask) => ImageGenerationInput::Inpaint {
-            image_path: image.path,
-            image_media_type: Some(image.media_type),
-            mask_path: mask.path,
-            mask_media_type: Some(mask.media_type),
-            strength,
-        },
-        None => ImageGenerationInput::ImageToImage {
-            image_path: image.path,
-            media_type: Some(image.media_type),
-            strength,
-        },
+    let input_summary = edit_input_summary(image.as_ref(), mask.as_ref(), control_image.as_ref());
+    let input = match (workflow, image, mask, control_image) {
+        (ImageEditWorkflow::Inpaint, Some(image), Some(mask), None) => {
+            ImageGenerationInput::Inpaint {
+                image_path: image.path,
+                image_media_type: Some(image.media_type),
+                mask_path: mask.path,
+                mask_media_type: Some(mask.media_type),
+                strength,
+            }
+        }
+        (ImageEditWorkflow::Transform, Some(image), None, None) => {
+            ImageGenerationInput::ImageToImage {
+                image_path: image.path,
+                media_type: Some(image.media_type),
+                strength,
+            }
+        }
+        (ImageEditWorkflow::Control, None, None, Some(control_image)) => {
+            let control_kind = fields
+                .control_kind
+                .as_deref()
+                .unwrap_or("canny")
+                .parse::<ImageControlKind>()
+                .map_err(|error| RestError::bad_request("bad_request", error.to_string()))?;
+            let control_strength = ImageControlStrength::new(
+                fields
+                    .control_strength
+                    .unwrap_or(ImageControlStrength::DEFAULT),
+            )
+            .map_err(|error| RestError::bad_request("bad_request", error.to_string()))?;
+            ImageGenerationInput::Control {
+                control_image_path: control_image.path,
+                control_image_media_type: Some(control_image.media_type),
+                control_kind,
+                control_strength,
+            }
+        }
+        _ => {
+            return Err(RestError::internal(
+                workflow.upload_error_code(),
+                "image upload parser built an invalid workflow input",
+            ));
+        }
     };
 
     Ok(ParsedImageGenerationJobRequest {
@@ -344,6 +447,7 @@ async fn parse_image_transform_upload_in_dir(
         model_selector,
         adapter_selector,
         lora_scale,
+        control_selector,
         input,
         input_summary,
         prompt,
@@ -387,6 +491,13 @@ pub(super) async fn persist_edit_input(
             *image_path = move_uploaded_edit_file(&input_dir, image_path, "uploaded image").await?;
             *mask_path = move_uploaded_edit_file(&input_dir, mask_path, "uploaded mask").await?;
         }
+        ImageGenerationInput::Control {
+            control_image_path, ..
+        } => {
+            *control_image_path =
+                move_uploaded_edit_file(&input_dir, control_image_path, "uploaded control image")
+                    .await?;
+        }
     }
 
     cleanup_temp_dir(&upload.temp_dir).await;
@@ -420,30 +531,46 @@ async fn move_uploaded_edit_file(
 }
 
 fn edit_input_summary(
-    image: &UploadedTransformImage,
+    image: Option<&UploadedTransformImage>,
     mask: Option<&UploadedTransformImage>,
+    control_image: Option<&UploadedTransformImage>,
 ) -> JobWorkspaceStreamSummary {
-    let total_bytes = image.total_bytes + mask.map(|mask| mask.total_bytes).unwrap_or_default();
-    let original_filename = match mask {
-        Some(mask) => Some(format!(
+    let total_bytes = image.map(|image| image.total_bytes).unwrap_or_default()
+        + mask.map(|mask| mask.total_bytes).unwrap_or_default()
+        + control_image
+            .map(|control_image| control_image.total_bytes)
+            .unwrap_or_default();
+    let original_filename = match (image, mask, control_image) {
+        (Some(image), Some(mask), None) => Some(format!(
             "image={}; mask={}",
             image.original_filename.as_deref().unwrap_or("image"),
             mask.original_filename.as_deref().unwrap_or("mask")
         )),
-        None => image.original_filename.clone(),
+        (Some(image), None, None) => image.original_filename.clone(),
+        (None, None, Some(control_image)) => control_image.original_filename.clone(),
+        _ => None,
     };
 
     JobWorkspaceStreamSummary {
         state: "done".to_string(),
         done: true,
         failed: false,
-        chunk_count: if mask.is_some() { 2 } else { 1 },
+        chunk_count: (usize::from(image.is_some())
+            + usize::from(mask.is_some())
+            + usize::from(control_image.is_some())) as u64,
         total_bytes,
         sha256: None,
         media_type: Some(
-            mask.map(|_| "multipart/form-data")
-                .unwrap_or(image.media_type.as_str())
-                .to_string(),
+            if mask.is_some() {
+                "multipart/form-data"
+            } else if let Some(control_image) = control_image {
+                control_image.media_type.as_str()
+            } else if let Some(image) = image {
+                image.media_type.as_str()
+            } else {
+                "application/octet-stream"
+            }
+            .to_string(),
         ),
         original_filename,
     }

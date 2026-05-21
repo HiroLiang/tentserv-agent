@@ -192,6 +192,24 @@ tentgent image inpaint \
   --steps 20
 ```
 
+Controlled image generation CLI:
+
+```bash
+tentgent image control \
+  --model-ref <image-generation-model-ref> \
+  --control-ref <controlnet-adapter-ref> \
+  --control-image /absolute/path/control.png \
+  --control-kind canny \
+  --prompt "Follow the control image structure" \
+  --control-strength 1.0 \
+  --output controlled.png \
+  --format png \
+  --width 64 \
+  --height 64 \
+  --steps 2 \
+  --seed 1
+```
+
 Daemon REST for repeated local tests:
 
 ```bash
@@ -302,6 +320,32 @@ curl -sS http://127.0.0.1:8790/v1/images/inpaint/job/<job-id>/files/inpainted.pn
   -o inpainted.png
 ```
 
+Image control daemon job:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/images/control/job \
+  -F control_image=@/absolute/path/control.png \
+  -F model_ref=<image-generation-model-ref> \
+  -F control_ref=<controlnet-adapter-ref> \
+  -F control_kind=canny \
+  -F prompt='Follow the control image structure' \
+  -F control_strength=1.0 \
+  -F output_format=png \
+  -F output_filename=controlled.png \
+  -F width=64 \
+  -F height=64 \
+  -F steps=2 \
+  -F seed=1
+
+curl -sS http://127.0.0.1:8790/v1/images/control/job/<job-id>/files
+curl -sS http://127.0.0.1:8790/v1/images/control/job/<job-id>/files/controlled.png \
+  -o controlled.png
+```
+
+Use the explicit `64x64` and `2` step settings for tiny ControlNet smoke
+fixtures. The daemon defaults remain `512x512` and `20` steps for normal image
+jobs, which can be too heavy for small plumbing fixtures on PyTorch MPS.
+
 ## Current Fixture Models
 
 These rows are for local smoke tests, not product defaults.
@@ -324,8 +368,10 @@ Audio transcription candidates can run through `tentgent transcribe` and the
 daemon job route. Vision chat candidates can run through `tentgent vision chat`
 and daemon `POST /v1/vision/chat`. Image generation candidates can run through
 `tentgent image generate`, `tentgent image transform`, `tentgent image
-inpaint`, daemon `POST /v1/images/generations/job`, daemon
-`POST /v1/images/transforms/job`, and daemon `POST /v1/images/inpaint/job`.
+inpaint`, `tentgent image control`, daemon
+`POST /v1/images/generations/job`, daemon `POST /v1/images/transforms/job`,
+daemon `POST /v1/images/inpaint/job`, and daemon
+`POST /v1/images/control/job`.
 Other candidates are for metadata and contract planning. Pulling them with
 their media `--capability` values records model intent only; it does not make
 non-transcription, non-vision, non-image workflows runnable yet.
@@ -340,6 +386,9 @@ Image-generation LoRA adapters can be used with the same CLI and daemon image
 job surfaces after they are imported or pulled into the managed adapter store.
 Use explicit `--target-capability image-generation`, backend support, and
 `--weight-file` metadata for adapter repos with ambiguous `.safetensors` files.
+ControlNet-style image control adapters must be imported or pulled separately
+with `--adapter-type controlnet --adapter-format diffusers-controlnet
+--backend-support diffusers --control-kind canny`.
 
 Masked inpainting additionally requires an inpainting-capable Diffusers
 pipeline or a Flux Fill-compatible MLX diffusion model. The general
@@ -360,12 +409,44 @@ pinned.
 | `vision-chat` | [`mlx-community/SmolVLM-256M-Instruct-bf16`](https://huggingface.co/mlx-community/SmolVLM-256M-Instruct-bf16) | `public`, `mlx-vlm`, `cli`, `daemon` | `tentgent model pull mlx-community/SmolVLM-256M-Instruct-bf16 --capability vision-chat` | Small Apple Silicon MLX VLM smoke target; inspect should show `mlx_runtime_family = mlx-vlm`. |
 | future video understanding | [`HuggingFaceTB/SmolVLM2-256M-Video-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Video-Instruct) | `public`, `planned` | no command until video workflow name is approved | Keep out of the first native endpoint unless video payload handling is approved. |
 | `image-generation` | [`hf-internal-testing/tiny-stable-diffusion-pipe`](https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe) | `public`, `internal-test`, `cli`, `daemon-job` | `tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe --capability image-generation` | Diffusers plumbing fixture only; not product-quality output. |
+| `image-generation` | [`hf-internal-testing/tiny-stable-diffusion-pipe-no-safety`](https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-no-safety) | `public`, `internal-test`, `cli`, `daemon-job`, `controlnet-smoke-base` | `tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe-no-safety --capability image-generation` | Tiny Diffusers base model verified with `hf-internal-testing/tiny-controlnet`; use `64x64` and `2` steps for smoke tests. |
 | `image-generation` | [`segmind/tiny-sd`](https://huggingface.co/segmind/tiny-sd) | `public`, `cli`, `daemon-job` | `tentgent model pull segmind/tiny-sd --capability image-generation` | Tiny Stable Diffusion-style model; larger than the internal fixture and useful for follow-up smoke tests. |
 | `image-generation` | [`mlx-community/Flux-1.lite-8B-MLX-Q4`](https://huggingface.co/mlx-community/Flux-1.lite-8B-MLX-Q4) | `public`, `mlx-diffusion`, `cli`, `daemon-job`, `large` | `tentgent model pull mlx-community/Flux-1.lite-8B-MLX-Q4 --capability image-generation` | Apple Silicon MFLUX smoke candidate, about 7.5 GiB. Inspect should show `mlx_runtime_family = mlx-diffusion`. |
 
 No small, project-verified public image LoRA fixture is pinned yet. When adding
 one, record the base model, adapter pull command, required `--weight-file`,
 trigger-word hints, and whether it works through Diffusers, MFLUX, or both.
+
+Verified tiny ControlNet smoke pair:
+
+```bash
+tentgent model pull hf-internal-testing/tiny-stable-diffusion-pipe-no-safety \
+  --capability image-generation
+
+tentgent adapter pull hf-internal-testing/tiny-controlnet \
+  --base-model-ref <tiny-base-model-ref> \
+  --target-capability image-generation \
+  --adapter-type controlnet \
+  --adapter-format diffusers-controlnet \
+  --backend-support diffusers \
+  --control-kind canny
+
+tentgent image control \
+  --model-ref <tiny-base-model-ref> \
+  --control-ref <tiny-controlnet-adapter-ref> \
+  --control-image test-data/test_image.png \
+  --control-kind canny \
+  --prompt "a tiny clean icon following the control image structure" \
+  --output /private/tmp/tentgent-m6o-controlled-64.png \
+  --width 64 \
+  --height 64 \
+  --steps 2 \
+  --seed 1
+```
+
+This fixture is for plumbing only, not output quality. The uploaded control
+image is resized by the runtime to the requested dimensions, and M6O does not
+auto-run canny preprocessing.
 
 ## Notes
 

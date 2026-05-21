@@ -10,6 +10,7 @@ from ..runtime.image_generation import (
     ImageGenerationAdapterSelection,
     ImageGenerationRequest,
     ImageGenerationResult,
+    load_normalized_control_image,
     load_normalized_inpaint_images,
     write_image_generation_output,
 )
@@ -23,6 +24,8 @@ class DiffusersDeps:
     DiffusionPipeline: Any
     AutoPipelineForImage2Image: Any
     AutoPipelineForInpainting: Any
+    ControlNetModel: Any
+    StableDiffusionControlNetPipeline: Any
     PILImage: Any
 
 
@@ -40,28 +43,39 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
         self._pipeline = None
         self._pipeline_workflow = None
 
-    def _load_pipeline(self, workflow: str) -> Any:
+    def _load_pipeline(self, workflow: str, request: ImageGenerationRequest) -> Any:
         if self._record is None:
             raise RuntimeError(
                 "Diffusers image generation backend is not loaded yet; "
                 "call load() before generate_image()."
             )
-        if self._pipeline is not None and self._pipeline_workflow == workflow:
+        pipeline_key = _pipeline_key_for_request(workflow, request)
+        if self._pipeline is not None and self._pipeline_workflow == pipeline_key:
             return self._pipeline
 
         load_kwargs = _diffusers_load_kwargs(self._record, self._deps.torch, self._device)
         pipeline_class = _pipeline_class_for_workflow(self._deps, workflow)
+        pipeline_kwargs: dict[str, object] = dict(load_kwargs)
+        if workflow == "control":
+            if request.control is None:
+                raise ValueError("Diffusers ControlNet generation requires a control adapter")
+            controlnet = self._deps.ControlNetModel.from_pretrained(
+                str(request.control.source_path),
+                local_files_only=True,
+                **_controlnet_load_kwargs(self._deps.torch, self._device),
+            )
+            pipeline_kwargs["controlnet"] = controlnet
         pipeline = pipeline_class.from_pretrained(
             str(self._record.variant_source_path),
             local_files_only=True,
-            **load_kwargs,
+            **pipeline_kwargs,
         )
         pipeline.to(self._device)
         if hasattr(pipeline, "enable_attention_slicing"):
             pipeline.enable_attention_slicing()
 
         self._pipeline = pipeline
-        self._pipeline_workflow = workflow
+        self._pipeline_workflow = pipeline_key
         self._apply_selected_adapter()
         return pipeline
 
@@ -72,7 +86,7 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
 
     def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         workflow = _workflow_for_request(request)
-        pipeline = self._load_pipeline(workflow)
+        pipeline = self._load_pipeline(workflow, request)
         kwargs: dict[str, object] = {
             "prompt": request.prompt,
             "width": request.width,
@@ -82,7 +96,18 @@ class DiffusersImageGenerationBackend(ImageGenerationBackend):
         }
         if request.negative_prompt:
             kwargs["negative_prompt"] = request.negative_prompt
-        if request.input_image_path is not None:
+        if request.control_image_path is not None:
+            if request.control is None:
+                raise ValueError("image control generation requires a control adapter")
+            if request.control_strength is None:
+                raise ValueError("image control strength is required")
+            kwargs["image"] = load_normalized_control_image(
+                request.control_image_path,
+                request.width,
+                request.height,
+            )
+            kwargs["controlnet_conditioning_scale"] = request.control_strength
+        elif request.input_image_path is not None:
             if request.strength is None:
                 raise ValueError("image denoising strength is required")
             if request.mask_image_path is not None:
@@ -180,7 +205,9 @@ def _load_diffusers_deps() -> DiffusersDeps:
         from diffusers import (
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
+            ControlNetModel,
             DiffusionPipeline,
+            StableDiffusionControlNetPipeline,
         )
         from PIL import Image as PILImage
     except ModuleNotFoundError as exc:
@@ -190,8 +217,8 @@ def _load_diffusers_deps() -> DiffusersDeps:
     except ImportError as exc:
         raise RuntimeError(
             "Diffusers image generation requires a recent local-model runtime "
-            "with text-to-image, image-to-image, and inpainting pipeline support. "
-            "Run `tentgent runtime bootstrap --profile local-model`."
+            "with text-to-image, image-to-image, inpainting, and ControlNet "
+            "pipeline support. Run `tentgent runtime bootstrap --profile local-model`."
         ) from exc
 
     return DiffusersDeps(
@@ -199,6 +226,8 @@ def _load_diffusers_deps() -> DiffusersDeps:
         DiffusionPipeline=DiffusionPipeline,
         AutoPipelineForImage2Image=AutoPipelineForImage2Image,
         AutoPipelineForInpainting=AutoPipelineForInpainting,
+        ControlNetModel=ControlNetModel,
+        StableDiffusionControlNetPipeline=StableDiffusionControlNetPipeline,
         PILImage=PILImage,
     )
 
@@ -217,6 +246,8 @@ def _load_transform_image(
 
 
 def _workflow_for_request(request: ImageGenerationRequest) -> str:
+    if request.control_image_path is not None:
+        return "control"
     if request.mask_image_path is not None:
         return "inpaint"
     if request.input_image_path is not None:
@@ -225,11 +256,19 @@ def _workflow_for_request(request: ImageGenerationRequest) -> str:
 
 
 def _pipeline_class_for_workflow(deps: DiffusersDeps, workflow: str) -> Any:
+    if workflow == "control":
+        return deps.StableDiffusionControlNetPipeline
     if workflow == "inpaint":
         return deps.AutoPipelineForInpainting
     if workflow == "image-to-image":
         return deps.AutoPipelineForImage2Image
     return deps.DiffusionPipeline
+
+
+def _pipeline_key_for_request(workflow: str, request: ImageGenerationRequest) -> str:
+    if workflow == "control" and request.control is not None:
+        return f"control:{request.control.control_ref}:{request.control.control_kind}"
+    return workflow
 
 
 def _diffusers_load_kwargs(
@@ -241,6 +280,12 @@ def _diffusers_load_kwargs(
     if _declares_missing_safety_checker(record):
         kwargs["safety_checker"] = None
     return kwargs
+
+
+def _controlnet_load_kwargs(torch: Any, device: Any) -> dict[str, object]:
+    return {
+        "torch_dtype": _torch_dtype_for_device(torch, device),
+    }
 
 
 def _declares_missing_safety_checker(record: StoredModelRecord) -> bool:

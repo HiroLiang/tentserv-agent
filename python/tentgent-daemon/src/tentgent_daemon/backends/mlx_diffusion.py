@@ -80,6 +80,10 @@ class MfluxImageGenerationBackend(ImageGenerationBackend):
         self._adapter = adapter
 
     def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
+        if request.control_image_path is not None:
+            raise RuntimeError(
+                "MFLUX image control / ControlNet generation is not supported in this slice."
+            )
         workflow = _workflow_for_request(request)
         model = self._load_model(workflow)
         seed = request.seed

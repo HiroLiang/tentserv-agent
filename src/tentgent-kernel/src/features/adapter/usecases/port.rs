@@ -11,15 +11,17 @@ use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
 use super::super::domain::{
     AdapterBackendSupport, AdapterBindOutcome, AdapterCompatibilityTarget, AdapterFormat,
     AdapterImportOutcome, AdapterInspection, AdapterRefSelector, AdapterRemovalOutcome,
-    AdapterStoreLayout, AdapterSummary, HfAdapterPullProgress, LoraScale,
+    AdapterStoreLayout, AdapterSummary, AdapterType, HfAdapterPullProgress, LoraScale,
 };
 
 /// Optional metadata overrides for adapter imports and pulls.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AdapterImportOptions {
+    pub adapter_type: Option<AdapterType>,
     pub target_capability: Option<ModelCapability>,
     pub adapter_format: Option<AdapterFormat>,
     pub backend_support: Vec<AdapterBackendSupport>,
+    pub control_kind: Option<String>,
     pub weight_file: Option<String>,
     pub trigger_words: Vec<String>,
     pub recommended_scale: Option<LoraScale>,

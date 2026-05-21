@@ -179,6 +179,8 @@ pub enum AdapterFormat {
     Mlx,
     #[serde(rename = "diffusers-lora")]
     DiffusersLora,
+    #[serde(rename = "diffusers-controlnet")]
+    DiffusersControlNet,
     #[serde(rename = "mlx-diffusion-lora")]
     MlxDiffusionLora,
     #[serde(rename = "llama-cpp")]
@@ -191,6 +193,7 @@ impl AdapterFormat {
             Self::Peft => "peft",
             Self::Mlx => "mlx",
             Self::DiffusersLora => "diffusers-lora",
+            Self::DiffusersControlNet => "diffusers-controlnet",
             Self::MlxDiffusionLora => "mlx-diffusion-lora",
             Self::LlamaCpp => "llama-cpp",
         }
@@ -212,6 +215,7 @@ impl std::str::FromStr for AdapterFormat {
             "peft" => Ok(Self::Peft),
             "mlx" => Ok(Self::Mlx),
             "diffusers-lora" => Ok(Self::DiffusersLora),
+            "diffusers-controlnet" => Ok(Self::DiffusersControlNet),
             "mlx-diffusion-lora" => Ok(Self::MlxDiffusionLora),
             "llama-cpp" => Ok(Self::LlamaCpp),
             _ => Err(AdapterFormatParseError::Unsupported {
@@ -233,12 +237,15 @@ pub enum AdapterFormatParseError {
 pub enum AdapterType {
     #[serde(rename = "lora")]
     Lora,
+    #[serde(rename = "controlnet")]
+    ControlNet,
 }
 
 impl AdapterType {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Lora => "lora",
+            Self::ControlNet => "controlnet",
         }
     }
 }
@@ -247,6 +254,29 @@ impl std::fmt::Display for AdapterType {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.as_str())
     }
+}
+
+impl std::str::FromStr for AdapterType {
+    type Err = AdapterTypeParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" => Err(AdapterTypeParseError::Empty),
+            "lora" => Ok(Self::Lora),
+            "controlnet" => Ok(Self::ControlNet),
+            _ => Err(AdapterTypeParseError::Unsupported {
+                value: value.trim().to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AdapterTypeParseError {
+    #[error("adapter type must not be blank")]
+    Empty,
+    #[error("unsupported adapter type `{value}`")]
+    Unsupported { value: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -450,6 +480,8 @@ pub struct AdapterMetadata {
     pub base_model_source_revision: Option<String>,
     pub model_family: Option<String>,
     pub backend_support: Vec<AdapterBackendSupport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weight_file: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -858,6 +890,7 @@ pub fn backend_support_for_format(format: AdapterFormat) -> Vec<AdapterBackendSu
         AdapterFormat::Peft => vec![AdapterBackendSupport::TransformersPeft],
         AdapterFormat::Mlx => vec![AdapterBackendSupport::Mlx],
         AdapterFormat::DiffusersLora => vec![AdapterBackendSupport::Diffusers],
+        AdapterFormat::DiffusersControlNet => vec![AdapterBackendSupport::Diffusers],
         AdapterFormat::MlxDiffusionLora => vec![AdapterBackendSupport::MlxDiffusion],
         AdapterFormat::LlamaCpp => vec![AdapterBackendSupport::LlamaCpp],
     }

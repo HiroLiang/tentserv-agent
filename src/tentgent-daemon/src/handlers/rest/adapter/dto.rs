@@ -55,6 +55,7 @@ pub struct AdapterItem {
     pub base_model_source_revision: Option<String>,
     pub model_family: Option<String>,
     pub backend_support: Vec<String>,
+    pub control_kind: Option<String>,
     pub weight_file: Option<String>,
     pub trigger_words: Vec<String>,
     pub recommended_scale: Option<f32>,
@@ -160,6 +161,7 @@ fn adapter_item_from_parts(
             .into_iter()
             .map(|backend| backend.to_string())
             .collect(),
+        control_kind: metadata.control_kind,
         weight_file: metadata.weight_file,
         trigger_words: metadata.trigger_words,
         recommended_scale: metadata.recommended_scale.map(|scale| scale.as_f32()),

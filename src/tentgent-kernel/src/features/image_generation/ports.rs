@@ -11,8 +11,9 @@ use crate::foundation::error::KernelResult;
 use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
 
 use super::domain::{
-    ImageGenerationRequest, ImageGenerationResponse, ImageGenerationRuntimeTarget,
-    ImageGenerationWorkflowKind, ResolvedImageGenerationAdapter,
+    ImageControlKind, ImageGenerationRequest, ImageGenerationResponse,
+    ImageGenerationRuntimeTarget, ImageGenerationWorkflowKind, ResolvedImageGenerationAdapter,
+    ResolvedImageGenerationControl,
 };
 
 pub type ImageGenerationPortFuture<'a, T> = Pin<Box<dyn Future<Output = KernelResult<T>> + 'a>>;
@@ -46,6 +47,21 @@ pub struct ImageGenerationAdapterResolveResult {
     pub target: ResolvedImageGenerationAdapter,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageGenerationControlResolveRequest {
+    pub layout: RuntimeLayoutInput,
+    pub selector: AdapterRefSelector,
+    pub target: AdapterCompatibilityTarget,
+    pub control_kind: ImageControlKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageGenerationControlResolveResult {
+    pub layout: RuntimeLayout,
+    pub adapter: AdapterInspection,
+    pub target: ResolvedImageGenerationControl,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImageGenerationRuntimeRequest {
     pub layout: RuntimeLayout,
@@ -69,6 +85,12 @@ pub trait ImageGenerationAdapterResolver {
         &self,
         request: ImageGenerationAdapterResolveRequest,
     ) -> KernelResult<ImageGenerationAdapterResolveResult>;
+
+    /// Resolves a ControlNet-style control adapter and validates backend/model compatibility.
+    fn resolve_image_generation_control(
+        &self,
+        request: ImageGenerationControlResolveRequest,
+    ) -> KernelResult<ImageGenerationControlResolveResult>;
 }
 
 /// Boundary for executing a prepared image-generation request.

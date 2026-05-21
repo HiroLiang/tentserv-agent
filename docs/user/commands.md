@@ -432,6 +432,31 @@ MLX inpainting requires a Flux Fill-compatible `mlx-diffusion` model; general
 Flux text-to-image models are rejected for this workflow instead of guessed
 through an incompatible runtime path.
 
+Generate from a prompt plus one typed control image:
+
+```bash
+tentgent image control \
+  --model-ref <image-generation-model-ref> \
+  --control-ref <controlnet-adapter-ref> \
+  --control-image control.png \
+  --control-kind canny \
+  --prompt "A small cabin following the control image structure" \
+  --control-strength 1.0 \
+  --output controlled.png \
+  --format png \
+  --width 512 \
+  --height 512 \
+  --steps 20
+```
+
+`tentgent image control` is foreground-only. It reads the local
+`--control-image`, resolves `--control-ref` as a managed ControlNet-style
+adapter, and writes only to `--output`. M6O supports `--control-kind canny`.
+The control image must already be the control representation for that kind;
+Tentgent does not auto-run canny/depth/pose preprocessing in this slice.
+`--control-strength` defaults to `1.0` and must be `0.0..=2.0`.
+Optional image LoRA still uses `--adapter-ref` and `--lora-scale`.
+
 Pull a tiny Diffusers plumbing fixture before local smoke tests:
 
 ```bash
@@ -513,6 +538,33 @@ curl -sS http://127.0.0.1:8790/v1/images/inpaint/job/<job-id>/files
 curl -sS http://127.0.0.1:8790/v1/images/inpaint/job/<job-id>/files/inpainted.png \
   -o inpainted.png
 ```
+
+For HTTP controlled image generation, upload the control image bytes and pass a
+managed ControlNet-style adapter reference separately from any image LoRA:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/images/control/job \
+  -F control_image=@/absolute/path/control.png \
+  -F model_ref=<image-generation-model-ref> \
+  -F control_ref=<controlnet-adapter-ref> \
+  -F control_kind=canny \
+  -F prompt='A small cabin following the control image structure' \
+  -F control_strength=1.0 \
+  -F output_format=png \
+  -F output_filename=controlled.png \
+  -F width=64 \
+  -F height=64 \
+  -F steps=2 \
+  -F seed=1
+
+curl -sS http://127.0.0.1:8790/v1/images/control/job/<job-id>/files
+curl -sS http://127.0.0.1:8790/v1/images/control/job/<job-id>/files/controlled.png \
+  -o controlled.png
+```
+
+Small ControlNet smoke fixtures can be slow or memory-heavy at the default
+`512x512` and `20` steps on PyTorch MPS. Use explicit small dimensions for
+plumbing tests, then raise quality settings for real models.
 
 ## Server
 
@@ -986,6 +1038,19 @@ image-generation`, a backend such as `diffusers` or `mlx-diffusion`, and
 `--weight-file` when the source has more than one `.safetensors` file. The
 daemon `/v1/adapters/import`, `/v1/adapters/pull`, and their `/jobs` variants
 accept the same image LoRA metadata as JSON fields.
+
+ControlNet-style image control adapters should be imported or pulled as a
+separate control adapter, not as an image LoRA:
+
+```bash
+tentgent adapter pull <hf-controlnet-repo> \
+  --base-model-ref <image-generation-model-ref> \
+  --target-capability image-generation \
+  --adapter-type controlnet \
+  --adapter-format diffusers-controlnet \
+  --backend-support diffusers \
+  --control-kind canny
+```
 
 ## Datasets
 

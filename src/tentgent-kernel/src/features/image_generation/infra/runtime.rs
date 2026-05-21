@@ -143,6 +143,23 @@ impl<'a> PythonImageGenerationOnceRuntimeClient<'a> {
                     command.arg("--mask-image-media-type").arg(media_type);
                 }
             }
+            ImageGenerationInput::Control {
+                control_image_path,
+                control_image_media_type,
+                control_kind,
+                control_strength,
+            } => {
+                command
+                    .arg("--control-image-path")
+                    .arg(control_image_path)
+                    .arg("--control-kind")
+                    .arg(control_kind.as_str())
+                    .arg("--control-strength")
+                    .arg(control_strength.as_f32().to_string());
+                if let Some(media_type) = control_image_media_type {
+                    command.arg("--control-image-media-type").arg(media_type);
+                }
+            }
         }
         if let Some(adapter) = &request.request.target.adapter {
             command
@@ -155,6 +172,13 @@ impl<'a> PythonImageGenerationOnceRuntimeClient<'a> {
             if let Some(weight_file) = &adapter.weight_file {
                 command.arg("--adapter-weight-file").arg(weight_file);
             }
+        }
+        if let Some(control) = &request.request.target.control {
+            command
+                .arg("--control-ref")
+                .arg(control.adapter_ref.as_str())
+                .arg("--control-source-path")
+                .arg(&control.source_path);
         }
 
         Ok(command)

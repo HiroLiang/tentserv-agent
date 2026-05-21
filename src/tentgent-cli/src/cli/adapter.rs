@@ -1,7 +1,7 @@
 use clap::CommandFactory;
 use miette::{miette, IntoDiagnostic, Result};
 use tentgent_kernel::features::adapter::domain::{
-    AdapterBackendSupport, AdapterFormat, AdapterRefSelector, LoraScale,
+    AdapterBackendSupport, AdapterFormat, AdapterRefSelector, AdapterType, LoraScale,
 };
 use tentgent_kernel::features::adapter::infra::{
     FileAdapterBaseIndexStore, FileAdapterCatalogStore, FileAdapterContentStore,
@@ -48,8 +48,10 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
             path,
             base_model_ref,
             target_capability,
+            adapter_type,
             adapter_format,
             backend_support,
+            control_kind,
             weight_file,
             trigger_word,
             recommended_scale,
@@ -67,8 +69,10 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
                     base_model_selector,
                     options: adapter_import_options(
                         target_capability.as_deref(),
+                        adapter_type.as_deref(),
                         adapter_format.as_deref(),
                         &backend_support,
+                        control_kind,
                         weight_file,
                         trigger_word,
                         recommended_scale,
@@ -82,8 +86,10 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
             revision,
             base_model_ref,
             target_capability,
+            adapter_type,
             adapter_format,
             backend_support,
+            control_kind,
             weight_file,
             trigger_word,
             recommended_scale,
@@ -109,8 +115,10 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
                     base_model_selector,
                     options: adapter_import_options(
                         target_capability.as_deref(),
+                        adapter_type.as_deref(),
                         adapter_format.as_deref(),
                         &backend_support,
+                        control_kind,
                         weight_file,
                         trigger_word,
                         recommended_scale,
@@ -355,8 +363,10 @@ fn parse_optional_model_selector(
 
 fn adapter_import_options(
     target_capability: Option<&str>,
+    adapter_type: Option<&str>,
     adapter_format: Option<&str>,
     backend_support: &[String],
+    control_kind: Option<String>,
     weight_file: Option<String>,
     trigger_word: Vec<String>,
     recommended_scale: Option<f32>,
@@ -366,6 +376,13 @@ fn adapter_import_options(
             value
                 .parse::<ModelCapability>()
                 .map_err(|err| miette!("invalid --target-capability: {err}"))
+        })
+        .transpose()?;
+    let adapter_type = adapter_type
+        .map(|value| {
+            value
+                .parse::<AdapterType>()
+                .map_err(|err| miette!("invalid --adapter-type: {err}"))
         })
         .transpose()?;
     let adapter_format = adapter_format
@@ -392,9 +409,11 @@ fn adapter_import_options(
         .transpose()?;
 
     Ok(AdapterImportOptions {
+        adapter_type,
         target_capability,
         adapter_format,
         backend_support,
+        control_kind: control_kind.and_then(non_empty_string),
         weight_file: weight_file.and_then(non_empty_string),
         trigger_words,
         recommended_scale,

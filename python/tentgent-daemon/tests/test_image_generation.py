@@ -15,6 +15,7 @@ from tentgent_daemon.backends.mlx_diffusion import (
 from tentgent_daemon.backends import create_image_generation_backend
 from tentgent_daemon.runtime.image_generation import (
     ImageGenerationAdapterSelection,
+    ImageGenerationControlSelection,
     ImageGenerationRequest,
     build_image_generation_plan,
     image_generation_media_type,
@@ -216,6 +217,61 @@ class ImageGenerationRuntimeTests(unittest.TestCase):
                         prompt="make it watercolor",
                         input_image_path=input_image,
                         strength=1.1,
+                        output_path=home / "image.png",
+                        output_format="png",
+                    ),
+                    home=home,
+                )
+
+    def test_build_plan_accepts_control_image_and_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "5" * 64
+            write_model_record(home, model_ref, ["image-generation"])
+            control_image = home / "control.png"
+            control_source = home / "controlnet"
+            write_test_png(control_image, size=(64, 64), color=(255, 255, 255))
+            control_source.mkdir()
+
+            plan = build_image_generation_plan(
+                ImageGenerationRequest(
+                    model_ref=model_ref,
+                    prompt="follow the control image",
+                    control_image_path=control_image,
+                    control_image_media_type="image/png",
+                    control_kind="canny",
+                    control_strength=1.2,
+                    control=ImageGenerationControlSelection(
+                        control_ref="c" * 64,
+                        source_path=control_source,
+                        control_kind="canny",
+                    ),
+                    output_path=home / "image.png",
+                    output_format="png",
+                ),
+                home=home,
+            )
+
+            self.assertEqual(plan.request.control_image_path, control_image.resolve())
+            self.assertEqual(plan.request.control_image_media_type, "image/png")
+            self.assertEqual(plan.request.control_kind, "canny")
+            self.assertEqual(plan.request.control_strength, 1.2)
+            self.assertEqual(plan.request.control.source_path, control_source)
+
+    def test_build_plan_rejects_control_image_without_control_ref(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "a" * 64
+            write_model_record(home, model_ref, ["image-generation"])
+            control_image = home / "control.png"
+            write_test_png(control_image, size=(64, 64), color=(255, 255, 255))
+
+            with self.assertRaisesRegex(ValueError, "control-ref"):
+                build_image_generation_plan(
+                    ImageGenerationRequest(
+                        model_ref=model_ref,
+                        prompt="follow",
+                        control_image_path=control_image,
                         output_path=home / "image.png",
                         output_format="png",
                     ),

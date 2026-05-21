@@ -47,7 +47,10 @@ use crate::{
 
 mod edit_upload;
 
-use edit_upload::{parse_image_inpaint_upload, parse_image_transform_upload, persist_edit_input};
+use edit_upload::{
+    parse_image_control_upload, parse_image_inpaint_upload, parse_image_transform_upload,
+    persist_edit_input,
+};
 
 pub async fn create_generation_job(
     State(state): State<RestState>,
@@ -127,6 +130,40 @@ pub async fn create_inpaint_job(
                 .app()
                 .jobs()
                 .fail(&job_id, "image inpaint upload persistence failed");
+            return Err(error);
+        }
+    };
+    spawn_image_generation_worker(state, job_id, request);
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(JobResponse { job: job_item(job) }),
+    ))
+}
+
+pub async fn create_control_job(
+    State(state): State<RestState>,
+    multipart: Result<Multipart, MultipartRejection>,
+) -> Result<(StatusCode, Json<JobResponse>), RestError> {
+    let multipart = multipart.map_err(|error| {
+        RestError::bad_request("bad_request", format!("invalid multipart request: {error}"))
+    })?;
+    let upload = parse_image_control_upload(&state, multipart).await?;
+    let label = "control image".to_string();
+    let job = state.app().jobs().create(
+        JobKind::image_generation(),
+        label,
+        Some(JobTarget::new("image").with_reference(upload.request.model_label.clone())),
+        Vec::<String>::new(),
+    );
+    let job_id = job.job_id.clone();
+    let request = match persist_edit_input(&state, &job_id, upload).await {
+        Ok(request) => request,
+        Err(error) => {
+            state
+                .app()
+                .jobs()
+                .fail(&job_id, "image control upload persistence failed");
             return Err(error);
         }
     };
@@ -222,6 +259,20 @@ pub async fn inpaint_job_file(
     generation_job_file(State(state), Path((job_id, file_id))).await
 }
 
+pub async fn control_job_files(
+    State(state): State<RestState>,
+    Path(job_id): Path<String>,
+) -> Result<Json<JobResultFileList>, RestError> {
+    generation_job_files(State(state), Path(job_id)).await
+}
+
+pub async fn control_job_file(
+    State(state): State<RestState>,
+    Path((job_id, file_id)): Path<(String, String)>,
+) -> Result<Response, RestError> {
+    generation_job_file(State(state), Path((job_id, file_id))).await
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImageGenerationJobRequest {
@@ -245,6 +296,7 @@ struct ParsedImageGenerationJobRequest {
     model_selector: ModelRefSelector,
     adapter_selector: Option<AdapterRefSelector>,
     lora_scale: Option<LoraScale>,
+    control_selector: Option<AdapterRefSelector>,
     input: ImageGenerationInput,
     input_summary: JobWorkspaceStreamSummary,
     prompt: String,
@@ -309,6 +361,7 @@ impl ParsedImageGenerationJobRequest {
             model_selector,
             adapter_selector,
             lora_scale,
+            control_selector: None,
             input: ImageGenerationInput::TextToImage,
             input_summary: JobWorkspaceStreamSummary {
                 state: "done".to_string(),
@@ -397,6 +450,7 @@ fn run_image_generation_job(
                     model_selector: request.model_selector,
                     adapter_selector: request.adapter_selector,
                     lora_scale: request.lora_scale,
+                    control_selector: request.control_selector,
                     input: request.input,
                     prompt: request.prompt,
                     negative_prompt: request.negative_prompt,
