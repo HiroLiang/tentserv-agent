@@ -10,6 +10,7 @@ mod rerank;
 mod runtime;
 mod server;
 mod session;
+mod speak;
 mod store;
 mod train;
 mod transcribe;
@@ -31,6 +32,7 @@ pub use runtime::RuntimeBootstrapProfile;
 pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands, RuntimeStatusCommand};
 pub use server::{ServerCommands, ServerRunCommand};
 pub use session::SessionCommands;
+pub use speak::SpeakCommand;
 pub use store::{StoreCommands, StoreGcCommand};
 pub use train::{
     TrainCommands, TrainLoraCommands, TrainLoraPlanCommands, TrainLoraRunCommand,
@@ -106,6 +108,13 @@ pub enum Commands {
         long_about = "Transcribe a local audio file in the foreground without starting the daemon. The command resolves a stored audio-transcription model, calls the Python audio runtime once, and writes text, JSON, WebVTT, or SRT output. With --output it writes only to the requested file and fails if that file already exists."
     )]
     Transcribe(TranscribeCommand),
+    /// Synthesize a local WAV file from text with a local audio-speech model.
+    #[command(
+        name = "speak",
+        about = "Synthesize a local WAV file from text with a local audio-speech model.",
+        long_about = "Synthesize a local WAV file in the foreground without starting the daemon. The command resolves a stored audio-speech model, calls the Python audio speech runtime once, and writes a wav output file. Existing output files are never overwritten."
+    )]
+    Speak(SpeakCommand),
     /// Run local image-plus-text vision chat.
     #[command(
         name = "vision",

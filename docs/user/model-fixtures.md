@@ -1,10 +1,10 @@
 # Model Fixtures
 
 Use this guide when you want small models for local smoke tests. `chat`,
-`embedding`, `rerank`, `audio-transcription`, `vision-chat`, and
-`image-generation` are runnable endpoint families. Other M6 media capability
-values can be stored as model metadata, but they do not have runtime endpoints
-yet.
+`embedding`, `rerank`, `audio-transcription`, `audio-speech`, `vision-chat`,
+and `image-generation` are runnable endpoint families. Future media capability
+values can be stored as model metadata when added, but they need dedicated
+runtime endpoints before they are runnable.
 
 ## Access Labels
 
@@ -86,15 +86,14 @@ vision-chat
 image-generation
 ```
 
-`chat`, `embedding`, `rerank`, `audio-transcription`, `vision-chat`, and
-`image-generation` have foreground CLI runtime paths today.
-`audio-transcription` also has a daemon file-upload job runtime path for HTTP
-integrations. `vision-chat` has a bounded daemon multipart route.
-`image-generation` has a daemon JSON job route and generated-file download
-routes. Direct local server routes are available for chat, embedding, and
-rerank; audio, vision, and image server routes are planned separately. The
-remaining media values are metadata-only until their payload, artifact, and
-runtime contracts are implemented.
+`chat`, `embedding`, `rerank`, `audio-transcription`, `audio-speech`,
+`vision-chat`, and `image-generation` have foreground CLI runtime paths today.
+`audio-transcription` has a daemon file-upload job runtime path for HTTP
+integrations. `audio-speech` has a daemon JSON job runtime path.
+`vision-chat` has a bounded daemon multipart route. `image-generation` has
+daemon job routes and generated-file download routes. Direct local server
+routes are available for chat, embedding, and rerank; audio, vision, and image
+server routes are planned separately.
 
 ## Runnable Smoke Commands
 
@@ -252,6 +251,32 @@ Whisper checkpoints such as `openai/whisper-tiny.en`; keep it for multilingual
 checkpoints such as `openai/whisper-tiny`. `vtt` and `srt` output require
 backend segment timestamps.
 
+Audio speech CLI and daemon job:
+
+```bash
+tentgent speak \
+  --model-ref <audio-speech-model-ref> \
+  --text "Hello from Tentgent." \
+  --output /private/tmp/tentgent-speech.wav
+
+curl -sS http://127.0.0.1:8790/v1/audio/speech/job \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_ref": "<audio-speech-model-ref>",
+    "text": "Hello from Tentgent.",
+    "output_format": "wav",
+    "output_filename": "speech.wav"
+  }'
+
+curl -sS \
+  'http://127.0.0.1:8790/v1/audio/speech/job/<job-id>/result?cursor=0&max_chunks=32' \
+  -o speech.wav
+```
+
+Audio speech currently writes WAV only. Optional `language` and `voice` values
+are model-aware and may fail when the selected model/runtime cannot honor
+them.
+
 Vision chat daemon route:
 
 ```bash
@@ -372,16 +397,19 @@ inpaint`, `tentgent image control`, daemon
 `POST /v1/images/generations/job`, daemon `POST /v1/images/transforms/job`,
 daemon `POST /v1/images/inpaint/job`, and daemon
 `POST /v1/images/control/job`.
-Other candidates are for metadata and contract planning. Pulling them with
-their media `--capability` values records model intent only; it does not make
-non-transcription, non-vision, non-image workflows runnable yet.
+Audio speech candidates can run through `tentgent speak` and daemon
+`POST /v1/audio/speech/job` when their backend is supported. Other candidates
+are for metadata and contract planning. Pulling them with their media
+`--capability` values records model intent only; it does not make unsupported
+workflow families runnable.
 For `mlx-community/*` repos, the same capability flag also records
 `mlx_runtime_family` when it can be inferred. `mlx-vlm` can run native
 `vision-chat` on Apple Silicon after the `local-model` runtime profile is
 bootstrapped. `mlx-audio` can run native `audio-transcription` on Apple
 Silicon after the `local-model` runtime profile is bootstrapped.
 `mlx-diffusion` can run native `image-generation` through MFLUX on Apple
-Silicon after the `local-model` runtime profile is bootstrapped.
+Silicon after the `local-model` runtime profile is bootstrapped. MLX audio TTS
+is planned but not yet verified as a stable local `audio-speech` backend.
 Image-generation LoRA adapters can be used with the same CLI and daemon image
 job surfaces after they are imported or pulled into the managed adapter store.
 Use explicit `--target-capability image-generation`, backend support, and
@@ -403,8 +431,8 @@ pinned.
 | `audio-transcription` | [`mlx-community/whisper-tiny-asr-fp16`](https://huggingface.co/mlx-community/whisper-tiny-asr-fp16) | `public`, `mlx-audio`, `cli`, `daemon-job` | `tentgent model pull mlx-community/whisper-tiny-asr-fp16 --capability audio-transcription` | Small Apple Silicon MLX audio smoke target; inspect should show `mlx_runtime_family = mlx-audio`. |
 | `audio-transcription` | [`mlx-community/whisper-tiny-mlx`](https://huggingface.co/mlx-community/whisper-tiny-mlx) | `public`, `mlx-audio`, `processor-metadata-warning` | `tentgent model pull mlx-community/whisper-tiny-mlx --capability audio-transcription` | Older MLX Whisper package; current `mlx-audio` may fail because the repo lacks Hugging Face processor metadata. |
 | `audio-transcription` | [`mlx-community/whisper-tiny-fp16`](https://huggingface.co/mlx-community/whisper-tiny-fp16) | `public`, `mlx-audio`, `processor-metadata-warning` | `tentgent model pull mlx-community/whisper-tiny-fp16 --capability audio-transcription` | Older MLX Whisper package; prefer `whisper-tiny-asr-fp16` for current `mlx-audio` smoke tests. |
-| `audio-speech` | [`facebook/mms-tts-eng`](https://huggingface.co/facebook/mms-tts-eng) | `public`, `license`, `metadata-only` | `tentgent model pull facebook/mms-tts-eng --capability audio-speech` | English VITS TTS, about 36M parameters; CC-BY-NC 4.0. |
-| `audio-speech` | [`suno/bark-small`](https://huggingface.co/suno/bark-small) | `public`, `metadata-only` | `tentgent model pull suno/bark-small --capability audio-speech` | MIT-licensed TTS pipeline candidate; heavier than MMS-TTS. |
+| `audio-speech` | [`facebook/mms-tts-eng`](https://huggingface.co/facebook/mms-tts-eng) | `public`, `license`, `transformers-tts`, `cli`, `daemon-job` | `tentgent model pull facebook/mms-tts-eng --capability audio-speech` | English VITS TTS, about 36M parameters; CC-BY-NC 4.0. Verified M6P small TTS smoke target after license review. |
+| `audio-speech` | [`suno/bark-small`](https://huggingface.co/suno/bark-small) | `public`, `candidate`, `transformers-tts` | `tentgent model pull suno/bark-small --capability audio-speech` | MIT-licensed TTS pipeline candidate; heavier than MMS-TTS and not the first smoke fixture. |
 | `vision-chat` | [`HuggingFaceTB/SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) | `public`, `cli`, `daemon` | `tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat` | Small image+text to text model for Transformers VQA/captioning smoke tests. |
 | `vision-chat` | [`mlx-community/SmolVLM-256M-Instruct-bf16`](https://huggingface.co/mlx-community/SmolVLM-256M-Instruct-bf16) | `public`, `mlx-vlm`, `cli`, `daemon` | `tentgent model pull mlx-community/SmolVLM-256M-Instruct-bf16 --capability vision-chat` | Small Apple Silicon MLX VLM smoke target; inspect should show `mlx_runtime_family = mlx-vlm`. |
 | future video understanding | [`HuggingFaceTB/SmolVLM2-256M-Video-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM2-256M-Video-Instruct) | `public`, `planned` | no command until video workflow name is approved | Keep out of the first native endpoint unless video payload handling is approved. |

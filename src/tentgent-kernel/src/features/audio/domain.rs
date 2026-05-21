@@ -1,4 +1,4 @@
-//! Audio transcription request, target, and response domain types.
+//! Audio request, target, and response domain types.
 
 use std::{fmt, path::PathBuf, str::FromStr};
 
@@ -166,4 +166,144 @@ pub struct AudioTranscriptionResponse {
     pub output_path: PathBuf,
     pub total_bytes: u64,
     pub text: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AudioSpeechOutputFormat {
+    Wav,
+}
+
+impl AudioSpeechOutputFormat {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Wav => "wav",
+        }
+    }
+
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Wav => "wav",
+        }
+    }
+
+    pub const fn media_type(self) -> &'static str {
+        match self {
+            Self::Wav => "audio/wav",
+        }
+    }
+
+    pub fn default_filename(self) -> String {
+        format!("speech.{}", self.extension())
+    }
+}
+
+impl fmt::Display for AudioSpeechOutputFormat {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for AudioSpeechOutputFormat {
+    type Err = AudioSpeechOutputFormatParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" => Err(AudioSpeechOutputFormatParseError::Empty),
+            "wav" | "wave" => Ok(Self::Wav),
+            _ => Err(AudioSpeechOutputFormatParseError::Unsupported {
+                value: value.trim().to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AudioSpeechOutputFormatParseError {
+    #[error("audio speech output format must not be blank; expected one of: wav")]
+    Empty,
+    #[error("unsupported audio speech output format `{value}`; expected one of: wav")]
+    Unsupported { value: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AudioSpeechBackend {
+    TransformersTextToSpeech,
+    MlxAudio,
+}
+
+impl AudioSpeechBackend {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TransformersTextToSpeech => "transformers-tts",
+            Self::MlxAudio => "mlx-audio",
+        }
+    }
+
+    pub const fn from_model_format_and_mlx_family(
+        format: ModelFormat,
+        mlx_runtime_family: Option<MlxRuntimeFamily>,
+    ) -> Option<Self> {
+        match format {
+            ModelFormat::Safetensors => Some(Self::TransformersTextToSpeech),
+            ModelFormat::Mlx => match mlx_runtime_family {
+                Some(MlxRuntimeFamily::Audio) => Some(Self::MlxAudio),
+                Some(MlxRuntimeFamily::Lm)
+                | Some(MlxRuntimeFamily::Vlm)
+                | Some(MlxRuntimeFamily::Diffusion)
+                | None => None,
+            },
+            ModelFormat::Diffusers | ModelFormat::Gguf => None,
+        }
+    }
+}
+
+impl fmt::Display for AudioSpeechBackend {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AudioSpeechRuntimeTarget {
+    LocalModel {
+        model_ref: ModelRef,
+        backend: AudioSpeechBackend,
+        source_repo: Option<String>,
+        source_revision: Option<String>,
+        model_capabilities: Vec<ModelCapability>,
+    },
+}
+
+impl AudioSpeechRuntimeTarget {
+    pub fn model_label(&self) -> String {
+        match self {
+            Self::LocalModel { model_ref, .. } => model_ref.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedAudioSpeechTarget {
+    pub runtime: AudioSpeechRuntimeTarget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioSpeechRequest {
+    pub target: ResolvedAudioSpeechTarget,
+    pub text: String,
+    pub output_path: PathBuf,
+    pub output_format: AudioSpeechOutputFormat,
+    pub language: Option<String>,
+    pub voice: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioSpeechResponse {
+    pub output_format: AudioSpeechOutputFormat,
+    pub media_type: String,
+    pub output_path: PathBuf,
+    pub total_bytes: u64,
+    pub sample_rate: Option<u32>,
 }

@@ -1,10 +1,11 @@
 use tentgent_kernel::{
     features::{
         audio::{
-            infra::StdAudioTranscriptionModelResolver,
+            infra::{StdAudioSpeechModelResolver, StdAudioTranscriptionModelResolver},
             ports::{
-                AudioTranscriptionModelResolveRequest, AudioTranscriptionModelResolveResult,
-                AudioTranscriptionModelResolver,
+                AudioSpeechModelResolveRequest, AudioSpeechModelResolveResult,
+                AudioSpeechModelResolver, AudioTranscriptionModelResolveRequest,
+                AudioTranscriptionModelResolveResult, AudioTranscriptionModelResolver,
             },
         },
         auth::usecases::AuthSecretResolverUseCase,
@@ -187,6 +188,15 @@ impl AudioTranscriptionModelResolver for ModelKernelComponent {
         request: AudioTranscriptionModelResolveRequest,
     ) -> KernelResult<AudioTranscriptionModelResolveResult> {
         StdAudioTranscriptionModelResolver::new(self).resolve_audio_transcription_model(request)
+    }
+}
+
+impl AudioSpeechModelResolver for ModelKernelComponent {
+    fn resolve_audio_speech_model(
+        &self,
+        request: AudioSpeechModelResolveRequest,
+    ) -> KernelResult<AudioSpeechModelResolveResult> {
+        StdAudioSpeechModelResolver::new(self).resolve_audio_speech_model(request)
     }
 }
 

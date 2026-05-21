@@ -69,7 +69,8 @@ MLX model metadata:
 - `mlx-lm` is the current runnable MLX chat path.
 - `mlx-vlm` is the Apple Silicon MLX VLM path for native `vision-chat`.
 - `mlx-audio` is the Apple Silicon MLX path for native
-  `audio-transcription`.
+  `audio-transcription`; MLX `audio-speech` remains planned until a stable TTS
+  API is verified.
 - `mlx-diffusion` is the Apple Silicon MLX path for native
   `image-generation` through MFLUX Flux-family text-to-image models.
 
@@ -195,8 +196,8 @@ Media models have two dependency classes:
   `local-model` covers `torch`, `torchvision`, `transformers`, `tokenizers`,
   `safetensors`, `diffusers`, `accelerate`, Pillow image decoding, MLX media
   packages including MFLUX, and PEFT support used by local safetensors chat,
-  embedding, rerank, `audio-transcription`, `vision-chat`, Diffusers
-  `image-generation`, and MLX `image-generation` models.
+  embedding, rerank, `audio-transcription`, `audio-speech`, `vision-chat`,
+  Diffusers `image-generation`, and MLX `image-generation` models.
 - Media file decoding dependencies are system tools on `PATH`. Current
   `audio-transcription` jobs store the uploaded file in a daemon workspace and
   pass that file path to the Transformers ASR pipeline, which expects `ffmpeg`
@@ -222,6 +223,13 @@ Vision chat currently uses Python/Pillow/torchvision image processing through
 the `local-model` profile and does not require a system decoder like `ffmpeg`
 for PNG, JPEG, or WebP inputs.
 
+Audio speech currently uses the Python local-model profile for Transformers
+text-to-speech models and writes WAV with the Python standard library. It does
+not require `ffmpeg` or an MP3 encoder for M6P. Text input is bounded by
+`TENTGENT_AUDIO_SPEECH_MAX_TEXT_BYTES`, defaulting to 64 KiB. `language` and
+`voice` are passed only as model-aware runtime hints; unsupported hints should
+surface as clear runtime errors.
+
 Image generation currently uses Python Diffusers/Pillow for Diffusers models and
 MFLUX for MLX Flux-family models through the `local-model` profile. It does not
 require a system decoder like `ffmpeg` for text-to-image output. Some Diffusers
@@ -232,9 +240,9 @@ Override the Diffusers backend device with
 with `TENTGENT_IMAGE_GENERATION_TORCH_DTYPE=float32` or `float16` only when
 debugging model/runtime compatibility. MFLUX image generation is Apple Silicon
 only and requires MLX model packages that match the MFLUX Flux loader. Future
-`audio-speech` and video-oriented routes may add more capability-specific
-checks. Those checks should stay warning-level unless the user is actively
-running a feature that requires them.
+video-oriented routes may add more capability-specific checks. Those checks
+should stay warning-level unless the user is actively running a feature that
+requires them.
 
 ## Keychain Prompts
 

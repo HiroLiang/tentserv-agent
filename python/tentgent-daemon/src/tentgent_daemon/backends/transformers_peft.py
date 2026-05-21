@@ -7,6 +7,7 @@ from threading import Thread
 from typing import Any
 
 from .base import (
+    AudioSpeechBackend,
     AudioTranscriptionBackend,
     ChatBackend,
     ChatResult,
@@ -20,6 +21,11 @@ from ..runtime.audio import (
     AudioTranscriptionRequest,
     AudioTranscriptionResult,
     write_audio_transcription_output,
+)
+from ..runtime.audio_speech import (
+    AudioSpeechRequest,
+    AudioSpeechResult,
+    write_audio_speech_output,
 )
 from ..runtime.chat import ChatRequest, Message
 from ..runtime.embedding import EmbeddingRequest
@@ -419,6 +425,67 @@ class TransformersPeftAudioTranscriptionBackend(AudioTranscriptionBackend):
         return self._pipeline
 
 
+class TransformersPeftAudioSpeechBackend(AudioSpeechBackend):
+    def __init__(self) -> None:
+        self._deps = _load_transformers_peft_deps()
+        self._record: StoredModelRecord | None = None
+        self._pipeline: Any | None = None
+
+    def load(self, record: StoredModelRecord) -> None:
+        self._record = record
+        self._pipeline = self._deps.pipeline(
+            "text-to-speech",
+            model=str(record.variant_source_path),
+            device=_asr_pipeline_device(self._deps.torch),
+            trust_remote_code=True,
+        )
+
+    def synthesize_speech(self, request: AudioSpeechRequest) -> AudioSpeechResult:
+        pipe = self._require_loaded()
+        kwargs: dict[str, object] = {}
+        if request.language:
+            kwargs["language"] = request.language
+        if request.voice:
+            kwargs["voice"] = request.voice
+        try:
+            raw_result = pipe(request.text, **kwargs)
+        except TypeError as exc:
+            if kwargs and "unexpected keyword" in str(exc).lower():
+                unsupported = ", ".join(sorted(kwargs))
+                raise ValueError(
+                    "selected audio speech model does not support request option(s): "
+                    f"{unsupported}"
+                ) from exc
+            raise
+        except ValueError as exc:
+            if kwargs and _is_known_tts_option_error(exc):
+                unsupported = ", ".join(sorted(kwargs))
+                raise ValueError(
+                    "selected audio speech model rejected request option(s): "
+                    f"{unsupported}. {exc}"
+                ) from exc
+            raise
+        return write_audio_speech_output(request, raw_result)
+
+    def release(self) -> None:
+        self._record = None
+        self._pipeline = None
+
+        torch = self._deps.torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+
+    def _require_loaded(self) -> Any:
+        if self._record is None or self._pipeline is None:
+            raise RuntimeError(
+                "Transformers audio speech backend is not loaded yet; "
+                "call load() before synthesize_speech()."
+            )
+        return self._pipeline
+
+
 def _load_transformers_peft_deps() -> TransformersPeftDeps:
     try:
         from peft import PeftModel
@@ -479,6 +546,17 @@ def _is_english_only_language_error(error: ValueError) -> bool:
     message = str(error)
     return (
         "Cannot specify `task` or `language` for an English-only model" in message
+    )
+
+
+def _is_known_tts_option_error(error: ValueError) -> bool:
+    message = str(error).lower()
+    return (
+        "language" in message
+        or "voice" in message
+        or "speaker" in message
+        or "unexpected" in message
+        or "unsupported" in message
     )
 
 

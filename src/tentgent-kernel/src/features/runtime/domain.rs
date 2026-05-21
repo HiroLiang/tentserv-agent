@@ -128,6 +128,7 @@ impl std::fmt::Display for PythonRuntimeSource {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuntimeEntrypoint {
+    AudioSpeechOnce,
     AudioTranscriptionBatch,
     ChatOnce,
     DatasetEval,
@@ -144,6 +145,7 @@ pub enum RuntimeEntrypoint {
 impl RuntimeEntrypoint {
     pub const fn script_name(self) -> &'static str {
         match self {
+            Self::AudioSpeechOnce => "tentgent-audio-speech",
             Self::AudioTranscriptionBatch => "tentgent-audio-transcribe",
             Self::ChatOnce => "tentgent-chat-once",
             Self::DatasetEval => "tentgent-dataset-eval",

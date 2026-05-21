@@ -105,6 +105,11 @@ one pass without a staged breakdown.
   Diffusers ControlNet runtime support, and a documented boundary that keeps
   generic reference-image composition deferred until a concrete backend
   contract is proven.
+- [m6p-audio-speech-jobs.md](./m6p-audio-speech-jobs.md)
+  M6P implementation record for native `audio-speech` artifact jobs:
+  foreground `tentgent speak`, daemon JSON `POST /v1/audio/speech/job`,
+  workflow-owned WAV result download, Transformers TTS baseline, and MLX audio
+  TTS planned-backend boundary without realtime speech streaming.
 
 ## Recommended Order
 

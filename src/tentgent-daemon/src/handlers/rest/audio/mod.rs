@@ -54,6 +54,10 @@ use crate::{
 };
 use tokio::io::AsyncWriteExt;
 
+mod speech;
+
+pub use speech::{create_speech_job, speech_job_result};
+
 const DEFAULT_RESULT_MAX_CHUNKS: usize = 32;
 const MAX_RESULT_CHUNKS: usize = 256;
 const MAX_UPLOAD_METADATA_FIELD_BYTES: usize = 8 * 1024;

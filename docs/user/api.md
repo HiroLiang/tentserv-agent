@@ -31,7 +31,8 @@ bytes:
 - Operators can adjust it with `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` before
   starting the daemon.
 - The cap applies to multipart file parts such as `image` on `/v1/vision/chat`
-  and `file` on `/v1/audio/transcriptions/job`.
+  and `file` on `/v1/audio/transcriptions/job`. JSON-only routes such as
+  `/v1/audio/speech/job` use their own request limits.
 - The cap is an HTTP intake guard, not a model context limit. Model-specific
   image size, audio duration, token, or memory failures still come from the
   selected runtime.
@@ -620,6 +621,97 @@ GET  /v1/audio/transcriptions/jobs/{job_id}/result
 
 The plural route is an undocumented alpha/debug compatibility path for trusted
 local JSON path input. New clients should use the singular multipart route.
+
+## Audio Speech
+
+Canonical audio speech uses a workflow job:
+
+```http
+POST /v1/audio/speech/job
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{
+  "model_ref": "<audio-speech-model-ref>",
+  "text": "Hello from Tentgent.",
+  "output_format": "wav",
+  "output_filename": "speech.wav",
+  "language": "en",
+  "voice": "default"
+}
+```
+
+Fields:
+
+| Field | Required | Type | Notes |
+| --- | --- | --- | --- |
+| `model_ref` | yes | string | Local `audio-speech` model ref or unique alias. |
+| `text` | yes | string | Non-empty UTF-8 text. The default limit is 64 KiB. |
+| `output_format` | no | string | `wav` or `wave`; defaults to `wav`. |
+| `output_filename` | no | string | File name only, not a path. Defaults to `speech.wav`. |
+| `language` | no | string | Model-aware language hint. Unsupported values fail clearly. |
+| `voice` | no | string | Model-aware voice or speaker hint. Unsupported values fail clearly. |
+
+The route rejects unknown fields. `TENTGENT_AUDIO_SPEECH_MAX_TEXT_BYTES`
+controls the maximum text byte length before daemon startup and defaults to
+65536 bytes. M6P writes WAV only; `mp3`, realtime speech streaming,
+speech-to-speech, SSML, and voice cloning are out of scope.
+
+`curl` example:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/audio/speech/job \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_ref": "<audio-speech-model-ref>",
+    "text": "Hello from Tentgent.",
+    "output_format": "wav",
+    "output_filename": "speech.wav"
+  }'
+```
+
+Response:
+
+```json
+{
+  "job": {
+    "job_id": "job-...",
+    "kind": "audio_speech",
+    "status": "queued",
+    "target": {
+      "section": "audio",
+      "reference": "<model-ref>",
+      "path": null
+    }
+  }
+}
+```
+
+Read status and result:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
+curl -sS \
+  'http://127.0.0.1:8790/v1/audio/speech/job/<job-id>/result?cursor=0&max_chunks=32' \
+  -o speech.wav
+```
+
+Result route behavior:
+
+| State | HTTP | Error code or response |
+| --- | --- | --- |
+| Job queued/running/intake | `409` | `result_pending` |
+| Job failed | `409` | `job_failed` |
+| Job interrupted | `409` | `job_interrupted` |
+| Job canceled | `409` | `job_canceled` |
+| Job succeeded but artifact missing | `404` | `result_not_found` |
+| Result ready | `200` | WAV bytes with `Content-Type`, `Content-Disposition`, `x-tentgent-next-cursor`, `x-tentgent-result-done`, and `x-tentgent-chunks-read`. |
+
+Result reads are cursor-based like audio transcription. They are an artifact
+download boundary, not realtime model streaming.
 
 ## Jobs
 

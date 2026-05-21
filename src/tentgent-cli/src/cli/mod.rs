@@ -19,6 +19,7 @@ mod runtime_footprint;
 mod server;
 mod session;
 mod session_kernel;
+mod speak;
 mod store;
 mod train;
 mod transcribe;
@@ -47,6 +48,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Embed(command) => embed::handle_embed_command(command).await?,
         Commands::Rerank(command) => rerank::handle_rerank_command(command).await?,
         Commands::Transcribe(command) => transcribe::handle_transcribe_command(command).await?,
+        Commands::Speak(command) => speak::handle_speak_command(command).await?,
         Commands::Vision { action } => vision::handle_vision_command(action).await?,
         Commands::Image { action } => image::handle_image_command(action).await?,
         Commands::Server { action } => server::handle_server_command(action).await?,
@@ -131,6 +133,46 @@ mod tests {
                     Some(std::path::Path::new("/tmp/tentgent"))
                 );
                 assert!(command.pretty);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_speak_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "speak",
+            "--model-ref",
+            "abc123",
+            "--text",
+            "hello",
+            "--output",
+            "/tmp/speech.wav",
+            "--format",
+            "wav",
+            "--language",
+            "en",
+            "--voice",
+            "default",
+            "--home",
+            "/tmp/tentgent",
+        ])
+        .expect("parse speak command");
+
+        match cli.command {
+            Commands::Speak(command) => {
+                assert_eq!(command.model_ref, "abc123");
+                assert_eq!(command.text.as_deref(), Some("hello"));
+                assert_eq!(command.text_file, None);
+                assert_eq!(command.output, std::path::Path::new("/tmp/speech.wav"));
+                assert_eq!(command.format, "wav");
+                assert_eq!(command.language.as_deref(), Some("en"));
+                assert_eq!(command.voice.as_deref(), Some("default"));
+                assert_eq!(
+                    command.home.as_deref(),
+                    Some(std::path::Path::new("/tmp/tentgent"))
+                );
             }
             other => panic!("unexpected command: {other:?}"),
         }

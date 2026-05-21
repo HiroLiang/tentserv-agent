@@ -39,6 +39,7 @@ training = [
 ]
 
 [project.scripts]
+tentgent-audio-speech = "tentgent_daemon.cli.audio_speech:main"
 tentgent-audio-transcribe = "tentgent_daemon.cli.audio_transcribe:main"
 tentgent-chat-once = "tentgent_daemon.cli.chat_once:main"
 tentgent-dataset-eval = "tentgent_daemon.cli.dataset_eval:main"

@@ -8,7 +8,8 @@ use crate::foundation::error::KernelResult;
 use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
 
 use super::domain::{
-    AudioTranscriptionRequest, AudioTranscriptionResponse, AudioTranscriptionRuntimeTarget,
+    AudioSpeechRequest, AudioSpeechResponse, AudioSpeechRuntimeTarget, AudioTranscriptionRequest,
+    AudioTranscriptionResponse, AudioTranscriptionRuntimeTarget,
 };
 
 pub type AudioPortFuture<'a, T> = Pin<Box<dyn Future<Output = KernelResult<T>> + 'a>>;
@@ -33,6 +34,26 @@ pub struct AudioTranscriptionRuntimeRequest {
     pub request: AudioTranscriptionRequest,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioSpeechModelResolveRequest {
+    pub layout: RuntimeLayoutInput,
+    pub selector: ModelRefSelector,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioSpeechModelResolveResult {
+    pub layout: RuntimeLayout,
+    pub model: ModelInspection,
+    pub target: AudioSpeechRuntimeTarget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioSpeechRuntimeRequest {
+    pub layout: RuntimeLayout,
+    pub runtime: PythonRuntimeLayout,
+    pub request: AudioSpeechRequest,
+}
+
 /// Boundary for resolving a model selector into an audio-transcription target.
 pub trait AudioTranscriptionModelResolver {
     /// Resolves a model ref or unique prefix and maps it to an ASR runtime target.
@@ -49,4 +70,22 @@ pub trait AudioTranscriptionRuntimeClient {
         &'_ self,
         request: AudioTranscriptionRuntimeRequest,
     ) -> AudioPortFuture<'_, AudioTranscriptionResponse>;
+}
+
+/// Boundary for resolving a model selector into an audio-speech target.
+pub trait AudioSpeechModelResolver {
+    /// Resolves a model ref or unique prefix and maps it to a TTS runtime target.
+    fn resolve_audio_speech_model(
+        &self,
+        request: AudioSpeechModelResolveRequest,
+    ) -> KernelResult<AudioSpeechModelResolveResult>;
+}
+
+/// Boundary for executing a prepared audio speech request.
+pub trait AudioSpeechRuntimeClient {
+    /// Writes speech audio output to the prepared output path and returns metadata.
+    fn synthesize_speech(
+        &'_ self,
+        request: AudioSpeechRuntimeRequest,
+    ) -> AudioPortFuture<'_, AudioSpeechResponse>;
 }

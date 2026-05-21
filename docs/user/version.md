@@ -65,6 +65,10 @@ What changed:
   safetensors ASR models, and
   `GET /v1/audio/transcriptions/job/{job_id}/result` reads transcript result
   bytes from the job workspace.
+- Added foreground CLI `tentgent speak` and daemon-native
+  `POST /v1/audio/speech/job` for text-to-speech jobs against local
+  `audio-speech` Transformers models. M6P writes WAV artifacts only; result
+  bytes are exposed through `GET /v1/audio/speech/job/{job_id}/result`.
 
 Known limits:
 
@@ -75,6 +79,10 @@ Known limits:
 - Audio transcription is batch file transcription. Multipart upload/result
   reads are transport-stream-friendly memory boundaries, not realtime model
   streaming. Live dictation and live translation remain future work.
+- Audio speech is batch text-to-WAV synthesis. Realtime speech streaming,
+  speech-to-speech, voice cloning, SSML, and MP3 output remain future work.
+  MLX text-to-speech is a planned backend until a stable local `mlx-audio` TTS
+  path is verified.
 - Image generation supports text-to-image, one-input-image transform, one-mask
   inpainting, one managed image LoRA adapter, and one typed ControlNet-style
   control image workflow. Generic reference-image composition, multi-control

@@ -5,7 +5,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from .base import AudioTranscriptionBackend
+from .base import AudioSpeechBackend, AudioTranscriptionBackend
+from ..runtime.audio_speech import AudioSpeechRequest, AudioSpeechResult
 from ..runtime.audio import (
     AudioTranscriptionRequest,
     AudioTranscriptionResult,
@@ -49,6 +50,27 @@ class MlxAudioTranscriptionBackend(AudioTranscriptionBackend):
                 "call load() before transcribe()."
             )
         return self._model
+
+
+class MlxAudioSpeechBackend(AudioSpeechBackend):
+    def __init__(self) -> None:
+        # Load dependency state early so missing local-model profile errors still
+        # point users at the correct bootstrap path.
+        self._deps = _load_mlx_audio_deps()
+        self._record: StoredModelRecord | None = None
+
+    def load(self, record: StoredModelRecord) -> None:
+        self._record = record
+
+    def synthesize_speech(self, request: AudioSpeechRequest) -> AudioSpeechResult:
+        raise RuntimeError(
+            "MLX audio text-to-speech is planned but not implemented in this slice. "
+            "Use a safetensors audio-speech model with the Transformers TTS backend, "
+            "or wait for a verified mlx-audio TTS fixture."
+        )
+
+    def release(self) -> None:
+        self._record = None
 
 
 def _load_mlx_audio_deps() -> MlxAudioDeps:

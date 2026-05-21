@@ -162,7 +162,8 @@ family when Tentgent can infer exactly one family from the model capabilities:
 
 - `mlx-lm` for `chat`
 - `mlx-vlm` for `vision-chat`
-- `mlx-audio` for `audio-transcription` and `audio-speech`
+- `mlx-audio` for `audio-transcription`, and as planned metadata for
+  `audio-speech` until a stable local MLX TTS backend is verified
 - `mlx-diffusion` for `image-generation`
 
 Existing metadata without `mlx_runtime_family` remains valid. For backward

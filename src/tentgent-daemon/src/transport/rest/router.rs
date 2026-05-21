@@ -149,6 +149,11 @@ fn audio_routes() -> Router<RestState> {
             "/v1/audio/transcriptions/jobs/{job_id}/result",
             get(audio::transcription_job_result),
         )
+        .route("/v1/audio/speech/job", post(audio::create_speech_job))
+        .route(
+            "/v1/audio/speech/job/{job_id}/result",
+            get(audio::speech_job_result),
+        )
         .layer(DefaultBodyLimit::max(media_upload_body_limit_bytes()))
 }
 

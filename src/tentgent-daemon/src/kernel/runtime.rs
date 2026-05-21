@@ -1,10 +1,13 @@
 use tentgent_kernel::{
     features::{
         audio::{
-            domain::AudioTranscriptionResponse,
-            infra::PythonAudioTranscriptionBatchRuntimeClient,
+            domain::{AudioSpeechResponse, AudioTranscriptionResponse},
+            infra::{
+                PythonAudioSpeechOnceRuntimeClient, PythonAudioTranscriptionBatchRuntimeClient,
+            },
             ports::{
-                AudioPortFuture, AudioTranscriptionRuntimeClient, AudioTranscriptionRuntimeRequest,
+                AudioPortFuture, AudioSpeechRuntimeClient, AudioSpeechRuntimeRequest,
+                AudioTranscriptionRuntimeClient, AudioTranscriptionRuntimeRequest,
             },
         },
         chat::{
@@ -247,6 +250,19 @@ impl AudioTranscriptionRuntimeClient for RuntimeKernelComponent {
         Box::pin(async move {
             PythonAudioTranscriptionBatchRuntimeClient::new(self)
                 .transcribe_audio(request)
+                .await
+        })
+    }
+}
+
+impl AudioSpeechRuntimeClient for RuntimeKernelComponent {
+    fn synthesize_speech(
+        &'_ self,
+        request: AudioSpeechRuntimeRequest,
+    ) -> AudioPortFuture<'_, AudioSpeechResponse> {
+        Box::pin(async move {
+            PythonAudioSpeechOnceRuntimeClient::new(self)
+                .synthesize_speech(request)
                 .await
         })
     }

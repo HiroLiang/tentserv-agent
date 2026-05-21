@@ -7,11 +7,13 @@ use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::foundation::error::{KernelError, KernelResult};
 
 use super::super::domain::{
+    AudioSpeechOutputFormat, AudioSpeechRequest, AudioSpeechResponse, AudioSpeechRuntimeTarget,
     AudioTranscriptionOutputFormat, AudioTranscriptionRequest, AudioTranscriptionResponse,
     AudioTranscriptionRuntimeTarget,
 };
 use super::super::ports::{
-    AudioPortFuture, AudioTranscriptionRuntimeClient, AudioTranscriptionRuntimeRequest,
+    AudioPortFuture, AudioSpeechRuntimeClient, AudioSpeechRuntimeRequest,
+    AudioTranscriptionRuntimeClient, AudioTranscriptionRuntimeRequest,
 };
 
 /// Executes prepared audio transcription requests through the Python batch entrypoint.
@@ -110,6 +112,97 @@ impl AudioTranscriptionRuntimeClient for PythonAudioTranscriptionBatchRuntimeCli
     }
 }
 
+/// Executes prepared audio speech requests through the Python one-shot entrypoint.
+pub struct PythonAudioSpeechOnceRuntimeClient<'a> {
+    executable_resolver: &'a dyn RuntimeExecutableResolver,
+}
+
+impl<'a> PythonAudioSpeechOnceRuntimeClient<'a> {
+    pub fn new(executable_resolver: &'a dyn RuntimeExecutableResolver) -> Self {
+        Self {
+            executable_resolver,
+        }
+    }
+
+    fn synthesize_blocking(
+        &self,
+        request: AudioSpeechRuntimeRequest,
+    ) -> KernelResult<AudioSpeechResponse> {
+        let output = self
+            .command_for_request(&request)?
+            .output()
+            .map_err(|error| {
+                audio_runtime_error(format!("failed to run audio speech runtime: {error}"))
+            })?;
+
+        if !output.status.success() {
+            return Err(audio_runtime_error(format_process_failure(
+                "audio speech runtime exited",
+                output.status.code(),
+                &output.stderr,
+            )));
+        }
+
+        let parsed: AudioSpeechRuntimeOutput =
+            serde_json::from_slice(&output.stdout).map_err(|error| {
+                audio_runtime_error(format!(
+                    "failed to parse audio speech runtime output: {error}"
+                ))
+            })?;
+
+        Ok(AudioSpeechResponse {
+            output_format: parsed.output_format,
+            media_type: parsed.media_type,
+            output_path: parsed.output_path,
+            total_bytes: parsed.total_bytes,
+            sample_rate: parsed.sample_rate,
+        })
+    }
+
+    fn command_for_request(&self, request: &AudioSpeechRuntimeRequest) -> KernelResult<Command> {
+        let entrypoint = self
+            .executable_resolver
+            .entrypoint_path(&request.runtime, RuntimeEntrypoint::AudioSpeechOnce)?;
+        let model_ref = local_speech_model_ref(&request.request);
+
+        let mut command = Command::new(entrypoint);
+        command
+            .current_dir(&request.runtime.project_dir)
+            .arg("--model-ref")
+            .arg(model_ref)
+            .arg("--home")
+            .arg(&request.layout.home_dir)
+            .arg("--text")
+            .arg(&request.request.text)
+            .arg("--output-path")
+            .arg(&request.request.output_path)
+            .arg("--format")
+            .arg(request.request.output_format.as_str())
+            .env("TENTGENT_HOME", &request.layout.home_dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        if let Some(language) = &request.request.language {
+            command.arg("--language").arg(language);
+        }
+        if let Some(voice) = &request.request.voice {
+            command.arg("--voice").arg(voice);
+        }
+
+        Ok(command)
+    }
+}
+
+impl AudioSpeechRuntimeClient for PythonAudioSpeechOnceRuntimeClient<'_> {
+    fn synthesize_speech(
+        &'_ self,
+        request: AudioSpeechRuntimeRequest,
+    ) -> AudioPortFuture<'_, AudioSpeechResponse> {
+        Box::pin(async move { self.synthesize_blocking(request) })
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct AudioTranscriptionRuntimeOutput {
     output_format: AudioTranscriptionOutputFormat,
@@ -119,9 +212,24 @@ struct AudioTranscriptionRuntimeOutput {
     text: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct AudioSpeechRuntimeOutput {
+    output_format: AudioSpeechOutputFormat,
+    media_type: String,
+    output_path: std::path::PathBuf,
+    total_bytes: u64,
+    sample_rate: Option<u32>,
+}
+
 fn local_model_ref(request: &AudioTranscriptionRequest) -> &str {
     match &request.target.runtime {
         AudioTranscriptionRuntimeTarget::LocalModel { model_ref, .. } => model_ref.as_str(),
+    }
+}
+
+fn local_speech_model_ref(request: &AudioSpeechRequest) -> &str {
+    match &request.target.runtime {
+        AudioSpeechRuntimeTarget::LocalModel { model_ref, .. } => model_ref.as_str(),
     }
 }
 

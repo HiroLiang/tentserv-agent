@@ -67,6 +67,19 @@ def resolve_audio_transcription_backend(record: StoredModelRecord) -> BackendKin
     )
 
 
+def resolve_audio_speech_backend(record: StoredModelRecord) -> BackendKind:
+    if record.primary_format == "safetensors":
+        return BackendKind.TRANSFORMERS_PEFT
+    if record.primary_format == "mlx" and record.mlx_runtime_family == "mlx-audio":
+        backend = BackendKind.MLX_AUDIO
+        ensure_backend_supported(str(backend))
+        return backend
+
+    raise ValueError(
+        f"unsupported primary_format `{record.primary_format}` for audio speech model `{record.model_ref}`"
+    )
+
+
 def resolve_vision_chat_backend(record: StoredModelRecord) -> BackendKind:
     if record.primary_format == "safetensors":
         return BackendKind.TRANSFORMERS_PEFT

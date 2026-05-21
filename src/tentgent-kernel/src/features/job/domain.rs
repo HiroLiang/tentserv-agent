@@ -47,6 +47,7 @@ impl From<&str> for JobId {
 pub struct JobKind(String);
 
 impl JobKind {
+    pub const AUDIO_SPEECH: &'static str = "audio_speech";
     pub const AUDIO_TRANSCRIPTION: &'static str = "audio_transcription";
     pub const IMAGE_GENERATION: &'static str = "image_generation";
     pub const MODEL_PULL: &'static str = "model_pull";
@@ -65,6 +66,10 @@ impl JobKind {
 
     pub fn audio_transcription() -> Self {
         Self::new(Self::AUDIO_TRANSCRIPTION)
+    }
+
+    pub fn audio_speech() -> Self {
+        Self::new(Self::AUDIO_SPEECH)
     }
 
     pub fn image_generation() -> Self {

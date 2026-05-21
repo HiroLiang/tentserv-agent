@@ -129,16 +129,20 @@ tentgent model pull BAAI/bge-reranker-base --capability rerank --revision main
 
 `--capability` accepts `chat`, `embedding`, `rerank`,
 `audio-transcription`, `audio-speech`, `vision-chat`, or
-`image-generation`. Chat, embedding, rerank, audio transcription, vision chat,
-and image generation endpoints enforce this metadata before runtime dispatch.
+`image-generation`. Chat, embedding, rerank, audio transcription, audio speech,
+vision chat, and image generation endpoints enforce this metadata before
+runtime dispatch.
 `audio-transcription` is available through `tentgent transcribe` and the daemon
-job API for local safetensors ASR models. `vision-chat` is available through
-`tentgent vision chat` and daemon `POST /v1/vision/chat` for local safetensors
-image-plus-text models. `image-generation` is available through
+job API for local safetensors ASR models. `audio-speech` is available through
+`tentgent speak` and daemon `POST /v1/audio/speech/job` for local Transformers
+text-to-speech models with `wav` output. MLX audio text-to-speech is kept as a
+planned backend until a stable local `mlx-audio` TTS path is verified.
+`vision-chat` is available through `tentgent vision chat` and daemon
+`POST /v1/vision/chat` for local safetensors image-plus-text models.
+`image-generation` is available through
 `tentgent image generate` and daemon `POST /v1/images/generations/job` for
 local Diffusers text-to-image models and Apple Silicon MFLUX `mlx-diffusion`
-models. `audio-speech` remains metadata-only until its payload and artifact
-contract is implemented.
+models.
 
 List and inspect models:
 
@@ -280,6 +284,74 @@ see [api.md](./api.md). The daemon rejects multipart media file parts above
 the daemon-wide upload cap with `upload_too_large`; set
 `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` before daemon startup to adjust the default
 20 MiB cap.
+
+## Audio Speech
+
+Run foreground text-to-speech without starting the daemon:
+
+```bash
+tentgent speak \
+  --model-ref <audio-speech-model-ref> \
+  --text "Hello from Tentgent." \
+  --output speech.wav
+```
+
+You can also read UTF-8 text from a local file:
+
+```bash
+tentgent speak \
+  --model-ref <audio-speech-model-ref> \
+  --text-file prompt.txt \
+  --output speech.wav
+```
+
+`tentgent speak` requires `--output`, writes a WAV file, and fails before
+running if the output file already exists. It does not print audio bytes to the
+terminal. `--format` defaults to `wav`; `wave` is accepted as an alias. `mp3`
+is intentionally not supported in M6P.
+
+Pull a small model before running local speech synthesis:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent model pull facebook/mms-tts-eng --capability audio-speech
+```
+
+`facebook/mms-tts-eng` is a convenient small Transformers TTS fixture, but its
+license is CC-BY-NC 4.0. Accept and evaluate the model license before using it
+outside local testing.
+
+For HTTP integrations, send text as JSON. The daemon creates a job, writes the
+generated WAV inside the job workspace, and serves result bytes through the
+workflow result route:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/audio/speech/job \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model_ref": "<audio-speech-model-ref>",
+    "text": "Hello from Tentgent.",
+    "output_format": "wav",
+    "output_filename": "speech.wav"
+  }'
+```
+
+Inspect the job and read result bytes:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
+
+curl -sS \
+  'http://127.0.0.1:8790/v1/audio/speech/job/<job-id>/result?cursor=0&max_chunks=32' \
+  -o speech.wav
+```
+
+Reading the result before completion returns `result_pending`; inspect
+`/v1/jobs/<job-id>` for progress or terminal error details. Optional
+`language` and `voice` fields are model-aware: when a selected runtime cannot
+honor them, the job fails with a clear backend error rather than silently
+ignoring the request. Text is limited by
+`TENTGENT_AUDIO_SPEECH_MAX_TEXT_BYTES`, defaulting to 64 KiB.
 
 ## Vision Chat
 

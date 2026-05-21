@@ -3,6 +3,7 @@
 from ..runtime.router import BackendKind
 from .base import (
     AudioTranscriptionBackend,
+    AudioSpeechBackend,
     ChatBackend,
     EmbeddingBackend,
     ImageGenerationBackend,
@@ -61,6 +62,19 @@ def create_audio_transcription_backend(
     raise ValueError(f"unsupported audio transcription backend kind `{kind}`")
 
 
+def create_audio_speech_backend(kind: BackendKind) -> AudioSpeechBackend:
+    if kind == BackendKind.MLX_AUDIO:
+        from .mlx_audio import MlxAudioSpeechBackend
+
+        return MlxAudioSpeechBackend()
+    if kind == BackendKind.TRANSFORMERS_PEFT:
+        from .transformers_peft import TransformersPeftAudioSpeechBackend
+
+        return TransformersPeftAudioSpeechBackend()
+
+    raise ValueError(f"unsupported audio speech backend kind `{kind}`")
+
+
 def create_vision_chat_backend(kind: BackendKind) -> VisionChatBackend:
     if kind == BackendKind.MLX_VLM:
         from .mlx_vlm import MlxVlmVisionChatBackend
@@ -93,9 +107,11 @@ __all__ = [
     "ImageGenerationBackend",
     "RerankBackend",
     "AudioTranscriptionBackend",
+    "AudioSpeechBackend",
     "VisionChatBackend",
     "create_backend",
     "create_audio_transcription_backend",
+    "create_audio_speech_backend",
     "create_embedding_backend",
     "create_image_generation_backend",
     "create_rerank_backend",

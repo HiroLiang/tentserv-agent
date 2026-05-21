@@ -3,15 +3,20 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::audio::domain::{
-    AudioTranscriptionBackend, AudioTranscriptionOutputFormat, AudioTranscriptionRequest,
-    AudioTranscriptionResponse, AudioTranscriptionRuntimeTarget, ResolvedAudioTranscriptionTarget,
+    AudioSpeechBackend, AudioSpeechOutputFormat, AudioSpeechRequest, AudioSpeechResponse,
+    AudioSpeechRuntimeTarget, AudioTranscriptionBackend, AudioTranscriptionOutputFormat,
+    AudioTranscriptionRequest, AudioTranscriptionResponse, AudioTranscriptionRuntimeTarget,
+    ResolvedAudioSpeechTarget, ResolvedAudioTranscriptionTarget,
 };
 use crate::features::audio::infra::{
-    PythonAudioTranscriptionBatchRuntimeClient, StdAudioTranscriptionModelResolver,
+    PythonAudioSpeechOnceRuntimeClient, PythonAudioTranscriptionBatchRuntimeClient,
+    StdAudioSpeechModelResolver, StdAudioTranscriptionModelResolver,
 };
 use crate::features::audio::ports::{
-    AudioTranscriptionModelResolveRequest, AudioTranscriptionModelResolver,
-    AudioTranscriptionRuntimeClient, AudioTranscriptionRuntimeRequest,
+    AudioSpeechModelResolveRequest, AudioSpeechModelResolver, AudioSpeechRuntimeClient,
+    AudioSpeechRuntimeRequest, AudioTranscriptionModelResolveRequest,
+    AudioTranscriptionModelResolver, AudioTranscriptionRuntimeClient,
+    AudioTranscriptionRuntimeRequest,
 };
 use crate::features::model::domain::{
     default_model_capability_source, MlxRuntimeFamily, ModelCapability, ModelFormat,
@@ -48,6 +53,22 @@ fn audio_transcription_output_format_parses_aliases_and_metadata() {
 }
 
 #[test]
+fn audio_speech_output_format_parses_aliases_and_metadata() {
+    let format = "wave"
+        .parse::<AudioSpeechOutputFormat>()
+        .expect("wave alias");
+
+    assert_eq!(format, AudioSpeechOutputFormat::Wav);
+    assert_eq!(format.default_filename(), "speech.wav");
+    assert_eq!(AudioSpeechOutputFormat::Wav.media_type(), "audio/wav");
+    assert!("mp3"
+        .parse::<AudioSpeechOutputFormat>()
+        .expect_err("unsupported")
+        .to_string()
+        .contains("unsupported audio speech output format"));
+}
+
+#[test]
 fn std_audio_transcription_model_resolver_accepts_safetensors_model() {
     let catalog = FakeModelCatalog {
         metadata: model_metadata(
@@ -73,6 +94,33 @@ fn std_audio_transcription_model_resolver_accepts_safetensors_model() {
             source_repo: Some("org/model".to_string()),
             source_revision: Some("main".to_string()),
             model_capabilities: vec![ModelCapability::AudioTranscription],
+        }
+    );
+}
+
+#[test]
+fn std_audio_speech_model_resolver_accepts_safetensors_model() {
+    let catalog = FakeModelCatalog {
+        metadata: model_metadata(ModelFormat::Safetensors, vec![ModelCapability::AudioSpeech]),
+    };
+    let resolver = StdAudioSpeechModelResolver::new(&catalog);
+
+    let result = resolver
+        .resolve_audio_speech_model(AudioSpeechModelResolveRequest {
+            layout: layout_input(unique_path("audio-speech-model-home")),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+        })
+        .expect("resolve audio speech model");
+
+    assert_eq!(result.model.metadata.model_ref, model_ref());
+    assert_eq!(
+        result.target,
+        AudioSpeechRuntimeTarget::LocalModel {
+            model_ref: model_ref(),
+            backend: AudioSpeechBackend::TransformersTextToSpeech,
+            source_repo: Some("org/model".to_string()),
+            source_revision: Some("main".to_string()),
+            model_capabilities: vec![ModelCapability::AudioSpeech],
         }
     );
 }
@@ -135,6 +183,35 @@ fn std_audio_transcription_model_resolver_accepts_mlx_audio_model() {
 }
 
 #[test]
+fn std_audio_speech_model_resolver_accepts_mlx_audio_model() {
+    let catalog = FakeModelCatalog {
+        metadata: mlx_model_metadata(
+            Some(MlxRuntimeFamily::Audio),
+            vec![ModelCapability::AudioSpeech],
+        ),
+    };
+    let resolver = StdAudioSpeechModelResolver::new(&catalog);
+
+    let result = resolver
+        .resolve_audio_speech_model(AudioSpeechModelResolveRequest {
+            layout: layout_input(unique_path("audio-speech-mlx-audio-home")),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+        })
+        .expect("resolve mlx audio speech model");
+
+    assert_eq!(
+        result.target,
+        AudioSpeechRuntimeTarget::LocalModel {
+            model_ref: model_ref(),
+            backend: AudioSpeechBackend::MlxAudio,
+            source_repo: Some("org/model".to_string()),
+            source_revision: Some("main".to_string()),
+            model_capabilities: vec![ModelCapability::AudioSpeech],
+        }
+    );
+}
+
+#[test]
 fn std_audio_transcription_model_resolver_rejects_non_audio_models() {
     for capability in [
         ModelCapability::Chat,
@@ -159,6 +236,34 @@ fn std_audio_transcription_model_resolver_rejects_non_audio_models() {
         assert!(err
             .to_string()
             .contains("requires model capability `audio-transcription`"));
+    }
+}
+
+#[test]
+fn std_audio_speech_model_resolver_rejects_non_speech_models() {
+    for capability in [
+        ModelCapability::Chat,
+        ModelCapability::Embedding,
+        ModelCapability::Rerank,
+        ModelCapability::AudioTranscription,
+        ModelCapability::ImageGeneration,
+    ] {
+        let catalog = FakeModelCatalog {
+            metadata: model_metadata(ModelFormat::Safetensors, vec![capability]),
+        };
+        let resolver = StdAudioSpeechModelResolver::new(&catalog);
+
+        let err = resolver
+            .resolve_audio_speech_model(AudioSpeechModelResolveRequest {
+                layout: layout_input(unique_path("audio-non-speech-home")),
+                selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            })
+            .expect_err("non-speech model");
+
+        assert!(matches!(err, KernelError::UnsupportedTarget(_)));
+        assert!(err
+            .to_string()
+            .contains("requires model capability `audio-speech`"));
     }
 }
 
@@ -227,7 +332,10 @@ async fn python_audio_transcription_batch_client_runs_entrypoint_with_path_argum
     permissions.set_mode(0o755);
     fs::set_permissions(&entrypoint, permissions).expect("chmod");
 
-    let executable_resolver = FakeExecutableResolver { entrypoint };
+    let executable_resolver = FakeExecutableResolver {
+        entrypoint,
+        expected_entrypoint: RuntimeEntrypoint::AudioTranscriptionBatch,
+    };
     let client = PythonAudioTranscriptionBatchRuntimeClient::new(&executable_resolver);
     let response = client
         .transcribe_audio(AudioTranscriptionRuntimeRequest {
@@ -267,6 +375,72 @@ async fn python_audio_transcription_batch_client_runs_entrypoint_with_path_argum
     assert!(args.contains("--format\nvtt\n"));
     assert!(args.contains("--language\nen\n"));
     assert!(args.contains("--timestamps\n"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn python_audio_speech_once_client_runs_entrypoint_with_text_arguments() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = unique_path("python-audio-speech");
+    let home = root.join("home");
+    let project = root.join("project");
+    let env = root.join("env");
+    fs::create_dir_all(&home).expect("home");
+    fs::create_dir_all(&project).expect("project");
+    fs::create_dir_all(&env).expect("env");
+    let entrypoint = root.join("tentgent-audio-speech");
+    fs::write(
+        &entrypoint,
+        "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > \"$TENTGENT_HOME/speech-cwd.txt\"\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/speech-args.txt\"\nprintf '{\"output_format\":\"wav\",\"media_type\":\"audio/wav\",\"output_path\":\"%s/speech.wav\",\"total_bytes\":44,\"sample_rate\":16000}' \"$TENTGENT_HOME\"\n",
+    )
+    .expect("script");
+    let mut permissions = fs::metadata(&entrypoint).expect("metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&entrypoint, permissions).expect("chmod");
+
+    let executable_resolver = FakeExecutableResolver {
+        entrypoint,
+        expected_entrypoint: RuntimeEntrypoint::AudioSpeechOnce,
+    };
+    let client = PythonAudioSpeechOnceRuntimeClient::new(&executable_resolver);
+    let response = client
+        .synthesize_speech(AudioSpeechRuntimeRequest {
+            layout: runtime_layout(&home),
+            runtime: python_runtime(&project, &env),
+            request: audio_speech_request(&home),
+        })
+        .await
+        .expect("synthesize");
+
+    assert_eq!(
+        response,
+        AudioSpeechResponse {
+            output_format: AudioSpeechOutputFormat::Wav,
+            media_type: "audio/wav".to_string(),
+            output_path: home.join("speech.wav"),
+            total_bytes: 44,
+            sample_rate: Some(16000),
+        }
+    );
+    let observed_cwd = PathBuf::from(
+        fs::read_to_string(home.join("speech-cwd.txt"))
+            .expect("cwd")
+            .trim(),
+    );
+    assert_eq!(
+        fs::canonicalize(observed_cwd).expect("observed cwd"),
+        fs::canonicalize(&project).expect("project")
+    );
+    let args = fs::read_to_string(home.join("speech-args.txt")).expect("args");
+    assert!(args.contains("--model-ref\n"));
+    assert!(args.contains(&format!("{}\n", model_ref())));
+    assert!(args.contains("--text\nhello world\n"));
+    assert!(args.contains("--output-path\n"));
+    assert!(args.contains("speech.wav\n"));
+    assert!(args.contains("--format\nwav\n"));
+    assert!(args.contains("--language\nen\n"));
+    assert!(args.contains("--voice\ndefault\n"));
 }
 
 #[derive(Clone)]
@@ -321,6 +495,7 @@ impl ModelCatalogReadUseCase for FakeModelCatalog {
 
 struct FakeExecutableResolver {
     entrypoint: PathBuf,
+    expected_entrypoint: RuntimeEntrypoint,
 }
 
 impl RuntimeExecutableResolver for FakeExecutableResolver {
@@ -333,7 +508,7 @@ impl RuntimeExecutableResolver for FakeExecutableResolver {
         _runtime: &PythonRuntimeLayout,
         entrypoint: RuntimeEntrypoint,
     ) -> KernelResult<PathBuf> {
-        assert_eq!(entrypoint, RuntimeEntrypoint::AudioTranscriptionBatch);
+        assert_eq!(entrypoint, self.expected_entrypoint);
         Ok(self.entrypoint.clone())
     }
 }
@@ -354,6 +529,25 @@ fn audio_request(home: &Path) -> AudioTranscriptionRequest {
         output_format: AudioTranscriptionOutputFormat::Vtt,
         language: Some("en".to_string()),
         timestamps: true,
+    }
+}
+
+fn audio_speech_request(home: &Path) -> AudioSpeechRequest {
+    AudioSpeechRequest {
+        target: ResolvedAudioSpeechTarget {
+            runtime: AudioSpeechRuntimeTarget::LocalModel {
+                model_ref: model_ref(),
+                backend: AudioSpeechBackend::TransformersTextToSpeech,
+                source_repo: Some("org/model".to_string()),
+                source_revision: Some("main".to_string()),
+                model_capabilities: vec![ModelCapability::AudioSpeech],
+            },
+        },
+        text: "hello world".to_string(),
+        output_path: home.join("speech.wav"),
+        output_format: AudioSpeechOutputFormat::Wav,
+        language: Some("en".to_string()),
+        voice: Some("default".to_string()),
     }
 }
 

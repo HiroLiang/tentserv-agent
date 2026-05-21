@@ -40,16 +40,17 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
 
 ## Media Workflow Rules
 
-- CLI media commands such as `tentgent transcribe`, `tentgent vision chat`,
-  `tentgent image generate`, `tentgent image transform`, and
-  `tentgent image inpaint`, and `tentgent image control` read local files or
-  prompts from the caller's machine and run in the foreground.
+- CLI media commands such as `tentgent transcribe`, `tentgent speak`,
+  `tentgent vision chat`, `tentgent image generate`, `tentgent image
+  transform`, `tentgent image inpaint`, and `tentgent image control` read local
+  files, text, or prompts from the caller's machine and run in the foreground.
 - Daemon media endpoints receive multipart file bytes. `curl -F
   file=@/path/audio.mp3` and `curl -F image=@/path/image.png` are client-side
   shorthand for reading local files; the daemon does not receive or trust the
   original client path.
-- Audio transcription and image generation/editing daemon requests create
-  workflow jobs. Vision chat daemon requests are bounded synchronous requests.
+- Audio transcription, audio speech, and image generation/editing daemon
+  requests create workflow jobs. Vision chat daemon requests are bounded
+  synchronous requests.
 - Multipart media uploads share the daemon-wide
   `TENTGENT_MEDIA_UPLOAD_MAX_BYTES` file-part cap, which defaults to 20 MiB
   and returns HTTP `413` with `upload_too_large` when exceeded.

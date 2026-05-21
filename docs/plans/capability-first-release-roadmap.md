@@ -517,16 +517,22 @@ Status: implemented, unit-tested, and tiny-fixture smoke-tested. Details in
 
 #### M6P: Audio Speech Jobs
 
-Status: planned.
+Status: implemented for the Transformers text-to-speech path. Details in
+[m6p-audio-speech-jobs.md](./m6p-audio-speech-jobs.md).
 
-- Add `audio-speech` artifact jobs for text-to-speech.
+- Added `audio-speech` artifact jobs for text-to-speech.
 - Canonical API: `POST /v1/audio/speech/job`.
-- First output format should be `wav`; `flac` can follow if supported.
+- Foreground CLI: `tentgent speak`.
+- Result API: `GET /v1/audio/speech/job/{job_id}/result`.
+- First output format is `wav`; `flac` can follow if supported.
 - `mp3` waits until encoder dependency and licensing boundaries are approved.
 - Voice/language selection must be model-aware and fail early when unsupported.
-- Include both Transformers and MLX runtime candidates when practical, rather
-  than shipping a speech path that is unnecessarily CPU-only on Apple Silicon.
 - Realtime speech streaming is out of scope for this slice.
+- First reliable backend path is Transformers `text-to-speech`; MLX audio TTS
+  is exposed as a clear planned-backend error until the installed `mlx-audio`
+  API and a small fixture can be verified.
+- Smoke-tested with `facebook/mms-tts-eng` through both `tentgent speak` and
+  daemon `POST /v1/audio/speech/job`; both produced PCM WAV results.
 
 #### M6Q: Video Understanding
 
@@ -595,15 +601,16 @@ Review target:
 ## Release Milestones
 
 - Current alpha line: capability metadata, compatibility gates, embedding MVP,
-  rerank MVP, M6A media metadata vocabulary, audio transcription, and native
-  single-image vision chat are implemented and documented.
-- M6 in progress: kernel-owned job workspaces, audio transcription,
-  file-upload job intake, foreground transcription CLI, native vision chat,
-  text-to-image jobs, MLX runtime-family metadata, MLX vision chat, and MLX
-  audio transcription have completed their first implementation slices. MFLUX
-  image generation is implemented with large-model smoke pending.
-- M6 remaining before M7: advanced image workflows, audio speech, video
-  decisions, and media serving/runtime stream proxy decisions.
+  rerank MVP, M6A media metadata vocabulary, audio transcription, audio
+  speech, native single-image vision chat, and image generation/editing
+  workflows are implemented and documented.
+- M6 in progress: kernel-owned job workspaces, file-upload job intake,
+  foreground media CLI commands, native vision chat, text-to-image jobs,
+  image-to-image, inpainting, ControlNet-style image control, MLX
+  runtime-family metadata, MLX vision chat, MLX audio transcription, and MFLUX
+  image generation have completed their first implementation slices.
+- M6 remaining before M7: video decisions and media serving/runtime stream
+  proxy decisions.
 - M7: Developer ID signing and notarization pipeline for prerelease artifacts.
 - Post-M7 architecture work:
   [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)

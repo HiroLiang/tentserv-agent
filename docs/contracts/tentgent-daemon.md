@@ -155,7 +155,7 @@ The first stable REST surface is:
   Kernel-backed model inspection response for a full model ref or unique
   prefix. Model DTOs expose `model_capabilities` and
   `model_capability_source` from kernel metadata so runnable chat, embedding,
-  rerank support and metadata-only M6A media intent remain visible at the API
+  rerank, and implemented M6 media workflow support remain visible at the API
   boundary. MLX models also expose `mlx_runtime_family` when the model store
   can infer one.
 - `DELETE /v1/models/{reference}`

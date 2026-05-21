@@ -661,9 +661,10 @@ Model import and pull may include one optional `capability` value: `chat`,
 or `image-generation`. Invalid capability values return JSON `400 bad_request`.
 The capability field updates model metadata and is enforced by implemented
 endpoint-family gates; it does not change model identity. Implemented media
-runtime routes currently include audio transcription, native vision chat, and
-image generation. Other media capability values remain metadata-only until
-their dedicated workflow slices are implemented.
+runtime routes currently include audio transcription, audio speech, native
+vision chat, and image generation/editing. Future media capability values, such
+as video-oriented workflows, remain metadata-only until their dedicated
+workflow slices are implemented.
 
 Omitted, `null`, or blank `base_model_ref` means no base binding for adapter
 import or pull.

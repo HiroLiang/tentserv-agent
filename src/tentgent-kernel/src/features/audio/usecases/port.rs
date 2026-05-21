@@ -3,6 +3,7 @@
 use std::{future::Future, path::PathBuf, pin::Pin};
 
 use crate::features::audio::domain::{
+    AudioSpeechOutputFormat, AudioSpeechRequest, AudioSpeechResponse,
     AudioTranscriptionOutputFormat, AudioTranscriptionRequest, AudioTranscriptionResponse,
 };
 use crate::features::model::domain::{ModelInspection, ModelRefSelector};
@@ -42,6 +43,35 @@ pub struct AudioTranscriptionExecutionResult {
     pub response: AudioTranscriptionResponse,
 }
 
+/// Request for preparing one audio speech request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioSpeechPreparationRequest {
+    pub layout: RuntimeLayoutInput,
+    pub runtime: PythonRuntimeResolutionInput,
+    pub model_selector: ModelRefSelector,
+    pub text: String,
+    pub output_path: PathBuf,
+    pub output_format: AudioSpeechOutputFormat,
+    pub language: Option<String>,
+    pub voice: Option<String>,
+}
+
+/// Result of resolving layout, runtime, model, and the audio speech runtime request.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioSpeechPreparationResult {
+    pub layout: RuntimeLayout,
+    pub runtime: PythonRuntimeLayout,
+    pub model: ModelInspection,
+    pub request: AudioSpeechRequest,
+}
+
+/// Result of executing one prepared audio speech request.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioSpeechExecutionResult {
+    pub prepared: AudioSpeechPreparationResult,
+    pub response: AudioSpeechResponse,
+}
+
 /// Use-case boundary for preparing audio transcription runtime requests.
 pub trait AudioTranscriptionPreparationUseCase {
     /// Resolves the selected model target and builds the canonical runtime request.
@@ -58,4 +88,22 @@ pub trait AudioTranscriptionUseCase {
         &'_ self,
         request: AudioTranscriptionPreparationRequest,
     ) -> AudioUseCaseFuture<'_, AudioTranscriptionExecutionResult>;
+}
+
+/// Use-case boundary for preparing audio speech runtime requests.
+pub trait AudioSpeechPreparationUseCase {
+    /// Resolves the selected model target and builds the canonical runtime request.
+    fn prepare_audio_speech(
+        &self,
+        request: AudioSpeechPreparationRequest,
+    ) -> KernelResult<AudioSpeechPreparationResult>;
+}
+
+/// Use-case boundary for text-to-speech inference.
+pub trait AudioSpeechUseCase {
+    /// Resolves target/runtime and writes speech audio for the provided text.
+    fn synthesize_speech(
+        &'_ self,
+        request: AudioSpeechPreparationRequest,
+    ) -> AudioUseCaseFuture<'_, AudioSpeechExecutionResult>;
 }

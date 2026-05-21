@@ -29,7 +29,7 @@ use tentgent_kernel::{
                 StdAdapterTrainRunImportUseCase,
             },
         },
-        audio::usecases::StdAudioTranscriptionUseCase,
+        audio::usecases::{StdAudioSpeechUseCase, StdAudioTranscriptionUseCase},
         chat::usecases::StdChatUseCase,
         daemon::infra::{StdDaemonKernel, DEFAULT_DAEMON_PROBE_TIMEOUT},
         dataset::usecases::{StdDatasetEvaluationUseCase, StdDatasetSynthesisUseCase},
@@ -185,6 +185,10 @@ impl KernelComponents {
 
     pub fn audio_transcription_usecase(&self) -> StdAudioTranscriptionUseCase<'_> {
         StdAudioTranscriptionUseCase::new(&self.runtime, &self.models, &self.runtime)
+    }
+
+    pub fn audio_speech_usecase(&self) -> StdAudioSpeechUseCase<'_> {
+        StdAudioSpeechUseCase::new(&self.runtime, &self.models, &self.runtime)
     }
 
     pub fn vision_chat_usecase(&self) -> StdVisionChatUseCase<'_> {

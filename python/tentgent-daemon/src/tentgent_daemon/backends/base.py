@@ -12,6 +12,7 @@ from ..runtime.image_generation import (
 )
 from ..runtime.rerank import RerankRequest, RerankResult
 from ..runtime.audio import AudioTranscriptionRequest, AudioTranscriptionResult
+from ..runtime.audio_speech import AudioSpeechRequest, AudioSpeechResult
 from ..runtime.adapters import (
     AdapterExecutionNotImplementedError,
     StoredAdapterRecord,
@@ -100,6 +101,23 @@ class AudioTranscriptionBackend:
         self,
         request: AudioTranscriptionRequest,
     ) -> AudioTranscriptionResult:
+        raise NotImplementedError
+
+
+class AudioSpeechBackend:
+    """Minimal backend contract for local text-to-speech synthesis."""
+
+    def load(self, record: StoredModelRecord) -> None:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        """Release loaded runtime state when the server lifecycle decides to unload."""
+        return None
+
+    def synthesize_speech(
+        self,
+        request: AudioSpeechRequest,
+    ) -> AudioSpeechResult:
         raise NotImplementedError
 
 
