@@ -1,7 +1,7 @@
 # Model Capabilities: Embedding And Rerank
 
 Deprecated as an active plan. This standalone track was superseded on
-2026-05-19 by [Capability-First Release Roadmap](../capability-first-release-roadmap.md).
+2026-05-19 by [Capability-First Release Roadmap](./capability-first-release-roadmap.md).
 Keep this file only for historical model-capability context.
 
 This plan separates model storage format from model serving capability so

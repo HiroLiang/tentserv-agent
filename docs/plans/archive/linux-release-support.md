@@ -1,7 +1,7 @@
 # Linux Release Support
 
 Deprecated as an active plan. This standalone track was superseded on
-2026-05-19 by [Capability-First Release Roadmap](../capability-first-release-roadmap.md).
+2026-05-19 by [Capability-First Release Roadmap](./capability-first-release-roadmap.md).
 Keep this file only for historical Linux release context.
 
 This plan adds first-class Linux release and install support after the 0.3.x

@@ -33,7 +33,7 @@ Depends on:
 
 - [M6G image generation jobs](./m6g-image-generation-jobs.md)
 - [M6K MLX image generation backend decision](./m6k-mlx-image-generation-backend-decision.md)
-- [Adapter store contract](../contracts/adapter-store.md)
+- [Adapter store contract](../../contracts/adapter-store.md)
 
 ## Goal
 
@@ -344,14 +344,14 @@ Rules:
 
 ## Documentation Plan
 
-- Update [adapter-store.md](../contracts/adapter-store.md) with image LoRA
+- Update [adapter-store.md](../../contracts/adapter-store.md) with image LoRA
   formats, backend-support names, trigger words, selected weight filename, and
   image-generation compatibility rules.
-- Update [model-fixtures.md](../user/model-fixtures.md) with any verified small
+- Update [model-fixtures.md](../../user/model-fixtures.md) with any verified small
   image LoRA fixtures and access notes.
-- Update [commands.md](../user/commands.md) with adapter import/pull and image
+- Update [commands.md](../../user/commands.md) with adapter import/pull and image
   generation examples.
-- Update [api.md](../user/api.md) with `adapter_ref` and `lora_scale` request
+- Update [api.md](../../user/api.md) with `adapter_ref` and `lora_scale` request
   fields for `POST /v1/images/generations/job`.
 - Update runtime/backend docs if new environment hints are needed.
 

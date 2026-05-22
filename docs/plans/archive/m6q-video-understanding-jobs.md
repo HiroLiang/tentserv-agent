@@ -385,7 +385,7 @@ Update:
 - `docs/user/model-fixtures.md`
 - `docs/user/runtime.md`
 - `docs/user/version.md`
-- `docs/plans/capability-first-release-roadmap.md`
+- `docs/plans/archive/capability-first-release-roadmap.md`
 
 Document:
 

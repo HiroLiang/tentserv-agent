@@ -146,7 +146,7 @@ small Whisper fixture and a non-realtime job workspace request path.
 ## Candidate HF Smoke Models
 
 These are metadata and planning-time fixtures, not product defaults.
-See [../user/model-fixtures.md](../user/model-fixtures.md) for the broader
+See [../user/model-fixtures.md](../../user/model-fixtures.md) for the broader
 chat, embedding, rerank, and metadata-only media fixture guide.
 
 | Workflow | Candidate | Why it is useful | Caveat |

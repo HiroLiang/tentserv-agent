@@ -372,21 +372,21 @@ Result behavior:
 
 ## Documentation Plan
 
-- Update [commands.md](../user/commands.md):
+- Update [commands.md](../../user/commands.md):
   - CLI `tentgent image inpaint`
   - mask semantics
   - daemon multipart curl example
   - result file listing and download
-- Update [api.md](../user/api.md):
+- Update [api.md](../../user/api.md):
   - multipart route
   - fields and validation
   - mask semantics
   - pending/terminal result behavior
-- Update [model-fixtures.md](../user/model-fixtures.md):
+- Update [model-fixtures.md](../../user/model-fixtures.md):
   - inpaint smoke commands
   - note which fixture is plumbing-only
   - note MFLUX fill smoke status separately
-- Update [version.md](../user/version.md) after implementation.
+- Update [version.md](../../user/version.md) after implementation.
 - Update this roadmap entry after implementation.
 
 ## Tests

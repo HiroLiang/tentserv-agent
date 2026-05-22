@@ -269,7 +269,7 @@ Update:
 - `docs/user/model-fixtures.md`
 - `docs/user/api.md` only if CLI behavior affects API guidance
 - `docs/user/version.md`
-- `docs/plans/capability-first-release-roadmap.md`
+- `docs/plans/archive/capability-first-release-roadmap.md`
 - this plan's status and completion notes after implementation
 
 Document:
@@ -345,7 +345,7 @@ Docs:
 - `docs/user/commands.md`
 - `docs/user/model-fixtures.md`
 - `docs/user/version.md`
-- `docs/plans/capability-first-release-roadmap.md`
+- `docs/plans/archive/capability-first-release-roadmap.md`
 - `docs/plans/m6e-audio-transcription-cli-and-large-file-hardening.md`
 
 ## Verification

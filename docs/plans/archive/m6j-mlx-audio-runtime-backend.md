@@ -500,7 +500,7 @@ weights and writes only job/CLI output files.
     or future.
 - `docs/user/version.md`
   - update known limits only after the backend is smoke-tested.
-- `docs/plans/capability-first-release-roadmap.md`
+- `docs/plans/archive/capability-first-release-roadmap.md`
   - mark M6J implemented only after CLI and daemon smoke pass.
 
 ### 11. Validation

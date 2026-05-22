@@ -293,11 +293,11 @@ generated text, and `finish_reason = "stop"`.
 ### 8. Documentation
 
 - Updated this plan with implementation notes and smoke evidence.
-- Updated [platform-backends.md](../contracts/platform-backends.md) to mark
+- Updated [platform-backends.md](../../contracts/platform-backends.md) to mark
   `mlx-vlm` ready/dependency-gated as appropriate after tests.
-- Updated [model-fixtures.md](../user/model-fixtures.md) with the MLX VLM smoke
+- Updated [model-fixtures.md](../../user/model-fixtures.md) with the MLX VLM smoke
   command and current caveats.
-- Updated [runtime.md](../user/runtime.md) because doctor output gains
+- Updated [runtime.md](../../user/runtime.md) because doctor output gains
   a new backend label.
 
 ## Acceptance Criteria

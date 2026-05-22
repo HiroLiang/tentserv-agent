@@ -325,15 +325,15 @@ Result behavior:
 
 ## Documentation Plan
 
-- Update [commands.md](../user/commands.md):
+- Update [commands.md](../../user/commands.md):
   - CLI `tentgent image transform`
   - daemon multipart curl example
   - result file listing and download
-- Update [api.md](../user/api.md):
+- Update [api.md](../../user/api.md):
   - multipart route
   - fields and validation
   - pending/terminal result behavior
-- Update [model-fixtures.md](../user/model-fixtures.md):
+- Update [model-fixtures.md](../../user/model-fixtures.md):
   - image-to-image smoke commands
   - note whether the tiny Diffusers fixture is only plumbing quality
   - note MFLUX smoke status separately

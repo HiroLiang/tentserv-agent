@@ -424,7 +424,7 @@ Update:
 - `docs/user/runtime.md`
 - `docs/user/version.md`
 - `docs/plans/README.md`
-- `docs/plans/capability-first-release-roadmap.md`
+- `docs/plans/archive/capability-first-release-roadmap.md`
 
 Docs should say either:
 

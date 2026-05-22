@@ -10,148 +10,28 @@ one pass without a staged breakdown.
   release changes.
 - Keep one active roadmap unless a future initiative needs its own focused plan.
 - Prefer short, action-oriented documents over long design essays.
+- Archive completed or superseded tracks so the active plan surface stays
+  focused.
 
 ## Routing Rule
 
+- Start with the active roadmap below.
 - Keep each plan focused on one execution track.
 - If a plan grows large, split it into subfolders with a local `README.md`.
 - Update the plan when the approved execution order changes materially.
 - Prefer review-sized implementation slices over one large execution step.
-- When a track is being developed interactively, document the next small slice explicitly.
-- Move completed or superseded plans into `archive/` so the top-level plan
-  directory stays focused on current work.
+- When a track is being developed interactively, document the next small slice
+  explicitly.
+- Move completed or superseded plans into `archive/` so this directory stays
+  focused on current work.
 
 ## Active Plan Index
 
-- [capability-first-release-roadmap.md](./capability-first-release-roadmap.md)
-  Active roadmap through `v0.4.1`: model capability classification,
-  embedding and rerank endpoint work, M6 media workflow slices, and Apple
-  Developer ID signing before beta or release candidate tags.
-- [m7-apple-developer-id-release-pipeline.md](./m7-apple-developer-id-release-pipeline.md)
-  Implemented M7 release-engineering slice: Developer ID signing,
-  notarization, temporary CI keychain import, and macOS release workflow
-  readiness before the first credentials-backed smoke.
-- [m2-model-capability-detection-and-correction.md](./m2-model-capability-detection-and-correction.md)
-  Detailed M2 slice: Hugging Face capability detection, manual metadata
-  correction, and clear default-chat fallback warnings.
-- [m3-server-compatibility-gates.md](./m3-server-compatibility-gates.md)
-  Implemented M3 slice: server capability metadata, daemon server DTOs, and
-  endpoint-family compatibility gates before embedding and rerank runtime work.
-- [m4-embedding-mvp.md](./m4-embedding-mvp.md)
-  Implemented M4 slice: native embedding endpoint, embedding runtime port,
-  first backend path, and endpoint-family isolation from chat sessions.
-- [m5-rerank-mvp.md](./m5-rerank-mvp.md)
-  Implemented M5 slice: native rerank endpoint, rerank runtime port, first local
-  cross-encoder backend path, CLI one-shot embedding/rerank helpers, and
-  endpoint-family isolation from chat sessions.
-- [m6a-multimodal-contracts.md](./m6a-multimodal-contracts.md)
-  Implemented M6A slice: metadata-only multimodal capability vocabulary,
-  transport shape decisions, opaque proxy boundary, and small Hugging Face smoke
-  fixtures.
-- [m6b-kernel-job-workspace-foundation.md](./m6b-kernel-job-workspace-foundation.md)
-  M6B refactor slice: kernel-owned job workspace ports, chunk IO, result files,
-  cleanup, and daemon runtime wiring before media model execution.
-- [m6c-audio-transcription-daemon-mvp.md](./m6c-audio-transcription-daemon-mvp.md)
-  M6C implementation record for daemon audio transcription path jobs, Python
-  runtime wiring, output formats, doctor guidance, and smoke-test evidence.
-- [m6d-audio-transcription-file-stream-job-input.md](./m6d-audio-transcription-file-stream-job-input.md)
-  Implemented M6D slice for the canonical
-  `POST /v1/audio/transcriptions/job` file-stream job endpoint, result
-  readiness semantics, and internal workspace persistence.
-- [m6e-audio-transcription-cli-and-large-file-hardening.md](./m6e-audio-transcription-cli-and-large-file-hardening.md)
-  Implemented M6E slice for foreground `tentgent transcribe`, output
-  behavior, large-file guardrails, and audio CLI documentation.
-- [m6f-vision-chat-image-input.md](./m6f-vision-chat-image-input.md)
-  Implemented M6F slice for native single-image `vision-chat`, foreground CLI,
-  multipart daemon endpoint, and dedicated vision runtime contracts.
-- [m6g-image-generation-jobs.md](./m6g-image-generation-jobs.md)
-  Implemented M6G native text-to-image artifact jobs, Diffusers runtime
-  support, foreground CLI output, and workflow-owned result file routes.
-- [m6h-mlx-multimodal-backend-foundation.md](./m6h-mlx-multimodal-backend-foundation.md)
-  Implemented M6H foundation for Apple Silicon media backend parity: MLX
-  runtime family metadata and routing guardrails across vision, audio, and
-  image workflows without replacing the implemented safetensors/Diffusers
-  runtime paths.
-- [m6i-mlx-vision-chat-backend.md](./m6i-mlx-vision-chat-backend.md)
-  Implemented M6I backend path for making the existing native `vision-chat`
-  CLI and daemon endpoint route to `mlx-vlm` models on Apple Silicon, with CLI
-  and daemon smoke evidence recorded.
-- [m6j-mlx-audio-runtime-backend.md](./m6j-mlx-audio-runtime-backend.md)
-  Implemented M6J backend path for making the existing native
-  `audio-transcription` CLI and daemon job route to `mlx-audio` models on
-  Apple Silicon without adding new user-facing audio APIs, with CLI and daemon
-  smoke evidence recorded.
-- [m6k-mlx-image-generation-backend-decision.md](./m6k-mlx-image-generation-backend-decision.md)
-  Implemented M6K decision/backend slice for routing Apple Silicon
-  `mlx-diffusion` image-generation models through MFLUX behind the existing
-  `tentgent image generate` and daemon image job surfaces.
-- [m6l-image-generation-lora.md](./m6l-image-generation-lora.md)
-  Implemented and unit-tested M6L slice for adding one managed
-  image-generation LoRA adapter to the existing native text-to-image CLI and
-  daemon job surfaces, with image-specific adapter compatibility and
-  Diffusers/MFLUX runtime wiring. Repeatable public LoRA smoke fixture is still
-  pending.
-- [m6m-image-to-image.md](./m6m-image-to-image.md)
-  Implemented and unit-tested M6M slice for one-input-image image-to-image transforms:
-  foreground `tentgent image transform`, daemon multipart transform jobs,
-  `strength` validation, Diffusers img2img support, and MLX/MFLUX support when
-  the local runtime API can be verified. Real-model smoke remains pending.
-- [m6n-inpainting-and-masks.md](./m6n-inpainting-and-masks.md)
-  Implemented and unit-tested M6N execution slice for masked image inpainting:
-  foreground `tentgent image inpaint`, daemon multipart `image` plus `mask`
-  jobs, white repaint / black keep mask semantics, Diffusers inpainting
-  support, and MFLUX Flux Fill support with a fill-model compatibility guard.
-  Real-model smoke remains pending.
-- [m6o-reference-images-and-controlnet.md](./m6o-reference-images-and-controlnet.md)
-  Implemented, unit-tested, and tiny-fixture smoke-tested M6O execution slice
-  for typed controlled image generation: foreground `tentgent image control`,
-  daemon multipart control-image jobs, managed ControlNet-style control assets,
-  Diffusers ControlNet runtime support, and a documented boundary that keeps
-  generic reference-image composition deferred until a concrete backend
-  contract is proven.
-- [m6p-audio-speech-jobs.md](./m6p-audio-speech-jobs.md)
-  M6P implementation record for native `audio-speech` artifact jobs:
-  foreground `tentgent speak`, daemon JSON `POST /v1/audio/speech/job`,
-  workflow-owned WAV result download, Transformers TTS baseline, and MLX audio
-  TTS planned-backend boundary without realtime speech streaming.
-- [m6q-video-understanding-jobs.md](./m6q-video-understanding-jobs.md)
-  Planned M6Q execution slice for native `video-understanding` jobs:
-  foreground `tentgent video understand`, daemon multipart
-  `POST /v1/video/understanding/job`, workflow-owned text-like result
-  download, bounded decode/sampling, and a Transformers video VLM fixture gate.
-- [m6r-video-generation-artifact-decision.md](./m6r-video-generation-artifact-decision.md)
-  Implemented M6R internal contract slice for video-generation artifact
-  contracts, test-only model fixture gating, encoder and temporary-disk
-  boundaries, and the current decision to avoid public `video-generation`
-  capability/API/CLI exposure until a practical small local fixture is approved.
-- [m6s-media-serving-and-runtime-stream-proxy-decision.md](./m6s-media-serving-and-runtime-stream-proxy-decision.md)
-  Deferred M6S decision record: keep M6 direct server support limited to
-  `chat`, `embedding`, and `rerank`; keep media artifact workflows as daemon
-  jobs; move media-serving wrappers and runtime stream proxy design to the
-  post-M7 architecture track.
-
-## Recommended Order
-
-1. Run the M7 Apple Developer ID release workflow smoke after GitHub Actions
-   secrets are configured.
-2. Keep full model compatibility architecture in the post-M7 marker plan until
-   a focused future execution plan is initialized.
-3. Continue each later workflow only after its API/output contract and backend
-   family decision are stable.
-4. Promote beta or release candidate tags only after the signed macOS artifact
-   smoke passes.
-
-## Future Plan Markers
-
-- [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)
-  Future marker only, not initialized for execution: model compatibility
-  probe/cache, model and LoRA adapter compatibility management, SQLite-backed
-  metadata/proof store, dynamic runtime transduction, media-serving wrappers,
-  runtime stream proxy decisions, optional shared compatibility registry, model
-  resource coordination, and conversion boundaries after the current M6-to-M7
-  release track. Rename this marker when it is initialized after M7 so the plan
-  name covers model/adapter compatibility and serving management, not only
-  runtime compatibility or storage.
+- [post-m7-platform-compatibility-roadmap.md](./post-m7-platform-compatibility-roadmap.md)
+  Active post-M7 roadmap for platform trust, model and LoRA compatibility
+  management, runtime proof storage, dynamic runtime routing, media serving
+  wrappers, runtime stream proxy decisions, resource coordination, and
+  conversion boundaries after the signed `v0.4.1` release.
 
 ## Deferred Plans
 
@@ -161,5 +41,5 @@ one pass without a staged breakdown.
 ## Archived Plans
 
 - [archive/README.md](./archive/README.md)
-  Router for completed or superseded plans that are kept only for historical
-  context.
+  Router for completed or superseded plans, including the completed
+  capability-first M2-M7 release roadmap.

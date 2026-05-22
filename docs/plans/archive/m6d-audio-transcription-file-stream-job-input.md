@@ -263,7 +263,7 @@ Docs:
 - `docs/user/commands.md`
 - `docs/user/model-fixtures.md`
 - `docs/user/version.md`
-- `docs/plans/capability-first-release-roadmap.md`
+- `docs/plans/archive/capability-first-release-roadmap.md`
 
 ## Verification
 

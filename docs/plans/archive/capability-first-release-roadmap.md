@@ -1,8 +1,8 @@
 # Capability-First Release Roadmap
 
-This is the active roadmap through `v0.4.1`. It supersedes the older
-separate release, Linux, daemon-runtime, packaging, and model-capability plans in
-[archive/](./archive/).
+This archived roadmap was active through `v0.4.1`. It superseded the older
+separate release, Linux, daemon-runtime, packaging, and model-capability plans
+that are also kept in this archive.
 
 ## Direction
 
@@ -629,13 +629,12 @@ Review target:
   serving/runtime stream proxy work is deferred to post-M7 architecture.
 - M7: Developer ID signing and notarization pipeline is implemented in source;
   the next gate is a credentials-backed prerelease workflow smoke.
-- Post-M7 architecture work:
-  [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)
-  tracks full model compatibility, LoRA adapter compatibility management,
+- Post-M7 architecture work is continued by
+  [post-m7-platform-compatibility-roadmap.md](../post-m7-platform-compatibility-roadmap.md),
+  which tracks full model compatibility, LoRA adapter compatibility management,
   SQLite-backed metadata/proof storage, dynamic runtime transduction,
   compatibility probe/cache, optional shared registry, resource coordination,
-  and conversion boundaries. It is not part of the current M6-to-M7 release
-  track, and should be renamed when initialized after M7.
+  platform trust issues, and conversion boundaries.
 - Beta/RC: chat, embedding, rerank, and the completed M6 multimodal surfaces
   are documented with smoke evidence and known limits.
 

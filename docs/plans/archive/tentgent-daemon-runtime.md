@@ -1,7 +1,7 @@
 # Tentgent Daemon Runtime Systems
 
 Deprecated as an active plan. This standalone track was superseded on
-2026-05-19 by [Capability-First Release Roadmap](../capability-first-release-roadmap.md).
+2026-05-19 by [Capability-First Release Roadmap](./capability-first-release-roadmap.md).
 Keep this file only for historical daemon-runtime context.
 
 This plan tracks the `src/tentgent-daemon/` runtime systems that sit above

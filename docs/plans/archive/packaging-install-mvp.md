@@ -1,7 +1,7 @@
 # Packaging And Install MVP
 
 Deprecated as an active plan. This standalone track was superseded on
-2026-05-19 by [Capability-First Release Roadmap](../capability-first-release-roadmap.md).
+2026-05-19 by [Capability-First Release Roadmap](./capability-first-release-roadmap.md).
 Keep this file only for historical packaging/install context.
 
 This plan defines the installation and release track for moving Tentgent from source-first development to user-friendly installs.

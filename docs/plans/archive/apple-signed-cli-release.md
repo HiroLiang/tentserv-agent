@@ -1,7 +1,7 @@
 # Apple Signed CLI Release
 
 Deprecated as an active plan. This standalone track was superseded on
-2026-05-19 by [Capability-First Release Roadmap](../capability-first-release-roadmap.md).
+2026-05-19 by [Capability-First Release Roadmap](./capability-first-release-roadmap.md).
 Keep this file only for historical signing-plan context.
 
 This plan defines the next release-engineering slice for signed macOS CLI

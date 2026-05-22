@@ -101,12 +101,16 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
-- `docs/plans/capability-first-release-roadmap.md`
-  Active roadmap for model capability classification, embedding, rerank,
-  metadata-only media capability vocabulary, M6 job workspace/media workflows, and prerelease
-  Apple Developer ID signing.
+- `docs/plans/post-m7-platform-compatibility-roadmap.md`
+  Active post-M7 roadmap for platform trust, model and LoRA compatibility
+  management, runtime proof storage, dynamic routing, media serving wrappers,
+  stream proxy decisions, and resource coordination after the signed `v0.4.1`
+  release.
 - `docs/plans/archive/README.md`
   Router for completed or superseded plans that should be consulted only when historical implementation context is needed.
+- `docs/plans/archive/capability-first-release-roadmap.md`
+  Completed M2-M7 roadmap for model capability classification, embedding,
+  rerank, media workflows, MLX backend parity, and Apple Developer ID signing.
 - `docs/plans/archive/http-daemon-mvp.md`
   Completed service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
 - `docs/plans/archive/cloud-provider-server-mvp.md`

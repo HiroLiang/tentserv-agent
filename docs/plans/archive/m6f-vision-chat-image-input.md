@@ -331,7 +331,7 @@ Update:
 - `docs/user/api.md`
 - `docs/user/model-fixtures.md`
 - `docs/user/version.md`
-- `docs/plans/capability-first-release-roadmap.md`
+- `docs/plans/archive/capability-first-release-roadmap.md`
 - this plan's status and completion notes after implementation
 
 Document:
@@ -386,7 +386,7 @@ Docs:
 - `docs/user/api.md`
 - `docs/user/model-fixtures.md`
 - `docs/user/version.md`
-- `docs/plans/capability-first-release-roadmap.md`
+- `docs/plans/archive/capability-first-release-roadmap.md`
 - `docs/plans/m6f-vision-chat-image-input.md`
 
 ## Verification
