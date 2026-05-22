@@ -15,8 +15,11 @@ permissions:
   contents: read
 
 jobs:
-  package:
+  package-macos:
     name: Package ${{ matrix.target }}
+    environment:
+      name: apple-developer
+      deployment: false
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -28,6 +31,111 @@ jobs:
           - target: x86_64-apple-darwin
             runner: macos-15-intel
             archive_ext: tar.gz
+    steps:
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${{ github.ref_name }}"
+          fi
+
+          case "${tag}" in
+            refs/*)
+              echo "release tag must be a bare tag, not a ref: ${tag}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "malformed release tag: ${tag}" >&2
+            exit 1
+          fi
+
+          echo "tag=${tag}" >>"${GITHUB_OUTPUT}"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release_tag.outputs.tag }}
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          bash scripts/release-metadata.sh --github-output "${{ steps.release_tag.outputs.tag }}"
+
+      - name: Verify native target
+        shell: bash
+        env:
+          TENTGENT_TARGET: ${{ matrix.target }}
+        run: |
+          os="$(uname -s)"
+          arch="$(uname -m)"
+          case "${TENTGENT_TARGET}:${os}:${arch}" in
+            aarch64-apple-darwin:Darwin:arm64) ;;
+            x86_64-apple-darwin:Darwin:x86_64) ;;
+            *) echo "unexpected runner ${os}:${arch} for ${TENTGENT_TARGET}" >&2; exit 1 ;;
+          esac
+
+      - name: Import Apple Developer ID certificate
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
+          APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          scripts/macos-import-codesign-certificate.sh
+
+      - name: Package release artifact
+        shell: bash
+        env:
+          TENTGENT_TARGET: ${{ matrix.target }}
+          TENTGENT_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          scripts/package-local.sh
+          mv dist/checksums.txt "dist/checksums-${TENTGENT_TARGET}.txt"
+
+      - name: Notarize macOS package
+        shell: bash
+        env:
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          scripts/macos-notarize-package.sh \
+            --archive "dist/tentgent-${{ steps.release.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}" \
+            --target "${{ matrix.target }}"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tentgent-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            dist/tentgent-${{ steps.release.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+            dist/checksums-${{ matrix.target }}.txt
+
+      - name: Delete temporary Apple signing keychain
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${TENTGENT_MACOS_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "${TENTGENT_MACOS_KEYCHAIN_PATH}" || true
+          fi
+
+  package:
+    name: Package ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             archive_ext: tar.gz
@@ -114,7 +222,9 @@ jobs:
 
   release:
     name: Create GitHub release
-    needs: package
+    needs:
+      - package-macos
+      - package
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -278,6 +388,9 @@ jobs:
 
           Linux x86_64 note:
           This release includes the Linux x86_64 CLI/install archive. Full managed runtime and local model backend parity is not claimed yet.
+
+          macOS signing note:
+          macOS artifacts are Developer ID signed and submitted to Apple notarization by the release workflow.
 
           macOS installer smoke test:
 

@@ -2,12 +2,12 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
-## v0.3.5-alpha.0
+## v0.4.0
 
-`v0.3.5-alpha.0` is the CLI plus daemon REST consolidation release. It removes
-the former terminal UI surface and the legacy Rust `core` / `http` crates so
-runtime behavior flows through `tentgent-kernel`, `tentgent-cli`, and
-`tentgent-daemon`.
+`v0.4.0` is the signed macOS release for the CLI plus daemon REST and M6 media
+workflow surface. It removes the former terminal UI surface and the legacy Rust
+`core` / `http` crates so runtime behavior flows through `tentgent-kernel`,
+`tentgent-cli`, and `tentgent-daemon`.
 
 What changed:
 
@@ -77,6 +77,11 @@ What changed:
 - Added `TENTGENT_VIDEO_UPLOAD_MAX_BYTES` as a separate daemon upload limit for
   video file parts, defaulting to 512 MiB. Audio and image multipart uploads
   continue to use `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting to 20 MiB.
+- Added the M7 GitHub Actions release path for macOS Developer ID signing and
+  Apple notarization. macOS package jobs read Apple credentials from the
+  `apple-developer` environment, sign the CLI with hardened runtime and a
+  timestamp, submit a temporary zip payload for notarization, and keep the
+  public macOS release archives as `.tar.gz`.
 
 Known limits:
 
@@ -108,8 +113,8 @@ Known limits:
   cross-platform image baseline.
 - Rerank scores are raw backend scores; compare them within one request/model
   family rather than across unrelated models.
-- The next release-engineering slice is Apple Developer ID signing,
-  notarization, and GitHub Actions release automation for the CLI.
+- `v0.4.0` is the first release intended to verify the signed and notarized
+  macOS GitHub Actions path.
 
 ## v0.3.4-alpha.2
 
@@ -215,7 +220,7 @@ Known limits:
 
 `v0.3.0` was the stable 0.3.x baseline for the former terminal UI alpha line
 and the first release candidate for Homebrew tap distribution. The current
-`v0.3.5-alpha.0` surface is CLI plus daemon REST only.
+`v0.4.0` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -237,7 +242,7 @@ Added:
 
 Known limits:
 
-- The terminal UI alpha line was removed in `v0.3.5-alpha.0`; no redesign track
+- The terminal UI alpha line was removed in `v0.4.0`; no redesign track
   remains active.
 - Homebrew tap distribution is planned next; `v0.3.0` prepares the stable tag
   and release assets that the formula will point at.
@@ -246,7 +251,7 @@ Known limits:
 ## v0.3.0-alpha.2
 
 `v0.3.0-alpha.2` was a bugfix preview release for the former terminal UI alpha
-line. The current `v0.3.5-alpha.0` surface is CLI plus daemon REST only.
+line. The current `v0.4.0` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -265,7 +270,7 @@ Added:
 
 Known limits:
 
-- This terminal UI alpha line was removed in `v0.3.5-alpha.0`.
+- This terminal UI alpha line was removed in `v0.4.0`.
 - `latest` installers may still be managed separately from prerelease adoption;
   use the explicit `v0.3.0-alpha.2` release URL when testing this preview.
 - macOS signing and notarization are still deferred.
@@ -273,7 +278,7 @@ Known limits:
 ## v0.3.0-alpha.1
 
 `v0.3.0-alpha.1` was a terminal UI preview release. It is kept here for
-historical context; the current `v0.3.5-alpha.0` surface is CLI plus daemon REST
+historical context; the current `v0.4.0` surface is CLI plus daemon REST
 only.
 
 Added:
@@ -291,7 +296,7 @@ Added:
 
 Known limits:
 
-- This terminal UI alpha line was removed in `v0.3.5-alpha.0`.
+- This terminal UI alpha line was removed in `v0.4.0`.
 - `latest` installers may still be managed separately from prerelease adoption;
   use the explicit `v0.3.0-alpha.1` release URL when testing this preview.
 - Server, training, store, and session mutations remain guarded through CLI and

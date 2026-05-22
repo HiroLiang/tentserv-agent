@@ -88,6 +88,14 @@ checksums. The release job downloads those artifacts, prepares installer
 assets and release notes, creates or updates the GitHub Release, and verifies
 prerelease/latest release state.
 
+macOS package jobs use the `apple-developer` GitHub Actions environment with
+`deployment: false`. They import an Apple Developer ID Application certificate
+from environment secrets, sign the `tentgent` binary with hardened runtime and
+a timestamp, submit the package contents to Apple notarization, and verify the
+signed executable with Gatekeeper before uploading artifacts. The macOS release
+asset names stay `.tar.gz`; the workflow creates a temporary zip only for Apple
+notarization submission.
+
 The Linux x86_64 package job installs `libdbus-1-dev` and `pkg-config` before
 packaging because the native Linux keychain backend links `libdbus-sys` through
 the Secret Service/D-Bus stack.
@@ -102,7 +110,23 @@ Check release tag parsing and prerelease flag helpers:
 bash scripts/test-release-metadata.sh
 bash -n scripts/release-metadata.sh
 bash -n scripts/test-release-metadata.sh
+bash -n scripts/macos-import-codesign-certificate.sh
+bash -n scripts/macos-notarize-package.sh
 ```
+
+Required GitHub Actions secrets for the macOS signing path:
+
+- `APPLE_TEAM_ID`
+- `APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64`
+- `APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD`
+- `APPLE_NOTARY_KEY_ID`
+- `APPLE_NOTARY_ISSUER_ID`
+- `APPLE_NOTARY_KEY_BASE64`
+- `APPLE_KEYCHAIN_PASSWORD`
+
+`APPLE_CODESIGN_IDENTITY` is optional. When it is absent, the macOS import
+script detects the first `Developer ID Application:` identity from the imported
+temporary keychain.
 
 Update the project Homebrew tap after a stable GitHub Release is published:
 

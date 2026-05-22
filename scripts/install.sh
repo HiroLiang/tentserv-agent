@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="0.3.4-alpha.2"
+VERSION="0.4.0"
 DEFAULT_BASE_URL="https://agent.tentserv.com/releases"
 
 usage() {
@@ -261,7 +261,9 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     xattr -dr com.apple.quarantine "${BIN_DIR}/tentgent" "${SHARE_DIR}" 2>/dev/null || true
   fi
   if command -v codesign >/dev/null 2>&1; then
-    codesign --force --sign - "${BIN_DIR}/tentgent" >/dev/null 2>&1 || true
+    codesign --verify --strict "${BIN_DIR}/tentgent" >/dev/null 2>&1 \
+      || codesign --force --sign - "${BIN_DIR}/tentgent" >/dev/null 2>&1 \
+      || true
   fi
 fi
 

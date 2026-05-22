@@ -84,16 +84,16 @@ Recommended Windows PowerShell install from the latest GitHub Release:
 irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
 ```
 
-Linux x86_64 preview install from the verified prerelease:
+Linux x86_64 install from the latest GitHub Release:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.4-alpha.2/install.sh | bash
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | bash
 tentgent doctor
 ```
 
-The Linux preview uses the GitHub Release tarball and the default `base`
-runtime bootstrap profile. Use the explicit prerelease URL for now; the stable
-`latest` release does not yet advertise Linux support.
+The Linux release uses the GitHub Release tarball and the default `base`
+runtime bootstrap profile. Full managed runtime and local model backend parity
+is still not claimed on Linux.
 
 On Linux preview installs, set and persist `TENTGENT_HOME` before bootstrap if
 you want runtime data outside the default direct-installer support directory.
@@ -298,7 +298,8 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
-- `v0.3.5-alpha.0`: CLI plus daemon REST consolidation release; removes the former terminal UI, legacy core, and legacy HTTP crates, and keeps broad diagnostics under `doctor`.
+- `v0.4.0`: signed macOS and M6 media workflow release; adds Developer ID/notarization workflow wiring, native media jobs, MLX media paths, and CLI plus daemon REST consolidation.
+- `v0.3.5-alpha.0`: CLI plus daemon REST consolidation preview; removes the former terminal UI, legacy core, and legacy HTTP crates, and keeps broad diagnostics under `doctor`.
 - `v0.3.4-alpha.2`: Linux x86_64 preview release with release tarball install, default base runtime bootstrap, and Docker-smoked `doctor` readiness on Ubuntu 24.04.
 - `v0.3.3`: adds Homebrew tap update tooling for repeatable formula URL and checksum updates after stable releases.
 - `v0.3.2`: adds `tentgent runtime bootstrap` as the package-manager friendly managed Python runtime setup entry point.
@@ -393,7 +394,8 @@ Known limits:
 - Cloud provider servers do not support request-time local adapters
 - generated dataset splits are not deduplicated against each other yet
 - provider key set/remove and `doctor --fix` remain CLI-only
-- macOS signing and notarization are deferred to a later slice
+- macOS Developer ID signing and notarization are handled by the release
+  workflow for current macOS artifacts
 
 ## Development
 

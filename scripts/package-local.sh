@@ -18,6 +18,11 @@ Options:
 Environment:
   TENTGENT_VERSION  Override the package version.
   TENTGENT_TARGET   Override the target triple used in the artifact name.
+  TENTGENT_MACOS_CODESIGN_IDENTITY
+                    Developer ID identity for macOS release signing. If unset,
+                    macOS binaries are ad-hoc signed for local development.
+  TENTGENT_MACOS_KEYCHAIN_PATH
+                    Optional keychain path used to find the signing identity.
 USAGE
 }
 
@@ -77,10 +82,34 @@ sign_macos_binary() {
   if [[ "$(uname -s)" != "Darwin" ]]; then
     return
   fi
+
+  local identity="${TENTGENT_MACOS_CODESIGN_IDENTITY:-}"
+  if [[ -n "${identity}" ]]; then
+    require_command codesign
+
+    local codesign_args=(
+      --force
+      --sign "${identity}"
+      --timestamp
+      --options runtime
+      --identifier com.tentserv.tentgent
+    )
+
+    if [[ -n "${TENTGENT_MACOS_KEYCHAIN_PATH:-}" ]]; then
+      codesign_args+=(--keychain "${TENTGENT_MACOS_KEYCHAIN_PATH}")
+    fi
+
+    echo "==> Developer ID signing macOS binary"
+    codesign "${codesign_args[@]}" "${binary_path}"
+    codesign --verify --strict --verbose=2 "${binary_path}"
+    return
+  fi
+
   if ! command -v codesign >/dev/null 2>&1; then
     echo "warning: codesign not found; macOS binary will not be ad-hoc signed" >&2
     return
   fi
+
   codesign --force --sign - "${binary_path}"
 }
 
@@ -149,6 +178,7 @@ package: ${package_name}
 archive: ${archive_path}
 checksums: ${checksums_path}
 host matches target: ${host_match}
+macOS signing: $(if [[ -n "${TENTGENT_MACOS_CODESIGN_IDENTITY:-}" ]]; then echo "developer-id"; else echo "ad-hoc"; fi)
 PLAN
 }
 

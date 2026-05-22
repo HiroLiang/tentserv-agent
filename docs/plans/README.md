@@ -24,9 +24,13 @@ one pass without a staged breakdown.
 ## Active Plan Index
 
 - [capability-first-release-roadmap.md](./capability-first-release-roadmap.md)
-  Active roadmap after `v0.3.5-alpha.0`: model capability classification,
+  Active roadmap through `v0.4.0`: model capability classification,
   embedding and rerank endpoint work, M6 media workflow slices, and Apple
   Developer ID signing before beta or release candidate tags.
+- [m7-apple-developer-id-release-pipeline.md](./m7-apple-developer-id-release-pipeline.md)
+  Implemented M7 release-engineering slice: Developer ID signing,
+  notarization, temporary CI keychain import, and macOS release workflow
+  readiness before the first credentials-backed smoke.
 - [m2-model-capability-detection-and-correction.md](./m2-model-capability-detection-and-correction.md)
   Detailed M2 slice: Hugging Face capability detection, manual metadata
   correction, and clear default-chat fallback warnings.
@@ -128,13 +132,14 @@ one pass without a staged breakdown.
 
 ## Recommended Order
 
-1. Continue the remaining M6 media workflow slices from the active roadmap.
+1. Run the M7 Apple Developer ID release workflow smoke after GitHub Actions
+   secrets are configured.
 2. Keep full model compatibility architecture in the post-M7 marker plan until
    a focused future execution plan is initialized.
 3. Continue each later workflow only after its API/output contract and backend
    family decision are stable.
-4. Run M7 Apple Developer ID signing and notarization on prerelease artifacts
-   before beta or release candidate tags.
+4. Promote beta or release candidate tags only after the signed macOS artifact
+   smoke passes.
 
 ## Future Plan Markers
 

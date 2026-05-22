@@ -35,21 +35,20 @@ curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/
 tentgent doctor
 ```
 
-## Linux x86_64 Preview Install
+## Linux x86_64 Install
 
-Linux x86_64 support is available as a prerelease GitHub Release tarball. Use
-the explicit prerelease URL; the stable `latest` installer does not yet
-advertise Linux support.
+Linux x86_64 support is available as a GitHub Release tarball. Full managed
+runtime and local model backend parity is still not claimed on Linux.
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.4-alpha.2/install.sh | bash
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | bash
 tentgent doctor
 ```
 
 Use `bash`, not `sh`, because the Unix installer is a Bash script and some
 Linux distributions map `/bin/sh` to a smaller shell such as `dash`.
 
-The Linux preview was smoke-tested on `ubuntu:24.04` / `linux/amd64`. The
+The Linux release path was smoke-tested on `ubuntu:24.04` / `linux/amd64`. The
 default `base` runtime bootstrap does not require `cc`, `gcc`, `g++`, or
 `cmake`. It prepares the managed Python runtime and leaves local-model and
 training dependencies as explicit opt-in profiles:
@@ -63,7 +62,7 @@ tentgent runtime bootstrap --profile full
 To install only the CLI and support files first:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.4-alpha.2/install.sh \
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh \
   | bash -s -- --skip-python-bootstrap --skip-doctor
 tentgent runtime bootstrap --print-plan
 tentgent runtime bootstrap
@@ -100,10 +99,8 @@ irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install
 ```
 
 The pinned installer is tied to that release's artifact URL and version.
-`v0.3.3` is the current stable 0.3.x release; use `v0.2.0` if you want the previous
-daemon-parity baseline.
-Use `v0.3.4-alpha.2` only when you specifically want to test the Linux x86_64
-preview.
+Use `v0.3.3` if you want the previous stable 0.3.x release, or `v0.2.0` if you
+want the earlier daemon-parity baseline.
 
 ## Upgrade
 

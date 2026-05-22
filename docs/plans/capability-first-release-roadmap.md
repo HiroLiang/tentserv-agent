@@ -1,6 +1,6 @@
 # Capability-First Release Roadmap
 
-This is the active roadmap after `v0.3.5-alpha.0`. It supersedes the older
+This is the active roadmap through `v0.4.0`. It supersedes the older
 separate release, Linux, daemon-runtime, packaging, and model-capability plans in
 [archive/](./archive/).
 
@@ -598,6 +598,10 @@ Review target:
 
 ### M7: Apple Developer ID Signing
 
+Status: implemented in source, awaiting the first credentials-backed release
+workflow smoke. Details in
+[m7-apple-developer-id-release-pipeline.md](./m7-apple-developer-id-release-pipeline.md).
+
 - Run macOS Developer ID signing and notarization on prerelease artifacts before
   beta or release candidate tags.
 - Keep tag-driven GitHub Releases and checksums as the release source of truth.
@@ -623,8 +627,8 @@ Review target:
 - M6 remaining before M7: no product workflow implementation blockers are
   currently planned. Video generation remains internal/test-only, and media
   serving/runtime stream proxy work is deferred to post-M7 architecture.
-- M7: Developer ID signing and notarization pipeline for prerelease macOS
-  artifacts.
+- M7: Developer ID signing and notarization pipeline is implemented in source;
+  the next gate is a credentials-backed prerelease workflow smoke.
 - Post-M7 architecture work:
   [post-m7-runtime-compatibility-architecture.md](./post-m7-runtime-compatibility-architecture.md)
   tracks full model compatibility, LoRA adapter compatibility management,
