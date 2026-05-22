@@ -29,7 +29,9 @@ tag-driven GitHub Release workflow. It does not add new product capabilities.
   identifier `com.tentserv.tentgent`.
 - `scripts/macos-notarize-package.sh` extracts the release archive, verifies
   the signed binary Team ID, creates a zip payload for Apple notarization, waits
-  for acceptance, and runs a Gatekeeper `spctl` executable assessment.
+  for acceptance, and re-runs strict `codesign` verification. Bare CLI
+  executables are not app bundles, so `spctl -t exec` is not used as the release
+  gate.
 - `scripts/install.sh` no longer overwrites an existing valid macOS signature
   with an ad-hoc signature during install.
 

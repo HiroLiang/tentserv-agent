@@ -92,9 +92,11 @@ macOS package jobs use the `apple-developer` GitHub Actions environment with
 `deployment: false`. They import an Apple Developer ID Application certificate
 from environment secrets, sign the `tentgent` binary with hardened runtime and
 a timestamp, submit the package contents to Apple notarization, and verify the
-signed executable with Gatekeeper before uploading artifacts. The macOS release
-asset names stay `.tar.gz`; the workflow creates a temporary zip only for Apple
-notarization submission.
+signed executable with strict `codesign` verification before uploading
+artifacts. The macOS release asset names stay `.tar.gz`; the workflow creates a
+temporary zip only for Apple notarization submission. Bare CLI executables are
+not app bundles, so the workflow does not use `spctl -t exec` as the release
+gate.
 
 The Linux x86_64 package job installs `libdbus-1-dev` and `pkg-config` before
 packaging because the native Linux keychain backend links `libdbus-sys` through

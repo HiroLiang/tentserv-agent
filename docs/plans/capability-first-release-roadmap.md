@@ -1,6 +1,6 @@
 # Capability-First Release Roadmap
 
-This is the active roadmap through `v0.4.0`. It supersedes the older
+This is the active roadmap through `v0.4.1`. It supersedes the older
 separate release, Linux, daemon-runtime, packaging, and model-capability plans in
 [archive/](./archive/).
 

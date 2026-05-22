@@ -298,7 +298,7 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
-- `v0.4.0`: signed macOS and M6 media workflow release; adds Developer ID/notarization workflow wiring, native media jobs, MLX media paths, and CLI plus daemon REST consolidation.
+- `v0.4.1`: signed macOS and M6 media workflow release; adds Developer ID/notarization workflow wiring, native media jobs, MLX media paths, and CLI plus daemon REST consolidation.
 - `v0.3.5-alpha.0`: CLI plus daemon REST consolidation preview; removes the former terminal UI, legacy core, and legacy HTTP crates, and keeps broad diagnostics under `doctor`.
 - `v0.3.4-alpha.2`: Linux x86_64 preview release with release tarball install, default base runtime bootstrap, and Docker-smoked `doctor` readiness on Ubuntu 24.04.
 - `v0.3.3`: adds Homebrew tap update tooling for repeatable formula URL and checksum updates after stable releases.

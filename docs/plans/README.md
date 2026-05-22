@@ -24,7 +24,7 @@ one pass without a staged breakdown.
 ## Active Plan Index
 
 - [capability-first-release-roadmap.md](./capability-first-release-roadmap.md)
-  Active roadmap through `v0.4.0`: model capability classification,
+  Active roadmap through `v0.4.1`: model capability classification,
   embedding and rerank endpoint work, M6 media workflow slices, and Apple
   Developer ID signing before beta or release candidate tags.
 - [m7-apple-developer-id-release-pipeline.md](./m7-apple-developer-id-release-pipeline.md)

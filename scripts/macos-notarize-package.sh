@@ -87,7 +87,6 @@ fi
 require_command codesign
 require_command ditto
 require_command python3
-require_command spctl
 require_command tar
 require_command xcrun
 
@@ -147,5 +146,9 @@ xcrun notarytool submit "${notary_archive}" \
   --issuer "${APPLE_NOTARY_ISSUER_ID}" \
   --wait
 
-spctl -a -vvv -t exec "${binary_path}"
+# Bare CLI executables are not app bundles, so Gatekeeper's spctl exec
+# assessment can reject them with "code is valid but does not seem to be an app"
+# even after Apple accepts the notarization submission. The CI gate for this
+# archive is notarytool acceptance plus strict Developer ID signature validation.
+codesign --verify --strict --verbose=2 "${binary_path}"
 echo "macOS package notarization accepted for ${archive_path}"
