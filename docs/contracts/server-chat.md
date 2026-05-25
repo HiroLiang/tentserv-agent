@@ -20,6 +20,11 @@ Request body:
 }
 ```
 
+For model-bound servers launched through `tentgent server run`, `model` and
+`model_kind` are intentionally omitted from the request. Rust bound the model
+when it started the server. Direct Python model-runtime callers that are not
+using a stored server may still send explicit runtime model fields.
+
 Non-streaming responses are JSON encoded as UTF-8. Non-ASCII text should remain
 readable in the response body rather than being escaped as `\uXXXX` sequences.
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import Sequence
+from pathlib import Path
 
 import uvicorn
 
@@ -17,6 +19,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--port", required=True, type=int, help="HTTP bind port.")
     parser.add_argument("--server-ref", help="Optional Rust-owned server reference.")
     parser.add_argument("--model-ref", help="Optional Rust-owned model reference.")
+    parser.add_argument("--home", help="Optional Tentgent runtime home for model-bound servers.")
     parser.add_argument(
         "--capability",
         choices=tuple(capability.value for capability in RuntimeCapability),
@@ -35,10 +38,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Enable per-request access logging.",
     )
     parser.add_argument(
+        "--lazy-load",
+        action="store_true",
+        help="Delay model loading until the first request.",
+    )
+    parser.add_argument(
         "--idle-keep-alive-seconds",
         default=300.0,
         type=float,
-        help="Idle seconds before the runtime begins graceful shutdown.",
+        help=(
+            "Idle seconds before the runtime begins graceful shutdown. "
+            "Use a negative value to keep the process alive until external shutdown."
+        ),
     )
     parser.add_argument(
         "--model-idle-timeout-seconds",
@@ -67,6 +78,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     server_holder: dict[str, uvicorn.Server] = {}
+    home = Path(args.home).expanduser().resolve() if args.home else None
+    if home is not None:
+        os.environ["TENTGENT_HOME"] = str(home)
 
     def request_shutdown() -> None:
         server = server_holder.get("server")
@@ -80,6 +94,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             capability=RuntimeCapability(args.capability),
             server_ref=args.server_ref,
             model_ref=args.model_ref,
+            home=home,
+            lazy_load=args.lazy_load,
             idle_keep_alive_seconds=args.idle_keep_alive_seconds,
             model_idle_timeout_seconds=args.model_idle_timeout_seconds,
             closing_grace_seconds=args.closing_grace_seconds,

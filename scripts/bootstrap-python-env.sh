@@ -192,6 +192,11 @@ verify_entrypoints() {
       missing+=("${bin_dir}/${name}")
     fi
   done
+  if [[ "${BOOTSTRAP_PROFILE}" == "local-model" || "${BOOTSTRAP_PROFILE}" == "full" ]]; then
+    if [[ ! -x "${bin_dir}/tentgent-model-runtime-daemon" ]]; then
+      missing+=("${bin_dir}/tentgent-model-runtime-daemon")
+    fi
+  fi
 
   if [[ "${#missing[@]}" -gt 0 ]]; then
     printf 'error: missing expected Python runtime entry points:\n' >&2
@@ -282,6 +287,10 @@ SYNC_ARGS=(
   --no-editable
   --reinstall-package tentgent-daemon
 )
+
+if [[ "${BOOTSTRAP_PROFILE}" == "local-model" || "${BOOTSTRAP_PROFILE}" == "full" ]]; then
+  SYNC_ARGS+=(--reinstall-package tentgent-model-runtime)
+fi
 
 if [[ "${DRY_RUN}" == "true" ]]; then
   SYNC_ARGS+=(--dry-run)

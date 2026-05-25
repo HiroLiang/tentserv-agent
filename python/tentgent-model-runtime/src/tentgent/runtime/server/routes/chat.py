@@ -13,6 +13,7 @@ from tentgent.runtime.backends.chat import (
     ChatModelKind,
     ChatRequest,
 )
+from tentgent.runtime.backends.records import ModelCapability
 from tentgent.runtime.task.inference.chat import (
     ChatInferenceRequest,
     ChatTask,
@@ -24,8 +25,8 @@ from .payloads import (
     AdapterRecordPayload,
     ModelRecordPayload,
     adapter_record,
-    model_record,
 )
+from ..managed_models import infer_chat_model_kind, resolve_request_model
 
 
 router = APIRouter(prefix="/v1")
@@ -38,8 +39,8 @@ class ChatMessagePayload(BaseModel):
 
 class ChatPayload(BaseModel):
     task_ref: str | None = None
-    model_kind: ChatModelKind
-    model: ModelRecordPayload
+    model_kind: ChatModelKind | None = None
+    model: ModelRecordPayload | None = None
     messages: list[ChatMessagePayload]
     max_tokens: int | None = None
     temperature: float | None = None
@@ -97,7 +98,7 @@ def _build_chat_task(
     payload: ChatPayload,
     request: Request,
 ) -> ChatTask:
-    task_ref, inference_request = _build_chat_inference_request(payload)
+    task_ref, inference_request = _build_chat_inference_request(payload, request)
     return ChatTask(
         task_ref=task_ref,
         request=inference_request,
@@ -109,7 +110,7 @@ def _build_streaming_chat_task(
     payload: ChatPayload,
     request: Request,
 ) -> StreamingChatTask:
-    task_ref, inference_request = _build_chat_inference_request(payload)
+    task_ref, inference_request = _build_chat_inference_request(payload, request)
     return StreamingChatTask(
         task_ref=task_ref,
         request=inference_request,
@@ -119,6 +120,7 @@ def _build_streaming_chat_task(
 
 def _build_chat_inference_request(
     payload: ChatPayload,
+    request: Request,
 ) -> tuple[str, ChatInferenceRequest]:
     if not payload.messages:
         raise HTTPException(
@@ -127,6 +129,12 @@ def _build_chat_inference_request(
         )
 
     adapter = adapter_record(payload.adapter)
+    model = resolve_request_model(
+        payload.model,
+        request,
+        required_capability=ModelCapability.CHAT,
+    )
+    model_kind = payload.model_kind or infer_chat_model_kind(model)
     chat_request = ChatRequest(
         messages=tuple(
             ChatMessage(role=message.role, content=message.content)
@@ -137,12 +145,13 @@ def _build_chat_inference_request(
         adapter_ref=adapter.adapter_ref if adapter is not None else None,
     )
     inference_request = ChatInferenceRequest(
-        model_kind=payload.model_kind,
-        model=model_record(payload.model),
+        model_kind=model_kind,
+        model=model,
         chat=chat_request,
         adapter=adapter,
     )
     return payload.task_ref or uuid4().hex, inference_request
+
 
 def _sse_events(task: StreamingChatTask):
     try:

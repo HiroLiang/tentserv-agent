@@ -10,13 +10,15 @@ from tentgent.runtime.backends.rerank import (
     RerankModelKind,
     RerankRequest,
 )
+from tentgent.runtime.backends.records import ModelCapability
 from tentgent.runtime.task.inference.rerank import (
     RerankInferenceRequest,
     RerankTask,
 )
 from tentgent.runtime.task.manager import TaskManagerClosedError
 
-from .payloads import ModelRecordPayload, model_record
+from .payloads import ModelRecordPayload
+from ..managed_models import infer_rerank_model_kind, resolve_request_model
 
 
 router = APIRouter(prefix="/v1")
@@ -24,8 +26,8 @@ router = APIRouter(prefix="/v1")
 
 class RerankPayload(BaseModel):
     task_ref: str | None = None
-    model_kind: RerankModelKind
-    model: ModelRecordPayload
+    model_kind: RerankModelKind | None = None
+    model: ModelRecordPayload | None = None
     query: str
     documents: list[str]
     top_n: int | None = None
@@ -62,7 +64,7 @@ async def rerank(payload: RerankPayload, request: Request) -> RerankResponsePayl
     return RerankResponsePayload(
         task_ref=handle.task_ref,
         status=task.status.value,
-        model_ref=payload.model.model_ref,
+        model_ref=task.request.model.model_ref,
         data=[
             RerankScorePayload(index=item.index, score=item.score)
             for item in result.data
@@ -71,7 +73,7 @@ async def rerank(payload: RerankPayload, request: Request) -> RerankResponsePayl
 
 
 def _build_rerank_task(payload: RerankPayload, request: Request) -> RerankTask:
-    task_ref, inference_request = _build_rerank_inference_request(payload)
+    task_ref, inference_request = _build_rerank_inference_request(payload, request)
     return RerankTask(
         task_ref=task_ref,
         request=inference_request,
@@ -81,13 +83,20 @@ def _build_rerank_task(payload: RerankPayload, request: Request) -> RerankTask:
 
 def _build_rerank_inference_request(
     payload: RerankPayload,
+    request: Request,
 ) -> tuple[str, RerankInferenceRequest]:
     query = _rerank_query(payload.query)
     documents = _rerank_documents(payload.documents)
     top_n = _rerank_top_n(payload.top_n, document_count=len(documents))
+    model = resolve_request_model(
+        payload.model,
+        request,
+        required_capability=ModelCapability.RERANK,
+    )
+    model_kind = payload.model_kind or infer_rerank_model_kind(model)
     inference_request = RerankInferenceRequest(
-        model_kind=payload.model_kind,
-        model=model_record(payload.model),
+        model_kind=model_kind,
+        model=model,
         rerank=RerankRequest(query=query, documents=documents, top_n=top_n),
     )
     return payload.task_ref or uuid4().hex, inference_request

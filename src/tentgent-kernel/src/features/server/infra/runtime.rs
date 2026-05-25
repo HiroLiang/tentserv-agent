@@ -15,7 +15,7 @@ use super::error::server_runtime_error;
 
 const DAEMON_TOKEN_ENV_VAR: &str = "TENTGENT_DAEMON_TOKEN";
 
-/// Builds and launches the Python `tentgent-server` runtime entrypoint.
+/// Builds and launches Python server runtime entrypoints.
 pub struct PythonServerRuntimeLauncher<'a> {
     executable_resolver: &'a dyn RuntimeExecutableResolver,
 }
@@ -87,9 +87,10 @@ impl<'a> PythonServerRuntimeLauncher<'a> {
     }
 
     fn command_for_request(&self, request: &ServerRuntimeLaunchRequest) -> KernelResult<Command> {
+        let entrypoint = server_runtime_entrypoint(&request.inspection.spec);
         let entrypoint = self
             .executable_resolver
-            .entrypoint_path(&request.runtime, RuntimeEntrypoint::Server)?;
+            .entrypoint_path(&request.runtime, entrypoint)?;
         let parts = server_runtime_command_parts(
             &request.inspection.spec,
             &request.layout.home_dir,
@@ -152,6 +153,102 @@ pub(super) fn server_runtime_command_parts(
         )));
     }
 
+    let mut env = Vec::new();
+    let env_remove = vec![DAEMON_TOKEN_ENV_VAR.to_string()];
+
+    let args = match spec.runtime_kind {
+        ServerRuntimeKind::Local => local_model_runtime_command_args(spec, home_dir)?,
+        ServerRuntimeKind::Cloud => {
+            cloud_server_runtime_command_args(spec, home_dir, auth, &mut env)?
+        }
+    };
+
+    Ok(ServerRuntimeCommandParts {
+        args,
+        env,
+        env_remove,
+    })
+}
+
+fn server_runtime_entrypoint(spec: &ServerSpec) -> RuntimeEntrypoint {
+    match spec.runtime_kind {
+        ServerRuntimeKind::Local => RuntimeEntrypoint::ModelRuntimeDaemon,
+        ServerRuntimeKind::Cloud => RuntimeEntrypoint::Server,
+    }
+}
+
+fn local_model_runtime_command_args(
+    spec: &ServerSpec,
+    home_dir: &std::path::Path,
+) -> KernelResult<Vec<String>> {
+    let model_ref = spec.local_model_ref().ok_or_else(|| {
+        server_runtime_error(format!(
+            "local server spec `{}` is missing model_ref",
+            spec.short_ref
+        ))
+    })?;
+    let mut args = vec![
+        "--server-ref".to_string(),
+        spec.server_ref.to_string(),
+        "--capability".to_string(),
+        spec.capability.as_str().to_string(),
+        "--host".to_string(),
+        spec.host.clone(),
+        "--port".to_string(),
+        spec.port.to_string(),
+        "--home".to_string(),
+        home_dir.display().to_string(),
+        "--model-ref".to_string(),
+        model_ref.to_string(),
+        "--idle-keep-alive-seconds".to_string(),
+        "-1".to_string(),
+        "--model-idle-timeout-seconds".to_string(),
+        model_idle_timeout_seconds(spec),
+    ];
+    if spec.lazy_load {
+        args.push("--lazy-load".to_string());
+    }
+    Ok(args)
+}
+
+fn cloud_server_runtime_command_args(
+    spec: &ServerSpec,
+    home_dir: &std::path::Path,
+    auth: Option<&AuthSecretMaterial>,
+    env: &mut Vec<(String, String)>,
+) -> KernelResult<Vec<String>> {
+    let provider = spec.provider.ok_or_else(|| {
+        server_runtime_error(format!(
+            "cloud server spec `{}` is missing provider metadata",
+            spec.short_ref
+        ))
+    })?;
+    let provider_model = spec.provider_model.as_deref().ok_or_else(|| {
+        server_runtime_error(format!(
+            "cloud server spec `{}` is missing provider_model metadata",
+            spec.short_ref
+        ))
+    })?;
+    let auth = auth.ok_or_else(|| {
+        server_runtime_error(format!(
+            "cloud server spec `{}` is missing launch-time provider auth",
+            spec.short_ref
+        ))
+    })?;
+    let auth_provider = auth_provider_for_cloud(provider);
+    if auth.provider != auth_provider {
+        return Err(KernelError::ServerRuntimeUnavailable(format!(
+            "cloud server `{}` expected {} auth, got {} auth",
+            spec.short_ref,
+            auth_provider.display_name(),
+            auth.provider.display_name()
+        )));
+    }
+    env.push((
+        auth_provider.env_var().to_string(),
+        auth.secret().to_string(),
+    ));
+
     let mut args = vec![
         "--server-ref".to_string(),
         spec.server_ref.to_string(),
@@ -165,73 +262,24 @@ pub(super) fn server_runtime_command_parts(
         spec.port.to_string(),
         "--home".to_string(),
         home_dir.display().to_string(),
+        "--provider".to_string(),
+        provider.as_str().to_string(),
+        "--provider-model".to_string(),
+        provider_model.to_string(),
     ];
-    let mut env = Vec::new();
-    let env_remove = vec![DAEMON_TOKEN_ENV_VAR.to_string()];
-
-    match spec.runtime_kind {
-        ServerRuntimeKind::Local => {
-            let model_ref = spec.local_model_ref().ok_or_else(|| {
-                server_runtime_error(format!(
-                    "local server spec `{}` is missing model_ref",
-                    spec.short_ref
-                ))
-            })?;
-            args.extend(["--model-ref".to_string(), model_ref.to_string()]);
-        }
-        ServerRuntimeKind::Cloud => {
-            let provider = spec.provider.ok_or_else(|| {
-                server_runtime_error(format!(
-                    "cloud server spec `{}` is missing provider metadata",
-                    spec.short_ref
-                ))
-            })?;
-            let provider_model = spec.provider_model.as_deref().ok_or_else(|| {
-                server_runtime_error(format!(
-                    "cloud server spec `{}` is missing provider_model metadata",
-                    spec.short_ref
-                ))
-            })?;
-            let auth = auth.ok_or_else(|| {
-                server_runtime_error(format!(
-                    "cloud server spec `{}` is missing launch-time provider auth",
-                    spec.short_ref
-                ))
-            })?;
-            let auth_provider = auth_provider_for_cloud(provider);
-            if auth.provider != auth_provider {
-                return Err(KernelError::ServerRuntimeUnavailable(format!(
-                    "cloud server `{}` expected {} auth, got {} auth",
-                    spec.short_ref,
-                    auth_provider.display_name(),
-                    auth.provider.display_name()
-                )));
-            }
-            env.push((
-                auth_provider.env_var().to_string(),
-                auth.secret().to_string(),
-            ));
-            args.extend([
-                "--provider".to_string(),
-                provider.as_str().to_string(),
-                "--provider-model".to_string(),
-                provider_model.to_string(),
-            ]);
-        }
-    }
-
     if spec.lazy_load {
         args.push("--lazy-load".to_string());
     }
     if let Some(idle_seconds) = spec.idle_seconds {
         args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
     }
+    Ok(args)
+}
 
-    Ok(ServerRuntimeCommandParts {
-        args,
-        env,
-        env_remove,
-    })
+fn model_idle_timeout_seconds(spec: &ServerSpec) -> String {
+    spec.idle_seconds
+        .map(|seconds| seconds.to_string())
+        .unwrap_or_else(|| "-1".to_string())
 }
 
 fn auth_provider_for_cloud(provider: CloudProvider) -> Provider {

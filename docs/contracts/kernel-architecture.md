@@ -626,10 +626,13 @@ catalog orchestration in frontends.
 adapters for those ports: server-store directory creation, legacy-compatible
 server-ref hashing, TOML spec/process catalog reads and writes, stale process
 metadata cleanup, process liveness probing, process termination, and RFC3339
-timestamps. It also owns the Python `tentgent-server` command launcher through
-an already selected runtime layout. Runtime launching may inject launch-time
-cloud auth environment variables, but provider secrets must come from auth use
-cases and must never be persisted in server specs or process metadata.
+timestamps. It also owns Python server process launchers through an already
+selected runtime layout: local model servers use the direct
+`tentgent-model-runtime-daemon`, while cloud provider servers continue through
+the provider-capable `tentgent-server` entrypoint. Runtime launching may inject
+launch-time cloud auth environment variables, but provider secrets must come
+from auth use cases and must never be persisted in server specs or process
+metadata.
 
 `features/server/usecases/port.rs` defines workflow boundaries for:
 

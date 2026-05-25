@@ -186,6 +186,10 @@ tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 curl -sS http://127.0.0.1:8780/healthz
 ```
 
+Local `chat`, `embedding`, and `rerank` servers are launched through the direct
+Python model runtime daemon. The model is bound at server start, so direct
+server requests stay small and do not need a `model` payload.
+
 Run a cloud provider server through the same local server surface:
 
 ```bash

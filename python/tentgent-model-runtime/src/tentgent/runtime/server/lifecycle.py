@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
@@ -33,6 +34,8 @@ class RuntimeServerConfig:
     capability: RuntimeCapability = RuntimeCapability.CHAT
     server_ref: str | None = None
     model_ref: str | None = None
+    home: Path | None = None
+    lazy_load: bool = True
     idle_keep_alive_seconds: float = 300.0
     model_idle_timeout_seconds: float = 0.0
     closing_grace_seconds: float = 2.0
@@ -60,6 +63,8 @@ class RuntimeLifecycleState:
 
     async def start(self) -> None:
         self._watcher = asyncio.create_task(self._watch_idle())
+        if self._config.model_ref is not None and not self._config.lazy_load:
+            await asyncio.to_thread(self._preload_bound_model)
 
     async def stop(self) -> None:
         if self._watcher is not None:
@@ -78,6 +83,12 @@ class RuntimeLifecycleState:
             "status": status,
             "version": __version__,
             "pid": self._pid,
+            "server_ref": self._config.server_ref,
+            "runtime_home": (
+                str(self._config.home)
+                if self._config.home is not None
+                else os.environ.get("TENTGENT_HOME")
+            ),
             "uptime_seconds": round(monotonic() - self._started_monotonic, 3),
             "started_at": self._started_at.isoformat(),
             "server": {
@@ -106,8 +117,11 @@ class RuntimeLifecycleState:
             self._resource_manager.release_idle()
 
             if self._task_manager.state == TaskManagerState.OPEN:
-                if self._task_manager.is_idle_for(
-                    self._config.idle_keep_alive_seconds
+                if (
+                    self._config.idle_keep_alive_seconds >= 0
+                    and self._task_manager.is_idle_for(
+                        self._config.idle_keep_alive_seconds
+                    )
                 ):
                     self._task_manager.begin_closing()
                     self._closing_started_at = monotonic()
@@ -128,6 +142,19 @@ class RuntimeLifecycleState:
                 if self._request_shutdown is not None:
                     self._request_shutdown()
                 return
+
+    def _preload_bound_model(self) -> None:
+        from .managed_models import (
+            infer_model_kind_for_capability,
+            load_managed_model_record,
+        )
+
+        if self._config.model_ref is None:
+            return
+        record = load_managed_model_record(self._config.model_ref, home=self._config.home)
+        model_kind = infer_model_kind_for_capability(self._config.capability, record)
+        with self._resource_manager.lease_model(model_kind, record):
+            pass
 
     @staticmethod
     def _status_for_task_state(state: TaskManagerState) -> str:

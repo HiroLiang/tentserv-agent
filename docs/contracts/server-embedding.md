@@ -14,6 +14,10 @@ Request body:
 }
 ```
 
+For model-bound servers launched through `tentgent server run --capability
+embedding`, `model` and `model_kind` are intentionally omitted from the request.
+The Python process resolves the Rust-bound managed model from runtime home.
+
 `input` accepts either one string or a non-empty string array. Empty arrays,
 empty strings, unknown fields, and non-string values return `400 invalid_request`.
 

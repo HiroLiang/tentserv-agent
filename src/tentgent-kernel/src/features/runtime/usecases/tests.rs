@@ -158,13 +158,13 @@ fn executable_usecase_resolves_selected_entrypoint_path() {
                 project_dir: Some(PathBuf::from("/opt/tentgent/python")),
                 python_env_dir: Some(PathBuf::from("/var/tentgent/python-env")),
             },
-            target: RuntimeExecutableTarget::Entrypoint(RuntimeEntrypoint::Server),
+            target: RuntimeExecutableTarget::Entrypoint(RuntimeEntrypoint::ModelRuntimeDaemon),
         })
         .expect("resolve executable");
 
     assert_eq!(
         result.path,
-        PathBuf::from("/var/tentgent/python-env/bin/tentgent-server")
+        PathBuf::from("/var/tentgent/python-env/bin/tentgent-model-runtime-daemon")
     );
 }
 

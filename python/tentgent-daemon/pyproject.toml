@@ -31,6 +31,7 @@ local-model = [
     "torchvision",
     "transformers",
     "num2words>=0.5.14",
+    "tentgent-model-runtime[llama-cpp,mlx,transformers]",
 ]
 training = [
     "peft",
@@ -38,6 +39,9 @@ training = [
     "torch",
     "transformers",
 ]
+
+[tool.uv.sources]
+tentgent-model-runtime = { path = "../tentgent-model-runtime" }
 
 [project.scripts]
 tentgent-audio-speech = "tentgent_daemon.cli.audio_speech:main"

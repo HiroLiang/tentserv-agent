@@ -117,6 +117,10 @@ tentgent runtime bootstrap --profile training
 tentgent runtime bootstrap --profile full
 ```
 
+The `local-model` and `full` profiles install the direct
+`tentgent-model-runtime-daemon` entrypoint used by local `chat`, `embedding`,
+and `rerank` server processes.
+
 Use `tentgent runtime bootstrap --print-plan` to inspect resolved runtime paths
 and selected profile extras without syncing. Direct release installers run the
 base bootstrap automatically unless `--skip-python-bootstrap` is passed.

@@ -74,6 +74,10 @@ fn runtime_entrypoints_match_python_project_scripts() {
         "tentgent-image-generate-once"
     );
     assert_eq!(
+        RuntimeEntrypoint::ModelRuntimeDaemon.script_name(),
+        "tentgent-model-runtime-daemon"
+    );
+    assert_eq!(
         RuntimeEntrypoint::RerankOnce.script_name(),
         "tentgent-rerank-once"
     );
@@ -89,6 +93,10 @@ fn runtime_entrypoints_match_python_project_scripts() {
     assert_eq!(
         RuntimeEntrypoint::VisionChatOnce.script_name(),
         "tentgent-vision-chat-once"
+    );
+    assert_eq!(
+        RuntimeEntrypoint::VideoUnderstandingOnce.script_name(),
+        "tentgent-video-understanding"
     );
 }
 
@@ -127,6 +135,12 @@ fn runtime_ports_cover_resolution_bootstrap_executables_and_state() {
             .entrypoint_path(&runtime, RuntimeEntrypoint::Server)
             .expect("resolve server entrypoint"),
         PathBuf::from("/var/tentgent/python-env/bin/tentgent-server")
+    );
+    assert_eq!(
+        ports
+            .entrypoint_path(&runtime, RuntimeEntrypoint::ModelRuntimeDaemon)
+            .expect("resolve model runtime daemon entrypoint"),
+        PathBuf::from("/var/tentgent/python-env/bin/tentgent-model-runtime-daemon")
     );
 
     let plan = ports

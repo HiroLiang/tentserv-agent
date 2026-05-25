@@ -10,13 +10,15 @@ from tentgent.runtime.backends.embedding import (
     EmbeddingModelKind,
     EmbeddingRequest,
 )
+from tentgent.runtime.backends.records import ModelCapability
 from tentgent.runtime.task.inference.embedding import (
     EmbeddingInferenceRequest,
     EmbeddingTask,
 )
 from tentgent.runtime.task.manager import TaskManagerClosedError
 
-from .payloads import ModelRecordPayload, model_record
+from .payloads import ModelRecordPayload
+from ..managed_models import infer_embedding_model_kind, resolve_request_model
 
 
 router = APIRouter(prefix="/v1")
@@ -24,8 +26,8 @@ router = APIRouter(prefix="/v1")
 
 class EmbeddingPayload(BaseModel):
     task_ref: str | None = None
-    model_kind: EmbeddingModelKind
-    model: ModelRecordPayload
+    model_kind: EmbeddingModelKind | None = None
+    model: ModelRecordPayload | None = None
     input: str | list[str]
 
 
@@ -63,7 +65,7 @@ async def embeddings(
     return EmbeddingResponsePayload(
         task_ref=handle.task_ref,
         status=task.status.value,
-        model_ref=payload.model.model_ref,
+        model_ref=task.request.model.model_ref,
         data=[
             EmbeddingVectorPayload(index=item.index, embedding=item.embedding)
             for item in result.data
@@ -75,7 +77,7 @@ def _build_embedding_task(
     payload: EmbeddingPayload,
     request: Request,
 ) -> EmbeddingTask:
-    task_ref, inference_request = _build_embedding_inference_request(payload)
+    task_ref, inference_request = _build_embedding_inference_request(payload, request)
     return EmbeddingTask(
         task_ref=task_ref,
         request=inference_request,
@@ -85,11 +87,18 @@ def _build_embedding_task(
 
 def _build_embedding_inference_request(
     payload: EmbeddingPayload,
+    request: Request,
 ) -> tuple[str, EmbeddingInferenceRequest]:
     inputs = _embedding_inputs(payload.input)
+    model = resolve_request_model(
+        payload.model,
+        request,
+        required_capability=ModelCapability.EMBEDDING,
+    )
+    model_kind = payload.model_kind or infer_embedding_model_kind(model)
     inference_request = EmbeddingInferenceRequest(
-        model_kind=payload.model_kind,
-        model=model_record(payload.model),
+        model_kind=model_kind,
+        model=model,
         embedding=EmbeddingRequest(inputs=inputs),
     )
     return payload.task_ref or uuid4().hex, inference_request

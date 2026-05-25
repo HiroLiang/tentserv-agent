@@ -224,6 +224,22 @@ copy_python_project() {
     -cf - . | tar -C "${destination}" -xf -
 }
 
+copy_model_runtime_project() {
+  local destination="$1"
+  mkdir -p "${destination}"
+
+  tar \
+    --exclude='.venv' \
+    --exclude='__pycache__' \
+    --exclude='*.pyc' \
+    --exclude='.pytest_cache' \
+    --exclude='.ruff_cache' \
+    --exclude='.mypy_cache' \
+    --exclude='.DS_Store' \
+    -C "${ROOT_DIR}/python/tentgent-model-runtime" \
+    -cf - . | tar -C "${destination}" -xf -
+}
+
 main() {
   local print_plan_only="false"
 
@@ -279,6 +295,7 @@ main() {
   mkdir -p \
     "${staging_dir}/bin" \
     "${staging_dir}/share/tentgent/python" \
+    "${staging_dir}/share/tentgent/tentgent-model-runtime" \
     "${staging_dir}/share/tentgent/scripts"
 
   cp "${ROOT_DIR}/target/release/${binary_name}" "${staging_dir}/bin/${binary_name}"
@@ -292,6 +309,7 @@ main() {
   cp "${ROOT_DIR}/scripts/install.sh" "${staging_dir}/share/tentgent/scripts/install.sh"
   cp "${ROOT_DIR}/scripts/install.ps1" "${staging_dir}/share/tentgent/scripts/install.ps1"
   copy_python_project "${staging_dir}/share/tentgent/python"
+  copy_model_runtime_project "${staging_dir}/share/tentgent/tentgent-model-runtime"
 
   echo "==> Creating ${archive_path}"
   mkdir -p "${DIST_DIR}"

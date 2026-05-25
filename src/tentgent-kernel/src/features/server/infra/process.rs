@@ -26,6 +26,9 @@ impl ServerProcessProbe for StdServerProcessProbe {
                     server_runtime_error(format!("probe process {pid} failed: {err}"))
                 })?;
             if output.status.success() {
+                if process_is_zombie(pid)? {
+                    return Ok(false);
+                }
                 return Ok(true);
             }
 
@@ -106,4 +109,17 @@ where
             ))
         }
     }
+}
+
+#[cfg(unix)]
+fn process_is_zombie(pid: u32) -> KernelResult<bool> {
+    let output = Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "stat="])
+        .output()
+        .map_err(|err| server_runtime_error(format!("inspect process {pid} failed: {err}")))?;
+    if !output.status.success() {
+        return Ok(false);
+    }
+    let stat = String::from_utf8_lossy(&output.stdout);
+    Ok(stat.trim_start().starts_with('Z'))
 }

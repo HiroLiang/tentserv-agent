@@ -91,6 +91,7 @@ def create_app(
     app.state.lifecycle = lifecycle_state
     app.state.task_manager = task_manager
     app.state.resource_manager = resource_manager
+    app.state.runtime_config = config
     app.include_router(health.router)
     app.include_router(lifecycle.router)
     _include_capability_router(app, config.capability)

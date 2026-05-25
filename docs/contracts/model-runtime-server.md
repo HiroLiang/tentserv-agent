@@ -41,6 +41,14 @@ Rust still owns job creation, workspace paths, model resolution, and server
 selection. The Python runtime only loads the selected model, runs inference, and
 returns or writes the prepared result.
 
+When Rust starts this daemon as a model-bound local server, it passes
+`--server-ref`, `--model-ref`, `--home`, and one of `chat`, `embedding`, or
+`rerank`. In that mode, the matching direct server endpoints may omit the full
+`model` record and `model_kind`; Python resolves the managed model from
+`TENTGENT_HOME/models/store` and infers the runtime kind from the stored primary
+format. Explicit direct-runtime requests may still pass `model` and
+`model_kind`.
+
 ### Audio Transcription
 
 `POST /v1/audio/transcriptions` runs batch local audio transcription and writes
@@ -182,6 +190,7 @@ Response fields include:
 
 - `status`: `ok`, `closing`, or `shutdown`
 - `pid`
+- top-level `server_ref` and `runtime_home` for daemon/CLI launch verification
 - `server.host`, `server.port`, and optional `server.server_ref`
 - `runtime.capability`
 - `runtime.model_ref`

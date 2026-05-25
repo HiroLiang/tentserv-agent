@@ -1339,7 +1339,11 @@ never persist secrets in the server spec or response.
 Local server starts verify that the selected model advertises the server
 capability before launching the Python runtime. Local embedding and rerank
 server specs are launchable for safetensors models that advertise the matching
-capability.
+capability. Local `chat`, `embedding`, and `rerank` server processes are
+launched through the direct Python model runtime daemon with the selected model
+bound at process start. The server process remains a server lifecycle resource,
+not a job record; `idle_seconds` maps to loaded model resource release inside
+the Python process, not to daemon-owned process expiration.
 
 The body is optional. Omit it or send `{}` to preserve the original response
 shape. Send `wait_ready` to ask the daemon to poll the target server's

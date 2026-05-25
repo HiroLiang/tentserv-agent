@@ -64,13 +64,18 @@ fn std_runtime_executable_resolver_uses_platform_bin_layout() {
     let server = StdRuntimeExecutableResolver
         .entrypoint_path(&runtime, RuntimeEntrypoint::Server)
         .expect("resolve server");
+    let model_runtime = StdRuntimeExecutableResolver
+        .entrypoint_path(&runtime, RuntimeEntrypoint::ModelRuntimeDaemon)
+        .expect("resolve model runtime daemon");
 
     if cfg!(windows) {
         assert!(python.ends_with("Scripts/python.exe"));
         assert!(server.ends_with("Scripts/tentgent-server.exe"));
+        assert!(model_runtime.ends_with("Scripts/tentgent-model-runtime-daemon.exe"));
     } else {
         assert!(python.ends_with("bin/python"));
         assert!(server.ends_with("bin/tentgent-server"));
+        assert!(model_runtime.ends_with("bin/tentgent-model-runtime-daemon"));
     }
 }
 

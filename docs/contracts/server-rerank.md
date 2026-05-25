@@ -16,6 +16,10 @@ Request body:
 }
 ```
 
+For model-bound servers launched through `tentgent server run --capability
+rerank`, `model` and `model_kind` are intentionally omitted from the request.
+The Python process resolves the Rust-bound managed model from runtime home.
+
 `query` must be a non-empty string. `documents` must be a non-empty string
 array. `top_n` is optional and must be between `1` and the number of documents.
 Unknown fields, blank strings, and non-string documents return

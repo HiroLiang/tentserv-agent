@@ -145,7 +145,7 @@ fn file_catalog_stores_specs_and_process_metadata() {
 }
 
 #[test]
-fn local_runtime_args_preserve_python_server_shape() {
+fn local_runtime_args_use_model_runtime_daemon_shape() {
     let server_ref = ServerRef::parse("c".repeat(SERVER_REF_HEX_LENGTH)).expect("server ref");
     let model_ref = ModelRef::parse("d".repeat(64)).expect("model ref");
     let spec = ServerSpec {
@@ -171,8 +171,6 @@ fn local_runtime_args_preserve_python_server_shape() {
         vec![
             "--server-ref",
             spec.server_ref.as_str(),
-            "--runtime-kind",
-            "local",
             "--capability",
             "chat",
             "--host",
@@ -183,9 +181,11 @@ fn local_runtime_args_preserve_python_server_shape() {
             "/tmp/tentgent-home",
             "--model-ref",
             spec.model_ref.as_ref().expect("model ref").as_str(),
-            "--lazy-load",
-            "--idle-seconds",
-            "30"
+            "--idle-keep-alive-seconds",
+            "-1",
+            "--model-idle-timeout-seconds",
+            "30",
+            "--lazy-load"
         ]
     );
     assert!(parts.env.is_empty());

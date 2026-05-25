@@ -595,19 +595,22 @@ Add `--details` to `server start`, `server stop`, or `server rm` when you want a
 
 ## Python Server Direct Entry
 
-Exercise the Python server module directly:
+Exercise the local Python model runtime daemon directly:
 
 ```bash
-PYTHONPATH=python/tentgent-daemon/src \
-python/tentgent-daemon/.venv/bin/python -m tentgent_daemon.cli.server \
+uv run --project python/tentgent-model-runtime tentgent-model-runtime-daemon \
   --server-ref <server-ref> \
-  --runtime-kind local \
   --model-ref <model-ref> \
+  --home "$TENTGENT_HOME" \
+  --capability chat \
   --host 127.0.0.1 \
-  --port 8000
+  --port 8000 \
+  --idle-keep-alive-seconds -1 \
+  --lazy-load
 ```
 
-Run the Python server module directly for a cloud provider:
+Cloud provider servers still use the provider-capable Python daemon server
+entrypoint:
 
 ```bash
 OPENAI_API_KEY=<key> \
@@ -625,6 +628,8 @@ The server exposes:
 
 - `GET /healthz`
 - `POST /v1/chat`
+- `POST /v1/embeddings` when launched with `--capability embedding`
+- `POST /v1/rerank` when launched with `--capability rerank`
 
 HTTP `stream=true` returns Server-Sent Events for local runtimes, compatible
 local adapters, and OpenAI or Anthropic cloud provider runtimes.

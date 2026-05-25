@@ -711,6 +711,9 @@ tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 Server launch defaults to `--capability chat` and requires a chat-capable model.
 Use `--capability embedding` for a local safetensors embedding model and
 `--capability rerank` for a local safetensors rerank model.
+Local chat, embedding, and rerank servers bind the selected model at startup, so
+the direct server request body does not need `model_ref`, `model`, or
+`model_kind` fields.
 
 Call the server:
 
