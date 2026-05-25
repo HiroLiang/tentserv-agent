@@ -82,7 +82,7 @@ local-model = [
 ]
 
 [project.scripts]
-tentgent-model-runtime-server = "tentgent.runtime.cli.server:main"
+tentgent-model-runtime-daemon = "tentgent.runtime.cli.daemon:main"
 
 [tool.uv]
 package = true

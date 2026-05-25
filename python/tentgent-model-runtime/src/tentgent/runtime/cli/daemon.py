@@ -11,7 +11,7 @@ from tentgent.runtime.server.lifecycle import RuntimeCapability, RuntimeServerCo
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the Tentgent model runtime HTTP server."
+        description="Run the Tentgent model runtime daemon."
     )
     parser.add_argument("--host", default="127.0.0.1", help="HTTP bind host.")
     parser.add_argument("--port", required=True, type=int, help="HTTP bind port.")

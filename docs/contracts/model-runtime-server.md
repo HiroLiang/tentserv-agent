@@ -1,12 +1,12 @@
 # Model Runtime Server
 
 This document defines shared lifecycle behavior for the direct Python model
-runtime server.
+runtime daemon.
 
 ## Capabilities
 
 One Python runtime process serves one endpoint family. Rust chooses the
-capability when it starts the process through the server CLI.
+capability when it starts the process through the runtime daemon entrypoint.
 
 Supported capability values:
 
