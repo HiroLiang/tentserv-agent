@@ -9,6 +9,24 @@ from .base import (
     MlxBackendModel,
     TransformersBackendModel,
 )
+from .audio_speech import (
+    AudioSpeechBackendModel,
+    AudioSpeechModelFactory,
+    AudioSpeechModelKind,
+    AudioSpeechOutputFormat,
+    AudioSpeechRequest,
+    AudioSpeechResult,
+    build_audio_speech_model,
+)
+from .audio_transcription import (
+    AudioTranscriptionBackendModel,
+    AudioTranscriptionModelFactory,
+    AudioTranscriptionModelKind,
+    AudioTranscriptionOutputFormat,
+    AudioTranscriptionRequest,
+    AudioTranscriptionResult,
+    build_audio_transcription_model,
+)
 from .chat import (
     ChatBackendModel,
     ChatMessage,
@@ -48,6 +66,18 @@ from .rerank import (
 __all__ = [
     "AdapterRecord",
     "AdapterType",
+    "AudioSpeechBackendModel",
+    "AudioSpeechModelFactory",
+    "AudioSpeechModelKind",
+    "AudioSpeechOutputFormat",
+    "AudioSpeechRequest",
+    "AudioSpeechResult",
+    "AudioTranscriptionBackendModel",
+    "AudioTranscriptionModelFactory",
+    "AudioTranscriptionModelKind",
+    "AudioTranscriptionOutputFormat",
+    "AudioTranscriptionRequest",
+    "AudioTranscriptionResult",
     "BackendConcurrencyPolicy",
     "BackendFamily",
     "BackendModel",
@@ -76,6 +106,8 @@ __all__ = [
     "RerankResult",
     "RerankScore",
     "TransformersBackendModel",
+    "build_audio_speech_model",
+    "build_audio_transcription_model",
     "build_chat_model",
     "build_embedding_model",
     "build_rerank_model",

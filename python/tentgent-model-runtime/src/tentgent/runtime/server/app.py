@@ -7,6 +7,14 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 
 from tentgent.runtime import __version__
+from tentgent.runtime.backends.audio_speech import (
+    AudioSpeechBackendModel,
+    build_audio_speech_model,
+)
+from tentgent.runtime.backends.audio_transcription import (
+    AudioTranscriptionBackendModel,
+    build_audio_transcription_model,
+)
 from tentgent.runtime.backends.chat import ChatBackendModel, build_chat_model
 from tentgent.runtime.backends.embedding import (
     EmbeddingBackendModel,
@@ -19,7 +27,15 @@ from tentgent.runtime.server.lifecycle import (
     RuntimeLifecycleState,
     RuntimeServerConfig,
 )
-from tentgent.runtime.server.routes import chat, embedding, health, lifecycle, rerank
+from tentgent.runtime.server.routes import (
+    audio_speech,
+    audio_transcription,
+    chat,
+    embedding,
+    health,
+    lifecycle,
+    rerank,
+)
 from tentgent.runtime.task.manager import TaskManager
 
 
@@ -63,6 +79,22 @@ def create_app(
 
 
 def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
+    if config.capability == RuntimeCapability.AUDIO_TRANSCRIPTION:
+        audio_transcription_resources: ResourceManager[
+            AudioTranscriptionBackendModel
+        ] = ResourceManager(
+            model_factory=build_audio_transcription_model,
+            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+        )
+        return audio_transcription_resources
+    if config.capability == RuntimeCapability.AUDIO_SPEECH:
+        audio_speech_resources: ResourceManager[AudioSpeechBackendModel] = (
+            ResourceManager(
+                model_factory=build_audio_speech_model,
+                model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+            )
+        )
+        return audio_speech_resources
     if config.capability == RuntimeCapability.CHAT:
         chat_resources: ResourceManager[ChatBackendModel] = ResourceManager(
             model_factory=build_chat_model,
@@ -86,7 +118,11 @@ def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
 
 
 def _include_capability_router(app: FastAPI, capability: RuntimeCapability) -> None:
-    if capability == RuntimeCapability.CHAT:
+    if capability == RuntimeCapability.AUDIO_TRANSCRIPTION:
+        app.include_router(audio_transcription.router)
+    elif capability == RuntimeCapability.AUDIO_SPEECH:
+        app.include_router(audio_speech.router)
+    elif capability == RuntimeCapability.CHAT:
         app.include_router(chat.router)
     elif capability == RuntimeCapability.EMBEDDING:
         app.include_router(embedding.router)
@@ -101,6 +137,8 @@ def _include_unsupported_capability_routes(
     capability: RuntimeCapability,
 ) -> None:
     targets = {
+        RuntimeCapability.AUDIO_TRANSCRIPTION: ("/v1/audio/transcriptions",),
+        RuntimeCapability.AUDIO_SPEECH: ("/v1/audio/speech",),
         RuntimeCapability.CHAT: ("/v1/chat", "/v1/chat/stream"),
         RuntimeCapability.EMBEDDING: ("/v1/embeddings",),
         RuntimeCapability.RERANK: ("/v1/rerank",),

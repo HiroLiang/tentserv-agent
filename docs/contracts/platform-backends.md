@@ -48,8 +48,8 @@ runtime family:
   `mlx-vlm` for native `vision-chat`; MLX `video-understanding` currently
   returns a planned-backend error until a stable local video API is verified
 - `primary_format = "mlx"` with `mlx_runtime_family = "mlx-audio"` uses
-  `mlx-audio` for native `audio-transcription`; MLX `audio-speech` currently
-  returns a planned-backend error until a stable local TTS API is verified
+  `mlx-audio` for native `audio-transcription` and direct model-runtime
+  `audio-speech`
 - `primary_format = "mlx"` with `mlx_runtime_family = "mlx-diffusion"` uses
   MFLUX for native `image-generation` on Apple Silicon
 - `primary_format = "safetensors"` uses `transformers-peft`

@@ -94,8 +94,8 @@ Known limits:
   streaming. Live dictation and live translation remain future work.
 - Audio speech is batch text-to-WAV synthesis. Realtime speech streaming,
   speech-to-speech, voice cloning, SSML, and MP3 output remain future work.
-  MLX text-to-speech is a planned backend until a stable local `mlx-audio` TTS
-  path is verified.
+  Direct Python model-runtime MLX text-to-speech is available through
+  `mlx-audio`; Rust daemon job routing still needs to be wired to that runtime.
 - Video understanding is batch frame-sampled analysis, not realtime video
   streaming. The first runnable baseline uses the local-model Python runtime's
   OpenCV-backed decoder; codec/container support depends on the packaged

@@ -137,8 +137,9 @@ runtime dispatch.
 `audio-transcription` is available through `tentgent transcribe` and the daemon
 job API for local safetensors ASR models. `audio-speech` is available through
 `tentgent speak` and daemon `POST /v1/audio/speech/job` for local Transformers
-text-to-speech models with `wav` output. MLX audio text-to-speech is kept as a
-planned backend until a stable local `mlx-audio` TTS path is verified.
+text-to-speech models with `wav` output. MLX audio text-to-speech is available
+through the direct Python model-runtime path and still needs Rust daemon job
+routing.
 `vision-chat` is available through `tentgent vision chat` and daemon
 `POST /v1/vision/chat` for local safetensors image-plus-text models.
 `image-generation` is available through

@@ -78,8 +78,7 @@ MLX model metadata:
   first M6Q runnable baseline uses safetensors Transformers plus sampled
   frames.
 - `mlx-audio` is the Apple Silicon MLX path for native
-  `audio-transcription`; MLX `audio-speech` remains planned until a stable TTS
-  API is verified.
+  `audio-transcription` and direct model-runtime `audio-speech`.
 - `mlx-diffusion` is the Apple Silicon MLX path for native
   `image-generation` through MFLUX Flux-family text-to-image models.
 
@@ -232,12 +231,13 @@ Vision chat currently uses Python/Pillow/torchvision image processing through
 the `local-model` profile and does not require a system decoder like `ffmpeg`
 for PNG, JPEG, or WebP inputs.
 
-Audio speech currently uses the Python local-model profile for Transformers
-text-to-speech models and writes WAV with the Python standard library. It does
-not require `ffmpeg` or an MP3 encoder for M6P. Text input is bounded by
+Audio speech currently uses the Python local-model profile for Transformers and
+MLX text-to-speech models and writes WAV with the Python standard library. It
+does not require `ffmpeg` or an MP3 encoder for M6P. Text input is bounded by
 `TENTGENT_AUDIO_SPEECH_MAX_TEXT_BYTES`, defaulting to 64 KiB. `language` and
 `voice` are passed only as model-aware runtime hints; unsupported hints should
-surface as clear runtime errors.
+surface as clear runtime errors. Kokoro-family MLX TTS models require the
+`misaki[en]` Python dependency for English text processing.
 
 Image generation currently uses Python Diffusers/Pillow for Diffusers models and
 MFLUX for MLX Flux-family models through the `local-model` profile. It does not

@@ -11,6 +11,8 @@ ResultT = TypeVar("ResultT")
 
 
 class TaskKind(StrEnum):
+    AUDIO_SPEECH = "audio-speech"
+    AUDIO_TRANSCRIPTION = "audio-transcription"
     CHAT = "chat"
     CHAT_STREAM = "chat-stream"
     EMBEDDING = "embedding"

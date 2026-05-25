@@ -15,6 +15,8 @@ from tentgent.runtime.task.manager import TaskManager, TaskManagerState
 
 
 class RuntimeCapability(StrEnum):
+    AUDIO_SPEECH = "audio-speech"
+    AUDIO_TRANSCRIPTION = "audio-transcription"
     CHAT = "chat"
     EMBEDDING = "embedding"
     RERANK = "rerank"

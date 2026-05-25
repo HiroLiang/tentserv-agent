@@ -447,7 +447,8 @@ bootstrapped. `mlx-audio` can run native `audio-transcription` on Apple
 Silicon after the `local-model` runtime profile is bootstrapped.
 `mlx-diffusion` can run native `image-generation` through MFLUX on Apple
 Silicon after the `local-model` runtime profile is bootstrapped. MLX audio TTS
-is planned but not yet verified as a stable local `audio-speech` backend.
+can run through the direct Python model-runtime path; Rust daemon job routing
+still needs to be wired to that runtime.
 Image-generation LoRA adapters can be used with the same CLI and daemon image
 job surfaces after they are imported or pulled into the managed adapter store.
 Use explicit `--target-capability image-generation`, backend support, and
@@ -470,6 +471,7 @@ pinned.
 | `audio-transcription` | [`mlx-community/whisper-tiny-mlx`](https://huggingface.co/mlx-community/whisper-tiny-mlx) | `public`, `mlx-audio`, `processor-metadata-warning` | `tentgent model pull mlx-community/whisper-tiny-mlx --capability audio-transcription` | Older MLX Whisper package; current `mlx-audio` may fail because the repo lacks Hugging Face processor metadata. |
 | `audio-transcription` | [`mlx-community/whisper-tiny-fp16`](https://huggingface.co/mlx-community/whisper-tiny-fp16) | `public`, `mlx-audio`, `processor-metadata-warning` | `tentgent model pull mlx-community/whisper-tiny-fp16 --capability audio-transcription` | Older MLX Whisper package; prefer `whisper-tiny-asr-fp16` for current `mlx-audio` smoke tests. |
 | `audio-speech` | [`facebook/mms-tts-eng`](https://huggingface.co/facebook/mms-tts-eng) | `public`, `license`, `transformers-tts`, `cli`, `daemon-job` | `tentgent model pull facebook/mms-tts-eng --capability audio-speech` | English VITS TTS, about 36M parameters; CC-BY-NC 4.0. Verified M6P small TTS smoke target after license review. |
+| `audio-speech` | [`mlx-community/Kokoro-82M-bf16`](https://huggingface.co/mlx-community/Kokoro-82M-bf16) | `public`, `mlx-audio`, `direct-runtime` | `tentgent model pull mlx-community/Kokoro-82M-bf16 --capability audio-speech` | MLX TTS smoke target, about 371 MiB in the managed store; direct Python model-runtime smoke verified with `voice=af_heart` and 24 kHz WAV output. |
 | `audio-speech` | [`suno/bark-small`](https://huggingface.co/suno/bark-small) | `public`, `candidate`, `transformers-tts` | `tentgent model pull suno/bark-small --capability audio-speech` | MIT-licensed TTS pipeline candidate; heavier than MMS-TTS and not the first smoke fixture. |
 | `vision-chat` | [`HuggingFaceTB/SmolVLM-256M-Instruct`](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct) | `public`, `cli`, `daemon` | `tentgent model pull HuggingFaceTB/SmolVLM-256M-Instruct --capability vision-chat` | Small image+text to text model for Transformers VQA/captioning smoke tests. |
 | `vision-chat` | [`mlx-community/SmolVLM-256M-Instruct-bf16`](https://huggingface.co/mlx-community/SmolVLM-256M-Instruct-bf16) | `public`, `mlx-vlm`, `cli`, `daemon` | `tentgent model pull mlx-community/SmolVLM-256M-Instruct-bf16 --capability vision-chat` | Small Apple Silicon MLX VLM smoke target; inspect should show `mlx_runtime_family = mlx-vlm`. |
