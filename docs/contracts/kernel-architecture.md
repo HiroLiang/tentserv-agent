@@ -639,7 +639,7 @@ metadata.
 - creating or reusing stored server specs without launching them
 - listing, inspecting, and removing stored stopped servers
 - resolving a stopped server before launch while checking local model
-  availability and chat capability
+  availability and endpoint capability
 - recording spawned process ids, clearing matching process metadata, and
   stopping running server processes
 

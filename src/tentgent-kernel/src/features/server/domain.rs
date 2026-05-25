@@ -233,11 +233,16 @@ impl fmt::Display for LaunchMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum ServerCapability {
+    AudioSpeech,
+    AudioTranscription,
     Chat,
     Embedding,
+    ImageGeneration,
     Rerank,
+    VideoUnderstanding,
+    VisionChat,
 }
 
 impl ServerCapability {
@@ -245,9 +250,14 @@ impl ServerCapability {
         let normalized = value.as_ref().trim().to_ascii_lowercase();
         match normalized.as_str() {
             "" => Err(ServerCapabilityParseError::Empty),
+            "audio-speech" => Ok(Self::AudioSpeech),
+            "audio-transcription" => Ok(Self::AudioTranscription),
             "chat" => Ok(Self::Chat),
             "embedding" => Ok(Self::Embedding),
+            "image-generation" => Ok(Self::ImageGeneration),
             "rerank" => Ok(Self::Rerank),
+            "video-understanding" => Ok(Self::VideoUnderstanding),
+            "vision-chat" => Ok(Self::VisionChat),
             _ => Err(ServerCapabilityParseError::Unsupported {
                 value: value.as_ref().trim().to_string(),
             }),
@@ -256,17 +266,27 @@ impl ServerCapability {
 
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::AudioSpeech => "audio-speech",
+            Self::AudioTranscription => "audio-transcription",
             Self::Chat => "chat",
             Self::Embedding => "embedding",
+            Self::ImageGeneration => "image-generation",
             Self::Rerank => "rerank",
+            Self::VideoUnderstanding => "video-understanding",
+            Self::VisionChat => "vision-chat",
         }
     }
 
     pub const fn required_model_capability(self) -> ModelCapability {
         match self {
+            Self::AudioSpeech => ModelCapability::AudioSpeech,
+            Self::AudioTranscription => ModelCapability::AudioTranscription,
             Self::Chat => ModelCapability::Chat,
             Self::Embedding => ModelCapability::Embedding,
+            Self::ImageGeneration => ModelCapability::ImageGeneration,
             Self::Rerank => ModelCapability::Rerank,
+            Self::VideoUnderstanding => ModelCapability::VideoUnderstanding,
+            Self::VisionChat => ModelCapability::VisionChat,
         }
     }
 }
@@ -287,11 +307,15 @@ impl std::str::FromStr for ServerCapability {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ServerCapabilityParseError {
-    #[error("server capability must not be blank; expected one of: chat, embedding, rerank")]
+    #[error("server capability must not be blank; expected one of: {SERVER_CAPABILITY_VALUES}")]
     Empty,
-    #[error("unsupported server capability `{value}`; expected one of: chat, embedding, rerank")]
+    #[error(
+        "unsupported server capability `{value}`; expected one of: {SERVER_CAPABILITY_VALUES}"
+    )]
     Unsupported { value: String },
 }
+
+pub const SERVER_CAPABILITY_VALUES: &str = "audio-speech, audio-transcription, chat, embedding, image-generation, rerank, video-understanding, vision-chat";
 
 pub const fn default_server_capability() -> ServerCapability {
     ServerCapability::Chat
@@ -344,6 +368,7 @@ fn model_capabilities_label(capabilities: &[ModelCapability]) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ServerRuntimeBackend {
+    Diffusers,
     TransformersPeft,
     Mlx,
     LlamaCpp,
@@ -352,15 +377,16 @@ pub enum ServerRuntimeBackend {
 impl ServerRuntimeBackend {
     pub const fn from_model_format(format: ModelFormat) -> Option<Self> {
         match format {
+            ModelFormat::Diffusers => Some(Self::Diffusers),
             ModelFormat::Safetensors => Some(Self::TransformersPeft),
             ModelFormat::Mlx => Some(Self::Mlx),
             ModelFormat::Gguf => Some(Self::LlamaCpp),
-            ModelFormat::Diffusers => None,
         }
     }
 
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Diffusers => "diffusers",
             Self::TransformersPeft => "transformers-peft",
             Self::Mlx => "mlx",
             Self::LlamaCpp => "llama-cpp",

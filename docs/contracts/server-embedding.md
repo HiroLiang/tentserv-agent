@@ -40,15 +40,11 @@ The response preserves input order. Embeddings are JSON numbers, not strings.
 Direct model-server embedding is stateless. The Python server runtime does not
 read or write Tentgent session files and does not accept daemon session fields.
 
-The process serves exactly one endpoint family:
-
-- `--capability chat` serves `POST /v1/chat` and rejects `POST /v1/embeddings`
-  with `400 unsupported_target`.
-- `--capability embedding` serves `POST /v1/embeddings` and rejects
-  `POST /v1/chat` with `400 unsupported_target`.
-- `--capability rerank` serves `POST /v1/rerank` and rejects
-  `POST /v1/embeddings` with `400 unsupported_target`; see
-  [server-rerank.md](./server-rerank.md).
+The process serves exactly one endpoint family. `--capability embedding` serves
+`POST /v1/embeddings`; servers launched for any other capability reject
+`POST /v1/embeddings` with `400 unsupported_target`. See
+[server-chat.md](./server-chat.md) and [server-rerank.md](./server-rerank.md)
+for sibling endpoint examples.
 
 Cloud provider direct servers currently support only `chat`.
 

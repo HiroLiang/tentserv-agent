@@ -829,7 +829,7 @@ workspace chunks or spool routes.
 | `GET` | `/v1/models` | None. |
 | `GET` | `/v1/models/{reference}` | None. |
 | `DELETE` | `/v1/models/{reference}` | None. |
-| `PATCH` | `/v1/models/{reference}` | `{"capability":"chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|image-generation"}` |
+| `PATCH` | `/v1/models/{reference}` | `{"capability":"chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation"}` |
 | `POST` | `/v1/models/import` | `{"path":"/absolute/model-dir","capability":"optional-capability"}` |
 | `POST` | `/v1/models/pull` | `{"repo_id":"org/model","revision":"optional","capability":"optional-capability"}` |
 | `POST` | `/v1/models/import/jobs` | Same as `/v1/models/import`, returns a job. |
@@ -904,7 +904,7 @@ For ControlNet-style image control adapters, set `target_capability` to
 | Method | Path | Body |
 | --- | --- | --- |
 | `GET` | `/v1/servers` | None. |
-| `POST` | `/v1/servers` | `{"runtime_ref":"<model-or-cloud-ref>","capability":"chat\|embedding\|rerank","host":"optional","port":8780,"lazy_load":true,"idle_seconds":60}` |
+| `POST` | `/v1/servers` | `{"runtime_ref":"<model-or-cloud-ref>","capability":"chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation","host":"optional","port":8780,"lazy_load":true,"idle_seconds":60}` |
 | `GET` | `/v1/servers/{reference}` | None. |
 | `DELETE` | `/v1/servers/{reference}` | Removes a stopped server spec. |
 | `POST` | `/v1/servers/{reference}/start` | `{"wait_ready":true,"timeout_seconds":30}` |
@@ -914,10 +914,11 @@ For ControlNet-style image control adapters, set `target_capability` to
 | `GET` | `/v1/servers/{reference}/logs/stdout?tail_bytes=8192` | Server stdout tail. |
 | `GET` | `/v1/servers/{reference}/logs/stderr?tail_bytes=8192` | Server stderr tail. |
 
-Direct model-server ports are separate from the daemon port. A chat server
-exposes chat routes, an embedding server exposes `/v1/embeddings`, and a rerank
-server exposes `/v1/rerank`. Unsupported endpoint families on that direct
-server should return `404` or an endpoint-specific error.
+Direct model-server ports are separate from the daemon port. A server exposes
+only the endpoint family selected by its `capability`, such as `/v1/chat`,
+`/v1/embeddings`, `/v1/rerank`, audio, vision, video, or image routes.
+Unsupported endpoint families on that direct server should return `404` or an
+endpoint-specific error.
 
 ## Sessions
 

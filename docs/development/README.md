@@ -630,6 +630,14 @@ The server exposes:
 - `POST /v1/chat`
 - `POST /v1/embeddings` when launched with `--capability embedding`
 - `POST /v1/rerank` when launched with `--capability rerank`
+- `POST /v1/audio/transcriptions` when launched with
+  `--capability audio-transcription`
+- `POST /v1/audio/speech` when launched with `--capability audio-speech`
+- `POST /v1/vision/chat` when launched with `--capability vision-chat`
+- `POST /v1/video/understanding` when launched with
+  `--capability video-understanding`
+- `POST /v1/images/generations`, `transforms`, `inpaint`, and `control` when
+  launched with `--capability image-generation`
 
 HTTP `stream=true` returns Server-Sent Events for local runtimes, compatible
 local adapters, and OpenAI or Anthropic cloud provider runtimes.

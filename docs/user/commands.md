@@ -130,10 +130,10 @@ tentgent model pull BAAI/bge-reranker-base --capability rerank --revision main
 ```
 
 `--capability` accepts `chat`, `embedding`, `rerank`,
-`audio-transcription`, `audio-speech`, `vision-chat`, or
+`audio-transcription`, `audio-speech`, `vision-chat`, `video-understanding`, or
 `image-generation`. Chat, embedding, rerank, audio transcription, audio speech,
-vision chat, and image generation endpoints enforce this metadata before
-runtime dispatch.
+vision chat, video understanding, and image generation endpoints enforce this
+metadata before runtime dispatch.
 `audio-transcription` is available through `tentgent transcribe` and the daemon
 job API for local safetensors ASR models. `audio-speech` is available through
 `tentgent speak` and daemon `POST /v1/audio/speech/job` for local Transformers
@@ -142,6 +142,8 @@ through the direct Python model-runtime path and still needs Rust daemon job
 routing.
 `vision-chat` is available through `tentgent vision chat` and daemon
 `POST /v1/vision/chat` for local safetensors image-plus-text models.
+`video-understanding` is available through `tentgent video understand` and
+daemon `POST /v1/video/understanding/job` for local video-plus-text models.
 `image-generation` is available through
 `tentgent image generate` and daemon `POST /v1/images/generations/job` for
 local Diffusers text-to-image models and Apple Silicon MFLUX `mlx-diffusion`
@@ -709,11 +711,12 @@ tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 ```
 
 Server launch defaults to `--capability chat` and requires a chat-capable model.
-Use `--capability embedding` for a local safetensors embedding model and
-`--capability rerank` for a local safetensors rerank model.
-Local chat, embedding, and rerank servers bind the selected model at startup, so
+Use `--capability embedding`, `rerank`, `audio-transcription`, `audio-speech`,
+`vision-chat`, `video-understanding`, or `image-generation` to bind a model to
+another endpoint family. Local servers bind the selected model at startup, so
 the direct server request body does not need `model_ref`, `model`, or
-`model_kind` fields.
+`model_kind` fields. Direct Python runtime callers that do not start a
+model-bound server may still send explicit `model` and `model_kind` fields.
 
 Call the server:
 
@@ -762,6 +765,10 @@ curl -s http://127.0.0.1:8782/v1/rerank \
 ```
 
 Servers reject endpoint families that do not match their launch capability.
+Image generation chooses the runtime kind from both the bound model format and
+the requested image workflow. LoRA tuning is intentionally not a model-bound
+server capability; managed tuning runs choose their base model through the train
+plan and tuning payload.
 
 Stream a local base-model response with Server-Sent Events:
 

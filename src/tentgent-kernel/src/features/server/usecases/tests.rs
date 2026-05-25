@@ -401,21 +401,115 @@ fn standard_server_usecase_prepares_rerank_specs() {
 }
 
 #[test]
-fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
-    for (label, server_capability, model_capability) in [
+fn standard_server_usecase_prepares_model_runtime_capability_specs() {
+    for (label, server_capability, model_capability, model_format) in [
+        (
+            "audio-speech",
+            ServerCapability::AudioSpeech,
+            ModelCapability::AudioSpeech,
+            ModelFormat::Safetensors,
+        ),
+        (
+            "audio-transcription",
+            ServerCapability::AudioTranscription,
+            ModelCapability::AudioTranscription,
+            ModelFormat::Mlx,
+        ),
         (
             "embedding-gguf",
             ServerCapability::Embedding,
             ModelCapability::Embedding,
+            ModelFormat::Gguf,
         ),
+        (
+            "image-generation",
+            ServerCapability::ImageGeneration,
+            ModelCapability::ImageGeneration,
+            ModelFormat::Diffusers,
+        ),
+        (
+            "video-understanding",
+            ServerCapability::VideoUnderstanding,
+            ModelCapability::VideoUnderstanding,
+            ModelFormat::Safetensors,
+        ),
+        (
+            "vision-chat",
+            ServerCapability::VisionChat,
+            ModelCapability::VisionChat,
+            ModelFormat::Mlx,
+        ),
+    ] {
+        let fixture = Fixture::new(label);
+        fixture.write_model_format_capabilities(model_format, vec![model_capability]);
+        let layout_resolver = StdRuntimeLayoutResolver;
+        let initializer = StdServerStoreLayoutInitializer;
+        let model_catalog = FileModelCatalogStore;
+        let identity = StdServerIdentityGenerator;
+        let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+        let controller = StaticProcessController;
+        let clock = StaticClock;
+        let servers = StdServerUseCase::new(
+            &layout_resolver,
+            &initializer,
+            &model_catalog,
+            &identity,
+            &catalog,
+            &controller,
+            &clock,
+        );
+
+        let prepared = servers
+            .prepare_server(ServerPrepareRequest {
+                layout: fixture.layout_input(LayoutResolveMode::Create),
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: server_capability,
+                host: None,
+                port: Some(8782),
+                lazy_load: false,
+                idle_seconds: None,
+            })
+            .expect("prepare model runtime server");
+
+        assert!(prepared.outcome.created);
+        assert_eq!(
+            prepared.outcome.inspection.spec.capability,
+            server_capability
+        );
+
+        let selector = ServerRefSelector::parse(prepared.outcome.inspection.spec.short_ref.clone())
+            .expect("selector");
+        let startable = servers
+            .resolve_for_start(ServerResolveForStartRequest {
+                layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+                selector,
+            })
+            .expect("model runtime server is implemented");
+        assert_eq!(startable.inspection.spec.capability, server_capability);
+    }
+}
+
+#[test]
+fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
+    for (label, server_capability, model_capability) in [
         (
             "rerank-gguf",
             ServerCapability::Rerank,
             ModelCapability::Rerank,
         ),
+        (
+            "image-generation-safetensors",
+            ServerCapability::ImageGeneration,
+            ModelCapability::ImageGeneration,
+        ),
     ] {
         let fixture = Fixture::new(label);
-        fixture.write_model_format_capabilities(ModelFormat::Gguf, vec![model_capability]);
+        let format = if server_capability == ServerCapability::ImageGeneration {
+            ModelFormat::Safetensors
+        } else {
+            ModelFormat::Gguf
+        };
+        fixture.write_model_format_capabilities(format, vec![model_capability]);
         let layout_resolver = StdRuntimeLayoutResolver;
         let initializer = StdServerStoreLayoutInitializer;
         let model_catalog = FileModelCatalogStore;
@@ -445,7 +539,7 @@ fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
             })
             .expect_err("unsupported non-chat format");
 
-        assert!(err.to_string().contains("does not support `gguf`"));
+        assert!(err.to_string().contains("does not support"));
     }
 }
 

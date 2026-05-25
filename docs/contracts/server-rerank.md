@@ -46,14 +46,11 @@ tie-breaker.
 Direct model-server rerank is stateless. The Python server runtime does not
 read or write Tentgent session files and does not accept daemon session fields.
 
-The process serves exactly one endpoint family:
-
-- `--capability chat` serves `POST /v1/chat` and rejects `POST /v1/rerank`
-  with `400 unsupported_target`.
-- `--capability embedding` serves `POST /v1/embeddings` and rejects
-  `POST /v1/rerank` with `400 unsupported_target`.
-- `--capability rerank` serves `POST /v1/rerank` and rejects `POST /v1/chat`
-  and `POST /v1/embeddings` with `400 unsupported_target`.
+The process serves exactly one endpoint family. `--capability rerank` serves
+`POST /v1/rerank`; servers launched for any other capability reject
+`POST /v1/rerank` with `400 unsupported_target`. See
+[server-chat.md](./server-chat.md) and [server-embedding.md](./server-embedding.md)
+for sibling endpoint examples.
 
 Cloud provider direct servers currently support only `chat`.
 
@@ -71,8 +68,8 @@ Supported rerank model kinds:
   `501 not_implemented`; downstream forks or external runtimes may provide a
   concrete implementation.
 
-GGUF, cloud provider, and embedding backend paths are not implemented for
-rerank in this contract.
+GGUF, Diffusers, cloud provider, and embedding backend paths are not implemented
+for rerank in this contract.
 
 ## Error Mapping
 

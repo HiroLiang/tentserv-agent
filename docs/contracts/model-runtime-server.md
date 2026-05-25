@@ -42,12 +42,21 @@ selection. The Python runtime only loads the selected model, runs inference, and
 returns or writes the prepared result.
 
 When Rust starts this daemon as a model-bound local server, it passes
-`--server-ref`, `--model-ref`, `--home`, and one of `chat`, `embedding`, or
-`rerank`. In that mode, the matching direct server endpoints may omit the full
-`model` record and `model_kind`; Python resolves the managed model from
+`--server-ref`, `--model-ref`, `--home`, and one capability value. In that
+mode, the matching direct server endpoints may omit the full `model` record and
+`model_kind`; Python resolves the managed model from
 `TENTGENT_HOME/models/store` and infers the runtime kind from the stored primary
 format. Explicit direct-runtime requests may still pass `model` and
-`model_kind`.
+`model_kind`. If a model-bound request includes a different explicit model, the
+runtime rejects the request instead of silently switching resources.
+
+Fixed backend-kind inference is available for chat, embedding, rerank, audio,
+vision chat, and video understanding. Image generation infers the backend kind
+from both the bound model format and the requested image workflow, because
+text-to-image, image-to-image, inpaint, and control use different backend
+entrypoints. LoRA tuning remains an explicit direct-runtime endpoint because a
+training run owns its base model through the tuning payload and managed train
+plan.
 
 ### Audio Transcription
 
@@ -194,6 +203,7 @@ Response fields include:
 - `server.host`, `server.port`, and optional `server.server_ref`
 - `runtime.capability`
 - `runtime.model_ref`
+- `runtime.model_bound`
 - `runtime.resources`
 - `tasks`
 

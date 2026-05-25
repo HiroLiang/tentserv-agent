@@ -17,13 +17,18 @@ from tentgent.runtime.backends.video_understanding import (
     VideoUnderstandingRequest,
     normalize_video_understanding_request,
 )
+from tentgent.runtime.backends.records import ModelCapability
 from tentgent.runtime.task.inference.video_understanding import (
     VideoUnderstandingInferenceRequest,
     VideoUnderstandingTask,
 )
 from tentgent.runtime.task.manager import TaskManagerClosedError
 
-from .payloads import ModelRecordPayload, model_record
+from .payloads import ModelRecordPayload
+from ..managed_models import (
+    infer_video_understanding_model_kind,
+    resolve_request_model,
+)
 
 
 router = APIRouter(prefix="/v1/video")
@@ -52,8 +57,8 @@ class VideoUnderstandingContextPayload(BaseModel):
 
 class VideoUnderstandingPayload(BaseModel):
     task_ref: str | None = None
-    model_kind: VideoUnderstandingModelKind
-    model: ModelRecordPayload
+    model_kind: VideoUnderstandingModelKind | None = None
+    model: ModelRecordPayload | None = None
     video_path: str
     prompt: str
     output_format: str | VideoUnderstandingOutputFormat = (
@@ -100,7 +105,7 @@ async def video_understanding(
     return VideoUnderstandingResponsePayload(
         task_ref=handle.task_ref,
         status=task.status.value,
-        model_ref=payload.model.model_ref,
+        model_ref=task.request.model.model_ref,
         output_format=result.output_format,
         media_type=result.media_type,
         text=result.text,
@@ -113,7 +118,10 @@ def _build_video_understanding_task(
     payload: VideoUnderstandingPayload,
     request: Request,
 ) -> VideoUnderstandingTask:
-    task_ref, inference_request = _build_video_understanding_inference_request(payload)
+    task_ref, inference_request = _build_video_understanding_inference_request(
+        payload,
+        request,
+    )
     return VideoUnderstandingTask(
         task_ref=task_ref,
         request=inference_request,
@@ -123,6 +131,7 @@ def _build_video_understanding_task(
 
 def _build_video_understanding_inference_request(
     payload: VideoUnderstandingPayload,
+    request: Request,
 ) -> tuple[str, VideoUnderstandingInferenceRequest]:
     try:
         video_request = normalize_video_understanding_request(
@@ -152,9 +161,15 @@ def _build_video_understanding_inference_request(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    model = resolve_request_model(
+        payload.model,
+        request,
+        required_capability=ModelCapability.VIDEO_UNDERSTANDING,
+    )
+    model_kind = payload.model_kind or infer_video_understanding_model_kind(model)
     inference_request = VideoUnderstandingInferenceRequest(
-        model_kind=payload.model_kind,
-        model=model_record(payload.model),
+        model_kind=model_kind,
+        model=model,
         video=video_request,
     )
     return payload.task_ref or uuid4().hex, inference_request

@@ -8,11 +8,14 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from time import monotonic
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tentgent.runtime import __version__
 from tentgent.runtime.backends.resource_manager import ResourceManager
 from tentgent.runtime.task.manager import TaskManager, TaskManagerState
+
+if TYPE_CHECKING:
+    from .managed_models import BoundModelContext
 
 
 class RuntimeCapability(StrEnum):
@@ -49,11 +52,13 @@ class RuntimeLifecycleState:
         config: RuntimeServerConfig,
         task_manager: TaskManager,
         resource_manager: ResourceManager[Any],
+        bound_model: BoundModelContext | None = None,
         request_shutdown: Callable[[], None] | None = None,
     ) -> None:
         self._config = config
         self._task_manager = task_manager
         self._resource_manager = resource_manager
+        self._bound_model = bound_model
         self._request_shutdown = request_shutdown
         self._pid = os.getpid()
         self._started_at = datetime.now(UTC)
@@ -99,6 +104,7 @@ class RuntimeLifecycleState:
             "runtime": {
                 "capability": self._config.capability.value,
                 "model_ref": self._config.model_ref,
+                "model_bound": self._bound_model is not None,
                 "resources": self._resource_manager.snapshot(),
             },
             "tasks": task_snapshot,
@@ -144,16 +150,17 @@ class RuntimeLifecycleState:
                 return
 
     def _preload_bound_model(self) -> None:
-        from .managed_models import (
-            infer_model_kind_for_capability,
-            load_managed_model_record,
-        )
+        from .managed_models import infer_preload_model_kind_for_capability
 
-        if self._config.model_ref is None:
+        if self._bound_model is None:
             return
-        record = load_managed_model_record(self._config.model_ref, home=self._config.home)
-        model_kind = infer_model_kind_for_capability(self._config.capability, record)
-        with self._resource_manager.lease_model(model_kind, record):
+        model_kind = infer_preload_model_kind_for_capability(
+            self._config.capability,
+            self._bound_model.model,
+        )
+        if model_kind is None:
+            return
+        with self._resource_manager.lease_model(model_kind, self._bound_model.model):
             pass
 
     @staticmethod

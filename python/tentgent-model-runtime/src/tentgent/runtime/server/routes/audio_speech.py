@@ -13,13 +13,15 @@ from tentgent.runtime.backends.audio_speech import (
     AudioSpeechRequest,
     validate_audio_speech_text,
 )
+from tentgent.runtime.backends.records import ModelCapability
 from tentgent.runtime.task.inference.audio_speech import (
     AudioSpeechInferenceRequest,
     AudioSpeechTask,
 )
 from tentgent.runtime.task.manager import TaskManagerClosedError
 
-from .payloads import ModelRecordPayload, model_record
+from .payloads import ModelRecordPayload
+from ..managed_models import infer_audio_speech_model_kind, resolve_request_model
 
 
 router = APIRouter(prefix="/v1/audio")
@@ -27,8 +29,8 @@ router = APIRouter(prefix="/v1/audio")
 
 class AudioSpeechPayload(BaseModel):
     task_ref: str | None = None
-    model_kind: AudioSpeechModelKind
-    model: ModelRecordPayload
+    model_kind: AudioSpeechModelKind | None = None
+    model: ModelRecordPayload | None = None
     text: str
     output_path: str
     output_format: AudioSpeechOutputFormat = AudioSpeechOutputFormat.WAV
@@ -69,7 +71,7 @@ async def audio_speech(
     return AudioSpeechResponsePayload(
         task_ref=handle.task_ref,
         status=task.status.value,
-        model_ref=payload.model.model_ref,
+        model_ref=task.request.model.model_ref,
         output_format=result.output_format,
         media_type=result.media_type,
         output_path=str(result.output_path),
@@ -82,7 +84,10 @@ def _build_audio_speech_task(
     payload: AudioSpeechPayload,
     request: Request,
 ) -> AudioSpeechTask:
-    task_ref, inference_request = _build_audio_speech_inference_request(payload)
+    task_ref, inference_request = _build_audio_speech_inference_request(
+        payload,
+        request,
+    )
     return AudioSpeechTask(
         task_ref=task_ref,
         request=inference_request,
@@ -92,12 +97,19 @@ def _build_audio_speech_task(
 
 def _build_audio_speech_inference_request(
     payload: AudioSpeechPayload,
+    request: Request,
 ) -> tuple[str, AudioSpeechInferenceRequest]:
     try:
         text = validate_audio_speech_text(payload.text)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    model = resolve_request_model(
+        payload.model,
+        request,
+        required_capability=ModelCapability.AUDIO_SPEECH,
+    )
+    model_kind = payload.model_kind or infer_audio_speech_model_kind(model)
     speech_request = AudioSpeechRequest(
         text=text,
         output_path=Path(payload.output_path).expanduser().resolve(),
@@ -106,8 +118,8 @@ def _build_audio_speech_inference_request(
         voice=_optional_text(payload.voice),
     )
     inference_request = AudioSpeechInferenceRequest(
-        model_kind=payload.model_kind,
-        model=model_record(payload.model),
+        model_kind=model_kind,
+        model=model,
         speech=speech_request,
     )
     return payload.task_ref or uuid4().hex, inference_request

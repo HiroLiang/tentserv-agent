@@ -93,8 +93,8 @@ CLI runtime paths today. `audio-transcription` and `video-understanding` have
 daemon file-upload job runtime paths for HTTP integrations. `audio-speech` has
 a daemon JSON job runtime path. `vision-chat` has a bounded daemon multipart
 route. `image-generation` has daemon job routes and generated-file download
-routes. Direct local server routes are available for chat, embedding, and
-rerank; audio, vision, video, and image server routes are planned separately.
+routes. Direct local model-bound server routes are available for chat,
+embedding, rerank, audio, vision, video, and image endpoint families.
 
 ## Runnable Smoke Commands
 

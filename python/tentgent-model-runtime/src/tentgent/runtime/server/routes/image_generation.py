@@ -21,13 +21,15 @@ from tentgent.runtime.backends.image_generation import (
     ImageGenerationWorkflowKind,
     normalize_image_generation_request,
 )
+from tentgent.runtime.backends.records import ModelCapability
 from tentgent.runtime.task.inference.image_generation import (
     ImageGenerationInferenceRequest,
     ImageGenerationTask,
 )
 from tentgent.runtime.task.manager import TaskManagerClosedError
 
-from .payloads import ModelRecordPayload, model_record
+from .payloads import ModelRecordPayload
+from ..managed_models import infer_image_generation_model_kind, resolve_request_model
 
 
 router = APIRouter(prefix="/v1/images")
@@ -48,8 +50,8 @@ class ImageControlAdapterPayload(BaseModel):
 
 class ImageBasePayload(BaseModel):
     task_ref: str | None = None
-    model_kind: ImageGenerationModelKind
-    model: ModelRecordPayload
+    model_kind: ImageGenerationModelKind | None = None
+    model: ModelRecordPayload | None = None
     prompt: str
     output_path: str
     output_format: str | ImageGenerationOutputFormat = ImageGenerationOutputFormat.PNG
@@ -172,7 +174,7 @@ async def _run_image_task(
     return ImageGenerationResponsePayload(
         task_ref=handle.task_ref,
         status=task.status.value,
-        model_ref=payload.model.model_ref,
+        model_ref=task.request.model.model_ref,
         output_format=result.output_format,
         media_type=result.media_type,
         output_path=str(result.output_path),
@@ -191,6 +193,7 @@ def _build_image_task(
 ) -> ImageGenerationTask:
     task_ref, inference_request = _build_image_inference_request(
         payload,
+        request,
         workflow_kind=workflow_kind,
     )
     return ImageGenerationTask(
@@ -202,10 +205,20 @@ def _build_image_task(
 
 def _build_image_inference_request(
     payload: ImageBasePayload,
+    request: Request,
     *,
     workflow_kind: ImageGenerationWorkflowKind,
 ) -> tuple[str, ImageGenerationInferenceRequest]:
-    _validate_model_kind_workflow(payload.model_kind, workflow_kind)
+    model = resolve_request_model(
+        payload.model,
+        request,
+        required_capability=ModelCapability.IMAGE_GENERATION,
+    )
+    model_kind = payload.model_kind or infer_image_generation_model_kind(
+        model,
+        workflow_kind,
+    )
+    _validate_model_kind_workflow(model_kind, workflow_kind)
     try:
         image_request = normalize_image_generation_request(
             _image_request(payload, workflow_kind=workflow_kind)
@@ -218,8 +231,8 @@ def _build_image_inference_request(
         raise _http_exception(exc) from exc
 
     inference_request = ImageGenerationInferenceRequest(
-        model_kind=payload.model_kind,
-        model=model_record(payload.model),
+        model_kind=model_kind,
+        model=model,
         image=image_request,
     )
     return payload.task_ref or uuid4().hex, inference_request

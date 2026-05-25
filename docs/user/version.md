@@ -24,7 +24,8 @@ What changed:
   models and direct Python server `/v1/embeddings` for `--capability embedding`
   server specs.
 - Added daemon-native `POST /v1/rerank` for local safetensors rerank models and
-  direct Python server `/v1/rerank` for `--capability rerank` server specs.
+  direct Python model-bound server routes for local chat, embedding, rerank,
+  audio, vision, video, and image server specs.
 - Added one-shot CLI `tentgent embed` and `tentgent rerank` commands for local
   embedding and rerank smoke tests without starting the daemon.
 - Added foreground CLI `tentgent transcribe` for local file-to-file audio

@@ -5,12 +5,30 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+from fastapi import HTTPException
+
+from tentgent.runtime.backends.audio_speech import AudioSpeechModelKind
+from tentgent.runtime.backends.audio_transcription import AudioTranscriptionModelKind
 from tentgent.runtime.backends.chat import ChatModelKind
 from tentgent.runtime.backends.embedding import EmbeddingModelKind
+from tentgent.runtime.backends.image_generation import (
+    ImageGenerationModelKind,
+    ImageGenerationWorkflowKind,
+)
 from tentgent.runtime.backends.records import ModelCapability, ModelFormat
 from tentgent.runtime.backends.rerank import RerankModelKind
+from tentgent.runtime.backends.video_understanding import VideoUnderstandingModelKind
+from tentgent.runtime.backends.vision_chat import VisionChatModelKind
 from tentgent.runtime.server.lifecycle import RuntimeCapability, RuntimeServerConfig
 from tentgent.runtime.server.managed_models import load_managed_model_record
+from tentgent.runtime.server.routes.audio_speech import (
+    AudioSpeechPayload,
+    _build_audio_speech_inference_request,
+)
+from tentgent.runtime.server.routes.audio_transcription import (
+    AudioTranscriptionPayload,
+    _build_audio_transcription_inference_request,
+)
 from tentgent.runtime.server.routes.chat import (
     ChatMessagePayload,
     ChatPayload,
@@ -20,9 +38,22 @@ from tentgent.runtime.server.routes.embedding import (
     EmbeddingPayload,
     _build_embedding_inference_request,
 )
+from tentgent.runtime.server.routes.image_generation import (
+    ImageGenerationPayload,
+    _build_image_inference_request,
+)
+from tentgent.runtime.server.routes.payloads import ModelRecordPayload
 from tentgent.runtime.server.routes.rerank import (
     RerankPayload,
     _build_rerank_inference_request,
+)
+from tentgent.runtime.server.routes.video_understanding import (
+    VideoUnderstandingPayload,
+    _build_video_understanding_inference_request,
+)
+from tentgent.runtime.server.routes.vision_chat import (
+    VisionChatPayload,
+    _build_vision_chat_inference_request,
 )
 
 
@@ -116,6 +147,214 @@ class ServerBoundRouteTests(unittest.TestCase):
         self.assertEqual(inference.model.model_ref, model_ref)
         self.assertEqual(inference.model_kind, RerankModelKind.TRANSFORMERS)
 
+    def test_audio_transcription_request_can_omit_model_when_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "e" * 64
+            input_path = home / "sample.wav"
+            input_path.write_bytes(b"audio")
+            _write_model(
+                home,
+                model_ref=model_ref,
+                format_=ModelFormat.MLX,
+                capability=ModelCapability.AUDIO_TRANSCRIPTION,
+            )
+            payload = AudioTranscriptionPayload(
+                input_path=str(input_path),
+                output_path=str(home / "sample.txt"),
+            )
+
+            _, inference = _build_audio_transcription_inference_request(
+                payload,
+                _request(home, RuntimeCapability.AUDIO_TRANSCRIPTION, model_ref),
+            )
+
+        self.assertEqual(inference.model.model_ref, model_ref)
+        self.assertEqual(inference.model_kind, AudioTranscriptionModelKind.MLX_AUDIO)
+
+    def test_audio_speech_request_can_omit_model_when_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "f" * 64
+            _write_model(
+                home,
+                model_ref=model_ref,
+                format_=ModelFormat.SAFETENSORS,
+                capability=ModelCapability.AUDIO_SPEECH,
+            )
+            payload = AudioSpeechPayload(
+                text="Hello from Tentgent.",
+                output_path=str(home / "speech.wav"),
+            )
+
+            _, inference = _build_audio_speech_inference_request(
+                payload,
+                _request(home, RuntimeCapability.AUDIO_SPEECH, model_ref),
+            )
+
+        self.assertEqual(inference.model.model_ref, model_ref)
+        self.assertEqual(inference.model_kind, AudioSpeechModelKind.TRANSFORMERS_TTS)
+
+    def test_vision_chat_request_can_omit_model_when_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "1" * 64
+            image_path = home / "image.png"
+            image_path.write_bytes(b"image")
+            _write_model(
+                home,
+                model_ref=model_ref,
+                format_=ModelFormat.MLX,
+                capability=ModelCapability.VISION_CHAT,
+            )
+            payload = VisionChatPayload(
+                image_path=str(image_path),
+                prompt="What is visible?",
+            )
+
+            _, inference = _build_vision_chat_inference_request(
+                payload,
+                _request(home, RuntimeCapability.VISION_CHAT, model_ref),
+            )
+
+        self.assertEqual(inference.model.model_ref, model_ref)
+        self.assertEqual(inference.model_kind, VisionChatModelKind.MLX_VLM)
+
+    def test_video_understanding_request_can_omit_model_when_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "2" * 64
+            video_path = home / "clip.mp4"
+            video_path.write_bytes(b"video")
+            _write_model(
+                home,
+                model_ref=model_ref,
+                format_=ModelFormat.SAFETENSORS,
+                capability=ModelCapability.VIDEO_UNDERSTANDING,
+            )
+            payload = VideoUnderstandingPayload(
+                video_path=str(video_path),
+                prompt="Describe the clip.",
+            )
+
+            _, inference = _build_video_understanding_inference_request(
+                payload,
+                _request(home, RuntimeCapability.VIDEO_UNDERSTANDING, model_ref),
+            )
+
+        self.assertEqual(inference.model.model_ref, model_ref)
+        self.assertEqual(
+            inference.model_kind,
+            VideoUnderstandingModelKind.TRANSFORMERS_VIDEO_UNDERSTANDING,
+        )
+
+    def test_image_generation_request_can_omit_model_when_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "3" * 64
+            _write_model(
+                home,
+                model_ref=model_ref,
+                format_=ModelFormat.DIFFUSERS,
+                capability=ModelCapability.IMAGE_GENERATION,
+            )
+            payload = ImageGenerationPayload(
+                prompt="A small red cube",
+                output_path=str(home / "cube.png"),
+            )
+
+            _, inference = _build_image_inference_request(
+                payload,
+                _request(home, RuntimeCapability.IMAGE_GENERATION, model_ref),
+                workflow_kind=ImageGenerationWorkflowKind.TEXT_TO_IMAGE,
+            )
+
+        self.assertEqual(inference.model.model_ref, model_ref)
+        self.assertEqual(
+            inference.model_kind,
+            ImageGenerationModelKind.DIFFUSERS_TEXT_TO_IMAGE,
+        )
+
+    def test_direct_runtime_still_accepts_explicit_model_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            model_ref = "4" * 64
+            source_path = _write_model(
+                home,
+                model_ref=model_ref,
+                format_=ModelFormat.MLX,
+                capability=ModelCapability.CHAT,
+            )
+            payload = ChatPayload(
+                model=ModelRecordPayload(
+                    model_ref=model_ref,
+                    source_path=str(source_path),
+                    primary_format=ModelFormat.MLX,
+                    capabilities=[ModelCapability.CHAT],
+                ),
+                messages=[ChatMessagePayload(role="user", content="Hello")],
+            )
+
+            _, inference = _build_chat_inference_request(
+                payload,
+                _direct_request(home, RuntimeCapability.CHAT),
+            )
+
+        self.assertEqual(inference.model.model_ref, model_ref)
+        self.assertEqual(inference.model_kind, ChatModelKind.MLX)
+
+    def test_direct_runtime_requires_model_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            payload = ChatPayload(
+                messages=[ChatMessagePayload(role="user", content="Hello")],
+            )
+
+            with self.assertRaises(HTTPException) as raised:
+                _build_chat_inference_request(
+                    payload,
+                    _direct_request(home, RuntimeCapability.CHAT),
+                )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("`model` is required", str(raised.exception.detail))
+
+    def test_model_bound_runtime_rejects_different_explicit_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            bound_ref = "5" * 64
+            other_ref = "6" * 64
+            bound_source = _write_model(
+                home,
+                model_ref=bound_ref,
+                format_=ModelFormat.MLX,
+                capability=ModelCapability.CHAT,
+            )
+            _write_model(
+                home,
+                model_ref=other_ref,
+                format_=ModelFormat.MLX,
+                capability=ModelCapability.CHAT,
+            )
+            payload = ChatPayload(
+                model=ModelRecordPayload(
+                    model_ref=other_ref,
+                    source_path=str(bound_source),
+                    primary_format=ModelFormat.MLX,
+                    capabilities=[ModelCapability.CHAT],
+                ),
+                messages=[ChatMessagePayload(role="user", content="Hello")],
+            )
+
+            with self.assertRaises(HTTPException) as raised:
+                _build_chat_inference_request(
+                    payload,
+                    _request(home, RuntimeCapability.CHAT, bound_ref),
+                )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("model-bound runtime", str(raised.exception.detail))
+
 
 def _request(
     home: Path,
@@ -131,6 +370,23 @@ def _request(
                     capability=capability,
                     server_ref="server-ref",
                     model_ref=model_ref,
+                    home=home,
+                )
+            )
+        )
+    )
+
+
+def _direct_request(home: Path, capability: RuntimeCapability) -> SimpleNamespace:
+    return SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                runtime_config=RuntimeServerConfig(
+                    host="127.0.0.1",
+                    port=8799,
+                    capability=capability,
+                    server_ref="server-ref",
+                    model_ref=None,
                     home=home,
                 )
             )

@@ -12,13 +12,18 @@ from tentgent.runtime.backends.audio_transcription import (
     AudioTranscriptionOutputFormat,
     AudioTranscriptionRequest,
 )
+from tentgent.runtime.backends.records import ModelCapability
 from tentgent.runtime.task.inference.audio_transcription import (
     AudioTranscriptionInferenceRequest,
     AudioTranscriptionTask,
 )
 from tentgent.runtime.task.manager import TaskManagerClosedError
 
-from .payloads import ModelRecordPayload, model_record
+from .payloads import ModelRecordPayload
+from ..managed_models import (
+    infer_audio_transcription_model_kind,
+    resolve_request_model,
+)
 
 
 router = APIRouter(prefix="/v1/audio")
@@ -26,8 +31,8 @@ router = APIRouter(prefix="/v1/audio")
 
 class AudioTranscriptionPayload(BaseModel):
     task_ref: str | None = None
-    model_kind: AudioTranscriptionModelKind
-    model: ModelRecordPayload
+    model_kind: AudioTranscriptionModelKind | None = None
+    model: ModelRecordPayload | None = None
     input_path: str
     output_path: str
     output_format: AudioTranscriptionOutputFormat = AudioTranscriptionOutputFormat.TEXT
@@ -68,7 +73,7 @@ async def audio_transcriptions(
     return AudioTranscriptionResponsePayload(
         task_ref=handle.task_ref,
         status=task.status.value,
-        model_ref=payload.model.model_ref,
+        model_ref=task.request.model.model_ref,
         output_format=result.output_format,
         media_type=result.media_type,
         output_path=str(result.output_path),
@@ -81,7 +86,10 @@ def _build_audio_transcription_task(
     payload: AudioTranscriptionPayload,
     request: Request,
 ) -> AudioTranscriptionTask:
-    task_ref, inference_request = _build_audio_transcription_inference_request(payload)
+    task_ref, inference_request = _build_audio_transcription_inference_request(
+        payload,
+        request,
+    )
     return AudioTranscriptionTask(
         task_ref=task_ref,
         request=inference_request,
@@ -91,6 +99,7 @@ def _build_audio_transcription_task(
 
 def _build_audio_transcription_inference_request(
     payload: AudioTranscriptionPayload,
+    request: Request,
 ) -> tuple[str, AudioTranscriptionInferenceRequest]:
     input_path = Path(payload.input_path).expanduser().resolve()
     if not input_path.is_file():
@@ -99,6 +108,12 @@ def _build_audio_transcription_inference_request(
             detail=f"audio input path `{input_path}` was not found",
         )
 
+    model = resolve_request_model(
+        payload.model,
+        request,
+        required_capability=ModelCapability.AUDIO_TRANSCRIPTION,
+    )
+    model_kind = payload.model_kind or infer_audio_transcription_model_kind(model)
     transcription_request = AudioTranscriptionRequest(
         input_path=input_path,
         output_path=Path(payload.output_path).expanduser().resolve(),
@@ -107,8 +122,8 @@ def _build_audio_transcription_inference_request(
         timestamps=payload.timestamps,
     )
     inference_request = AudioTranscriptionInferenceRequest(
-        model_kind=payload.model_kind,
-        model=model_record(payload.model),
+        model_kind=model_kind,
+        model=model,
         transcription=transcription_request,
     )
     return payload.task_ref or uuid4().hex, inference_request

@@ -121,13 +121,12 @@ without hiding backend-specific conversion, metadata, or platform trust issues.
 
 ### P5: Media Serving Wrappers And Stream Contracts
 
-- Decide which media capabilities deserve long-lived `tentgent server` routes
-  and which remain durable daemon job workflows.
-- Keep direct server capabilities `chat`, `embedding`, and `rerank` stable while
-  evaluating media route expansion separately.
-- Treat `vision-chat` and `audio-transcription` as candidate direct serving
-  wrappers only after upload limits, temp-file cleanup, wrong-route errors, and
-  readiness fields are specified.
+- Keep direct server capabilities `chat`, `embedding`, `rerank`, audio, vision,
+  video, and image stable while continuing to route upload-heavy daemon APIs
+  through durable jobs where needed.
+- Keep direct server media routes path-based and model-bound; daemon-owned
+  upload limits, temp-file cleanup, and generated-file serving stay in daemon
+  job/workspace routes.
 - Keep `audio-speech`, image generation/editing, video understanding, and video
   generation as durable job workflows unless a later plan proves a bounded
   direct route is safer and clearer.

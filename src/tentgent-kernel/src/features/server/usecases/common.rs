@@ -181,7 +181,14 @@ fn ensure_model_compatible_with_server(
 
 fn ensure_server_capability_implemented(capability: ServerCapability) -> KernelResult<()> {
     match capability {
-        ServerCapability::Chat | ServerCapability::Embedding | ServerCapability::Rerank => Ok(()),
+        ServerCapability::AudioSpeech
+        | ServerCapability::AudioTranscription
+        | ServerCapability::Chat
+        | ServerCapability::Embedding
+        | ServerCapability::ImageGeneration
+        | ServerCapability::Rerank
+        | ServerCapability::VideoUnderstanding
+        | ServerCapability::VisionChat => Ok(()),
     }
 }
 
@@ -190,22 +197,50 @@ fn server_runtime_backend_for_format(
     format: ModelFormat,
 ) -> KernelResult<super::super::domain::ServerRuntimeBackend> {
     match capability {
-        ServerCapability::Chat => {
-            super::super::domain::ServerRuntimeBackend::from_model_format(format).ok_or_else(|| {
-                KernelError::UnsupportedTarget(format!(
-                    "server capability `{capability}` does not support `{format}` model format yet"
-                ))
-            })
-        }
-        ServerCapability::Embedding | ServerCapability::Rerank
-            if format == ModelFormat::Safetensors =>
-        {
-            Ok(super::super::domain::ServerRuntimeBackend::TransformersPeft)
-        }
-        ServerCapability::Embedding | ServerCapability::Rerank => {
-            Err(KernelError::UnsupportedTarget(format!(
-                "server capability `{capability}` does not support `{format}` model format yet"
-            )))
-        }
+        ServerCapability::Chat => match format {
+            ModelFormat::Safetensors => {
+                Ok(super::super::domain::ServerRuntimeBackend::TransformersPeft)
+            }
+            ModelFormat::Mlx => Ok(super::super::domain::ServerRuntimeBackend::Mlx),
+            ModelFormat::Gguf => Ok(super::super::domain::ServerRuntimeBackend::LlamaCpp),
+            ModelFormat::Diffusers => unsupported_server_format(capability, format),
+        },
+        ServerCapability::Embedding => match format {
+            ModelFormat::Safetensors => {
+                Ok(super::super::domain::ServerRuntimeBackend::TransformersPeft)
+            }
+            ModelFormat::Mlx => Ok(super::super::domain::ServerRuntimeBackend::Mlx),
+            ModelFormat::Gguf => Ok(super::super::domain::ServerRuntimeBackend::LlamaCpp),
+            ModelFormat::Diffusers => unsupported_server_format(capability, format),
+        },
+        ServerCapability::Rerank
+        | ServerCapability::AudioSpeech
+        | ServerCapability::AudioTranscription
+        | ServerCapability::VideoUnderstanding
+        | ServerCapability::VisionChat => match format {
+            ModelFormat::Safetensors => {
+                Ok(super::super::domain::ServerRuntimeBackend::TransformersPeft)
+            }
+            ModelFormat::Mlx => Ok(super::super::domain::ServerRuntimeBackend::Mlx),
+            ModelFormat::Gguf | ModelFormat::Diffusers => {
+                unsupported_server_format(capability, format)
+            }
+        },
+        ServerCapability::ImageGeneration => match format {
+            ModelFormat::Diffusers => Ok(super::super::domain::ServerRuntimeBackend::Diffusers),
+            ModelFormat::Mlx => Ok(super::super::domain::ServerRuntimeBackend::Mlx),
+            ModelFormat::Safetensors | ModelFormat::Gguf => {
+                unsupported_server_format(capability, format)
+            }
+        },
     }
+}
+
+fn unsupported_server_format(
+    capability: ServerCapability,
+    format: ModelFormat,
+) -> KernelResult<super::super::domain::ServerRuntimeBackend> {
+    Err(KernelError::UnsupportedTarget(format!(
+        "server capability `{capability}` does not support `{format}` model format yet"
+    )))
 }

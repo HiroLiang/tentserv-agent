@@ -182,6 +182,7 @@ class MlxVideoUnderstandingTests(unittest.TestCase):
 class VideoUnderstandingRouteTests(unittest.TestCase):
     def test_route_builds_inference_request(self) -> None:
         from tentgent.runtime.server.routes.payloads import ModelRecordPayload
+        from tentgent.runtime.server.lifecycle import RuntimeCapability
         from tentgent.runtime.server.routes.video_understanding import (
             VideoSamplingPayload,
             VideoUnderstandingPayload,
@@ -204,7 +205,8 @@ class VideoUnderstandingRouteTests(unittest.TestCase):
                 sampling=VideoSamplingPayload(max_frames=2),
             )
             task_ref, inference_request = _build_video_understanding_inference_request(
-                payload
+                payload,
+                _direct_request(Path(tmp), RuntimeCapability.VIDEO_UNDERSTANDING),
             )
 
         self.assertTrue(task_ref)
@@ -220,6 +222,24 @@ def _model_record(format_: ModelFormat) -> ModelRecord:
         model_ref="model-ref",
         source_path=Path("/tmp/model"),
         primary_format=format_,
+    )
+
+
+def _direct_request(home: Path, capability: object) -> SimpleNamespace:
+    from tentgent.runtime.server.lifecycle import RuntimeServerConfig
+
+    return SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                runtime_config=RuntimeServerConfig(
+                    host="127.0.0.1",
+                    port=8799,
+                    capability=capability,
+                    model_ref=None,
+                    home=home,
+                )
+            )
+        )
     )
 
 

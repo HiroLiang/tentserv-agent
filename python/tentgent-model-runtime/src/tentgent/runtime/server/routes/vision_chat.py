@@ -13,13 +13,15 @@ from tentgent.runtime.backends.vision_chat import (
     VisionChatRequest,
     normalize_vision_chat_request,
 )
+from tentgent.runtime.backends.records import ModelCapability
 from tentgent.runtime.task.inference.vision_chat import (
     VisionChatInferenceRequest,
     VisionChatTask,
 )
 from tentgent.runtime.task.manager import TaskManagerClosedError
 
-from .payloads import ModelRecordPayload, model_record
+from .payloads import ModelRecordPayload
+from ..managed_models import infer_vision_chat_model_kind, resolve_request_model
 
 
 router = APIRouter(prefix="/v1/vision")
@@ -27,8 +29,8 @@ router = APIRouter(prefix="/v1/vision")
 
 class VisionChatPayload(BaseModel):
     task_ref: str | None = None
-    model_kind: VisionChatModelKind
-    model: ModelRecordPayload
+    model_kind: VisionChatModelKind | None = None
+    model: ModelRecordPayload | None = None
     image_path: str
     prompt: str
     output_format: str | VisionChatOutputFormat = VisionChatOutputFormat.TEXT
@@ -70,7 +72,7 @@ async def vision_chat(
     return VisionChatResponsePayload(
         task_ref=handle.task_ref,
         status=task.status.value,
-        model_ref=payload.model.model_ref,
+        model_ref=task.request.model.model_ref,
         output_format=result.output_format,
         media_type=result.media_type,
         text=result.text,
@@ -82,7 +84,7 @@ def _build_vision_chat_task(
     payload: VisionChatPayload,
     request: Request,
 ) -> VisionChatTask:
-    task_ref, inference_request = _build_vision_chat_inference_request(payload)
+    task_ref, inference_request = _build_vision_chat_inference_request(payload, request)
     return VisionChatTask(
         task_ref=task_ref,
         request=inference_request,
@@ -92,6 +94,7 @@ def _build_vision_chat_task(
 
 def _build_vision_chat_inference_request(
     payload: VisionChatPayload,
+    request: Request,
 ) -> tuple[str, VisionChatInferenceRequest]:
     try:
         vision_request = normalize_vision_chat_request(
@@ -110,9 +113,15 @@ def _build_vision_chat_inference_request(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    model = resolve_request_model(
+        payload.model,
+        request,
+        required_capability=ModelCapability.VISION_CHAT,
+    )
+    model_kind = payload.model_kind or infer_vision_chat_model_kind(model)
     inference_request = VisionChatInferenceRequest(
-        model_kind=payload.model_kind,
-        model=model_record(payload.model),
+        model_kind=model_kind,
+        model=model,
         vision=vision_request,
     )
     return payload.task_ref or uuid4().hex, inference_request

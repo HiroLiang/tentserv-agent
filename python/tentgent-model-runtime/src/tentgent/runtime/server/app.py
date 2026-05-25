@@ -43,6 +43,7 @@ from tentgent.runtime.server.lifecycle import (
     RuntimeLifecycleState,
     RuntimeServerConfig,
 )
+from tentgent.runtime.server.managed_models import bound_model_context
 from tentgent.runtime.server.routes import (
     audio_speech,
     audio_transcription,
@@ -66,10 +67,12 @@ def create_app(
 ) -> FastAPI:
     task_manager = TaskManager()
     resource_manager = _resource_manager(config)
+    bound_model = bound_model_context(config)
     lifecycle_state = RuntimeLifecycleState(
         config=config,
         task_manager=task_manager,
         resource_manager=resource_manager,
+        bound_model=bound_model,
         request_shutdown=request_shutdown,
     )
 
@@ -92,6 +95,7 @@ def create_app(
     app.state.task_manager = task_manager
     app.state.resource_manager = resource_manager
     app.state.runtime_config = config
+    app.state.bound_model = bound_model
     app.include_router(health.router)
     app.include_router(lifecycle.router)
     _include_capability_router(app, config.capability)

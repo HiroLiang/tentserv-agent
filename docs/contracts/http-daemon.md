@@ -623,9 +623,11 @@ and returns:
 ```
 
 `capability` is the endpoint family the stored server spec is meant to serve.
-Server lifecycle routes create `chat` specs by default and accept
-`"embedding"` for local embedding-capable models. Older `server.toml` files
-without `capability` are read as `chat`.
+Server lifecycle routes create `chat` specs by default and accept local
+model-runtime endpoint families such as `embedding`, `rerank`,
+`audio-transcription`, `audio-speech`, `vision-chat`, `video-understanding`,
+and `image-generation`. Older `server.toml` files without `capability` are read
+as `chat`.
 
 ## Store Import And Pull Mutations
 
@@ -661,13 +663,12 @@ such as `owner/name`, not a URL or `/tree/...` path. Omitted or `null`
 `revision` uses the core default; blank `revision` returns JSON `400`.
 Model import and pull may include one optional `capability` value: `chat`,
 `embedding`, `rerank`, `audio-transcription`, `audio-speech`, `vision-chat`,
-or `image-generation`. Invalid capability values return JSON `400 bad_request`.
+`video-understanding`, or `image-generation`. Invalid capability values return
+JSON `400 bad_request`.
 The capability field updates model metadata and is enforced by implemented
 endpoint-family gates; it does not change model identity. Implemented media
 runtime routes currently include audio transcription, audio speech, native
-vision chat, and image generation/editing. Future media capability values, such
-as video-oriented workflows, remain metadata-only until their dedicated
-workflow slices are implemented.
+vision chat, video understanding, and image generation/editing.
 
 Omitted, `null`, or blank `base_model_ref` means no base binding for adapter
 import or pull.
@@ -1337,13 +1338,14 @@ background mode. `{server_ref}` accepts a full server ref or unique short prefix
 Cloud server starts validate launch-time provider auth from env/keychain and
 never persist secrets in the server spec or response.
 Local server starts verify that the selected model advertises the server
-capability before launching the Python runtime. Local embedding and rerank
-server specs are launchable for safetensors models that advertise the matching
-capability. Local `chat`, `embedding`, and `rerank` server processes are
+capability before launching the Python runtime. Local `chat`, `embedding`,
+`rerank`, audio, vision, video, and image-generation server processes are
 launched through the direct Python model runtime daemon with the selected model
-bound at process start. The server process remains a server lifecycle resource,
-not a job record; `idle_seconds` maps to loaded model resource release inside
-the Python process, not to daemon-owned process expiration.
+bound at process start. Requests to those model-bound server ports omit
+`model` and `model_kind`; direct Python runtime callers may still provide those
+fields explicitly. The server process remains a server lifecycle resource, not
+a job record; `idle_seconds` maps to loaded model resource release inside the
+Python process, not to daemon-owned process expiration.
 
 The body is optional. Omit it or send `{}` to preserve the original response
 shape. Send `wait_ready` to ask the daemon to poll the target server's
