@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tentgent-model-runtime"
+version = "0.1.0"
+description = "Python model runtime workspace for Tentgent."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "pydantic",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+mlx = [
+    "mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-lm; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+llama-cpp = [
+    "llama-cpp-python",
+]
+transformers = [
+    "peft",
+    "safetensors",
+    "torch",
+    "transformers",
+]
+local-model = [
+    "llama-cpp-python",
+    "mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-lm; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "peft",
+    "safetensors",
+    "torch",
+    "transformers",
+]
+
+[project.scripts]
+tentgent-model-runtime-server = "tentgent.runtime.cli.server:main"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tentgent"]
