@@ -5,7 +5,6 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from ..base import MlxBackendModel
 from ..errors import missing_backend_dependency
 from ..image_generation import (
     ImageGenerationAdapterSelection,
@@ -17,7 +16,8 @@ from ..image_generation import (
     load_normalized_inpaint_images,
     normalize_image_generation_output_format,
 )
-from ..records import ModelFormat, ModelRecord
+from ..records import ModelRecord
+from .base import MlxBackendModel, clear_mlx_cache, require_mlx_model
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,11 +36,7 @@ class MfluxImageGenerationModel(MlxBackendModel, ImageGenerationBackendModel):
         self._adapter: ImageGenerationAdapterSelection | None = None
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.MLX:
-            raise ValueError(
-                "MFLUX image generation model cannot load "
-                f"primary_format `{record.primary_format}`"
-            )
+        require_mlx_model(record, "MFLUX image generation model")
         if not record.source_repo:
             raise RuntimeError(
                 "MFLUX image generation requires Hugging Face source repo metadata "
@@ -59,14 +55,7 @@ class MfluxImageGenerationModel(MlxBackendModel, ImageGenerationBackendModel):
         self._model = None
         self._model_workflow = None
         self._adapter = None
-        try:
-            import mlx.core as mx
-
-            metal = getattr(mx, "metal", None)
-            if metal is not None and hasattr(metal, "clear_cache"):
-                metal.clear_cache()
-        except ModuleNotFoundError:
-            return
+        clear_mlx_cache()
 
     def select_adapter(self, adapter: ImageGenerationAdapterSelection | None) -> None:
         if self._adapter == adapter:

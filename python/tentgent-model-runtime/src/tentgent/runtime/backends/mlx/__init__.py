@@ -2,16 +2,20 @@
 
 from .audio_speech import MlxAudioSpeechModel
 from .audio_transcription import MlxAudioTranscriptionModel
+from .base import MlxBackendModel
 from .chat import MlxChatModel
 from .embedding import MlxEmbeddingModel
 from .image_generation import MfluxImageGenerationModel
 from .rerank import MlxRerankModel
+from .vision_chat import MlxVlmVisionChatModel
 
 __all__ = [
     "MfluxImageGenerationModel",
     "MlxAudioSpeechModel",
     "MlxAudioTranscriptionModel",
+    "MlxBackendModel",
     "MlxChatModel",
     "MlxEmbeddingModel",
     "MlxRerankModel",
+    "MlxVlmVisionChatModel",
 ]

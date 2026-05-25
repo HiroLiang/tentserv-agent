@@ -8,6 +8,7 @@ from .embedding import EmbeddingInferenceRequest, EmbeddingTask
 from .image_generation import ImageGenerationInferenceRequest, ImageGenerationTask
 from .inference_task import InferenceTask
 from .rerank import RerankInferenceRequest, RerankTask
+from .vision_chat import VisionChatInferenceRequest, VisionChatTask
 
 __all__ = [
     "AudioSpeechInferenceRequest",
@@ -25,4 +26,6 @@ __all__ = [
     "RerankTask",
     "StreamEvent",
     "StreamingChatTask",
+    "VisionChatInferenceRequest",
+    "VisionChatTask",
 ]

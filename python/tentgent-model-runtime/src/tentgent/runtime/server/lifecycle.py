@@ -21,6 +21,7 @@ class RuntimeCapability(StrEnum):
     EMBEDDING = "embedding"
     IMAGE_GENERATION = "image-generation"
     RERANK = "rerank"
+    VISION_CHAT = "vision-chat"
 
 
 @dataclass(frozen=True)

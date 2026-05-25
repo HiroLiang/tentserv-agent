@@ -16,6 +16,7 @@ Supported capability values:
 - `audio-transcription`
 - `audio-speech`
 - `image-generation`
+- `vision-chat`
 
 Capability endpoints:
 
@@ -29,6 +30,7 @@ Capability endpoints:
 - `POST /v1/images/transforms`
 - `POST /v1/images/inpaint`
 - `POST /v1/images/control`
+- `POST /v1/vision/chat`
 
 Requests to endpoint families not served by the current process return `400`.
 Rust still owns job creation, workspace paths, model resolution, and server
@@ -95,13 +97,30 @@ Control generation requires a resolved ControlNet-style adapter record in the
 request. MLX diffusion has no control route because the current MFLUX-backed
 runtime does not provide a compatible ControlNet API.
 
+### Vision Chat
+
+`POST /v1/vision/chat` runs one local image-plus-prompt request and returns
+text.
+
+Supported `model_kind` values:
+
+- `transformers-image-text-to-text`
+- `mlx-vlm`
+
+The direct runtime receives a local `image_path`; Rust remains responsible for
+multipart uploads, job workspaces, model resolution, and server selection. Python
+validates the concrete local path, loads the requested backend model, and
+returns `text`, `json`, or `md` text output with a media type and finish reason.
+
 ## Dependency Profiles
 
 The Python project exposes an `audio` optional dependency group for local audio
 runtime support. The broader `local-model` group includes audio dependencies
 alongside chat, embedding, rerank, and image dependencies. The `image` optional
 dependency group installs Diffusers, Pillow, PyTorch, Transformers/Safetensors,
-and Apple Silicon MFLUX/MLX packages where supported.
+and Apple Silicon MFLUX/MLX packages where supported. The `vision` optional
+dependency group installs Transformers, Pillow, PyTorch/Torchvision, and Apple
+Silicon MLX VLM packages where supported.
 
 ## Health
 

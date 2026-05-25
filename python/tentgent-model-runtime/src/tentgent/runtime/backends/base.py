@@ -46,31 +46,3 @@ class BackendModel(ABC):
     def requires_exclusive_access(self) -> bool:
         """Whether callers should serialize access to this loaded model."""
         return self.concurrency_policy == BackendConcurrencyPolicy.EXCLUSIVE
-
-
-class MlxBackendModel(BackendModel, ABC):
-    """Base class for MLX-family backend models."""
-
-    family = BackendFamily.MLX
-    concurrency_policy = BackendConcurrencyPolicy.EXCLUSIVE
-
-
-class LlamaCppBackendModel(BackendModel, ABC):
-    """Base class for llama.cpp / GGUF backend models."""
-
-    family = BackendFamily.LLAMA_CPP
-    concurrency_policy = BackendConcurrencyPolicy.EXCLUSIVE
-
-
-class TransformersBackendModel(BackendModel, ABC):
-    """Base class for Hugging Face Transformers backend models."""
-
-    family = BackendFamily.TRANSFORMERS
-    concurrency_policy = BackendConcurrencyPolicy.EXCLUSIVE
-
-
-class DiffusersBackendModel(BackendModel, ABC):
-    """Base class for Hugging Face Diffusers backend models."""
-
-    family = BackendFamily.DIFFUSERS
-    concurrency_policy = BackendConcurrencyPolicy.EXCLUSIVE

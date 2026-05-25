@@ -12,9 +12,9 @@ from ..audio_transcription import (
     AudioTranscriptionResult,
     write_audio_transcription_output,
 )
-from ..base import MlxBackendModel
 from ..errors import missing_backend_dependency
-from ..records import ModelFormat, ModelRecord
+from ..records import ModelRecord
+from .base import MlxBackendModel, clear_mlx_cache, require_mlx_model
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,11 +29,7 @@ class MlxAudioTranscriptionModel(MlxBackendModel, AudioTranscriptionBackendModel
         self._model: Any | None = None
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.MLX:
-            raise ValueError(
-                "MLX audio transcription model cannot load "
-                f"primary_format `{record.primary_format}`"
-            )
+        require_mlx_model(record, "MLX audio transcription model")
 
         self._model = self._deps.load(str(record.source_path))
         self._record = record
@@ -45,6 +41,7 @@ class MlxAudioTranscriptionModel(MlxBackendModel, AudioTranscriptionBackendModel
     def release(self) -> None:
         self._record = None
         self._model = None
+        clear_mlx_cache()
 
     def transcribe(
         self,

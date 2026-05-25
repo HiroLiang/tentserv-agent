@@ -4,7 +4,6 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from ..base import DiffusersBackendModel
 from ..errors import missing_backend_dependency
 from ..image_generation import (
     ImageGenerationAdapterSelection,
@@ -12,12 +11,19 @@ from ..image_generation import (
     ImageGenerationRequest,
     ImageGenerationResult,
     ImageGenerationWorkflowKind,
-    declares_missing_safety_checker,
     load_normalized_control_image,
     load_normalized_inpaint_images,
     write_image_generation_output,
 )
-from ..records import ModelFormat, ModelRecord
+from ..records import ModelRecord
+from .base import (
+    DiffusersBackendModel,
+    clear_torch_device_cache,
+    controlnet_load_kwargs,
+    detect_diffusers_device,
+    diffusers_load_kwargs,
+    require_diffusers_model,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,15 +46,11 @@ class DiffusersImageGenerationModel(
         self._record: ModelRecord | None = None
         self._pipeline: Any | None = None
         self._pipeline_workflow: str | None = None
-        self._device = _detect_device(self._deps.torch)
+        self._device = detect_diffusers_device(self._deps.torch)
         self._adapter: ImageGenerationAdapterSelection | None = None
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.DIFFUSERS:
-            raise ValueError(
-                "Diffusers image generation model cannot load "
-                f"primary_format `{record.primary_format}`"
-            )
+        require_diffusers_model(record, "Diffusers image generation model")
         self._record = record
         self._pipeline = None
         self._pipeline_workflow = None
@@ -62,12 +64,7 @@ class DiffusersImageGenerationModel(
         self._pipeline = None
         self._pipeline_workflow = None
         self._adapter = None
-
-        torch = self._deps.torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        if torch.backends.mps.is_available():
-            torch.mps.empty_cache()
+        clear_torch_device_cache(self._deps.torch)
 
     def select_adapter(self, adapter: ImageGenerationAdapterSelection | None) -> None:
         if self._adapter == adapter:
@@ -149,7 +146,7 @@ class DiffusersImageGenerationModel(
         if self._pipeline is not None and self._pipeline_workflow == pipeline_key:
             return self._pipeline
 
-        load_kwargs = _diffusers_load_kwargs(
+        load_kwargs = diffusers_load_kwargs(
             self._record,
             self._deps.torch,
             self._device,
@@ -162,7 +159,7 @@ class DiffusersImageGenerationModel(
             controlnet = self._deps.ControlNetModel.from_pretrained(
                 str(request.control.source_path),
                 local_files_only=True,
-                **_controlnet_load_kwargs(self._deps.torch, self._device),
+                **controlnet_load_kwargs(self._deps.torch, self._device),
             )
             pipeline_kwargs["controlnet"] = controlnet
         pipeline = pipeline_class.from_pretrained(
@@ -292,79 +289,3 @@ def _pipeline_key_for_request(
     if workflow == ImageGenerationWorkflowKind.CONTROL and request.control is not None:
         return f"control:{request.control.control_ref}:{request.control.control_kind}"
     return workflow.value
-
-
-def _diffusers_load_kwargs(
-    record: ModelRecord,
-    torch: Any,
-    device: Any,
-) -> dict[str, object]:
-    kwargs: dict[str, object] = {
-        "torch_dtype": _torch_dtype_for_device(torch, device),
-    }
-    if declares_missing_safety_checker(record.source_path):
-        kwargs["safety_checker"] = None
-    return kwargs
-
-
-def _controlnet_load_kwargs(torch: Any, device: Any) -> dict[str, object]:
-    return {
-        "torch_dtype": _torch_dtype_for_device(torch, device),
-    }
-
-
-def _detect_device(torch: Any) -> Any:
-    requested = os.environ.get("TENTGENT_IMAGE_GENERATION_DEVICE", "").strip().lower()
-    if requested:
-        return _requested_device(torch, requested)
-
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
-
-
-def _requested_device(torch: Any, requested: str) -> Any:
-    if requested == "cpu":
-        return torch.device("cpu")
-    if requested == "cuda":
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        raise RuntimeError(
-            "TENTGENT_IMAGE_GENERATION_DEVICE=cuda was requested, "
-            "but CUDA is not available"
-        )
-    if requested == "mps":
-        if torch.backends.mps.is_available():
-            return torch.device("mps")
-        raise RuntimeError(
-            "TENTGENT_IMAGE_GENERATION_DEVICE=mps was requested, "
-            "but PyTorch MPS is not available"
-        )
-    raise RuntimeError(
-        "unsupported TENTGENT_IMAGE_GENERATION_DEVICE value "
-        f"`{requested}`; expected one of: cpu, mps, cuda"
-    )
-
-
-def _torch_dtype_for_device(torch: Any, device: Any) -> Any:
-    requested = os.environ.get("TENTGENT_IMAGE_GENERATION_TORCH_DTYPE", "").strip().lower()
-    if requested:
-        return _requested_torch_dtype(torch, requested)
-
-    device_type = getattr(device, "type", str(device))
-    if device_type == "cuda":
-        return torch.float16
-    return torch.float32
-
-
-def _requested_torch_dtype(torch: Any, requested: str) -> Any:
-    if requested in {"float32", "fp32"}:
-        return torch.float32
-    if requested in {"float16", "fp16"}:
-        return torch.float16
-    raise RuntimeError(
-        "unsupported TENTGENT_IMAGE_GENERATION_TORCH_DTYPE value "
-        f"`{requested}`; expected one of: float32, float16"
-    )

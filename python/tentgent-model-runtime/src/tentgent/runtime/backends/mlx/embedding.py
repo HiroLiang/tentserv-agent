@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from ..base import MlxBackendModel
 from ..embedding import EmbeddingBackendModel, EmbeddingRequest, EmbeddingResult
-from ..records import ModelFormat, ModelRecord
+from ..records import ModelRecord
+from .base import MlxBackendModel, require_mlx_model
 
 
 _MLX_EMBEDDING_NOT_IMPLEMENTED = (
@@ -23,10 +23,7 @@ class MlxEmbeddingModel(MlxBackendModel, EmbeddingBackendModel):
         self._record: ModelRecord | None = None
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.MLX:
-            raise ValueError(
-                f"MLX embedding model cannot load primary_format `{record.primary_format}`"
-            )
+        require_mlx_model(record, "MLX embedding model")
         self._record = record
 
     @property

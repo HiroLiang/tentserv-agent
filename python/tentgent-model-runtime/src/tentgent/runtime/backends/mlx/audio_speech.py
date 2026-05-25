@@ -11,9 +11,9 @@ from ..audio_speech import (
     AudioSpeechResult,
     write_audio_speech_output,
 )
-from ..base import MlxBackendModel
 from ..errors import missing_backend_dependency
-from ..records import ModelFormat, ModelRecord
+from ..records import ModelRecord
+from .base import MlxBackendModel, clear_mlx_cache, require_mlx_model
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,11 +29,7 @@ class MlxAudioSpeechModel(MlxBackendModel, AudioSpeechBackendModel):
         self._model: Any | None = None
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.MLX:
-            raise ValueError(
-                "MLX audio speech model cannot load "
-                f"primary_format `{record.primary_format}`"
-            )
+        require_mlx_model(record, "MLX audio speech model")
         load_kwargs = _load_model_kwargs(record, self._deps)
         try:
             self._model = self._deps.load_model(record.source_path, **load_kwargs)
@@ -51,6 +47,7 @@ class MlxAudioSpeechModel(MlxBackendModel, AudioSpeechBackendModel):
     def release(self) -> None:
         self._record = None
         self._model = None
+        clear_mlx_cache()
 
     def synthesize_speech(self, request: AudioSpeechRequest) -> AudioSpeechResult:
         model = self._require_loaded()

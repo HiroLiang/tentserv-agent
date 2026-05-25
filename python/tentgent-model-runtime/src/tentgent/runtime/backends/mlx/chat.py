@@ -4,9 +4,9 @@ from collections.abc import Iterator
 from typing import Any
 
 from ..chat import ChatBackendModel, ChatMessage, ChatRequest, ChatResult
-from ..base import MlxBackendModel
 from ..errors import missing_backend_dependency
-from ..records import AdapterRecord, ModelFormat, ModelRecord
+from ..records import AdapterRecord, ModelRecord
+from .base import MlxBackendModel, clear_mlx_cache, require_mlx_model
 
 
 class MlxChatModel(MlxBackendModel, ChatBackendModel):
@@ -18,10 +18,7 @@ class MlxChatModel(MlxBackendModel, ChatBackendModel):
         self._active_adapter_ref: str | None = None
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.MLX:
-            raise ValueError(
-                f"MLX chat model cannot load primary_format `{record.primary_format}`"
-            )
+        require_mlx_model(record, "MLX chat model")
 
         self._record = record
         self._load_path = str(record.source_path)
@@ -37,6 +34,7 @@ class MlxChatModel(MlxBackendModel, ChatBackendModel):
         self._model = None
         self._tokenizer = None
         self._active_adapter_ref = None
+        clear_mlx_cache()
 
     def select_adapter(self, adapter: AdapterRecord | None) -> None:
         if self._record is None:

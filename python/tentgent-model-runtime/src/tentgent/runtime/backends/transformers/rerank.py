@@ -3,10 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ..base import TransformersBackendModel
 from ..errors import missing_backend_dependency
-from ..records import ModelFormat, ModelRecord
+from ..records import ModelRecord
 from ..rerank import RerankBackendModel, RerankRequest, RerankResult, ranked_scores
+from .base import (
+    TransformersBackendModel,
+    clear_torch_device_cache,
+    detect_torch_device,
+    load_transformers_component,
+    load_transformers_model,
+    move_batch_to_device,
+    require_safetensors_model,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,26 +30,18 @@ class TransformersRerankModel(TransformersBackendModel, RerankBackendModel):
         self._record: ModelRecord | None = None
         self._tokenizer: Any | None = None
         self._model: Any | None = None
-        self._device = _detect_device(self._deps.torch)
+        self._device = detect_torch_device(self._deps.torch)
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.SAFETENSORS:
-            raise ValueError(
-                "Transformers rerank model cannot load "
-                f"primary_format `{record.primary_format}`"
-            )
+        require_safetensors_model(record, "Transformers rerank model")
 
         load_path = str(record.source_path)
-        tokenizer = self._deps.AutoTokenizer.from_pretrained(
+        tokenizer = load_transformers_component(self._deps.AutoTokenizer, load_path)
+        model = load_transformers_model(
+            self._deps.AutoModelForSequenceClassification,
             load_path,
-            trust_remote_code=True,
+            self._device,
         )
-        model = self._deps.AutoModelForSequenceClassification.from_pretrained(
-            load_path,
-            trust_remote_code=True,
-        )
-        model.to(self._device)
-        model.eval()
 
         self._record = record
         self._tokenizer = tokenizer
@@ -59,7 +59,7 @@ class TransformersRerankModel(TransformersBackendModel, RerankBackendModel):
         self._record = None
         self._tokenizer = None
         self._model = None
-        _clear_device_cache(self._deps.torch)
+        clear_torch_device_cache(self._deps.torch)
 
     def rerank(self, request: RerankRequest) -> RerankResult:
         tokenizer, model = self._require_loaded()
@@ -70,7 +70,7 @@ class TransformersRerankModel(TransformersBackendModel, RerankBackendModel):
             truncation=True,
             return_tensors="pt",
         )
-        encoded = {key: value.to(self._device) for key, value in encoded.items()}
+        encoded = move_batch_to_device(encoded, self._device)
 
         with self._deps.torch.inference_mode():
             outputs = model(**encoded)
@@ -107,18 +107,3 @@ def _load_transformers_rerank_deps() -> _TransformersRerankDeps:
         AutoModelForSequenceClassification=AutoModelForSequenceClassification,
         AutoTokenizer=AutoTokenizer,
     )
-
-
-def _detect_device(torch: Any) -> Any:
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
-
-
-def _clear_device_cache(torch: Any) -> None:
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    if torch.backends.mps.is_available():
-        torch.mps.empty_cache()

@@ -9,9 +9,14 @@ from ..audio_speech import (
     AudioSpeechResult,
     write_audio_speech_output,
 )
-from ..base import TransformersBackendModel
 from ..errors import missing_backend_dependency
-from ..records import ModelFormat, ModelRecord
+from ..records import ModelRecord
+from .base import (
+    TransformersBackendModel,
+    clear_torch_device_cache,
+    pipeline_device,
+    require_safetensors_model,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,16 +32,12 @@ class TransformersAudioSpeechModel(TransformersBackendModel, AudioSpeechBackendM
         self._pipeline: Any | None = None
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.SAFETENSORS:
-            raise ValueError(
-                "Transformers audio speech model cannot load "
-                f"primary_format `{record.primary_format}`"
-            )
+        require_safetensors_model(record, "Transformers audio speech model")
 
         self._pipeline = self._deps.pipeline(
             "text-to-speech",
             model=str(record.source_path),
-            device=_asr_pipeline_device(self._deps.torch),
+            device=pipeline_device(self._deps.torch),
             trust_remote_code=True,
         )
         self._record = record
@@ -48,7 +49,7 @@ class TransformersAudioSpeechModel(TransformersBackendModel, AudioSpeechBackendM
     def release(self) -> None:
         self._record = None
         self._pipeline = None
-        _clear_device_cache(self._deps.torch)
+        clear_torch_device_cache(self._deps.torch)
 
     def synthesize_speech(self, request: AudioSpeechRequest) -> AudioSpeechResult:
         pipe = self._require_loaded()
@@ -95,21 +96,6 @@ def _load_transformers_audio_speech_deps() -> _TransformersAudioSpeechDeps:
         raise
 
     return _TransformersAudioSpeechDeps(torch=torch, pipeline=pipeline)
-
-
-def _asr_pipeline_device(torch: Any) -> Any:
-    if torch.cuda.is_available():
-        return 0
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return -1
-
-
-def _clear_device_cache(torch: Any) -> None:
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    if torch.backends.mps.is_available():
-        torch.mps.empty_cache()
 
 
 def _is_known_tts_option_error(error: ValueError) -> bool:

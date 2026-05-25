@@ -26,6 +26,10 @@ from tentgent.runtime.backends.image_generation import (
 )
 from tentgent.runtime.backends.rerank import RerankBackendModel, build_rerank_model
 from tentgent.runtime.backends.resource_manager import ResourceManager
+from tentgent.runtime.backends.vision_chat import (
+    VisionChatBackendModel,
+    build_vision_chat_model,
+)
 from tentgent.runtime.server.lifecycle import (
     RuntimeCapability,
     RuntimeLifecycleState,
@@ -40,6 +44,7 @@ from tentgent.runtime.server.routes import (
     image_generation,
     lifecycle,
     rerank,
+    vision_chat,
 )
 from tentgent.runtime.task.manager import TaskManager
 
@@ -126,6 +131,12 @@ def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
             model_idle_timeout_seconds=config.model_idle_timeout_seconds,
         )
         return rerank_resources
+    if config.capability == RuntimeCapability.VISION_CHAT:
+        vision_chat_resources: ResourceManager[VisionChatBackendModel] = ResourceManager(
+            model_factory=build_vision_chat_model,
+            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+        )
+        return vision_chat_resources
 
     raise ValueError(f"unsupported runtime capability `{config.capability}`")
 
@@ -143,6 +154,8 @@ def _include_capability_router(app: FastAPI, capability: RuntimeCapability) -> N
         app.include_router(image_generation.router)
     elif capability == RuntimeCapability.RERANK:
         app.include_router(rerank.router)
+    elif capability == RuntimeCapability.VISION_CHAT:
+        app.include_router(vision_chat.router)
     else:
         raise ValueError(f"unsupported runtime capability `{capability}`")
 
@@ -163,6 +176,7 @@ def _include_unsupported_capability_routes(
             "/v1/images/control",
         ),
         RuntimeCapability.RERANK: ("/v1/rerank",),
+        RuntimeCapability.VISION_CHAT: ("/v1/vision/chat",),
     }
     for target_capability, paths in targets.items():
         if target_capability == capability:

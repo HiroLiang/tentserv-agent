@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..base import LlamaCppBackendModel
 from ..embedding import (
     EmbeddingBackendModel,
     EmbeddingRequest,
     EmbeddingResult,
     EmbeddingVector,
 )
-from ..records import ModelFormat, ModelRecord
+from ..records import ModelRecord
+from .base import LlamaCppBackendModel, require_gguf_model
 from .common import load_llama_class, resolve_gguf_path
 
 
@@ -19,11 +19,7 @@ class LlamaCppEmbeddingModel(LlamaCppBackendModel, EmbeddingBackendModel):
         self._model: Any | None = None
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.GGUF:
-            raise ValueError(
-                "llama.cpp embedding model cannot load "
-                f"primary_format `{record.primary_format}`"
-            )
+        require_gguf_model(record, "llama.cpp embedding model")
 
         llama = load_llama_class()
         model_path = resolve_gguf_path(record.source_path)

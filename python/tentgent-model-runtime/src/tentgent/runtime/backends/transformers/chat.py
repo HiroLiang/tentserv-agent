@@ -6,10 +6,18 @@ from dataclasses import dataclass
 from threading import Thread
 from typing import Any
 
-from ..base import TransformersBackendModel
 from ..chat import ChatBackendModel, ChatMessage, ChatRequest, ChatResult
 from ..errors import missing_backend_dependency
-from ..records import AdapterRecord, ModelFormat, ModelRecord
+from ..records import AdapterRecord, ModelRecord
+from .base import (
+    TransformersBackendModel,
+    clear_torch_device_cache,
+    detect_torch_device,
+    load_transformers_component,
+    load_transformers_model,
+    move_batch_to_device,
+    require_safetensors_model,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,29 +36,21 @@ class TransformersChatModel(TransformersBackendModel, ChatBackendModel):
         self._model: Any | None = None
         self._loaded_adapters: dict[str, str] = {}
         self._active_adapter_ref: str | None = None
-        self._device = _detect_device(self._deps.torch)
+        self._device = detect_torch_device(self._deps.torch)
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.SAFETENSORS:
-            raise ValueError(
-                "Transformers chat model cannot load "
-                f"primary_format `{record.primary_format}`"
-            )
+        require_safetensors_model(record, "Transformers chat model")
 
         load_path = str(record.source_path)
-        tokenizer = self._deps.AutoTokenizer.from_pretrained(
-            load_path,
-            trust_remote_code=True,
-        )
+        tokenizer = load_transformers_component(self._deps.AutoTokenizer, load_path)
         if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
             tokenizer.pad_token = tokenizer.eos_token
 
-        model = self._deps.AutoModelForCausalLM.from_pretrained(
+        model = load_transformers_model(
+            self._deps.AutoModelForCausalLM,
             load_path,
-            trust_remote_code=True,
+            self._device,
         )
-        model.to(self._device)
-        model.eval()
 
         self._record = record
         self._tokenizer = tokenizer
@@ -73,11 +73,7 @@ class TransformersChatModel(TransformersBackendModel, ChatBackendModel):
         self._loaded_adapters = {}
         self._active_adapter_ref = None
 
-        torch = self._deps.torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        if torch.backends.mps.is_available():
-            torch.mps.empty_cache()
+        clear_torch_device_cache(self._deps.torch)
 
     def select_adapter(self, adapter: AdapterRecord | None) -> None:
         _, model = self._require_loaded()
@@ -183,7 +179,7 @@ class TransformersChatModel(TransformersBackendModel, ChatBackendModel):
 
         prompt = _render_prompt(tokenizer, request.messages)
         encoded = tokenizer(prompt, return_tensors="pt")
-        encoded = {key: value.to(self._device) for key, value in encoded.items()}
+        encoded = move_batch_to_device(encoded, self._device)
 
         max_new_tokens = request.max_tokens or 128
         temperature = 0.0 if request.temperature is None else request.temperature
@@ -241,14 +237,6 @@ def _load_peft_model_class() -> Any:
             raise missing_backend_dependency(exc.name) from exc
         raise
     return PeftModel
-
-
-def _detect_device(torch: Any) -> Any:
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
 
 
 def _render_prompt(tokenizer: Any, messages: tuple[ChatMessage, ...]) -> str:

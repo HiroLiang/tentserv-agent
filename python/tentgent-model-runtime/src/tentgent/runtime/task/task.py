@@ -18,6 +18,7 @@ class TaskKind(StrEnum):
     EMBEDDING = "embedding"
     IMAGE_GENERATION = "image-generation"
     RERANK = "rerank"
+    VISION_CHAT = "vision-chat"
 
 
 class TaskStatus(StrEnum):

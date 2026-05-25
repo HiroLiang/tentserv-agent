@@ -4,10 +4,6 @@ from .base import (
     BackendConcurrencyPolicy,
     BackendFamily,
     BackendModel,
-    DiffusersBackendModel,
-    LlamaCppBackendModel,
-    MlxBackendModel,
-    TransformersBackendModel,
 )
 from .audio_speech import (
     AudioSpeechBackendModel,
@@ -36,6 +32,7 @@ from .chat import (
     ChatResult,
     build_chat_model,
 )
+from .diffusers import DiffusersBackendModel
 from .embedding import (
     EmbeddingBackendModel,
     EmbeddingModelFactory,
@@ -57,6 +54,8 @@ from .image_generation import (
     ImageGenerationWorkflowKind,
     build_image_generation_model,
 )
+from .llama_cpp import LlamaCppBackendModel
+from .mlx import MlxBackendModel
 from .records import (
     AdapterRecord,
     AdapterType,
@@ -73,6 +72,16 @@ from .rerank import (
     RerankScore,
     build_rerank_model,
     ranked_scores,
+)
+from .transformers import TransformersBackendModel
+from .vision_chat import (
+    VisionChatBackendModel,
+    VisionChatModelFactory,
+    VisionChatModelKind,
+    VisionChatOutputFormat,
+    VisionChatRequest,
+    VisionChatResult,
+    build_vision_chat_model,
 )
 
 __all__ = [
@@ -127,11 +136,18 @@ __all__ = [
     "RerankResult",
     "RerankScore",
     "TransformersBackendModel",
+    "VisionChatBackendModel",
+    "VisionChatModelFactory",
+    "VisionChatModelKind",
+    "VisionChatOutputFormat",
+    "VisionChatRequest",
+    "VisionChatResult",
     "build_audio_speech_model",
     "build_audio_transcription_model",
     "build_chat_model",
     "build_embedding_model",
     "build_image_generation_model",
     "build_rerank_model",
+    "build_vision_chat_model",
     "ranked_scores",
 ]

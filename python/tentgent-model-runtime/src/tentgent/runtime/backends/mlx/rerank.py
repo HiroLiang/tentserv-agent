@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from ..base import MlxBackendModel
-from ..records import ModelFormat, ModelRecord
+from ..records import ModelRecord
 from ..rerank import RerankBackendModel, RerankRequest, RerankResult
+from .base import MlxBackendModel, require_mlx_model
 
 
 _MLX_RERANK_NOT_IMPLEMENTED = (
@@ -23,10 +23,7 @@ class MlxRerankModel(MlxBackendModel, RerankBackendModel):
         self._record: ModelRecord | None = None
 
     def load(self, record: ModelRecord) -> None:
-        if record.primary_format != ModelFormat.MLX:
-            raise ValueError(
-                f"MLX rerank model cannot load primary_format `{record.primary_format}`"
-            )
+        require_mlx_model(record, "MLX rerank model")
         self._record = record
 
     @property
