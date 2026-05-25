@@ -45,8 +45,9 @@ runtime family:
 - `primary_format = "mlx"` with missing family or `mlx_runtime_family =
   "mlx-lm"` uses the existing MLX chat backend for `chat`
 - `primary_format = "mlx"` with `mlx_runtime_family = "mlx-vlm"` uses
-  `mlx-vlm` for native `vision-chat`; MLX `video-understanding` currently
-  returns a planned-backend error until a stable local video API is verified
+  `mlx-vlm` for native `vision-chat`; direct Python model-runtime
+  `video-understanding` is available only for explicitly allow-listed MLX VLM
+  video model types and returns a supported-model-types error for other MLX VLMs
 - `primary_format = "mlx"` with `mlx_runtime_family = "mlx-audio"` uses
   `mlx-audio` for native `audio-transcription` and direct model-runtime
   `audio-speech`
@@ -73,10 +74,12 @@ Rust should enforce capability checks for:
 
 Python should enforce the same checks before backend creation so `chat` and server requests fail predictably even when invoked directly.
 
-Video understanding in M6Q uses `transformers-peft` for safetensors
+Video understanding uses `transformers-peft` for safetensors
 `video-understanding` models by sampling bounded frames through the Python
-local-model runtime's OpenCV-backed decoder before model generation. Codec and
-container support depend on the packaged OpenCV/FFmpeg build and platform.
+local-model runtime's OpenCV-backed decoder before model generation. The direct
+Python model runtime also has an experimental `mlx-vlm` path for known
+video-capable MLX model types. Codec and container support depend on the
+packaged OpenCV/FFmpeg build and platform.
 
 `model pull` may still store a model whose backend is unsupported on the current platform. Stored model metadata should surface backend support so the user understands that the asset exists but cannot run locally.
 

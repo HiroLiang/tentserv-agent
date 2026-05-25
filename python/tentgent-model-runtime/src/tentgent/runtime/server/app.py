@@ -26,6 +26,10 @@ from tentgent.runtime.backends.image_generation import (
 )
 from tentgent.runtime.backends.rerank import RerankBackendModel, build_rerank_model
 from tentgent.runtime.backends.resource_manager import ResourceManager
+from tentgent.runtime.backends.video_understanding import (
+    VideoUnderstandingBackendModel,
+    build_video_understanding_model,
+)
 from tentgent.runtime.backends.vision_chat import (
     VisionChatBackendModel,
     build_vision_chat_model,
@@ -44,6 +48,7 @@ from tentgent.runtime.server.routes import (
     image_generation,
     lifecycle,
     rerank,
+    video_understanding,
     vision_chat,
 )
 from tentgent.runtime.task.manager import TaskManager
@@ -131,6 +136,14 @@ def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
             model_idle_timeout_seconds=config.model_idle_timeout_seconds,
         )
         return rerank_resources
+    if config.capability == RuntimeCapability.VIDEO_UNDERSTANDING:
+        video_understanding_resources: ResourceManager[
+            VideoUnderstandingBackendModel
+        ] = ResourceManager(
+            model_factory=build_video_understanding_model,
+            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+        )
+        return video_understanding_resources
     if config.capability == RuntimeCapability.VISION_CHAT:
         vision_chat_resources: ResourceManager[VisionChatBackendModel] = ResourceManager(
             model_factory=build_vision_chat_model,
@@ -154,6 +167,8 @@ def _include_capability_router(app: FastAPI, capability: RuntimeCapability) -> N
         app.include_router(image_generation.router)
     elif capability == RuntimeCapability.RERANK:
         app.include_router(rerank.router)
+    elif capability == RuntimeCapability.VIDEO_UNDERSTANDING:
+        app.include_router(video_understanding.router)
     elif capability == RuntimeCapability.VISION_CHAT:
         app.include_router(vision_chat.router)
     else:
@@ -176,6 +191,7 @@ def _include_unsupported_capability_routes(
             "/v1/images/control",
         ),
         RuntimeCapability.RERANK: ("/v1/rerank",),
+        RuntimeCapability.VIDEO_UNDERSTANDING: ("/v1/video/understanding",),
         RuntimeCapability.VISION_CHAT: ("/v1/vision/chat",),
     }
     for target_capability, paths in targets.items():

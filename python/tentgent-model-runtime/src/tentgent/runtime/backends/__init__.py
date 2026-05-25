@@ -74,6 +74,20 @@ from .rerank import (
     ranked_scores,
 )
 from .transformers import TransformersBackendModel
+from .video_understanding import (
+    MLX_VIDEO_SUPPORTED_MODEL_TYPES,
+    UnsupportedMlxVideoModelError,
+    VideoFocusRegion,
+    VideoSamplingOptions,
+    VideoUnderstandingBackendModel,
+    VideoUnderstandingContext,
+    VideoUnderstandingModelFactory,
+    VideoUnderstandingModelKind,
+    VideoUnderstandingOutputFormat,
+    VideoUnderstandingRequest,
+    VideoUnderstandingResult,
+    build_video_understanding_model,
+)
 from .vision_chat import (
     VisionChatBackendModel,
     VisionChatModelFactory,
@@ -136,6 +150,17 @@ __all__ = [
     "RerankResult",
     "RerankScore",
     "TransformersBackendModel",
+    "MLX_VIDEO_SUPPORTED_MODEL_TYPES",
+    "UnsupportedMlxVideoModelError",
+    "VideoFocusRegion",
+    "VideoSamplingOptions",
+    "VideoUnderstandingBackendModel",
+    "VideoUnderstandingContext",
+    "VideoUnderstandingModelFactory",
+    "VideoUnderstandingModelKind",
+    "VideoUnderstandingOutputFormat",
+    "VideoUnderstandingRequest",
+    "VideoUnderstandingResult",
     "VisionChatBackendModel",
     "VisionChatModelFactory",
     "VisionChatModelKind",
@@ -148,6 +173,7 @@ __all__ = [
     "build_embedding_model",
     "build_image_generation_model",
     "build_rerank_model",
+    "build_video_understanding_model",
     "build_vision_chat_model",
     "ranked_scores",
 ]

@@ -74,9 +74,9 @@ MLX model metadata:
   model maps to a specific runtime family.
 - `mlx-lm` is the current runnable MLX chat path.
 - `mlx-vlm` is the Apple Silicon MLX VLM path for native `vision-chat`.
-  MLX `video-understanding` is accepted as a planned VLM family target, but the
-  first M6Q runnable baseline uses safetensors Transformers plus sampled
-  frames.
+  Direct Python model-runtime `video-understanding` also has an experimental
+  `mlx-vlm` path for allow-listed video-capable model types; other MLX VLMs
+  return a supported-model-types error.
 - `mlx-audio` is the Apple Silicon MLX path for native
   `audio-transcription` and direct model-runtime `audio-speech`.
 - `mlx-diffusion` is the Apple Silicon MLX path for native

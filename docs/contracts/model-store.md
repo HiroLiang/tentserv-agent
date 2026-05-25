@@ -163,8 +163,8 @@ itself mean the model should be loaded through `mlx-lm`.
 family when Tentgent can infer exactly one family from the model capabilities:
 
 - `mlx-lm` for `chat`
-- `mlx-vlm` for `vision-chat`, and as planned metadata for
-  `video-understanding` until a stable local MLX video backend is verified
+- `mlx-vlm` for `vision-chat`; direct Python model-runtime
+  `video-understanding` supports only allow-listed MLX VLM video model types
 - `mlx-audio` for `audio-transcription` and `audio-speech`
 - `mlx-diffusion` for `image-generation`
 

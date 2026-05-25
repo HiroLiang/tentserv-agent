@@ -99,8 +99,9 @@ Known limits:
 - Video understanding is batch frame-sampled analysis, not realtime video
   streaming. The first runnable baseline uses the local-model Python runtime's
   OpenCV-backed decoder; codec/container support depends on the packaged
-  OpenCV/FFmpeg build and OS platform. MLX video understanding remains planned
-  until a stable MLX video path is verified.
+  OpenCV/FFmpeg build and OS platform. Direct Python model-runtime MLX video
+  understanding is experimental and restricted to allow-listed `mlx-vlm`
+  video-capable model types.
 - Image generation supports text-to-image, one-input-image transform, one-mask
   inpainting, one managed image LoRA adapter, and one typed ControlNet-style
   control image workflow. Generic reference-image composition, multi-control

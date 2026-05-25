@@ -16,6 +16,7 @@ Supported capability values:
 - `audio-transcription`
 - `audio-speech`
 - `image-generation`
+- `video-understanding`
 - `vision-chat`
 
 Capability endpoints:
@@ -30,6 +31,7 @@ Capability endpoints:
 - `POST /v1/images/transforms`
 - `POST /v1/images/inpaint`
 - `POST /v1/images/control`
+- `POST /v1/video/understanding`
 - `POST /v1/vision/chat`
 
 Requests to endpoint families not served by the current process return `400`.
@@ -112,6 +114,29 @@ multipart uploads, job workspaces, model resolution, and server selection. Pytho
 validates the concrete local path, loads the requested backend model, and
 returns `text`, `json`, or `md` text output with a media type and finish reason.
 
+### Video Understanding
+
+`POST /v1/video/understanding` runs one local video-plus-prompt request and
+returns text.
+
+Supported `model_kind` values:
+
+- `transformers-video-understanding`
+- `mlx-vlm`
+
+The direct runtime receives a local `video_path`; Rust remains responsible for
+multipart uploads, job workspaces, model resolution, and server selection.
+Python validates the concrete local path, sampling bounds, optional focus
+regions, and optional context text before backend execution.
+
+Transformers video understanding samples bounded frames through OpenCV, passes
+the sampled frames as image inputs, and uses the prompt, system prompt, focus
+regions, transcript, and context notes as text guidance. MLX VLM video
+understanding uses the `mlx-vlm` video preprocessing path only for known
+video-capable model types. Unsupported MLX model types return `501` with a
+machine-readable `mlx_video_model_unsupported` detail containing
+`supported_model_types`.
+
 ## Dependency Profiles
 
 The Python project exposes an `audio` optional dependency group for local audio
@@ -120,7 +145,9 @@ alongside chat, embedding, rerank, and image dependencies. The `image` optional
 dependency group installs Diffusers, Pillow, PyTorch, Transformers/Safetensors,
 and Apple Silicon MFLUX/MLX packages where supported. The `vision` optional
 dependency group installs Transformers, Pillow, PyTorch/Torchvision, and Apple
-Silicon MLX VLM packages where supported.
+Silicon MLX VLM packages where supported. Video understanding also requires
+OpenCV-backed video decoding through the `vision` or `local-model` dependency
+profile.
 
 ## Health
 

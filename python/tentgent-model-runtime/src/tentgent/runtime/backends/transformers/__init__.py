@@ -6,6 +6,7 @@ from .base import TransformersBackendModel
 from .chat import TransformersChatModel
 from .embedding import TransformersEmbeddingModel
 from .rerank import TransformersRerankModel
+from .video_understanding import TransformersVideoUnderstandingModel
 from .vision_chat import TransformersVisionChatModel
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "TransformersChatModel",
     "TransformersEmbeddingModel",
     "TransformersRerankModel",
+    "TransformersVideoUnderstandingModel",
     "TransformersVisionChatModel",
 ]
