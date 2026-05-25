@@ -17,6 +17,7 @@ class TaskKind(StrEnum):
     CHAT_STREAM = "chat-stream"
     EMBEDDING = "embedding"
     IMAGE_GENERATION = "image-generation"
+    LORA_TUNING = "lora-tuning"
     RERANK = "rerank"
     VIDEO_UNDERSTANDING = "video-understanding"
     VISION_CHAT = "vision-chat"

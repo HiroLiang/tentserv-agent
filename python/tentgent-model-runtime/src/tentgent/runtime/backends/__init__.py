@@ -55,6 +55,18 @@ from .image_generation import (
     build_image_generation_model,
 )
 from .llama_cpp import LlamaCppBackendModel
+from .lora_tuning import (
+    LoraBackendConfig,
+    LoraCheckpointConfig,
+    LoraConfig,
+    LoraDatasetConfig,
+    LoraOptimizationConfig,
+    LoraTuningBackendKind,
+    LoraTuningBackendModel,
+    LoraTuningRequest,
+    LoraTuningResult,
+    build_lora_tuning_model,
+)
 from .mlx import MlxBackendModel
 from .records import (
     AdapterRecord,
@@ -139,6 +151,15 @@ __all__ = [
     "ImageGenerationResult",
     "ImageGenerationWorkflowKind",
     "LlamaCppBackendModel",
+    "LoraBackendConfig",
+    "LoraCheckpointConfig",
+    "LoraConfig",
+    "LoraDatasetConfig",
+    "LoraOptimizationConfig",
+    "LoraTuningBackendKind",
+    "LoraTuningBackendModel",
+    "LoraTuningRequest",
+    "LoraTuningResult",
     "MlxBackendModel",
     "ModelCapability",
     "ModelFormat",
@@ -172,6 +193,7 @@ __all__ = [
     "build_chat_model",
     "build_embedding_model",
     "build_image_generation_model",
+    "build_lora_tuning_model",
     "build_rerank_model",
     "build_video_understanding_model",
     "build_vision_chat_model",

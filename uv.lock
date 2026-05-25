@@ -2877,6 +2877,15 @@ mlx = [
     { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "mlx-vlm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
 ]
+training = [
+    { name = "accelerate" },
+    { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "peft" },
+    { name = "safetensors" },
+    { name = "torch" },
+    { name = "transformers" },
+]
 transformers = [
     { name = "accelerate" },
     { name = "num2words" },
@@ -2902,6 +2911,7 @@ requires-dist = [
     { name = "accelerate", marker = "extra == 'audio'" },
     { name = "accelerate", marker = "extra == 'image'" },
     { name = "accelerate", marker = "extra == 'local-model'" },
+    { name = "accelerate", marker = "extra == 'training'" },
     { name = "accelerate", marker = "extra == 'transformers'" },
     { name = "accelerate", marker = "extra == 'vision'" },
     { name = "diffusers", marker = "extra == 'image'" },
@@ -2916,11 +2926,13 @@ requires-dist = [
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'image'" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'local-model'" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'mlx'" },
+    { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'training'" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'vision'" },
     { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'audio'" },
     { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'local-model'" },
     { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'local-model'" },
     { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'mlx'" },
+    { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'training'" },
     { name = "mlx-vlm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'local-model'" },
     { name = "mlx-vlm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'mlx'" },
     { name = "mlx-vlm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'vision'" },
@@ -2931,6 +2943,7 @@ requires-dist = [
     { name = "opencv-python", marker = "extra == 'vision'" },
     { name = "peft", marker = "extra == 'image'" },
     { name = "peft", marker = "extra == 'local-model'" },
+    { name = "peft", marker = "extra == 'training'" },
     { name = "peft", marker = "extra == 'transformers'" },
     { name = "pillow", marker = "extra == 'image'" },
     { name = "pillow", marker = "extra == 'local-model'" },
@@ -2938,11 +2951,13 @@ requires-dist = [
     { name = "pydantic" },
     { name = "safetensors", marker = "extra == 'image'" },
     { name = "safetensors", marker = "extra == 'local-model'" },
+    { name = "safetensors", marker = "extra == 'training'" },
     { name = "safetensors", marker = "extra == 'transformers'" },
     { name = "safetensors", marker = "extra == 'vision'" },
     { name = "torch", marker = "extra == 'audio'" },
     { name = "torch", marker = "extra == 'image'" },
     { name = "torch", marker = "extra == 'local-model'" },
+    { name = "torch", marker = "extra == 'training'" },
     { name = "torch", marker = "extra == 'transformers'" },
     { name = "torch", marker = "extra == 'vision'" },
     { name = "torchvision", marker = "extra == 'image'" },
@@ -2951,11 +2966,12 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'audio'" },
     { name = "transformers", marker = "extra == 'image'" },
     { name = "transformers", marker = "extra == 'local-model'" },
+    { name = "transformers", marker = "extra == 'training'" },
     { name = "transformers", marker = "extra == 'transformers'" },
     { name = "transformers", marker = "extra == 'vision'" },
     { name = "uvicorn" },
 ]
-provides-extras = ["mlx", "llama-cpp", "transformers", "audio", "image", "vision", "local-model"]
+provides-extras = ["mlx", "llama-cpp", "transformers", "audio", "image", "vision", "training", "local-model"]
 
 [[package]]
 name = "tentgent-workspace"

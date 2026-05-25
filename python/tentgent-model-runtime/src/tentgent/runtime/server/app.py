@@ -24,6 +24,10 @@ from tentgent.runtime.backends.image_generation import (
     ImageGenerationBackendModel,
     build_image_generation_model,
 )
+from tentgent.runtime.backends.lora_tuning import (
+    LoraTuningBackendModel,
+    build_lora_tuning_model,
+)
 from tentgent.runtime.backends.rerank import RerankBackendModel, build_rerank_model
 from tentgent.runtime.backends.resource_manager import ResourceManager
 from tentgent.runtime.backends.video_understanding import (
@@ -47,6 +51,7 @@ from tentgent.runtime.server.routes import (
     health,
     image_generation,
     lifecycle,
+    lora_tuning,
     rerank,
     video_understanding,
     vision_chat,
@@ -130,6 +135,12 @@ def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
             )
         )
         return image_generation_resources
+    if config.capability == RuntimeCapability.LORA_TUNING:
+        lora_tuning_resources: ResourceManager[LoraTuningBackendModel] = ResourceManager(
+            model_factory=build_lora_tuning_model,
+            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+        )
+        return lora_tuning_resources
     if config.capability == RuntimeCapability.RERANK:
         rerank_resources: ResourceManager[RerankBackendModel] = ResourceManager(
             model_factory=build_rerank_model,
@@ -165,6 +176,8 @@ def _include_capability_router(app: FastAPI, capability: RuntimeCapability) -> N
         app.include_router(embedding.router)
     elif capability == RuntimeCapability.IMAGE_GENERATION:
         app.include_router(image_generation.router)
+    elif capability == RuntimeCapability.LORA_TUNING:
+        app.include_router(lora_tuning.router)
     elif capability == RuntimeCapability.RERANK:
         app.include_router(rerank.router)
     elif capability == RuntimeCapability.VIDEO_UNDERSTANDING:
@@ -190,6 +203,7 @@ def _include_unsupported_capability_routes(
             "/v1/images/inpaint",
             "/v1/images/control",
         ),
+        RuntimeCapability.LORA_TUNING: ("/v1/tuning/lora/runs",),
         RuntimeCapability.RERANK: ("/v1/rerank",),
         RuntimeCapability.VIDEO_UNDERSTANDING: ("/v1/video/understanding",),
         RuntimeCapability.VISION_CHAT: ("/v1/vision/chat",),

@@ -42,6 +42,17 @@ Current slice memory:
 - Slice 3c: PEFT runner runs a minimal Transformers plus PEFT training loop and emits train, eval, checkpoint, memory, and done events
 - Slice 4: successful MLX and PEFT runs import adapters into the adapter store
 
+Direct model-runtime slice:
+
+- `python/tentgent-model-runtime` exposes `POST /v1/tuning/lora/runs` behind
+  the `lora-tuning` capability.
+- The direct runtime endpoint executes one local PEFT or MLX chat / causal-LM
+  LoRA job from resolved model and dataset paths.
+- It returns parsed run events and the adapter output path, but it does not own
+  managed plan identity, durable run records, or adapter-store imports.
+- Rust should continue to own model/dataset resolution, workspace selection,
+  run persistence, and adapter import when this endpoint is wired in later.
+
 ## Managed Layout
 
 LoRA training state lives under `TENTGENT_HOME/train` unless `TENTGENT_TRAIN_DIR` is set.
@@ -189,6 +200,9 @@ Auto-selection rules:
 - `model.primary_format = "mlx"` selects `mlx` only when the current platform supports MLX
 - `model.primary_format = "safetensors"` selects `peft`
 - `model.primary_format = "gguf"` is blocked for LoRA training
+- `diffusers`, audio, vision, and video model tuning are outside the current
+  LoRA training runtime; the current PEFT and MLX runners target chat /
+  causal-LM adapters only
 
 Manual backend rules:
 

@@ -6,6 +6,7 @@ from .base import MlxBackendModel
 from .chat import MlxChatModel
 from .embedding import MlxEmbeddingModel
 from .image_generation import MfluxImageGenerationModel
+from .lora_tuning import MlxLoraTuningModel
 from .rerank import MlxRerankModel
 from .video_understanding import MlxVlmVideoUnderstandingModel
 from .vision_chat import MlxVlmVisionChatModel
@@ -17,6 +18,7 @@ __all__ = [
     "MlxBackendModel",
     "MlxChatModel",
     "MlxEmbeddingModel",
+    "MlxLoraTuningModel",
     "MlxRerankModel",
     "MlxVlmVideoUnderstandingModel",
     "MlxVlmVisionChatModel",

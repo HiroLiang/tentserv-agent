@@ -16,6 +16,7 @@ Supported capability values:
 - `audio-transcription`
 - `audio-speech`
 - `image-generation`
+- `lora-tuning`
 - `video-understanding`
 - `vision-chat`
 
@@ -31,6 +32,7 @@ Capability endpoints:
 - `POST /v1/images/transforms`
 - `POST /v1/images/inpaint`
 - `POST /v1/images/control`
+- `POST /v1/tuning/lora/runs`
 - `POST /v1/video/understanding`
 - `POST /v1/vision/chat`
 
@@ -99,6 +101,27 @@ Control generation requires a resolved ControlNet-style adapter record in the
 request. MLX diffusion has no control route because the current MFLUX-backed
 runtime does not provide a compatible ControlNet API.
 
+### LoRA Tuning
+
+`POST /v1/tuning/lora/runs` runs one local chat / causal-LM LoRA tuning job and
+returns the final adapter output path plus parsed backend events.
+
+Supported `backend` values:
+
+- `peft`
+- `mlx`
+
+PEFT tuning requires a `safetensors` chat model and uses Transformers plus PEFT
+with `AutoModelForCausalLM`. MLX tuning requires an `mlx` chat model and shells
+out to `mlx_lm.lora` with a generated config. The direct runtime validates the
+local dataset directory, requires `train.jsonl`, renders canonical
+`tentgent.chat.v1` records, and writes backend outputs under the provided
+`output_dir`.
+
+This direct endpoint does not create managed train plans, durable run records,
+or adapter-store imports. Rust remains responsible for managed model, dataset,
+adapter, and workspace resolution before it calls the runtime.
+
 ### Vision Chat
 
 `POST /v1/vision/chat` runs one local image-plus-prompt request and returns
@@ -147,7 +170,8 @@ and Apple Silicon MFLUX/MLX packages where supported. The `vision` optional
 dependency group installs Transformers, Pillow, PyTorch/Torchvision, and Apple
 Silicon MLX VLM packages where supported. Video understanding also requires
 OpenCV-backed video decoding through the `vision` or `local-model` dependency
-profile.
+profile. The `training` optional dependency group installs Transformers, PEFT,
+PyTorch, and Apple Silicon MLX LoRA packages where supported.
 
 ## Health
 
