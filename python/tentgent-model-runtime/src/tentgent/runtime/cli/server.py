@@ -6,7 +6,7 @@ from collections.abc import Sequence
 import uvicorn
 
 from tentgent.runtime.server.app import create_app
-from tentgent.runtime.server.lifecycle import RuntimeServerConfig
+from tentgent.runtime.server.lifecycle import RuntimeCapability, RuntimeServerConfig
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -17,6 +17,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--port", required=True, type=int, help="HTTP bind port.")
     parser.add_argument("--server-ref", help="Optional Rust-owned server reference.")
     parser.add_argument("--model-ref", help="Optional Rust-owned model reference.")
+    parser.add_argument(
+        "--capability",
+        choices=tuple(capability.value for capability in RuntimeCapability),
+        default=RuntimeCapability.CHAT.value,
+        help="Endpoint family served by this runtime process.",
+    )
     parser.add_argument(
         "--log-level",
         choices=("critical", "error", "warning", "info", "debug", "trace"),
@@ -71,6 +77,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         RuntimeServerConfig(
             host=args.host,
             port=args.port,
+            capability=RuntimeCapability(args.capability),
             server_ref=args.server_ref,
             model_ref=args.model_ref,
             idle_keep_alive_seconds=args.idle_keep_alive_seconds,

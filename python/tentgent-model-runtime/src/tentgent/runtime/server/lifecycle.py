@@ -5,6 +5,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from time import monotonic
 from typing import Any
 
@@ -13,10 +14,17 @@ from tentgent.runtime.backends.resource_manager import ResourceManager
 from tentgent.runtime.task.manager import TaskManager, TaskManagerState
 
 
+class RuntimeCapability(StrEnum):
+    CHAT = "chat"
+    EMBEDDING = "embedding"
+    RERANK = "rerank"
+
+
 @dataclass(frozen=True)
 class RuntimeServerConfig:
     host: str
     port: int
+    capability: RuntimeCapability = RuntimeCapability.CHAT
     server_ref: str | None = None
     model_ref: str | None = None
     idle_keep_alive_seconds: float = 300.0
@@ -72,6 +80,7 @@ class RuntimeLifecycleState:
                 "server_ref": self._config.server_ref,
             },
             "runtime": {
+                "capability": self._config.capability.value,
                 "model_ref": self._config.model_ref,
                 "resources": self._resource_manager.snapshot(),
             },

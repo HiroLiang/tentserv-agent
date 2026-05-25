@@ -50,12 +50,21 @@ Cloud provider direct servers currently support only `chat`.
 
 ## Backend Status
 
-The first embedding backend is `transformers-peft` for managed safetensors
-models. It loads `AutoTokenizer` and `AutoModel`, applies attention-mask mean
-pooling, and returns L2-normalized vectors.
+Supported embedding model kinds:
 
-GGUF, MLX, cloud provider, and rerank embedding paths are not implemented in
-this contract.
+- `transformers-embedding`
+  Loads managed safetensors models with `AutoTokenizer` and `AutoModel`,
+  applies attention-mask mean pooling, and returns L2-normalized vectors.
+- `mlx-embedding`
+  Recognized as a runtime kind, but the Apache-licensed runtime does not
+  import optional license-restricted MLX embedding packages. It returns
+  `501 not_implemented`; downstream forks or external runtimes may provide a
+  concrete implementation.
+- `llama-cpp-embedding`
+  Loads a single GGUF file with `llama-cpp-python` using `embedding=True` and
+  returns the backend embedding vectors.
+
+Cloud provider and rerank embedding paths are not implemented in this contract.
 
 ## Error Mapping
 

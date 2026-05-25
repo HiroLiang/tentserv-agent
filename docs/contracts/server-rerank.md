@@ -55,11 +55,19 @@ Cloud provider direct servers currently support only `chat`.
 
 ## Backend Status
 
-The first rerank backend is `transformers-peft` for managed safetensors models.
-It loads `AutoTokenizer` and `AutoModelForSequenceClassification`, scores
-query/document pairs with scalar logits, and returns raw backend scores.
+Supported rerank model kinds:
 
-GGUF, MLX, cloud provider, and embedding backend paths are not implemented for
+- `transformers-rerank`
+  Loads managed safetensors models with `AutoTokenizer` and
+  `AutoModelForSequenceClassification`, scores query/document pairs with scalar
+  logits, and returns raw backend scores.
+- `mlx-rerank`
+  Recognized as a runtime kind, but the Apache-licensed runtime does not
+  import optional license-restricted MLX reranker packages. It returns
+  `501 not_implemented`; downstream forks or external runtimes may provide a
+  concrete implementation.
+
+GGUF, cloud provider, and embedding backend paths are not implemented for
 rerank in this contract.
 
 ## Error Mapping

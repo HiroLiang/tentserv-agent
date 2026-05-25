@@ -2,24 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from tentgent.runtime.backends.chat import (
     ChatMessage,
     ChatModelKind,
     ChatRequest,
-)
-from tentgent.runtime.backends.records import (
-    AdapterRecord,
-    AdapterType,
-    ModelCapability,
-    ModelFormat,
-    ModelRecord,
 )
 from tentgent.runtime.task.inference.chat import (
     ChatInferenceRequest,
@@ -28,6 +20,13 @@ from tentgent.runtime.task.inference.chat import (
 )
 from tentgent.runtime.task.manager import TaskManagerClosedError
 
+from .payloads import (
+    AdapterRecordPayload,
+    ModelRecordPayload,
+    adapter_record,
+    model_record,
+)
+
 
 router = APIRouter(prefix="/v1")
 
@@ -35,25 +34,6 @@ router = APIRouter(prefix="/v1")
 class ChatMessagePayload(BaseModel):
     role: str
     content: str
-
-
-class ModelRecordPayload(BaseModel):
-    model_ref: str
-    source_path: str
-    primary_format: ModelFormat
-    capabilities: list[ModelCapability] = Field(default_factory=list)
-    short_ref: str | None = None
-    source_repo: str | None = None
-    source_revision: str | None = None
-
-
-class AdapterRecordPayload(BaseModel):
-    adapter_ref: str
-    source_path: str
-    adapter_format: str
-    adapter_type: AdapterType = AdapterType.LORA
-    short_ref: str | None = None
-    weight_file: str | None = None
 
 
 class ChatPayload(BaseModel):
@@ -146,7 +126,7 @@ def _build_chat_inference_request(
             detail="chat requests must contain at least one message",
         )
 
-    adapter = _adapter_record(payload.adapter)
+    adapter = adapter_record(payload.adapter)
     chat_request = ChatRequest(
         messages=tuple(
             ChatMessage(role=message.role, content=message.content)
@@ -158,37 +138,11 @@ def _build_chat_inference_request(
     )
     inference_request = ChatInferenceRequest(
         model_kind=payload.model_kind,
-        model=_model_record(payload.model),
+        model=model_record(payload.model),
         chat=chat_request,
         adapter=adapter,
     )
     return payload.task_ref or uuid4().hex, inference_request
-
-
-def _model_record(payload: ModelRecordPayload) -> ModelRecord:
-    return ModelRecord(
-        model_ref=payload.model_ref,
-        source_path=Path(payload.source_path),
-        primary_format=payload.primary_format,
-        capabilities=frozenset(payload.capabilities),
-        short_ref=payload.short_ref,
-        source_repo=payload.source_repo,
-        source_revision=payload.source_revision,
-    )
-
-
-def _adapter_record(payload: AdapterRecordPayload | None) -> AdapterRecord | None:
-    if payload is None:
-        return None
-    return AdapterRecord(
-        adapter_ref=payload.adapter_ref,
-        source_path=Path(payload.source_path),
-        adapter_format=payload.adapter_format,
-        adapter_type=payload.adapter_type,
-        short_ref=payload.short_ref,
-        weight_file=payload.weight_file,
-    )
-
 
 def _sse_events(task: StreamingChatTask):
     try:

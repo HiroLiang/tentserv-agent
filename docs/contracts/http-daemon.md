@@ -1506,10 +1506,13 @@ Selection rules:
   repo alias, or source repo basename alias.
 - selected models must advertise `embedding`; chat-only and rerank-only models
   return `400 unsupported_target` before runtime dispatch.
-- the first implemented local backend is safetensors through the
-  `transformers-peft` local-model Python profile.
-- GGUF, MLX, cloud provider, and rerank embedding paths are not part of this
-  endpoint.
+- implemented local backends include safetensors through the
+  `transformers-peft` local-model Python profile and GGUF through
+  `llama-cpp-python` embedding mode.
+- MLX embedding is a recognized runtime kind, but the Apache-licensed runtime
+  returns `501 not_implemented` unless a downstream fork or external runtime
+  provides a concrete implementation.
+- Cloud provider and rerank embedding paths are not part of this endpoint.
 
 Success responses preserve request order and indexes:
 
@@ -1558,9 +1561,12 @@ Selection rules:
   repo alias, or source repo basename alias.
 - selected models must advertise `rerank`; chat-only and embedding-only models
   return `400 unsupported_target` before runtime dispatch.
-- the first implemented local backend is safetensors through the
-  `transformers-peft` local-model Python profile using sequence classification.
-- GGUF, MLX, cloud provider, and embedding backend paths are not part of this
+- the implemented local backend is safetensors through the `transformers-peft`
+  local-model Python profile using sequence classification.
+- MLX rerank is a recognized runtime kind, but the Apache-licensed runtime
+  returns `501 not_implemented` unless a downstream fork or external runtime
+  provides a concrete implementation.
+- GGUF, cloud provider, and embedding backend paths are not part of this
   endpoint.
 
 Success responses are sorted by descending score and preserve original document

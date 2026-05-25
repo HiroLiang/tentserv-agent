@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 from ..base import LlamaCppBackendModel
 from ..chat import ChatBackendModel, ChatMessage, ChatRequest, ChatResult
-from ..errors import missing_backend_dependency
 from ..records import ModelFormat, ModelRecord
+from .common import load_llama_class, resolve_gguf_path
 
 
 class LlamaCppChatModel(LlamaCppBackendModel, ChatBackendModel):
@@ -22,8 +21,8 @@ class LlamaCppChatModel(LlamaCppBackendModel, ChatBackendModel):
                 f"primary_format `{record.primary_format}`"
             )
 
-        llama = _load_llama_class()
-        model_path = _resolve_gguf_path(record.source_path)
+        llama = load_llama_class()
+        model_path = resolve_gguf_path(record.source_path)
         self._model = llama(
             model_path=str(model_path),
             n_ctx=2048,
@@ -73,35 +72,6 @@ class LlamaCppChatModel(LlamaCppBackendModel, ChatBackendModel):
                 "llama.cpp chat model is not loaded yet; call load() first."
             )
         return self._model
-
-
-def _load_llama_class() -> Any:
-    try:
-        from llama_cpp import Llama
-    except ModuleNotFoundError as exc:
-        if exc.name == "llama_cpp":
-            raise missing_backend_dependency(exc.name) from exc
-        raise
-    return Llama
-
-
-def _resolve_gguf_path(source_path: Path) -> Path:
-    if source_path.is_file():
-        if source_path.suffix.lower() == ".gguf":
-            return source_path
-        raise ValueError(f"expected a GGUF file, got `{source_path}`")
-
-    matches = sorted(source_path.glob("*.gguf"))
-    if not matches:
-        raise FileNotFoundError(f"no GGUF file found under `{source_path}`")
-    if len(matches) > 1:
-        names = ", ".join(path.name for path in matches[:5])
-        raise ValueError(
-            "multiple GGUF files were found in the model source; "
-            f"this runtime expects exactly one GGUF file (found: {names})"
-        )
-    return matches[0]
-
 
 def _render_messages(messages: tuple[ChatMessage, ...]) -> list[dict[str, str]]:
     if not messages:

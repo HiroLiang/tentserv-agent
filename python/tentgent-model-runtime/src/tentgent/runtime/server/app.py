@@ -2,14 +2,24 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from tentgent.runtime import __version__
 from tentgent.runtime.backends.chat import ChatBackendModel, build_chat_model
+from tentgent.runtime.backends.embedding import (
+    EmbeddingBackendModel,
+    build_embedding_model,
+)
+from tentgent.runtime.backends.rerank import RerankBackendModel, build_rerank_model
 from tentgent.runtime.backends.resource_manager import ResourceManager
-from tentgent.runtime.server.lifecycle import RuntimeLifecycleState, RuntimeServerConfig
-from tentgent.runtime.server.routes import chat, health
+from tentgent.runtime.server.lifecycle import (
+    RuntimeCapability,
+    RuntimeLifecycleState,
+    RuntimeServerConfig,
+)
+from tentgent.runtime.server.routes import chat, embedding, health, rerank
 from tentgent.runtime.task.manager import TaskManager
 
 
@@ -19,10 +29,7 @@ def create_app(
     request_shutdown: Callable[[], None] | None = None,
 ) -> FastAPI:
     task_manager = TaskManager()
-    resource_manager: ResourceManager[ChatBackendModel] = ResourceManager(
-        model_factory=build_chat_model,
-        model_idle_timeout_seconds=config.model_idle_timeout_seconds,
-    )
+    resource_manager = _resource_manager(config)
     lifecycle_state = RuntimeLifecycleState(
         config=config,
         task_manager=task_manager,
@@ -49,5 +56,78 @@ def create_app(
     app.state.task_manager = task_manager
     app.state.resource_manager = resource_manager
     app.include_router(health.router)
-    app.include_router(chat.router)
+    _include_capability_router(app, config.capability)
+    _include_unsupported_capability_routes(app, config.capability)
     return app
+
+
+def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
+    if config.capability == RuntimeCapability.CHAT:
+        chat_resources: ResourceManager[ChatBackendModel] = ResourceManager(
+            model_factory=build_chat_model,
+            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+        )
+        return chat_resources
+    if config.capability == RuntimeCapability.EMBEDDING:
+        embedding_resources: ResourceManager[EmbeddingBackendModel] = ResourceManager(
+            model_factory=build_embedding_model,
+            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+        )
+        return embedding_resources
+    if config.capability == RuntimeCapability.RERANK:
+        rerank_resources: ResourceManager[RerankBackendModel] = ResourceManager(
+            model_factory=build_rerank_model,
+            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+        )
+        return rerank_resources
+
+    raise ValueError(f"unsupported runtime capability `{config.capability}`")
+
+
+def _include_capability_router(app: FastAPI, capability: RuntimeCapability) -> None:
+    if capability == RuntimeCapability.CHAT:
+        app.include_router(chat.router)
+    elif capability == RuntimeCapability.EMBEDDING:
+        app.include_router(embedding.router)
+    elif capability == RuntimeCapability.RERANK:
+        app.include_router(rerank.router)
+    else:
+        raise ValueError(f"unsupported runtime capability `{capability}`")
+
+
+def _include_unsupported_capability_routes(
+    app: FastAPI,
+    capability: RuntimeCapability,
+) -> None:
+    targets = {
+        RuntimeCapability.CHAT: ("/v1/chat", "/v1/chat/stream"),
+        RuntimeCapability.EMBEDDING: ("/v1/embeddings",),
+        RuntimeCapability.RERANK: ("/v1/rerank",),
+    }
+    for target_capability, paths in targets.items():
+        if target_capability == capability:
+            continue
+        for path in paths:
+            _add_unsupported_route(app, path, capability)
+
+
+def _add_unsupported_route(
+    app: FastAPI,
+    path: str,
+    capability: RuntimeCapability,
+) -> None:
+    async def unsupported_target() -> None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"runtime capability `{capability.value}` does not serve "
+                f"`POST {path}`"
+            ),
+        )
+
+    app.add_api_route(
+        path,
+        unsupported_target,
+        methods=["POST"],
+        name=f"unsupported_{capability.value}_{path.replace('/', '_')}",
+    )

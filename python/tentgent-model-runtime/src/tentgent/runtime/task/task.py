@@ -13,6 +13,8 @@ ResultT = TypeVar("ResultT")
 class TaskKind(StrEnum):
     CHAT = "chat"
     CHAT_STREAM = "chat-stream"
+    EMBEDDING = "embedding"
+    RERANK = "rerank"
 
 
 class TaskStatus(StrEnum):

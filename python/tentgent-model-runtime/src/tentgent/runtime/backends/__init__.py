@@ -18,12 +18,31 @@ from .chat import (
     ChatResult,
     build_chat_model,
 )
+from .embedding import (
+    EmbeddingBackendModel,
+    EmbeddingModelFactory,
+    EmbeddingModelKind,
+    EmbeddingRequest,
+    EmbeddingResult,
+    EmbeddingVector,
+    build_embedding_model,
+)
 from .records import (
     AdapterRecord,
     AdapterType,
     ModelCapability,
     ModelFormat,
     ModelRecord,
+)
+from .rerank import (
+    RerankBackendModel,
+    RerankModelFactory,
+    RerankModelKind,
+    RerankRequest,
+    RerankResult,
+    RerankScore,
+    build_rerank_model,
+    ranked_scores,
 )
 
 __all__ = [
@@ -39,11 +58,26 @@ __all__ = [
     "ChatRequest",
     "ChatResult",
     "DiffusersBackendModel",
+    "EmbeddingBackendModel",
+    "EmbeddingModelFactory",
+    "EmbeddingModelKind",
+    "EmbeddingRequest",
+    "EmbeddingResult",
+    "EmbeddingVector",
     "LlamaCppBackendModel",
     "MlxBackendModel",
     "ModelCapability",
     "ModelFormat",
     "ModelRecord",
+    "RerankBackendModel",
+    "RerankModelFactory",
+    "RerankModelKind",
+    "RerankRequest",
+    "RerankResult",
+    "RerankScore",
     "TransformersBackendModel",
     "build_chat_model",
+    "build_embedding_model",
+    "build_rerank_model",
+    "ranked_scores",
 ]
