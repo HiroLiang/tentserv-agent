@@ -11,8 +11,3 @@ router = APIRouter()
 @router.get("/healthz")
 def healthz(request: Request) -> dict[str, Any]:
     return request.app.state.lifecycle.snapshot()
-
-
-@router.get("/v1/lifecycle")
-def lifecycle(request: Request) -> dict[str, Any]:
-    return request.app.state.lifecycle.snapshot()

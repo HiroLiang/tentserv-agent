@@ -87,6 +87,12 @@ class RuntimeLifecycleState:
             "tasks": task_snapshot,
         }
 
+    def begin_shutdown(self) -> dict[str, Any]:
+        self._task_manager.begin_closing()
+        if self._closing_started_at is None:
+            self._closing_started_at = monotonic()
+        return self.snapshot()
+
     async def _watch_idle(self) -> None:
         while True:
             await asyncio.sleep(self._config.task_poll_interval_seconds)

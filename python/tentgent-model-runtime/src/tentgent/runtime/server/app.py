@@ -19,7 +19,7 @@ from tentgent.runtime.server.lifecycle import (
     RuntimeLifecycleState,
     RuntimeServerConfig,
 )
-from tentgent.runtime.server.routes import chat, embedding, health, rerank
+from tentgent.runtime.server.routes import chat, embedding, health, lifecycle, rerank
 from tentgent.runtime.task.manager import TaskManager
 
 
@@ -56,6 +56,7 @@ def create_app(
     app.state.task_manager = task_manager
     app.state.resource_manager = resource_manager
     app.include_router(health.router)
+    app.include_router(lifecycle.router)
     _include_capability_router(app, config.capability)
     _include_unsupported_capability_routes(app, config.capability)
     return app

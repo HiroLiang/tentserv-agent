@@ -83,6 +83,8 @@ Key current documents:
   Kernel-owned job workspace, chunk IO, result file, and cleanup port boundary.
 - `docs/contracts/server-chat.md`
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
+- `docs/contracts/model-runtime-server.md`
+  Direct Python model runtime health and graceful shutdown boundary.
 - `docs/contracts/server-embedding.md`
   Direct Python server embedding request shape and capability routing.
 - `docs/contracts/server-rerank.md`
