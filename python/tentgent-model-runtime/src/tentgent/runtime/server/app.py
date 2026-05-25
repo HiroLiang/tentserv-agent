@@ -20,6 +20,10 @@ from tentgent.runtime.backends.embedding import (
     EmbeddingBackendModel,
     build_embedding_model,
 )
+from tentgent.runtime.backends.image_generation import (
+    ImageGenerationBackendModel,
+    build_image_generation_model,
+)
 from tentgent.runtime.backends.rerank import RerankBackendModel, build_rerank_model
 from tentgent.runtime.backends.resource_manager import ResourceManager
 from tentgent.runtime.server.lifecycle import (
@@ -33,6 +37,7 @@ from tentgent.runtime.server.routes import (
     chat,
     embedding,
     health,
+    image_generation,
     lifecycle,
     rerank,
 )
@@ -107,6 +112,14 @@ def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
             model_idle_timeout_seconds=config.model_idle_timeout_seconds,
         )
         return embedding_resources
+    if config.capability == RuntimeCapability.IMAGE_GENERATION:
+        image_generation_resources: ResourceManager[ImageGenerationBackendModel] = (
+            ResourceManager(
+                model_factory=build_image_generation_model,
+                model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+            )
+        )
+        return image_generation_resources
     if config.capability == RuntimeCapability.RERANK:
         rerank_resources: ResourceManager[RerankBackendModel] = ResourceManager(
             model_factory=build_rerank_model,
@@ -126,6 +139,8 @@ def _include_capability_router(app: FastAPI, capability: RuntimeCapability) -> N
         app.include_router(chat.router)
     elif capability == RuntimeCapability.EMBEDDING:
         app.include_router(embedding.router)
+    elif capability == RuntimeCapability.IMAGE_GENERATION:
+        app.include_router(image_generation.router)
     elif capability == RuntimeCapability.RERANK:
         app.include_router(rerank.router)
     else:
@@ -141,6 +156,12 @@ def _include_unsupported_capability_routes(
         RuntimeCapability.AUDIO_SPEECH: ("/v1/audio/speech",),
         RuntimeCapability.CHAT: ("/v1/chat", "/v1/chat/stream"),
         RuntimeCapability.EMBEDDING: ("/v1/embeddings",),
+        RuntimeCapability.IMAGE_GENERATION: (
+            "/v1/images/generations",
+            "/v1/images/transforms",
+            "/v1/images/inpaint",
+            "/v1/images/control",
+        ),
         RuntimeCapability.RERANK: ("/v1/rerank",),
     }
     for target_capability, paths in targets.items():

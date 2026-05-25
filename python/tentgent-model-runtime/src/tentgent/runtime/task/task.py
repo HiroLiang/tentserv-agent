@@ -16,6 +16,7 @@ class TaskKind(StrEnum):
     CHAT = "chat"
     CHAT_STREAM = "chat-stream"
     EMBEDDING = "embedding"
+    IMAGE_GENERATION = "image-generation"
     RERANK = "rerank"
 
 

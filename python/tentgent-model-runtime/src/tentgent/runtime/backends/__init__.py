@@ -45,6 +45,18 @@ from .embedding import (
     EmbeddingVector,
     build_embedding_model,
 )
+from .image_generation import (
+    ImageGenerationAdapterSelection,
+    ImageGenerationBackendModel,
+    ImageGenerationControlSelection,
+    ImageGenerationModelFactory,
+    ImageGenerationModelKind,
+    ImageGenerationOutputFormat,
+    ImageGenerationRequest,
+    ImageGenerationResult,
+    ImageGenerationWorkflowKind,
+    build_image_generation_model,
+)
 from .records import (
     AdapterRecord,
     AdapterType,
@@ -94,6 +106,15 @@ __all__ = [
     "EmbeddingRequest",
     "EmbeddingResult",
     "EmbeddingVector",
+    "ImageGenerationAdapterSelection",
+    "ImageGenerationBackendModel",
+    "ImageGenerationControlSelection",
+    "ImageGenerationModelFactory",
+    "ImageGenerationModelKind",
+    "ImageGenerationOutputFormat",
+    "ImageGenerationRequest",
+    "ImageGenerationResult",
+    "ImageGenerationWorkflowKind",
     "LlamaCppBackendModel",
     "MlxBackendModel",
     "ModelCapability",
@@ -110,6 +131,7 @@ __all__ = [
     "build_audio_transcription_model",
     "build_chat_model",
     "build_embedding_model",
+    "build_image_generation_model",
     "build_rerank_model",
     "ranked_scores",
 ]

@@ -19,6 +19,7 @@ class RuntimeCapability(StrEnum):
     AUDIO_TRANSCRIPTION = "audio-transcription"
     CHAT = "chat"
     EMBEDDING = "embedding"
+    IMAGE_GENERATION = "image-generation"
     RERANK = "rerank"
 
 

@@ -5,6 +5,7 @@ from .audio_transcription import (
 )
 from .chat import ChatInferenceRequest, ChatTask, StreamEvent, StreamingChatTask
 from .embedding import EmbeddingInferenceRequest, EmbeddingTask
+from .image_generation import ImageGenerationInferenceRequest, ImageGenerationTask
 from .inference_task import InferenceTask
 from .rerank import RerankInferenceRequest, RerankTask
 
@@ -17,6 +18,8 @@ __all__ = [
     "ChatTask",
     "EmbeddingInferenceRequest",
     "EmbeddingTask",
+    "ImageGenerationInferenceRequest",
+    "ImageGenerationTask",
     "InferenceTask",
     "RerankInferenceRequest",
     "RerankTask",

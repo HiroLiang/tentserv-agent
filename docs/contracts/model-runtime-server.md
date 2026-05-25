@@ -15,6 +15,7 @@ Supported capability values:
 - `rerank`
 - `audio-transcription`
 - `audio-speech`
+- `image-generation`
 
 Capability endpoints:
 
@@ -24,6 +25,10 @@ Capability endpoints:
 - `POST /v1/rerank`
 - `POST /v1/audio/transcriptions`
 - `POST /v1/audio/speech`
+- `POST /v1/images/generations`
+- `POST /v1/images/transforms`
+- `POST /v1/images/inpaint`
+- `POST /v1/images/control`
 
 Requests to endpoint families not served by the current process return `400`.
 Rust still owns job creation, workspace paths, model resolution, and server
@@ -61,11 +66,42 @@ Selected models may reject `voice` or `language` options when their generated
 API does not support them. Kokoro-family MLX TTS models also require the
 `misaki[en]` optional dependency for English grapheme-to-phoneme processing.
 
+### Image Generation
+
+`POST /v1/images/generations` runs text-to-image generation.
+`POST /v1/images/transforms` runs image-to-image generation.
+`POST /v1/images/inpaint` runs image and mask inpainting.
+`POST /v1/images/control` runs Diffusers ControlNet-style controlled
+generation.
+
+Supported `model_kind` values:
+
+- `diffusers-text-to-image`
+- `diffusers-image-to-image`
+- `diffusers-inpaint`
+- `diffusers-control`
+- `mlx-diffusion-text-to-image`
+- `mlx-diffusion-image-to-image`
+- `mlx-diffusion-inpaint`
+
+The direct runtime receives local input paths and writes to the provided
+`output_path`. Rust remains responsible for job workspaces, upload/download
+handling, model and adapter resolution, and route selection. Python validates
+the concrete local paths it receives, loads the requested backend model, applies
+one optional image LoRA adapter when the backend supports it, and writes one
+`png` or `jpg` output.
+
+Control generation requires a resolved ControlNet-style adapter record in the
+request. MLX diffusion has no control route because the current MFLUX-backed
+runtime does not provide a compatible ControlNet API.
+
 ## Dependency Profiles
 
 The Python project exposes an `audio` optional dependency group for local audio
 runtime support. The broader `local-model` group includes audio dependencies
-alongside chat, embedding, and rerank dependencies.
+alongside chat, embedding, rerank, and image dependencies. The `image` optional
+dependency group installs Diffusers, Pillow, PyTorch, Transformers/Safetensors,
+and Apple Silicon MFLUX/MLX packages where supported.
 
 ## Health
 

@@ -37,17 +37,33 @@ audio = [
     "torch",
     "transformers",
 ]
+image = [
+    "accelerate",
+    "diffusers",
+    "mflux; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "peft",
+    "pillow",
+    "safetensors",
+    "torch",
+    "torchvision",
+    "transformers",
+]
 local-model = [
     "accelerate",
+    "diffusers",
     "llama-cpp-python",
     "misaki[en]>=0.9.4",
+    "mflux; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-audio; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mlx-lm; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "num2words>=0.5.14",
     "peft",
+    "pillow",
     "safetensors",
     "torch",
+    "torchvision",
     "transformers",
 ]
 
