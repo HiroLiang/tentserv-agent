@@ -208,9 +208,15 @@ create_archive() {
   esac
 }
 
-copy_model_runtime_project() {
+copy_python_workspace() {
   local destination="$1"
-  mkdir -p "${destination}"
+  local runtime_destination="${destination}/python/tentgent-model-runtime"
+
+  [[ -f "${ROOT_DIR}/uv.lock" ]] || fail "uv.lock is missing at repository root"
+
+  mkdir -p "${runtime_destination}"
+  cp "${ROOT_DIR}/pyproject.toml" "${destination}/pyproject.toml"
+  cp "${ROOT_DIR}/uv.lock" "${destination}/uv.lock"
 
   tar \
     --exclude='.venv' \
@@ -221,7 +227,7 @@ copy_model_runtime_project() {
     --exclude='.mypy_cache' \
     --exclude='.DS_Store' \
     -C "${ROOT_DIR}/python/tentgent-model-runtime" \
-    -cf - . | tar -C "${destination}" -xf -
+    -cf - . | tar -C "${runtime_destination}" -xf -
 }
 
 main() {
@@ -291,7 +297,7 @@ main() {
   cp "${ROOT_DIR}/scripts/bootstrap-python-env.sh" "${staging_dir}/share/tentgent/scripts/bootstrap-python-env.sh"
   cp "${ROOT_DIR}/scripts/install.sh" "${staging_dir}/share/tentgent/scripts/install.sh"
   cp "${ROOT_DIR}/scripts/install.ps1" "${staging_dir}/share/tentgent/scripts/install.ps1"
-  copy_model_runtime_project "${staging_dir}/share/tentgent/python"
+  copy_python_workspace "${staging_dir}/share/tentgent"
 
   echo "==> Creating ${archive_path}"
   mkdir -p "${DIST_DIR}"

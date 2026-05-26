@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="0.5.0"
+VERSION="0.5.1"
 DEFAULT_BASE_URL="https://agent.tentserv.com/releases"
 
 usage() {
@@ -245,11 +245,16 @@ mkdir -p "${EXTRACT_DIR}" "${BIN_DIR}" "${SHARE_DIR}"
 tar -xzf "${ARCHIVE_PATH}" -C "${EXTRACT_DIR}"
 
 [[ -x "${EXTRACT_DIR}/bin/tentgent" ]] || fail "archive is missing bin/tentgent"
+[[ -f "${EXTRACT_DIR}/share/tentgent/pyproject.toml" ]] || fail "archive is missing share/tentgent/pyproject.toml"
+[[ -f "${EXTRACT_DIR}/share/tentgent/uv.lock" ]] || fail "archive is missing share/tentgent/uv.lock"
 [[ -d "${EXTRACT_DIR}/share/tentgent/python" ]] || fail "archive is missing share/tentgent/python"
 [[ -d "${EXTRACT_DIR}/share/tentgent/scripts" ]] || fail "archive is missing share/tentgent/scripts"
 
 cp "${EXTRACT_DIR}/bin/tentgent" "${BIN_DIR}/tentgent"
 rm -rf "${SHARE_DIR}/python" "${SHARE_DIR}/scripts"
+rm -f "${SHARE_DIR}/pyproject.toml" "${SHARE_DIR}/uv.lock"
+cp "${EXTRACT_DIR}/share/tentgent/pyproject.toml" "${SHARE_DIR}/pyproject.toml"
+cp "${EXTRACT_DIR}/share/tentgent/uv.lock" "${SHARE_DIR}/uv.lock"
 cp -R "${EXTRACT_DIR}/share/tentgent/python" "${SHARE_DIR}/python"
 cp -R "${EXTRACT_DIR}/share/tentgent/scripts" "${SHARE_DIR}/scripts"
 chmod +x "${BIN_DIR}/tentgent"
@@ -269,7 +274,7 @@ fi
 
 if [[ "${PYTHON_BOOTSTRAP}" == "true" ]]; then
   echo "==> Bootstrapping managed Python runtime"
-  "${SHARE_DIR}/scripts/bootstrap-python-env.sh" --project "${SHARE_DIR}/python"
+  "${SHARE_DIR}/scripts/bootstrap-python-env.sh" --project "${SHARE_DIR}/python/tentgent-model-runtime"
 else
   echo "==> Skipping Python bootstrap"
 fi

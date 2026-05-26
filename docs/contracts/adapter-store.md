@@ -188,7 +188,7 @@ Full provenance remains available through `adapter inspect <ADAPTER_REF>`.
 - resolve the requested repo to an exact commit SHA through the shared `tentgent-hf-snapshot` helper
 - prefer an existing `tentgent-hf-snapshot` entry point in the resolved Python environment
 - fall back to `uv --no-config run --project <resolved-python-project> ...` with `UV_PROJECT_ENVIRONMENT` set to the resolved Python environment only when the entry point is missing
-- use the shared Python runtime asset resolver so development falls back to `python/tentgent-model-runtime` and installed builds use `share/tentgent/python`
+- use the shared Python runtime asset resolver so development falls back to `python/tentgent-model-runtime` and installed builds use `share/tentgent/python/tentgent-model-runtime`
 - download the full snapshot into adapter staging
 - build the normal adapter manifest and content-derived `adapter_ref`
 - write `source_kind = "huggingface"`, `source_repo`, and `source_revision`

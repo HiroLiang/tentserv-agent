@@ -85,7 +85,7 @@ fn model_runtime_launch_policy_overrides_idle_keep_alive_only() {
 #[test]
 fn std_bootstrap_planner_uses_runtime_layout_platform_and_installed_script() {
     let root = temp_path("runtime-bootstrap-planner");
-    let project_dir = root.join("share/tentgent/python");
+    let project_dir = root.join("share/tentgent/python/tentgent-model-runtime");
     let script_dir = root.join("share/tentgent/scripts");
     let script_path = script_dir.join("bootstrap-python-env.sh");
     fs::create_dir_all(&project_dir).expect("create project dir");
@@ -133,7 +133,7 @@ fn std_bootstrap_planner_uses_runtime_layout_platform_and_installed_script() {
 #[test]
 fn std_bootstrap_planner_marks_windows_shell_bootstrap_unsupported() {
     let root = temp_path("runtime-bootstrap-windows");
-    let project_dir = root.join("share/tentgent/python");
+    let project_dir = root.join("share/tentgent/python/tentgent-model-runtime");
     let script_dir = root.join("share/tentgent/scripts");
     fs::create_dir_all(&project_dir).expect("create project dir");
     fs::create_dir_all(&script_dir).expect("create script dir");

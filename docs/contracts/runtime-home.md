@@ -123,6 +123,7 @@ Python project resolution order:
 
 1. Use `TENTGENT_PYTHON_DIR` when set.
 2. Otherwise look for an installed project relative to the `tentgent` binary:
+   `../share/tentgent/python/tentgent-model-runtime`,
    `../share/tentgent/python`, then `../libexec/tentgent/python`.
 3. Otherwise fall back to the repository development project at `python/tentgent-model-runtime`.
 
@@ -144,10 +145,16 @@ This remains a developer bootstrap path. Public installers must not require user
 Installed release artifacts should place Python project files at:
 
 ```text
-share/tentgent/python/
+share/tentgent/
+├── pyproject.toml
+├── uv.lock
+├── python/
+│   └── tentgent-model-runtime/
+└── scripts/
 ```
 
-That directory is the packaged equivalent of the repository `python/tentgent-model-runtime/` project root.
+`share/tentgent/` is the packaged equivalent of the repository Python workspace.
+`share/tentgent/python/tentgent-model-runtime/` is the packaged equivalent of the repository `python/tentgent-model-runtime/` project root.
 
 ## Bootstrap Cache
 
@@ -187,7 +194,7 @@ It downloads a pinned `uv` release archive, verifies the pinned `sha256.sum` man
 `tentgent runtime bootstrap` is the public CLI entry point for managed Python environment creation in package-manager installs. It resolves the packaged Python project and managed environment, then delegates to `scripts/bootstrap-python-env.sh` so the pinned `uv` bootstrap behavior stays centralized.
 
 `scripts/bootstrap-python-env.sh` is installer-facing plumbing.
-It resolves the packaged or development Python project, ensures pinned `uv` is cached, and runs:
+It resolves the packaged or development Python project, ensures pinned `uv` is cached, and runs against the workspace lockfile:
 
 ```text
 UV_PROJECT_ENVIRONMENT=<python-env> UV_CACHE_DIR=<bootstrap-uv-cache> uv --no-config sync --project <python-project> --managed-python --python 3.13 --frozen --no-editable --reinstall-package tentgent-model-runtime

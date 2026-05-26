@@ -1,7 +1,7 @@
 param(
     [string]$Archive = "",
     [string]$Checksums = "",
-    [string]$Version = "0.5.0",
+    [string]$Version = "0.5.1",
     [string]$Prefix = "",
     [string]$Target = "",
     [switch]$DryRun,
@@ -188,7 +188,7 @@ function Bootstrap-PythonEnv($RuntimeHome, $ShareDir, $BootstrapTarget) {
     $projectDir = if ($env:TENTGENT_PYTHON_DIR) {
         $env:TENTGENT_PYTHON_DIR
     } else {
-        Join-Path $ShareDir "python"
+        Join-Path $ShareDir "python\tentgent-model-runtime"
     }
     $envDir = if ($env:TENTGENT_PYTHON_ENV_DIR) {
         $env:TENTGENT_PYTHON_ENV_DIR
@@ -298,15 +298,22 @@ try {
     Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDir -Force
 
     $binarySource = Join-Path $extractDir "bin\tentgent.exe"
+    $workspacePyprojectSource = Join-Path $extractDir "share\tentgent\pyproject.toml"
+    $workspaceLockSource = Join-Path $extractDir "share\tentgent\uv.lock"
     $pythonSource = Join-Path $extractDir "share\tentgent\python"
     $scriptsSource = Join-Path $extractDir "share\tentgent\scripts"
     if (-not (Test-Path -LiteralPath $binarySource)) { Fail "archive is missing bin\tentgent.exe" }
+    if (-not (Test-Path -LiteralPath $workspacePyprojectSource)) { Fail "archive is missing share\tentgent\pyproject.toml" }
+    if (-not (Test-Path -LiteralPath $workspaceLockSource)) { Fail "archive is missing share\tentgent\uv.lock" }
     if (-not (Test-Path -LiteralPath $pythonSource)) { Fail "archive is missing share\tentgent\python" }
     if (-not (Test-Path -LiteralPath $scriptsSource)) { Fail "archive is missing share\tentgent\scripts" }
 
     New-Item -ItemType Directory -Force -Path $BinDir, $ShareDir | Out-Null
     Copy-Item -LiteralPath $binarySource -Destination (Join-Path $BinDir "tentgent.exe") -Force
     Remove-Item -LiteralPath (Join-Path $ShareDir "python"), (Join-Path $ShareDir "scripts") -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $ShareDir "pyproject.toml"), (Join-Path $ShareDir "uv.lock") -Force -ErrorAction SilentlyContinue
+    Copy-Item -LiteralPath $workspacePyprojectSource -Destination (Join-Path $ShareDir "pyproject.toml") -Force
+    Copy-Item -LiteralPath $workspaceLockSource -Destination (Join-Path $ShareDir "uv.lock") -Force
     Copy-Item -LiteralPath $pythonSource -Destination (Join-Path $ShareDir "python") -Recurse -Force
     Copy-Item -LiteralPath $scriptsSource -Destination (Join-Path $ShareDir "scripts") -Recurse -Force
 

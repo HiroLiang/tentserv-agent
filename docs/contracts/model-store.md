@@ -243,7 +243,7 @@ the same file shape with `source = "endpoint-smoke"`.
 - The Rust core invokes the `tentgent-hf-snapshot` entry point through the shared Python runtime asset resolver.
 - The helper implementation lives in `python/tentgent-model-runtime/src/tentgent/runtime/tools/hf_snapshot.py`.
 - In development, the resolver falls back to `python/tentgent-model-runtime`.
-- In installed builds, the resolver should find `share/tentgent/python` relative to the `tentgent` binary.
+- In installed builds, the resolver should find `share/tentgent/python/tentgent-model-runtime` relative to the `tentgent` binary.
 - The helper should prefer an existing `tentgent-hf-snapshot` entry point in the resolved Python environment.
 - When the entry point is missing, Rust may fall back to `uv --no-config run --project <resolved-python-project> tentgent-hf-snapshot ...` with `UV_PROJECT_ENVIRONMENT` set to the resolved Python environment so the Python subproject remains the single source of truth for package resolution and `uv` does not inspect the repository-root `pyproject.toml`.
 - The helper should use `huggingface_hub` `model_info()` plus `snapshot_download()`.

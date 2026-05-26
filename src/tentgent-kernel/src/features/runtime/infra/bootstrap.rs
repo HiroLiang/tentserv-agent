@@ -121,9 +121,7 @@ fn ensure_bootstrap_supported(platform: &PlatformFacts) -> KernelResult<()> {
 }
 
 fn resolve_bootstrap_script(project_dir: &Path, source: PythonRuntimeSource) -> PathBuf {
-    let packaged = project_dir
-        .parent()
-        .map(|parent| parent.join("scripts").join(BOOTSTRAP_SCRIPT));
+    let packaged = packaged_bootstrap_script(project_dir);
 
     if source == PythonRuntimeSource::InstalledPrefix {
         return packaged.unwrap_or_else(development_bootstrap_script);
@@ -136,4 +134,11 @@ fn resolve_bootstrap_script(project_dir: &Path, source: PythonRuntimeSource) -> 
     }
 
     development_bootstrap_script()
+}
+
+fn packaged_bootstrap_script(project_dir: &Path) -> Option<PathBuf> {
+    project_dir
+        .ancestors()
+        .map(|ancestor| ancestor.join("scripts").join(BOOTSTRAP_SCRIPT))
+        .find(|candidate| candidate.is_file())
 }

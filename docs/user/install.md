@@ -131,12 +131,14 @@ tentgent --version
 The Homebrew formula updates:
 
 - `/opt/homebrew/Cellar/tentgent/<version>/bin/tentgent`
+- `/opt/homebrew/Cellar/tentgent/<version>/share/tentgent/uv.lock`
 - `/opt/homebrew/Cellar/tentgent/<version>/share/tentgent/python`
 - `/opt/homebrew/Cellar/tentgent/<version>/share/tentgent/scripts`
 
 The direct installer updates:
 
 - `~/.local/bin/tentgent`
+- `~/.local/share/tentgent/uv.lock`
 - `~/.local/share/tentgent/python`
 - `~/.local/share/tentgent/scripts`
 - the managed Python runtime under `TENTGENT_HOME/runtime/python-env`

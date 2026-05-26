@@ -109,8 +109,10 @@ Check release tag parsing and prerelease flag helpers:
 
 ```bash
 bash scripts/test-release-metadata.sh
+bash scripts/test-package-python-layout.sh
 bash -n scripts/release-metadata.sh
 bash -n scripts/test-release-metadata.sh
+bash -n scripts/test-package-python-layout.sh
 bash -n scripts/macos-import-codesign-certificate.sh
 bash -n scripts/macos-notarize-package.sh
 ```

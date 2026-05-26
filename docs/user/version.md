@@ -2,6 +2,21 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.5.1
+
+`v0.5.1` is a patch release for package-manager and direct-installer Python
+runtime bootstrap.
+
+What changed:
+
+- Release artifacts now package the Python workspace root with `uv.lock`
+  alongside `python/tentgent-model-runtime/`.
+- `tentgent runtime bootstrap` resolves the packaged model-runtime project at
+  `share/tentgent/python/tentgent-model-runtime`, so `uv --frozen` can use the
+  packaged workspace lockfile.
+- Direct installer scripts copy the packaged workspace lockfile and bootstrap
+  the managed Python environment from the model-runtime project member.
+
 ## v0.5.0
 
 `v0.5.0` is the mature model-runtime server release. It keeps the CLI plus
@@ -267,7 +282,7 @@ Known limits:
 
 `v0.3.0` was the stable 0.3.x baseline for the former terminal UI alpha line
 and the first release candidate for Homebrew tap distribution. The current
-`v0.5.0` surface is CLI plus daemon REST only.
+`v0.5.1` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -298,7 +313,7 @@ Known limits:
 ## v0.3.0-alpha.2
 
 `v0.3.0-alpha.2` was a bugfix preview release for the former terminal UI alpha
-line. The current `v0.5.0` surface is CLI plus daemon REST only.
+line. The current `v0.5.1` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -325,7 +340,7 @@ Known limits:
 ## v0.3.0-alpha.1
 
 `v0.3.0-alpha.1` was a terminal UI preview release. It is kept here for
-historical context; the current `v0.5.0` surface is CLI plus daemon REST
+historical context; the current `v0.5.1` surface is CLI plus daemon REST
 only.
 
 Added:
