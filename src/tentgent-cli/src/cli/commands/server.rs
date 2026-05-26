@@ -9,7 +9,7 @@ pub enum ServerCommands {
     #[command(
         name = "run",
         about = "Create a server spec and launch it in foreground mode by default.",
-        long_about = "Create or reuse one stored server spec for a local model reference or cloud runtime reference and launch it immediately. `RUNTIME_REF` can be a full Tentgent model reference, a unique short-ref prefix, `openai:<MODEL_NAME>`, `anthropic:<MODEL_NAME>`, or `claude:<MODEL_NAME>`.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address.\n`--capability` selects the endpoint family. When omitted for a local model, Tentgent infers it from stored model capabilities.\n`--lazy-load` delays local model loading until the first matching endpoint request arrives.\n`--idle-seconds` releases a loaded local model after inactivity when the next health or endpoint access checks lifecycle state.\n`--detach` launches the initial server process in background mode and returns immediately."
+        long_about = "Create or reuse one stored server spec for a local model reference or cloud runtime reference and launch it immediately. `RUNTIME_REF` can be a full Tentgent model reference, a unique short-ref prefix, `openai:<MODEL_NAME>`, `anthropic:<MODEL_NAME>`, or `claude:<MODEL_NAME>`.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address. When `--port` is omitted, Tentgent starts scanning at 8780 and records the actual bound port in process metadata.\n`--capability` selects the endpoint family. When omitted for a local model, Tentgent infers it from stored model capabilities.\n`--lazy-load` delays local model loading until the first matching endpoint request arrives.\n`--idle-seconds` releases a loaded local model after inactivity when the next health or endpoint access checks lifecycle state.\n`--detach` launches the initial server process in background mode and returns immediately."
     )]
     Run(ServerRunCommand),
     /// List registered server specs and their current runtime state.
@@ -114,7 +114,7 @@ pub struct ServerRunCommand {
     /// Host interface for the future HTTP listener.
     #[arg(short = 'a', long, value_name = "HOST")]
     pub host: Option<String>,
-    /// TCP port for the future HTTP listener.
+    /// Fixed TCP port for the HTTP listener. Omit to auto-scan from 8780.
     #[arg(short = 'p', long, value_name = "PORT")]
     pub port: Option<u16>,
     /// Delay model loading until the first request arrives.

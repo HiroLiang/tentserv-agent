@@ -8,8 +8,10 @@ mod identity;
 mod index;
 mod layout;
 mod manifest;
+mod proof;
 mod server_ref;
 mod staging;
+mod time;
 
 #[cfg(test)]
 mod tests;
@@ -21,5 +23,7 @@ pub use identity::StdModelIdentityGenerator;
 pub use index::FileModelSourceIndexStore;
 pub use layout::StdModelStoreLayoutInitializer;
 pub use manifest::StdModelManifestBuilder;
+pub use proof::FileModelCapabilityProofStore;
 pub use server_ref::FileModelServerReferenceProbe;
 pub use staging::StdModelSourceStager;
+pub use time::SystemModelClock;

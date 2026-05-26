@@ -368,15 +368,15 @@ render these files, but long prompt bodies should live as `.md` templates rather
 than string literals inside services or use cases.
 
 `features/dataset/infra/` owns the standard filesystem, validation, template,
-reference-guard, and subprocess adapters for dataset ports: dataset-store
+reference-guard, and runtime adapters for dataset ports: dataset-store
 directory creation, import/diff staging, manifest building, canonical manifest
 hashing, package readiness detection, metadata/catalog reads and writes,
 source-index cleanup, canonical content movement/export/removal, schema
 validation, manifest diffing, Markdown template rendering, train plan/run
-reference checks, and dataset synth/eval helper execution through an already
-selected Python runtime. Runtime clients may build helper argv and parse helper
-JSON/progress output, but they must not resolve auth, bootstrap Python, call
-providers directly, or decide CLI/daemon REST rendering.
+reference checks, and future dataset synth/eval HTTP execution through an
+already selected Python runtime. Runtime clients may build HTTP payloads and
+parse JSON/progress output, but they must not resolve auth, bootstrap Python,
+call providers directly, or decide CLI/daemon REST rendering.
 
 `features/dataset/usecases/port.rs` defines workflow boundaries for:
 
@@ -386,10 +386,8 @@ providers directly, or decide CLI/daemon REST rendering.
   and metadata/index writes
 - validating local or managed dataset content against the canonical schema
 - rendering editable dataset templates and exact provider synthesis prompts
-- running provider-backed dataset synthesis through resolved auth and Python
-  runtime inputs
-- running provider-backed dataset evaluation for a local path or managed
-  dataset selector
+- reserving provider-backed dataset synthesis/evaluation flows until their
+  runtime is ported to the model runtime HTTP boundary
 - exporting, diffing, and removing managed dataset content while enforcing
   reference guards
 
@@ -427,10 +425,10 @@ frontends.
 
 `features/chat/infra/` owns the standard adapters for those ports: model target
 resolution by adapting the model catalog use case, adapter target resolution by
-adapting the adapter compatibility use case, and `tentgent-chat-once` process
-execution through an already selected Python runtime. Chat infra may build
-runtime argv and parse process output, but it must not prompt for auth, launch
-servers, choose session context, or write chat transcripts.
+adapting the adapter compatibility use case, and HTTP execution through an
+ensured `tentgent-model-runtime-daemon`. Chat infra may build runtime payloads
+and parse HTTP or SSE output, but it must not prompt for auth, launch servers,
+choose session context, or write chat transcripts.
 
 `features/chat/usecases/port.rs` defines workflow boundaries for:
 
@@ -600,6 +598,8 @@ state:
 - local/cloud runtime target names, cloud provider names, launch modes, and
   local backend labels
 - stored `server.toml` and `process.toml` data shapes
+- default server bind policy: omitted ports start from `8780` and are marked as
+  auto-port specs, while process metadata records the actual bound port
 - server-store path derivation from an already resolved `servers_dir`
 - runtime-ref parsing for local model refs and `openai:`, `anthropic:`, and
   `claude:` cloud prefixes
@@ -628,11 +628,11 @@ server-ref hashing, TOML spec/process catalog reads and writes, stale process
 metadata cleanup, process liveness probing, process termination, and RFC3339
 timestamps. It also owns Python server process launchers through an already
 selected runtime layout: local model servers use the direct
-`tentgent-model-runtime-daemon`, while cloud provider servers continue through
-the provider-capable `tentgent-server` entrypoint. Runtime launching may inject
-launch-time cloud auth environment variables, but provider secrets must come
-from auth use cases and must never be persisted in server specs or process
-metadata.
+`tentgent-model-runtime-daemon`. Cloud provider servers are not available until
+they are ported to the model runtime HTTP boundary. Runtime launching may inject
+launch-time auth environment variables only for supported runtimes, and provider
+secrets must come from auth use cases and must never be persisted in server
+specs or process metadata.
 
 `features/server/usecases/port.rs` defines workflow boundaries for:
 

@@ -203,12 +203,46 @@ runtime dispatch, including `audio-transcription`, `audio-speech`,
 `vision-chat`, `video-understanding`, and `image-generation`. Direct local
 server routes for media families remain separate contracts.
 
+## Capability Proof Metadata
+
+Capability proofs record the latest observed result for a
+`model_ref + capability` pair. They are separate from declared
+`model_capabilities`: declaration says the model should be routed to an
+endpoint family, while proof records whether a local probe or runtime event has
+confirmed or failed that path.
+
+Proofs live under the canonical model directory:
+
+```text
+models/store/<model_ref>/capability-proofs/<capability>.toml
+```
+
+Each proof records:
+
+- `model_ref`
+- `capability`
+- `status = "verified" | "failed"`
+- `source = "manual-probe" | "server-start" | "endpoint-smoke"`
+- `primary_format`
+- optional `mlx_runtime_family`
+- `backend`
+- optional `runtime_version`
+- optional `server_ref`
+- `checked_at`
+- optional `error`
+
+The current manual probe is metadata-level: it verifies that the stored model
+advertises the requested capability and records the inferred backend label. A
+server start writes a `server-start` proof for local model-bound servers after
+the launch path succeeds or fails. Endpoint-level smoke proofs can later reuse
+the same file shape with `source = "endpoint-smoke"`.
+
 ## Hugging Face Pull Contract
 
 - `tentgent model pull` should resolve the requested repo to an exact commit SHA before download.
 - The Rust core invokes the `tentgent-hf-snapshot` entry point through the shared Python runtime asset resolver.
-- The helper implementation lives in `python/tentgent-daemon/src/tentgent_daemon/tools/hf_snapshot.py`.
-- In development, the resolver falls back to `python/tentgent-daemon`.
+- The helper implementation lives in `python/tentgent-model-runtime/src/tentgent/runtime/tools/hf_snapshot.py`.
+- In development, the resolver falls back to `python/tentgent-model-runtime`.
 - In installed builds, the resolver should find `share/tentgent/python` relative to the `tentgent` binary.
 - The helper should prefer an existing `tentgent-hf-snapshot` entry point in the resolved Python environment.
 - When the entry point is missing, Rust may fall back to `uv --no-config run --project <resolved-python-project> tentgent-hf-snapshot ...` with `UV_PROJECT_ENVIRONMENT` set to the resolved Python environment so the Python subproject remains the single source of truth for package resolution and `uv` does not inspect the repository-root `pyproject.toml`.

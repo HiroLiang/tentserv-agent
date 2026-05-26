@@ -196,13 +196,17 @@ PyTorch, and Apple Silicon MLX LoRA packages where supported.
 
 `GET /healthz` returns the runtime process snapshot. Rust uses this endpoint to
 distinguish ready, closing, and shutdown states for one Python runtime process.
+Each successful health check refreshes the runtime task-manager activity
+timestamp, so a Rust supervisor can keep a managed Python runtime alive by
+polling health before the idle keep-alive window expires.
 
 Response fields include:
 
 - `status`: `ok`, `closing`, or `shutdown`
 - `pid`
 - top-level `server_ref` and `runtime_home` for daemon/CLI launch verification
-- `server.host`, `server.port`, and optional `server.server_ref`
+- `server.host`, `server.port`, and optional `server.server_ref`; `server.port`
+  is the actual bound port passed by Rust after auto-port selection
 - `runtime.capability`
 - `runtime.model_ref`
 - `runtime.model_bound`

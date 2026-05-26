@@ -14,6 +14,7 @@ use crate::foundation::layout::RuntimeLayout;
 use super::error::server_runtime_error;
 
 const DAEMON_TOKEN_ENV_VAR: &str = "TENTGENT_DAEMON_TOKEN";
+const AUTO_SERVER_PORT_SCAN_LIMIT: u16 = 100;
 
 /// Builds and launches Python server runtime entrypoints.
 pub struct PythonServerRuntimeLauncher<'a> {
@@ -31,7 +32,8 @@ impl<'a> PythonServerRuntimeLauncher<'a> {
         &self,
         request: ServerRuntimeLaunchRequest,
     ) -> KernelResult<SpawnedForegroundServer> {
-        let mut command = self.command_for_request(&request)?;
+        let bound_port = allocate_bind_port_for_spec(&request.inspection.spec)?;
+        let mut command = self.command_for_request(&request, bound_port)?;
         command
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
@@ -42,11 +44,18 @@ impl<'a> PythonServerRuntimeLauncher<'a> {
         })?;
         let pid = child.id();
 
-        Ok(SpawnedForegroundServer { pid, child })
+        Ok(SpawnedForegroundServer {
+            pid,
+            bound_port,
+            child,
+        })
     }
 
-    pub fn spawn_background(&self, request: ServerRuntimeLaunchRequest) -> KernelResult<u32> {
-        ensure_bind_available(&request.inspection.spec.host, request.inspection.spec.port)?;
+    pub fn spawn_background(
+        &self,
+        request: ServerRuntimeLaunchRequest,
+    ) -> KernelResult<SpawnedBackgroundServer> {
+        let bound_port = allocate_bind_port_for_spec(&request.inspection.spec)?;
         let stdout = OpenOptions::new()
             .create(true)
             .append(true)
@@ -68,7 +77,7 @@ impl<'a> PythonServerRuntimeLauncher<'a> {
                 ))
             })?;
 
-        let mut command = self.command_for_request(&request)?;
+        let mut command = self.command_for_request(&request, bound_port)?;
         command
             .stdin(Stdio::null())
             .stdout(Stdio::from(stdout))
@@ -83,10 +92,22 @@ impl<'a> PythonServerRuntimeLauncher<'a> {
         let child = command.spawn().map_err(|err| {
             server_runtime_error(format!("failed to spawn server runtime: {err}"))
         })?;
-        Ok(child.id())
+        Ok(SpawnedBackgroundServer {
+            pid: child.id(),
+            bound_port,
+        })
     }
 
-    fn command_for_request(&self, request: &ServerRuntimeLaunchRequest) -> KernelResult<Command> {
+    fn command_for_request(
+        &self,
+        request: &ServerRuntimeLaunchRequest,
+        bound_port: u16,
+    ) -> KernelResult<Command> {
+        if request.inspection.spec.runtime_kind == ServerRuntimeKind::Cloud {
+            return Err(server_runtime_error(
+                "cloud provider server runtimes have not been ported to the model runtime HTTP daemon",
+            ));
+        }
         let entrypoint = server_runtime_entrypoint(&request.inspection.spec);
         let entrypoint = self
             .executable_resolver
@@ -95,6 +116,7 @@ impl<'a> PythonServerRuntimeLauncher<'a> {
             &request.inspection.spec,
             &request.layout.home_dir,
             request.auth.as_ref(),
+            bound_port,
         )?;
         let mut command = Command::new(entrypoint);
         command
@@ -123,6 +145,7 @@ pub struct ServerRuntimeLaunchRequest {
 
 pub struct SpawnedForegroundServer {
     pub pid: u32,
+    pub bound_port: u16,
     child: Child,
 }
 
@@ -132,6 +155,11 @@ impl SpawnedForegroundServer {
             server_runtime_error(format!("failed to wait for server runtime: {err}"))
         })
     }
+}
+
+pub struct SpawnedBackgroundServer {
+    pub pid: u32,
+    pub bound_port: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,6 +173,7 @@ pub(super) fn server_runtime_command_parts(
     spec: &ServerSpec,
     home_dir: &std::path::Path,
     auth: Option<&AuthSecretMaterial>,
+    bound_port: u16,
 ) -> KernelResult<ServerRuntimeCommandParts> {
     if spec.runtime_kind == ServerRuntimeKind::Cloud && spec.capability != ServerCapability::Chat {
         return Err(server_runtime_error(format!(
@@ -157,9 +186,9 @@ pub(super) fn server_runtime_command_parts(
     let env_remove = vec![DAEMON_TOKEN_ENV_VAR.to_string()];
 
     let args = match spec.runtime_kind {
-        ServerRuntimeKind::Local => local_model_runtime_command_args(spec, home_dir)?,
+        ServerRuntimeKind::Local => local_model_runtime_command_args(spec, home_dir, bound_port)?,
         ServerRuntimeKind::Cloud => {
-            cloud_server_runtime_command_args(spec, home_dir, auth, &mut env)?
+            cloud_server_runtime_command_args(spec, home_dir, auth, &mut env, bound_port)?
         }
     };
 
@@ -171,15 +200,14 @@ pub(super) fn server_runtime_command_parts(
 }
 
 fn server_runtime_entrypoint(spec: &ServerSpec) -> RuntimeEntrypoint {
-    match spec.runtime_kind {
-        ServerRuntimeKind::Local => RuntimeEntrypoint::ModelRuntimeDaemon,
-        ServerRuntimeKind::Cloud => RuntimeEntrypoint::Server,
-    }
+    debug_assert_eq!(spec.runtime_kind, ServerRuntimeKind::Local);
+    RuntimeEntrypoint::ModelRuntimeDaemon
 }
 
 fn local_model_runtime_command_args(
     spec: &ServerSpec,
     home_dir: &std::path::Path,
+    bound_port: u16,
 ) -> KernelResult<Vec<String>> {
     let model_ref = spec.local_model_ref().ok_or_else(|| {
         server_runtime_error(format!(
@@ -195,7 +223,7 @@ fn local_model_runtime_command_args(
         "--host".to_string(),
         spec.host.clone(),
         "--port".to_string(),
-        spec.port.to_string(),
+        bound_port.to_string(),
         "--home".to_string(),
         home_dir.display().to_string(),
         "--model-ref".to_string(),
@@ -216,6 +244,7 @@ fn cloud_server_runtime_command_args(
     home_dir: &std::path::Path,
     auth: Option<&AuthSecretMaterial>,
     env: &mut Vec<(String, String)>,
+    bound_port: u16,
 ) -> KernelResult<Vec<String>> {
     let provider = spec.provider.ok_or_else(|| {
         server_runtime_error(format!(
@@ -259,7 +288,7 @@ fn cloud_server_runtime_command_args(
         "--host".to_string(),
         spec.host.clone(),
         "--port".to_string(),
-        spec.port.to_string(),
+        bound_port.to_string(),
         "--home".to_string(),
         home_dir.display().to_string(),
         "--provider".to_string(),
@@ -287,6 +316,36 @@ fn auth_provider_for_cloud(provider: CloudProvider) -> Provider {
         CloudProvider::OpenAI => Provider::OpenAI,
         CloudProvider::Anthropic => Provider::Anthropic,
     }
+}
+
+pub(super) fn allocate_bind_port_for_spec(spec: &ServerSpec) -> KernelResult<u16> {
+    if !spec.port_auto {
+        ensure_bind_available(&spec.host, spec.port)?;
+        return Ok(spec.port);
+    }
+
+    let start = spec.port;
+    let max = u32::from(u16::MAX);
+    let end =
+        (u32::from(start) + u32::from(AUTO_SERVER_PORT_SCAN_LIMIT).saturating_sub(1)).min(max);
+    let mut last_error = None;
+    for port in u32::from(start)..=end {
+        let port = port as u16;
+        match ensure_bind_available(&spec.host, port) {
+            Ok(()) => return Ok(port),
+            Err(err) => last_error = Some(err.to_string()),
+        }
+    }
+
+    Err(server_runtime_error(format!(
+        "no available server bind port on {} in auto range {}..={}{}",
+        spec.host,
+        start,
+        end,
+        last_error
+            .map(|err| format!("; last error: {err}"))
+            .unwrap_or_default()
+    )))
 }
 
 fn ensure_bind_available(host: &str, port: u16) -> KernelResult<()> {

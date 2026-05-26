@@ -30,7 +30,7 @@ fn std_python_runtime_resolver_uses_explicit_project_and_env() {
     fs::create_dir_all(&env_dir).expect("create env dir");
     fs::write(
         project_dir.join("pyproject.toml"),
-        "[project]\nname = \"tentgent-daemon\"\n",
+        "[project]\nname = \"tentgent-model-runtime\"\n",
     )
     .expect("write pyproject");
     let layout = runtime_layout(&root.join("home"));
@@ -61,20 +61,15 @@ fn std_runtime_executable_resolver_uses_platform_bin_layout() {
     let python = StdRuntimeExecutableResolver
         .python_binary_path(&runtime)
         .expect("resolve python");
-    let server = StdRuntimeExecutableResolver
-        .entrypoint_path(&runtime, RuntimeEntrypoint::Server)
-        .expect("resolve server");
     let model_runtime = StdRuntimeExecutableResolver
         .entrypoint_path(&runtime, RuntimeEntrypoint::ModelRuntimeDaemon)
         .expect("resolve model runtime daemon");
 
     if cfg!(windows) {
         assert!(python.ends_with("Scripts/python.exe"));
-        assert!(server.ends_with("Scripts/tentgent-server.exe"));
         assert!(model_runtime.ends_with("Scripts/tentgent-model-runtime-daemon.exe"));
     } else {
         assert!(python.ends_with("bin/python"));
-        assert!(server.ends_with("bin/tentgent-server"));
         assert!(model_runtime.ends_with("bin/tentgent-model-runtime-daemon"));
     }
 }
@@ -89,7 +84,7 @@ fn std_bootstrap_planner_uses_runtime_layout_platform_and_installed_script() {
     fs::create_dir_all(&script_dir).expect("create script dir");
     fs::write(
         project_dir.join("pyproject.toml"),
-        "[project]\nname = \"tentgent-daemon\"\n",
+        "[project]\nname = \"tentgent-model-runtime\"\n",
     )
     .expect("write pyproject");
     fs::write(&script_path, "#!/usr/bin/env bash\n").expect("write bootstrap script");
@@ -136,7 +131,7 @@ fn std_bootstrap_planner_marks_windows_shell_bootstrap_unsupported() {
     fs::create_dir_all(&script_dir).expect("create script dir");
     fs::write(
         project_dir.join("pyproject.toml"),
-        "[project]\nname = \"tentgent-daemon\"\n",
+        "[project]\nname = \"tentgent-model-runtime\"\n",
     )
     .expect("write pyproject");
     fs::write(

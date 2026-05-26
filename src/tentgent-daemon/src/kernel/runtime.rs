@@ -3,7 +3,7 @@ use tentgent_kernel::{
         audio::{
             domain::{AudioSpeechResponse, AudioTranscriptionResponse},
             infra::{
-                PythonAudioSpeechOnceRuntimeClient, PythonAudioTranscriptionBatchRuntimeClient,
+                PythonAudioSpeechModelRuntimeClient, PythonAudioTranscriptionModelRuntimeClient,
             },
             ports::{
                 AudioPortFuture, AudioSpeechRuntimeClient, AudioSpeechRuntimeRequest,
@@ -12,7 +12,7 @@ use tentgent_kernel::{
         },
         chat::{
             domain::{ChatResponse, ChatStreamEvent},
-            infra::PythonChatOnceRuntimeClient,
+            infra::PythonChatModelRuntimeClient,
             ports::{ChatPortFuture, ChatRuntimeClient, ChatRuntimeRequest},
         },
         dataset::{
@@ -26,12 +26,12 @@ use tentgent_kernel::{
         },
         embedding::{
             domain::EmbeddingResponse,
-            infra::PythonEmbeddingOnceRuntimeClient,
+            infra::PythonEmbeddingModelRuntimeClient,
             ports::{EmbeddingPortFuture, EmbeddingRuntimeClient, EmbeddingRuntimeRequest},
         },
         image_generation::{
             domain::ImageGenerationResponse,
-            infra::PythonImageGenerationOnceRuntimeClient,
+            infra::PythonImageGenerationModelRuntimeClient,
             ports::{
                 ImageGenerationPortFuture, ImageGenerationRuntimeClient,
                 ImageGenerationRuntimeRequest,
@@ -39,13 +39,14 @@ use tentgent_kernel::{
         },
         rerank::{
             domain::RerankResponse,
-            infra::PythonRerankOnceRuntimeClient,
+            infra::PythonRerankModelRuntimeClient,
             ports::{RerankPortFuture, RerankRuntimeClient, RerankRuntimeRequest},
         },
         runtime::{
             domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput, RuntimeEntrypoint},
             infra::{
-                StdPythonRuntimeResolver, StdRuntimeBootstrapExecutor, StdRuntimeBootstrapPlanner,
+                ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver,
+                StdRuntimeBootstrapExecutor, StdRuntimeBootstrapPlanner,
                 StdRuntimeExecutableResolver, StdRuntimeStateProbe,
             },
             ports::{PythonRuntimeResolver, RuntimeExecutableResolver},
@@ -61,7 +62,7 @@ use tentgent_kernel::{
         },
         video_understanding::{
             domain::VideoUnderstandingResponse,
-            infra::PythonVideoUnderstandingOnceRuntimeClient,
+            infra::PythonVideoUnderstandingModelRuntimeClient,
             ports::{
                 VideoUnderstandingPortFuture, VideoUnderstandingRuntimeClient,
                 VideoUnderstandingRuntimeRequest,
@@ -69,7 +70,7 @@ use tentgent_kernel::{
         },
         vision::{
             domain::VisionChatResponse,
-            infra::PythonVisionChatOnceRuntimeClient,
+            infra::PythonVisionChatModelRuntimeClient,
             ports::{VisionChatRuntimeClient, VisionChatRuntimeRequest, VisionPortFuture},
         },
     },
@@ -88,6 +89,7 @@ pub struct RuntimeKernelComponent {
     bootstrap_executor: StdRuntimeBootstrapExecutor,
     state_probe: StdRuntimeStateProbe,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
 }
 
 impl RuntimeKernelComponent {
@@ -100,6 +102,7 @@ impl RuntimeKernelComponent {
             bootstrap_executor: StdRuntimeBootstrapExecutor,
             state_probe: StdRuntimeStateProbe,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
         }
     }
 
@@ -208,7 +211,7 @@ impl ChatRuntimeClient for RuntimeKernelComponent {
         request: ChatRuntimeRequest,
     ) -> ChatPortFuture<'a, ChatResponse> {
         Box::pin(async move {
-            PythonChatOnceRuntimeClient::new(self)
+            PythonChatModelRuntimeClient::new(self, &self.model_runtime_supervisor)
                 .generate_chat(request)
                 .await
         })
@@ -220,7 +223,7 @@ impl ChatRuntimeClient for RuntimeKernelComponent {
         sink: &'a mut dyn FnMut(ChatStreamEvent),
     ) -> ChatPortFuture<'a, ChatResponse> {
         Box::pin(async move {
-            PythonChatOnceRuntimeClient::new(self)
+            PythonChatModelRuntimeClient::new(self, &self.model_runtime_supervisor)
                 .stream_chat(request, sink)
                 .await
         })
@@ -233,7 +236,7 @@ impl EmbeddingRuntimeClient for RuntimeKernelComponent {
         request: EmbeddingRuntimeRequest,
     ) -> EmbeddingPortFuture<'_, EmbeddingResponse> {
         Box::pin(async move {
-            PythonEmbeddingOnceRuntimeClient::new(self)
+            PythonEmbeddingModelRuntimeClient::new(self, &self.model_runtime_supervisor)
                 .embed(request)
                 .await
         })
@@ -243,7 +246,7 @@ impl EmbeddingRuntimeClient for RuntimeKernelComponent {
 impl RerankRuntimeClient for RuntimeKernelComponent {
     fn rerank(&'_ self, request: RerankRuntimeRequest) -> RerankPortFuture<'_, RerankResponse> {
         Box::pin(async move {
-            PythonRerankOnceRuntimeClient::new(self)
+            PythonRerankModelRuntimeClient::new(self, &self.model_runtime_supervisor)
                 .rerank(request)
                 .await
         })
@@ -256,7 +259,7 @@ impl AudioTranscriptionRuntimeClient for RuntimeKernelComponent {
         request: AudioTranscriptionRuntimeRequest,
     ) -> AudioPortFuture<'_, AudioTranscriptionResponse> {
         Box::pin(async move {
-            PythonAudioTranscriptionBatchRuntimeClient::new(self)
+            PythonAudioTranscriptionModelRuntimeClient::new(self, &self.model_runtime_supervisor)
                 .transcribe_audio(request)
                 .await
         })
@@ -269,7 +272,7 @@ impl AudioSpeechRuntimeClient for RuntimeKernelComponent {
         request: AudioSpeechRuntimeRequest,
     ) -> AudioPortFuture<'_, AudioSpeechResponse> {
         Box::pin(async move {
-            PythonAudioSpeechOnceRuntimeClient::new(self)
+            PythonAudioSpeechModelRuntimeClient::new(self, &self.model_runtime_supervisor)
                 .synthesize_speech(request)
                 .await
         })
@@ -282,7 +285,7 @@ impl VisionChatRuntimeClient for RuntimeKernelComponent {
         request: VisionChatRuntimeRequest,
     ) -> VisionPortFuture<'_, VisionChatResponse> {
         Box::pin(async move {
-            PythonVisionChatOnceRuntimeClient::new(self)
+            PythonVisionChatModelRuntimeClient::new(self, &self.model_runtime_supervisor)
                 .generate_vision_chat(request)
                 .await
         })
@@ -295,7 +298,7 @@ impl VideoUnderstandingRuntimeClient for RuntimeKernelComponent {
         request: VideoUnderstandingRuntimeRequest,
     ) -> VideoUnderstandingPortFuture<'_, VideoUnderstandingResponse> {
         Box::pin(async move {
-            PythonVideoUnderstandingOnceRuntimeClient::new(self)
+            PythonVideoUnderstandingModelRuntimeClient::new(self, &self.model_runtime_supervisor)
                 .understand_video(request)
                 .await
         })
@@ -308,7 +311,7 @@ impl ImageGenerationRuntimeClient for RuntimeKernelComponent {
         request: ImageGenerationRuntimeRequest,
     ) -> ImageGenerationPortFuture<'_, ImageGenerationResponse> {
         Box::pin(async move {
-            PythonImageGenerationOnceRuntimeClient::new(self)
+            PythonImageGenerationModelRuntimeClient::new(self, &self.model_runtime_supervisor)
                 .generate_image(request)
                 .await
         })

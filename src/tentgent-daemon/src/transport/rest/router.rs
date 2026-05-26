@@ -192,6 +192,14 @@ fn store_routes() -> Router<RestState> {
             post(model::update_capabilities),
         )
         .route(
+            "/v1/models/{reference}/capabilities/proofs",
+            get(model::capability_proofs),
+        )
+        .route(
+            "/v1/models/{reference}/capabilities/verify",
+            post(model::verify_capability),
+        )
+        .route(
             "/v1/models/{reference}",
             get(model::inspect)
                 .patch(model::update_capability)

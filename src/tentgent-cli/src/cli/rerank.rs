@@ -7,14 +7,14 @@ use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
 use tentgent_kernel::features::rerank::domain::RerankInput;
 use tentgent_kernel::features::rerank::infra::{
-    PythonRerankOnceRuntimeClient, StdRerankModelResolver,
+    PythonRerankModelRuntimeClient, StdRerankModelResolver,
 };
 use tentgent_kernel::features::rerank::usecases::{
     RerankPreparationRequest, RerankUseCase, StdRerankUseCase,
 };
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
-    StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
+    ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
 use tentgent_kernel::features::runtime::usecases::StdRuntimeResolutionUseCase;
 use tentgent_kernel::foundation::layout::{
@@ -31,7 +31,10 @@ pub async fn handle_rerank_command(command: RerankCommand) -> miette::Result<()>
     let model_catalog =
         StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
     let model_resolver = StdRerankModelResolver::new(&model_catalog);
-    let runtime_client = PythonRerankOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonRerankModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let rerank = StdRerankUseCase::new(&runtime_resolution, &model_resolver, &runtime_client);
 
     let result = rerank
@@ -50,6 +53,7 @@ struct CliRerankKernel {
     layout_resolver: StdRuntimeLayoutResolver,
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
 }
 
@@ -59,6 +63,7 @@ impl CliRerankKernel {
             layout_resolver: StdRuntimeLayoutResolver,
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
         }
     }

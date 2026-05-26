@@ -830,6 +830,8 @@ workspace chunks or spool routes.
 | `GET` | `/v1/models/{reference}` | None. |
 | `DELETE` | `/v1/models/{reference}` | None. |
 | `POST` | `/v1/models/{reference}/capabilities` | `{"set":["chat","vision-chat"]}` or `{"add":["vision-chat"],"remove":["chat"]}`. |
+| `GET` | `/v1/models/{reference}/capabilities/proofs` | None. |
+| `POST` | `/v1/models/{reference}/capabilities/verify` | `{"capability":"chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation"}`. |
 | `PATCH` | `/v1/models/{reference}` | Legacy compatibility alias for replacing the capability set with one `{"capability":"..."}` value. |
 | `POST` | `/v1/models/import` | `{"path":"/absolute/model-dir","capability":"optional-capability"}` |
 | `POST` | `/v1/models/pull` | `{"repo_id":"org/model","revision":"optional","capability":"optional-capability"}` |
@@ -839,6 +841,10 @@ workspace chunks or spool routes.
 Capability mutations canonicalize and de-duplicate values, set
 `model_capability_source` to `manual-update`, and reject requests that would
 leave a model with no capabilities.
+
+Capability proofs are latest local records keyed by model and capability.
+Manual `verify` is a metadata-level probe in this slice; local model-bound
+server starts also write `server-start` proofs after launch success or failure.
 
 ## Adapters
 
@@ -879,8 +885,8 @@ For ControlNet-style image control adapters, set `target_capability` to
 | `POST` | `/v1/datasets/template` | `{"task":"optional-task","language":"optional-language"}` |
 | `POST` | `/v1/datasets/{reference}/export` | `{"output_path":"/absolute/output-path"}` |
 | `POST` | `/v1/datasets/{reference}/diff` | `{"right_dataset_ref":"optional-ref","right_path":"optional-path"}` |
-| `POST` | `/v1/datasets/synth/jobs` | Cloud dataset synthesis job; fields include `provider`, `model`, `output_path`, `brief`, `spec_content`, `spec_path`, split/count fields, `max_tokens`, `temperature`, `timeout_seconds`, and `retries`. |
-| `POST` | `/v1/datasets/eval/jobs` | Cloud dataset evaluation job; fields include `provider`, `model`, `output_path`, `dataset_ref`, `input_content`, `input_format`, `input_path`, `split`, `max_records`, `criteria`, `max_tokens`, `temperature`, and `timeout_seconds`. |
+| `POST` | `/v1/datasets/synth/jobs` | Reserved until provider-backed dataset synthesis is ported to the model runtime HTTP boundary. |
+| `POST` | `/v1/datasets/eval/jobs` | Reserved until provider-backed dataset evaluation is ported to the model runtime HTTP boundary. |
 
 ## LoRA Training
 
@@ -922,6 +928,10 @@ For ControlNet-style image control adapters, set `target_capability` to
 Direct model-server ports are separate from the daemon port. A server exposes
 only the endpoint family selected by its `capability`, such as `/v1/chat`,
 `/v1/embeddings`, `/v1/rerank`, audio, vision, video, or image routes.
+Omitting `port` creates an auto-port server spec that starts scanning at `8780`
+on every launch. Explicit `port` values are fixed. Server responses expose
+`requested_port`, `port_auto`, and the running process `bound_port`; the top-level
+`port` is the effective port clients should call.
 Unsupported endpoint families on that direct server should return `404` or an
 endpoint-specific error.
 

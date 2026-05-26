@@ -12,7 +12,7 @@ use tentgent_kernel::features::chat::domain::{
     ChatGenerationOptions, ChatMessage, ChatPrompt, ChatRole, ChatStreamEvent,
 };
 use tentgent_kernel::features::chat::infra::{
-    PythonChatOnceRuntimeClient, StdChatAdapterResolver, StdChatModelResolver,
+    PythonChatModelRuntimeClient, StdChatAdapterResolver, StdChatModelResolver,
 };
 use tentgent_kernel::features::chat::usecases::{
     ChatCompletionResult, ChatCompletionUseCase, ChatPreparationRequest, ChatStreamingUseCase,
@@ -23,7 +23,7 @@ use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
-    StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
+    ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
 use tentgent_kernel::features::runtime::usecases::StdRuntimeResolutionUseCase;
 use tentgent_kernel::features::session::domain::{
@@ -248,7 +248,10 @@ async fn complete_chat_with_kernel(
     let adapter_compatibility =
         StdAdapterCompatibilityCheckUseCase::new(&kernel.layout_resolver, &kernel.adapter_catalog);
     let adapter_resolver = StdChatAdapterResolver::new(&adapter_compatibility);
-    let runtime_client = PythonChatOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonChatModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let chat = StdChatUseCase::new(
         &runtime_resolution,
         &model_resolver,
@@ -279,7 +282,10 @@ async fn stream_chat_with_kernel(
     let adapter_compatibility =
         StdAdapterCompatibilityCheckUseCase::new(&kernel.layout_resolver, &kernel.adapter_catalog);
     let adapter_resolver = StdChatAdapterResolver::new(&adapter_compatibility);
-    let runtime_client = PythonChatOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonChatModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let chat = StdChatUseCase::new(
         &runtime_resolution,
         &model_resolver,
@@ -296,6 +302,7 @@ struct CliChatKernel {
     layout_resolver: StdRuntimeLayoutResolver,
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
     adapter_catalog: FileAdapterCatalogStore,
 }
@@ -306,6 +313,7 @@ impl CliChatKernel {
             layout_resolver: StdRuntimeLayoutResolver,
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
             adapter_catalog: FileAdapterCatalogStore,
         }

@@ -8,7 +8,7 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use crate::features::model::domain::{ModelCapability, ModelFormat, ModelRef, ModelRefSelector};
 
 pub const DEFAULT_SERVER_HOST: &str = "127.0.0.1";
-pub const DEFAULT_SERVER_PORT: u16 = 8000;
+pub const DEFAULT_SERVER_PORT: u16 = 8780;
 
 pub const SERVER_REF_HEX_LENGTH: usize = 64;
 pub const SHORT_SERVER_REF_LENGTH: usize = 12;
@@ -510,6 +510,8 @@ pub struct ServerSpec {
     pub provider_model: Option<String>,
     pub host: String,
     pub port: u16,
+    #[serde(default)]
+    pub port_auto: bool,
     pub lazy_load: bool,
     pub idle_seconds: Option<u64>,
     pub created_at: String,
@@ -552,6 +554,8 @@ pub struct ServerProcessMetadata {
     pub pid: u32,
     pub launch_mode: LaunchMode,
     pub started_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bound_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -559,6 +563,15 @@ pub struct ServerSummary {
     pub spec: ServerSpec,
     pub running: bool,
     pub process: Option<ServerProcessMetadata>,
+}
+
+impl ServerSummary {
+    pub fn effective_port(&self) -> u16 {
+        self.process
+            .as_ref()
+            .and_then(|process| process.bound_port)
+            .unwrap_or(self.spec.port)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -572,6 +585,19 @@ pub struct ServerInspection {
     pub stderr_log_path: PathBuf,
     pub running: bool,
     pub process: Option<ServerProcessMetadata>,
+}
+
+impl ServerInspection {
+    pub fn effective_port(&self) -> u16 {
+        self.process
+            .as_ref()
+            .and_then(|process| process.bound_port)
+            .unwrap_or(self.spec.port)
+    }
+
+    pub fn bound_port(&self) -> Option<u16> {
+        self.process.as_ref().and_then(|process| process.bound_port)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

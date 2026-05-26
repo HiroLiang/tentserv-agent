@@ -23,7 +23,15 @@ use tentgent_kernel::features::auth::usecases::{
     AuthSecretResolutionRequest, AuthSecretResolverUseCase, AuthSecretValidationRequest,
     AuthSecretValidationUseCase, StdAuthSecretResolverUseCase, StdAuthSecretValidationUseCase,
 };
-use tentgent_kernel::features::model::infra::FileModelCatalogStore;
+use tentgent_kernel::features::model::domain::{
+    ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelRefSelector,
+};
+use tentgent_kernel::features::model::infra::{
+    FileModelCapabilityProofStore, FileModelCatalogStore, SystemModelClock,
+};
+use tentgent_kernel::features::model::usecases::{
+    ModelCapabilityProofRecordRequest, ModelCapabilityProofUseCase, StdModelCapabilityProofUseCase,
+};
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
     StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
@@ -32,7 +40,7 @@ use tentgent_kernel::features::runtime::usecases::{
     RuntimeResolutionRequest, RuntimeResolutionUseCase, StdRuntimeResolutionUseCase,
 };
 use tentgent_kernel::features::server::domain::{
-    CloudProvider, LaunchMode, ServerInspection, ServerRefSelector, ServerRuntimeKind,
+    CloudProvider, LaunchMode, ServerInspection, ServerRefSelector, ServerRuntimeKind, ServerSpec,
     ServerStopOutcome, ServerSummary,
 };
 use tentgent_kernel::features::server::infra::{
@@ -230,22 +238,41 @@ async fn launch_foreground_server(
 ) -> miette::Result<()> {
     let runtime = kernel.resolve_runtime(&layout)?;
     let launcher = PythonServerRuntimeLauncher::new(&kernel.executable_resolver);
-    let mut child = launcher
-        .spawn_foreground(ServerRuntimeLaunchRequest {
-            layout: layout.clone(),
-            runtime,
-            inspection: inspection.clone(),
-            auth,
-        })
-        .into_diagnostic()?;
+    let mut child = match launcher.spawn_foreground(ServerRuntimeLaunchRequest {
+        layout: layout.clone(),
+        runtime,
+        inspection: inspection.clone(),
+        auth,
+    }) {
+        Ok(child) => child,
+        Err(err) => {
+            let message = err.to_string();
+            let _ = record_local_server_capability_proof(
+                kernel,
+                &layout,
+                &inspection,
+                ModelCapabilityProofStatus::Failed,
+                Some(message),
+            );
+            return Err(err).into_diagnostic();
+        }
+    };
     server
         .record_process_start(ServerRecordProcessStartRequest {
             layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
             server_ref: inspection.spec.server_ref.clone(),
             pid: child.pid,
+            bound_port: child.bound_port,
             launch_mode: LaunchMode::Foreground,
         })
         .into_diagnostic()?;
+    let _ = record_local_server_capability_proof(
+        kernel,
+        &layout,
+        &inspection,
+        ModelCapabilityProofStatus::Verified,
+        None,
+    );
 
     let status = child.wait().into_diagnostic();
     server
@@ -257,6 +284,13 @@ async fn launch_foreground_server(
         .into_diagnostic()?;
     let status = status?;
     if !status.success() {
+        let _ = record_local_server_capability_proof(
+            kernel,
+            &layout,
+            &inspection,
+            ModelCapabilityProofStatus::Failed,
+            Some(format!("server runtime exited with status {status}")),
+        );
         return Err(miette!("server runtime exited with status {status}"));
     }
 
@@ -272,24 +306,85 @@ async fn launch_background_server(
 ) -> miette::Result<ServerInspection> {
     let runtime = kernel.resolve_runtime(&layout)?;
     let launcher = PythonServerRuntimeLauncher::new(&kernel.executable_resolver);
-    let pid = launcher
-        .spawn_background(ServerRuntimeLaunchRequest {
-            layout: layout.clone(),
-            runtime,
-            inspection: inspection.clone(),
-            auth,
-        })
-        .into_diagnostic()?;
+    let spawned = match launcher.spawn_background(ServerRuntimeLaunchRequest {
+        layout: layout.clone(),
+        runtime,
+        inspection: inspection.clone(),
+        auth,
+    }) {
+        Ok(pid) => pid,
+        Err(err) => {
+            let message = err.to_string();
+            let _ = record_local_server_capability_proof(
+                kernel,
+                &layout,
+                &inspection,
+                ModelCapabilityProofStatus::Failed,
+                Some(message),
+            );
+            return Err(err).into_diagnostic();
+        }
+    };
     let recorded = server
         .record_process_start(ServerRecordProcessStartRequest {
             layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
             server_ref: inspection.spec.server_ref.clone(),
-            pid,
+            pid: spawned.pid,
+            bound_port: spawned.bound_port,
             launch_mode: LaunchMode::Background,
         })
         .into_diagnostic()?;
 
-    verify_background_launch(server, &layout, &recorded.inspection, pid).await
+    match verify_background_launch(server, &layout, &recorded.inspection, spawned.pid).await {
+        Ok(checked) => {
+            let _ = record_local_server_capability_proof(
+                kernel,
+                &layout,
+                &checked,
+                ModelCapabilityProofStatus::Verified,
+                None,
+            );
+            Ok(checked)
+        }
+        Err(err) => {
+            let message = err.to_string();
+            let _ = record_local_server_capability_proof(
+                kernel,
+                &layout,
+                &recorded.inspection,
+                ModelCapabilityProofStatus::Failed,
+                Some(message),
+            );
+            Err(err)
+        }
+    }
+}
+
+fn record_local_server_capability_proof(
+    kernel: &CliServerKernel,
+    layout: &RuntimeLayout,
+    inspection: &ServerInspection,
+    status: ModelCapabilityProofStatus,
+    error: Option<String>,
+) -> miette::Result<()> {
+    let Some(model_ref) = inspection.spec.local_model_ref() else {
+        return Ok(());
+    };
+    let selector = ModelRefSelector::parse(model_ref.as_str())
+        .map_err(|err| miette!("invalid model ref in server spec: {err}"))?;
+    kernel
+        .model_capability_proof_usecase()
+        .record_model_capability_proof(ModelCapabilityProofRecordRequest {
+            layout: runtime_layout_input_from_layout(layout, LayoutResolveMode::Create),
+            selector,
+            capability: inspection.spec.capability.required_model_capability(),
+            status,
+            source: ModelCapabilityProofSource::ServerStart,
+            server_ref: Some(inspection.spec.server_ref.to_string()),
+            error,
+        })
+        .into_diagnostic()?;
+    Ok(())
 }
 
 async fn verify_background_launch(
@@ -442,13 +537,14 @@ enum BackgroundHealthStatus {
 }
 
 fn background_health_status(inspection: &ServerInspection) -> BackgroundHealthStatus {
-    let target = socket_addr_text(&inspection.spec.host, inspection.spec.port);
+    let port = inspection.effective_port();
+    let target = socket_addr_text(&inspection.spec.host, port);
     let Ok(mut stream) = TcpStream::connect(target) else {
         return BackgroundHealthStatus::Unavailable;
     };
     let _ = stream.set_read_timeout(Some(BACKGROUND_PROBE_TIMEOUT));
     let _ = stream.set_write_timeout(Some(BACKGROUND_PROBE_TIMEOUT));
-    let host = host_for_header(&inspection.spec.host, inspection.spec.port);
+    let host = host_for_header(&inspection.spec.host, port);
     let request = format!("GET /healthz HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
     if stream.write_all(request.as_bytes()).is_err() {
         return BackgroundHealthStatus::Unavailable;
@@ -490,7 +586,7 @@ fn background_health_status(inspection: &ServerInspection) -> BackgroundHealthSt
         .unwrap_or("(unknown)");
     BackgroundHealthStatus::DifferentServer(format!(
         "port {} on {} is already serving Tentgent server {} from runtime home {}; requested server {} from {}",
-        inspection.spec.port,
+        port,
         inspection.spec.host,
         existing_server,
         existing_home,
@@ -550,6 +646,8 @@ struct CliServerKernel {
     server_process_controller: StdServerProcessController,
     server_clock: SystemServerClock,
     model_catalog: FileModelCatalogStore,
+    model_proofs: FileModelCapabilityProofStore,
+    model_clock: SystemModelClock,
 }
 
 impl CliServerKernel {
@@ -569,6 +667,8 @@ impl CliServerKernel {
             server_process_controller: StdServerProcessController::default(),
             server_clock: SystemServerClock,
             model_catalog: FileModelCatalogStore,
+            model_proofs: FileModelCapabilityProofStore,
+            model_clock: SystemModelClock,
         }
     }
 
@@ -596,6 +696,15 @@ impl CliServerKernel {
                 })
                 .into_diagnostic()?
                 .runtime,
+        )
+    }
+
+    fn model_capability_proof_usecase(&self) -> StdModelCapabilityProofUseCase<'_> {
+        StdModelCapabilityProofUseCase::new(
+            &self.layout_resolver,
+            &self.model_catalog,
+            &self.model_proofs,
+            &self.model_clock,
         )
     }
 
@@ -694,6 +803,7 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
             "model",
             "host",
             "port",
+            "requested",
             "pid",
         ]);
 
@@ -726,7 +836,8 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
             Cell::new(server.spec.provider_label()),
             Cell::new(server.spec.runtime_model_label()),
             Cell::new(&server.spec.host),
-            Cell::new(server.spec.port),
+            Cell::new(server.effective_port()),
+            Cell::new(server_requested_port_label(&server.spec)),
             Cell::new(pid),
         ]);
     }
@@ -857,7 +968,23 @@ fn render_server_table(inspection: &ServerInspection) -> Table {
         Cell::new(inspection.home_dir.display().to_string()),
     ]);
     table.add_row(vec![Cell::new("host"), Cell::new(&inspection.spec.host)]);
-    table.add_row(vec![Cell::new("port"), Cell::new(inspection.spec.port)]);
+    table.add_row(vec![
+        Cell::new("port"),
+        Cell::new(inspection.effective_port()),
+    ]);
+    table.add_row(vec![
+        Cell::new("requested_port"),
+        Cell::new(server_requested_port_label(&inspection.spec)),
+    ]);
+    table.add_row(vec![
+        Cell::new("bound_port"),
+        Cell::new(
+            inspection
+                .bound_port()
+                .map(|port| port.to_string())
+                .unwrap_or_else(|| "(not running)".to_string()),
+        ),
+    ]);
     table.add_row(vec![
         Cell::new("lazy_load"),
         Cell::new(if inspection.spec.lazy_load {
@@ -932,6 +1059,14 @@ fn render_server_table(inspection: &ServerInspection) -> Table {
     ]);
 
     table
+}
+
+fn server_requested_port_label(spec: &ServerSpec) -> String {
+    if spec.port_auto {
+        format!("auto:{}", spec.port)
+    } else {
+        spec.port.to_string()
+    }
 }
 
 fn render_cloud_auth_preflight(provider: Provider, source: AuthSecretSource) {

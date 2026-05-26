@@ -154,6 +154,7 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
             layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
             server_ref: prepared.outcome.inspection.spec.server_ref.clone(),
             pid: 42,
+            bound_port: 8781,
             launch_mode: LaunchMode::Background,
         })
         .expect("record process start");
@@ -184,6 +185,43 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
             selector,
         })
         .expect("remove local server");
+}
+
+#[test]
+fn standard_server_usecase_uses_auto_default_port_when_port_is_omitted() {
+    let fixture = Fixture::new("local-default-port");
+    fixture.write_chat_model();
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let prepared = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            runtime_ref: fixture.model_ref.short_ref().to_string(),
+            capability: Some(ServerCapability::Chat),
+            host: None,
+            port: None,
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect("prepare local server");
+
+    assert_eq!(prepared.outcome.inspection.spec.port, 8780);
+    assert!(prepared.outcome.inspection.spec.port_auto);
 }
 
 #[test]
@@ -325,6 +363,7 @@ fn standard_server_usecase_allows_embedding_stored_specs_before_start() {
                 provider_model: None,
                 host: "127.0.0.1".to_string(),
                 port: 8781,
+                port_auto: false,
                 lazy_load: false,
                 idle_seconds: None,
                 created_at: "2026-05-17T00:00:00Z".to_string(),

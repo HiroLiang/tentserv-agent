@@ -60,6 +60,9 @@ pub struct ServerSummaryItem {
     pub provider_model: Option<String>,
     pub host: String,
     pub port: u16,
+    pub requested_port: u16,
+    pub port_auto: bool,
+    pub bound_port: Option<u16>,
     pub lazy_load: bool,
     pub idle_seconds: Option<u64>,
     pub created_at: String,
@@ -78,6 +81,9 @@ pub struct ServerInspectionItem {
     pub provider_model: Option<String>,
     pub host: String,
     pub port: u16,
+    pub requested_port: u16,
+    pub port_auto: bool,
+    pub bound_port: Option<u16>,
     pub lazy_load: bool,
     pub idle_seconds: Option<u64>,
     pub created_at: String,
@@ -96,6 +102,7 @@ pub struct ServerProcessItem {
     pub pid: u32,
     pub launch_mode: String,
     pub started_at: String,
+    pub bound_port: Option<u16>,
 }
 
 #[derive(Debug, Serialize)]
@@ -169,8 +176,12 @@ pub struct ServerLogContentItem {
 }
 
 pub fn server_summary_item(summary: ServerSummary) -> ServerSummaryItem {
-    let spec = summary.spec;
-    let fields = server_fields(spec);
+    let port = summary.effective_port();
+    let bound_port = summary
+        .process
+        .as_ref()
+        .and_then(|process| process.bound_port);
+    let fields = server_fields(summary.spec);
     ServerSummaryItem {
         server_ref: fields.server_ref,
         short_ref: fields.short_ref,
@@ -180,7 +191,10 @@ pub fn server_summary_item(summary: ServerSummary) -> ServerSummaryItem {
         provider: fields.provider,
         provider_model: fields.provider_model,
         host: fields.host,
-        port: fields.port,
+        port,
+        requested_port: fields.port,
+        port_auto: fields.port_auto,
+        bound_port,
         lazy_load: fields.lazy_load,
         idle_seconds: fields.idle_seconds,
         created_at: fields.created_at,
@@ -190,6 +204,8 @@ pub fn server_summary_item(summary: ServerSummary) -> ServerSummaryItem {
 }
 
 pub fn server_inspection_item(inspection: ServerInspection) -> ServerInspectionItem {
+    let port = inspection.effective_port();
+    let bound_port = inspection.bound_port();
     let fields = server_fields(inspection.spec);
     ServerInspectionItem {
         server_ref: fields.server_ref,
@@ -200,7 +216,10 @@ pub fn server_inspection_item(inspection: ServerInspection) -> ServerInspectionI
         provider: fields.provider,
         provider_model: fields.provider_model,
         host: fields.host,
-        port: fields.port,
+        port,
+        requested_port: fields.port,
+        port_auto: fields.port_auto,
+        bound_port,
         lazy_load: fields.lazy_load,
         idle_seconds: fields.idle_seconds,
         created_at: fields.created_at,
@@ -253,6 +272,7 @@ struct ServerFields {
     provider_model: Option<String>,
     host: String,
     port: u16,
+    port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
     created_at: String,
@@ -269,6 +289,7 @@ fn server_fields(spec: ServerSpec) -> ServerFields {
         provider_model: spec.provider_model,
         host: spec.host,
         port: spec.port,
+        port_auto: spec.port_auto,
         lazy_load: spec.lazy_load,
         idle_seconds: spec.idle_seconds,
         created_at: spec.created_at,
@@ -280,6 +301,7 @@ fn server_process_item(process: ServerProcessMetadata) -> ServerProcessItem {
         pid: process.pid,
         launch_mode: process.launch_mode.to_string(),
         started_at: process.started_at,
+        bound_port: process.bound_port,
     }
 }
 

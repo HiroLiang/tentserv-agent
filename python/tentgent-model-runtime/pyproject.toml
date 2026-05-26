@@ -9,6 +9,7 @@ description = "Python model runtime workspace for Tentgent."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi",
+    "huggingface-hub",
     "pydantic",
     "uvicorn",
 ]
@@ -92,6 +93,7 @@ local-model = [
 
 [project.scripts]
 tentgent-model-runtime-daemon = "tentgent.runtime.cli.daemon:main"
+tentgent-hf-snapshot = "tentgent.runtime.tools.hf_snapshot:main"
 
 [tool.uv]
 package = true

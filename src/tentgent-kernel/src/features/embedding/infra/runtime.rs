@@ -1,8 +1,6 @@
-use std::process::{Command, Stdio};
+use serde::{Deserialize, Serialize};
 
-use serde::Deserialize;
-
-use crate::features::runtime::domain::RuntimeEntrypoint;
+use crate::features::runtime::infra::{ModelRuntimeCapability, ModelRuntimeDaemonSupervisor};
 use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::foundation::error::{KernelError, KernelResult};
 
@@ -11,42 +9,52 @@ use super::super::domain::{
 };
 use super::super::ports::{EmbeddingPortFuture, EmbeddingRuntimeClient, EmbeddingRuntimeRequest};
 
-/// Executes prepared embedding requests through the `tentgent-embed-once` Python entrypoint.
-pub struct PythonEmbeddingOnceRuntimeClient<'a> {
+/// Executes prepared embedding requests through the shared model-runtime HTTP daemon.
+pub struct PythonEmbeddingModelRuntimeClient<'a> {
     executable_resolver: &'a dyn RuntimeExecutableResolver,
+    supervisor: &'a ModelRuntimeDaemonSupervisor,
 }
 
-impl<'a> PythonEmbeddingOnceRuntimeClient<'a> {
-    pub fn new(executable_resolver: &'a dyn RuntimeExecutableResolver) -> Self {
+impl<'a> PythonEmbeddingModelRuntimeClient<'a> {
+    pub fn new(
+        executable_resolver: &'a dyn RuntimeExecutableResolver,
+        supervisor: &'a ModelRuntimeDaemonSupervisor,
+    ) -> Self {
         Self {
             executable_resolver,
+            supervisor,
         }
     }
 
-    fn embed_blocking(&self, request: EmbeddingRuntimeRequest) -> KernelResult<EmbeddingResponse> {
-        let output = self
-            .command_for_request(&request)?
-            .output()
-            .map_err(|error| {
-                embedding_runtime_error(format!("failed to run embedding runtime: {error}"))
-            })?;
-
-        if !output.status.success() {
-            return Err(embedding_runtime_error(format_process_failure(
-                "embedding runtime exited",
-                output.status.code(),
-                &output.stderr,
-            )));
-        }
-
-        let parsed: EmbeddingRuntimeOutput =
-            serde_json::from_slice(&output.stdout).map_err(|error| {
-                embedding_runtime_error(format!(
-                    "failed to parse embedding runtime output: {error}"
-                ))
-            })?;
+    async fn embed_http(
+        &self,
+        request: EmbeddingRuntimeRequest,
+    ) -> KernelResult<EmbeddingResponse> {
+        let model_ref = local_model_ref(&request.request);
+        let endpoint = self
+            .supervisor
+            .ensure_model_bound(
+                &request.layout,
+                &request.runtime,
+                self.executable_resolver,
+                ModelRuntimeCapability::Embedding,
+                model_ref,
+            )
+            .await?;
+        let payload = EmbeddingPayload {
+            input: request.request.input.items,
+        };
+        let response: EmbeddingResponsePayload = self
+            .supervisor
+            .post_json(
+                &endpoint,
+                "/v1/embeddings",
+                &payload,
+                embedding_runtime_error,
+            )
+            .await?;
         Ok(EmbeddingResponse {
-            data: parsed
+            data: response
                 .data
                 .into_iter()
                 .map(|item| EmbeddingVector {
@@ -56,49 +64,29 @@ impl<'a> PythonEmbeddingOnceRuntimeClient<'a> {
                 .collect(),
         })
     }
-
-    fn command_for_request(&self, request: &EmbeddingRuntimeRequest) -> KernelResult<Command> {
-        let entrypoint = self
-            .executable_resolver
-            .entrypoint_path(&request.runtime, RuntimeEntrypoint::EmbeddingOnce)?;
-        let model_ref = local_model_ref(&request.request);
-
-        let mut command = Command::new(entrypoint);
-        command
-            .current_dir(&request.runtime.project_dir)
-            .arg("--model-ref")
-            .arg(model_ref)
-            .arg("--home")
-            .arg(&request.layout.home_dir)
-            .env("TENTGENT_HOME", &request.layout.home_dir)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        for item in &request.request.input.items {
-            command.arg("--input").arg(item);
-        }
-
-        Ok(command)
-    }
 }
 
-impl EmbeddingRuntimeClient for PythonEmbeddingOnceRuntimeClient<'_> {
+impl EmbeddingRuntimeClient for PythonEmbeddingModelRuntimeClient<'_> {
     fn embed(
         &'_ self,
         request: EmbeddingRuntimeRequest,
     ) -> EmbeddingPortFuture<'_, EmbeddingResponse> {
-        Box::pin(async move { self.embed_blocking(request) })
+        Box::pin(async move { self.embed_http(request).await })
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct EmbeddingRuntimeOutput {
-    data: Vec<EmbeddingRuntimeVector>,
+#[derive(Debug, Serialize)]
+struct EmbeddingPayload {
+    input: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct EmbeddingRuntimeVector {
+struct EmbeddingResponsePayload {
+    data: Vec<EmbeddingVectorPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmbeddingVectorPayload {
     index: usize,
     embedding: Vec<f32>,
 }
@@ -106,18 +94,6 @@ struct EmbeddingRuntimeVector {
 fn local_model_ref(request: &EmbeddingRequest) -> &str {
     match &request.target.runtime {
         EmbeddingRuntimeTarget::LocalModel { model_ref, .. } => model_ref.as_str(),
-    }
-}
-
-fn format_process_failure(prefix: &str, code: Option<i32>, stderr: &[u8]) -> String {
-    let status = code
-        .map(|code| format!("with status {code}"))
-        .unwrap_or_else(|| "without an exit status".to_string());
-    let stderr = String::from_utf8_lossy(stderr).trim().to_string();
-    if stderr.is_empty() {
-        format!("{prefix} {status}")
-    } else {
-        format!("{prefix} {status}: {stderr}")
     }
 }
 

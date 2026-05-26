@@ -129,14 +129,16 @@ pub(super) fn build_server_spec(
 ) -> KernelResult<ServerSpec> {
     let host = normalize_server_host(host)
         .map_err(|err| KernelError::UnsupportedTarget(err.to_string()))?;
+    let port_auto = port.is_none();
     let port = port.unwrap_or(DEFAULT_SERVER_PORT);
     let server_ref =
-        identity.server_ref_for_target(&target, &host, port, lazy_load, idle_seconds)?;
+        identity.server_ref_for_target(&target, &host, port, port_auto, lazy_load, idle_seconds)?;
     Ok(spec_for_ref(
         server_ref,
         target,
         host,
         port,
+        port_auto,
         lazy_load,
         idle_seconds,
         created_at,
@@ -148,6 +150,7 @@ fn spec_for_ref(
     target: ServerRuntimeTarget,
     host: String,
     port: u16,
+    port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
     created_at: String,
@@ -168,6 +171,7 @@ fn spec_for_ref(
             provider_model: None,
             host,
             port,
+            port_auto,
             lazy_load,
             idle_seconds,
             created_at,
@@ -185,6 +189,7 @@ fn spec_for_ref(
             provider_model: Some(provider_model),
             host,
             port,
+            port_auto,
             lazy_load,
             idle_seconds,
             created_at,

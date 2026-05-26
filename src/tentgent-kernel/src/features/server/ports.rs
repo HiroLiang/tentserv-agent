@@ -21,6 +21,7 @@ pub trait ServerIdentityGenerator {
         target: &ServerRuntimeTarget,
         host: &str,
         port: u16,
+        port_auto: bool,
         lazy_load: bool,
         idle_seconds: Option<u64>,
     ) -> KernelResult<ServerRef>;
@@ -82,6 +83,7 @@ pub trait ServerCatalogStore {
         layout: &ServerStoreLayout,
         server_ref: &ServerRef,
         pid: u32,
+        bound_port: u16,
         launch_mode: LaunchMode,
         started_at: String,
     ) -> KernelResult<ServerInspection>;

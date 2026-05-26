@@ -2554,6 +2554,92 @@ async fn model_capabilities_post_rejects_empty_final_capability_set() {
 }
 
 #[tokio::test]
+async fn model_capability_verify_records_and_lists_proofs() {
+    let requested_home = unique_home("models-capability-verify");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "5".repeat(64);
+    write_model_fixture_with_capabilities(&home, &model_ref, &["vision-chat"]);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/models/{}/capabilities/verify",
+                    &model_ref[..12]
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"capability":"vision-chat"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["proof"]["capability"], "vision-chat");
+    assert_eq!(body["proof"]["status"], "verified");
+    assert_eq!(body["proof"]["source"], "manual-probe");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/models/{}/capabilities/proofs",
+                    &model_ref[..12]
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["proofs"].as_array().expect("proofs").len(), 1);
+    assert_eq!(body["proofs"][0]["capability"], "vision-chat");
+    assert_eq!(body["proofs"][0]["status"], "verified");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn model_capability_verify_records_failed_proof_for_undeclared_capability() {
+    let requested_home = unique_home("models-capability-verify-failed");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "3".repeat(64);
+    write_model_fixture_with_capabilities(&home, &model_ref, &["chat"]);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/models/{}/capabilities/verify",
+                    &model_ref[..12]
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"capability":"embedding"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["proof"]["capability"], "embedding");
+    assert_eq!(body["proof"]["status"], "failed");
+    assert!(body["proof"]["error"]
+        .as_str()
+        .expect("error")
+        .contains("does not advertise capability"));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn model_patch_capability_remains_compatibility_alias() {
     let requested_home = unique_home("models-capability-patch");
     let state = rest_state_for_home(requested_home);

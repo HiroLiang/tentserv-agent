@@ -1,225 +1,244 @@
-use std::process::{Command, Stdio};
+use std::path::PathBuf;
+use std::str::FromStr;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::features::runtime::domain::RuntimeEntrypoint;
+use crate::features::runtime::infra::{ModelRuntimeCapability, ModelRuntimeDaemonSupervisor};
 use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::foundation::error::{KernelError, KernelResult};
 
 use super::super::domain::{
-    ImageGenerationInput, ImageGenerationOutputFormat, ImageGenerationRequest,
-    ImageGenerationResponse, ImageGenerationRuntimeTarget,
+    ImageGenerationInput, ImageGenerationRequest, ImageGenerationResponse,
+    ImageGenerationRuntimeTarget,
 };
 use super::super::ports::{
     ImageGenerationPortFuture, ImageGenerationRuntimeClient, ImageGenerationRuntimeRequest,
 };
 
-/// Executes prepared image-generation requests through the Python once entrypoint.
-pub struct PythonImageGenerationOnceRuntimeClient<'a> {
+/// Executes prepared image-generation requests through the model-runtime HTTP daemon.
+pub struct PythonImageGenerationModelRuntimeClient<'a> {
     executable_resolver: &'a dyn RuntimeExecutableResolver,
+    supervisor: &'a ModelRuntimeDaemonSupervisor,
 }
 
-impl<'a> PythonImageGenerationOnceRuntimeClient<'a> {
-    pub fn new(executable_resolver: &'a dyn RuntimeExecutableResolver) -> Self {
+impl<'a> PythonImageGenerationModelRuntimeClient<'a> {
+    pub fn new(
+        executable_resolver: &'a dyn RuntimeExecutableResolver,
+        supervisor: &'a ModelRuntimeDaemonSupervisor,
+    ) -> Self {
         Self {
             executable_resolver,
+            supervisor,
         }
     }
 
-    fn generate_blocking(
+    async fn generate_http(
         &self,
         request: ImageGenerationRuntimeRequest,
     ) -> KernelResult<ImageGenerationResponse> {
-        let output = self
-            .command_for_request(&request)?
-            .output()
-            .map_err(|error| {
-                image_generation_runtime_error(format!(
-                    "failed to run image generation runtime: {error}"
-                ))
-            })?;
-
-        if !output.status.success() {
-            return Err(image_generation_runtime_error(format_process_failure(
-                "image generation runtime exited",
-                output.status.code(),
-                &output.stderr,
-            )));
-        }
-
-        let parsed: ImageGenerationRuntimeOutput =
-            serde_json::from_slice(&output.stdout).map_err(|error| {
-                image_generation_runtime_error(format!(
-                    "failed to parse image generation runtime output: {error}"
-                ))
-            })?;
-
-        Ok(ImageGenerationResponse {
-            output_format: parsed.output_format,
-            media_type: parsed.media_type,
-            output_path: parsed.output_path,
-            total_bytes: parsed.total_bytes,
-            width: parsed.width,
-            height: parsed.height,
-            seed: parsed.seed,
-        })
-    }
-
-    fn command_for_request(
-        &self,
-        request: &ImageGenerationRuntimeRequest,
-    ) -> KernelResult<Command> {
-        let entrypoint = self
-            .executable_resolver
-            .entrypoint_path(&request.runtime, RuntimeEntrypoint::ImageGenerateOnce)?;
         let model_ref = local_model_ref(&request.request);
-
-        let mut command = Command::new(entrypoint);
-        command
-            .current_dir(&request.runtime.project_dir)
-            .arg("--model-ref")
-            .arg(model_ref)
-            .arg("--home")
-            .arg(&request.layout.home_dir)
-            .arg("--prompt")
-            .arg(&request.request.prompt.prompt)
-            .arg("--output-path")
-            .arg(&request.request.output_path)
-            .arg("--format")
-            .arg(request.request.output_format.as_str())
-            .arg("--width")
-            .arg(request.request.options.dimensions.width.to_string())
-            .arg("--height")
-            .arg(request.request.options.dimensions.height.to_string())
-            .arg("--steps")
-            .arg(request.request.options.steps.to_string())
-            .arg("--guidance-scale")
-            .arg(request.request.options.guidance_scale.to_string())
-            .env("TENTGENT_HOME", &request.layout.home_dir)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        if let Some(negative_prompt) = &request.request.prompt.negative_prompt {
-            command.arg("--negative-prompt").arg(negative_prompt);
+        let endpoint = self
+            .supervisor
+            .ensure_model_bound(
+                &request.layout,
+                &request.runtime,
+                self.executable_resolver,
+                ModelRuntimeCapability::ImageGeneration,
+                model_ref,
+            )
+            .await?;
+        if matches!(request.request.input, ImageGenerationInput::Control { .. })
+            && request.request.target.control.is_none()
+        {
+            return Err(image_generation_runtime_error(
+                "image control workflow requires a resolved control adapter",
+            ));
         }
-        if let Some(seed) = request.request.options.seed {
-            command.arg("--seed").arg(seed.to_string());
-        }
-        match &request.request.input {
-            ImageGenerationInput::TextToImage => {}
-            ImageGenerationInput::ImageToImage {
-                image_path,
-                media_type,
-                strength,
-            } => {
-                command
-                    .arg("--input-image-path")
-                    .arg(image_path)
-                    .arg("--strength")
-                    .arg(strength.as_f32().to_string());
-                if let Some(media_type) = media_type {
-                    command.arg("--input-image-media-type").arg(media_type);
-                }
-            }
-            ImageGenerationInput::Inpaint {
-                image_path,
-                image_media_type,
-                mask_path,
-                mask_media_type,
-                strength,
-            } => {
-                command
-                    .arg("--input-image-path")
-                    .arg(image_path)
-                    .arg("--mask-image-path")
-                    .arg(mask_path)
-                    .arg("--strength")
-                    .arg(strength.as_f32().to_string());
-                if let Some(media_type) = image_media_type {
-                    command.arg("--input-image-media-type").arg(media_type);
-                }
-                if let Some(media_type) = mask_media_type {
-                    command.arg("--mask-image-media-type").arg(media_type);
-                }
-            }
-            ImageGenerationInput::Control {
-                control_image_path,
-                control_image_media_type,
-                control_kind,
-                control_strength,
-            } => {
-                command
-                    .arg("--control-image-path")
-                    .arg(control_image_path)
-                    .arg("--control-kind")
-                    .arg(control_kind.as_str())
-                    .arg("--control-strength")
-                    .arg(control_strength.as_f32().to_string());
-                if let Some(media_type) = control_image_media_type {
-                    command.arg("--control-image-media-type").arg(media_type);
-                }
-            }
-        }
-        if let Some(adapter) = &request.request.target.adapter {
-            command
-                .arg("--adapter-ref")
-                .arg(adapter.adapter_ref.as_str())
-                .arg("--adapter-source-path")
-                .arg(&adapter.source_path)
-                .arg("--lora-scale")
-                .arg(adapter.scale.as_f32().to_string());
-            if let Some(weight_file) = &adapter.weight_file {
-                command.arg("--adapter-weight-file").arg(weight_file);
-            }
-        }
-        if let Some(control) = &request.request.target.control {
-            command
-                .arg("--control-ref")
-                .arg(control.adapter_ref.as_str())
-                .arg("--control-source-path")
-                .arg(&control.source_path);
-        }
-
-        Ok(command)
+        let path = image_route_path(&request.request.input);
+        let payload = image_payload(request.request);
+        let response: ImageGenerationResponsePayload = self
+            .supervisor
+            .post_json(&endpoint, path, &payload, image_generation_runtime_error)
+            .await?;
+        Ok(ImageGenerationResponse {
+            output_format: super::super::domain::ImageGenerationOutputFormat::from_str(
+                &response.output_format,
+            )
+            .map_err(|err| {
+                image_generation_runtime_error(format!(
+                    "failed to decode image generation output format: {err}"
+                ))
+            })?,
+            media_type: response.media_type,
+            output_path: response.output_path,
+            total_bytes: response.total_bytes,
+            width: response.width,
+            height: response.height,
+            seed: response.seed,
+        })
     }
 }
 
-impl ImageGenerationRuntimeClient for PythonImageGenerationOnceRuntimeClient<'_> {
+impl ImageGenerationRuntimeClient for PythonImageGenerationModelRuntimeClient<'_> {
     fn generate_image(
         &'_ self,
         request: ImageGenerationRuntimeRequest,
     ) -> ImageGenerationPortFuture<'_, ImageGenerationResponse> {
-        Box::pin(async move { self.generate_blocking(request) })
+        Box::pin(async move { self.generate_http(request).await })
     }
 }
 
+#[derive(Debug, Serialize)]
+struct ImagePayload {
+    prompt: String,
+    output_path: String,
+    output_format: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    negative_prompt: Option<String>,
+    width: u32,
+    height: u32,
+    steps: u32,
+    guidance_scale: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_image_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_image_media_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mask_image_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mask_image_media_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    strength: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control_image_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control_image_media_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control_strength: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    adapter: Option<ImageAdapterPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control: Option<ImageControlAdapterPayload>,
+}
+
+#[derive(Debug, Serialize)]
+struct ImageAdapterPayload {
+    adapter_ref: String,
+    source_path: String,
+    lora_scale: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    weight_file: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ImageControlAdapterPayload {
+    control_ref: String,
+    source_path: String,
+    control_kind: String,
+}
+
 #[derive(Debug, Deserialize)]
-struct ImageGenerationRuntimeOutput {
-    output_format: ImageGenerationOutputFormat,
+struct ImageGenerationResponsePayload {
+    output_format: String,
     media_type: String,
-    output_path: std::path::PathBuf,
+    output_path: PathBuf,
     total_bytes: u64,
     width: u32,
     height: u32,
     seed: Option<u64>,
 }
 
-fn local_model_ref(request: &ImageGenerationRequest) -> &str {
-    match &request.target.runtime {
-        ImageGenerationRuntimeTarget::LocalModel { model_ref, .. } => model_ref.as_str(),
+fn image_route_path(input: &ImageGenerationInput) -> &'static str {
+    match input {
+        ImageGenerationInput::TextToImage => "/v1/images/generations",
+        ImageGenerationInput::ImageToImage { .. } => "/v1/images/transforms",
+        ImageGenerationInput::Inpaint { .. } => "/v1/images/inpaint",
+        ImageGenerationInput::Control { .. } => "/v1/images/control",
     }
 }
 
-fn format_process_failure(prefix: &str, code: Option<i32>, stderr: &[u8]) -> String {
-    let status = code
-        .map(|code| format!("with status {code}"))
-        .unwrap_or_else(|| "without an exit status".to_string());
-    let stderr = String::from_utf8_lossy(stderr).trim().to_string();
-    if stderr.is_empty() {
-        format!("{prefix} {status}")
-    } else {
-        format!("{prefix} {status}: {stderr}")
+fn image_payload(request: ImageGenerationRequest) -> ImagePayload {
+    let mut payload = ImagePayload {
+        prompt: request.prompt.prompt,
+        output_path: request.output_path.display().to_string(),
+        output_format: request.output_format.as_str().to_string(),
+        negative_prompt: request.prompt.negative_prompt,
+        width: request.options.dimensions.width,
+        height: request.options.dimensions.height,
+        steps: request.options.steps,
+        guidance_scale: request.options.guidance_scale,
+        seed: request.options.seed,
+        input_image_path: None,
+        input_image_media_type: None,
+        mask_image_path: None,
+        mask_image_media_type: None,
+        strength: None,
+        control_image_path: None,
+        control_image_media_type: None,
+        control_kind: None,
+        control_strength: None,
+        adapter: request.target.adapter.map(|adapter| ImageAdapterPayload {
+            adapter_ref: adapter.adapter_ref.to_string(),
+            source_path: adapter.source_path.display().to_string(),
+            lora_scale: adapter.scale.as_f32(),
+            weight_file: adapter.weight_file,
+        }),
+        control: request
+            .target
+            .control
+            .map(|control| ImageControlAdapterPayload {
+                control_ref: control.adapter_ref.to_string(),
+                source_path: control.source_path.display().to_string(),
+                control_kind: control.control_kind.as_str().to_string(),
+            }),
+    };
+
+    match request.input {
+        ImageGenerationInput::TextToImage => {}
+        ImageGenerationInput::ImageToImage {
+            image_path,
+            media_type,
+            strength,
+        } => {
+            payload.input_image_path = Some(image_path.display().to_string());
+            payload.input_image_media_type = media_type;
+            payload.strength = Some(strength.as_f32());
+        }
+        ImageGenerationInput::Inpaint {
+            image_path,
+            image_media_type,
+            mask_path,
+            mask_media_type,
+            strength,
+        } => {
+            payload.input_image_path = Some(image_path.display().to_string());
+            payload.input_image_media_type = image_media_type;
+            payload.mask_image_path = Some(mask_path.display().to_string());
+            payload.mask_image_media_type = mask_media_type;
+            payload.strength = Some(strength.as_f32());
+        }
+        ImageGenerationInput::Control {
+            control_image_path,
+            control_image_media_type,
+            control_kind,
+            control_strength,
+        } => {
+            payload.control_image_path = Some(control_image_path.display().to_string());
+            payload.control_image_media_type = control_image_media_type;
+            payload.control_kind = Some(control_kind.as_str().to_string());
+            payload.control_strength = Some(control_strength.as_f32());
+        }
+    }
+    payload
+}
+
+fn local_model_ref(request: &ImageGenerationRequest) -> &str {
+    match &request.target.runtime {
+        ImageGenerationRuntimeTarget::LocalModel { model_ref, .. } => model_ref.as_str(),
     }
 }
 

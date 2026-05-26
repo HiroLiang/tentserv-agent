@@ -70,6 +70,7 @@ pub struct ServerRecordProcessStartRequest {
     pub layout: RuntimeLayoutInput,
     pub server_ref: ServerRef,
     pub pid: u32,
+    pub bound_port: u16,
     pub launch_mode: LaunchMode,
 }
 

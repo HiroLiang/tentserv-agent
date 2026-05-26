@@ -46,57 +46,12 @@ fn python_runtime_layout_derives_project_paths() {
 #[test]
 fn runtime_entrypoints_match_python_project_scripts() {
     assert_eq!(
-        RuntimeEntrypoint::AudioSpeechOnce.script_name(),
-        "tentgent-audio-speech"
-    );
-    assert_eq!(
-        RuntimeEntrypoint::AudioTranscriptionBatch.script_name(),
-        "tentgent-audio-transcribe"
-    );
-    assert_eq!(
-        RuntimeEntrypoint::ChatOnce.script_name(),
-        "tentgent-chat-once"
-    );
-    assert_eq!(
-        RuntimeEntrypoint::DatasetEval.script_name(),
-        "tentgent-dataset-eval"
-    );
-    assert_eq!(
-        RuntimeEntrypoint::DatasetSynth.script_name(),
-        "tentgent-dataset-synth"
-    );
-    assert_eq!(
-        RuntimeEntrypoint::EmbeddingOnce.script_name(),
-        "tentgent-embed-once"
-    );
-    assert_eq!(
-        RuntimeEntrypoint::ImageGenerateOnce.script_name(),
-        "tentgent-image-generate-once"
-    );
-    assert_eq!(
         RuntimeEntrypoint::ModelRuntimeDaemon.script_name(),
         "tentgent-model-runtime-daemon"
     );
     assert_eq!(
-        RuntimeEntrypoint::RerankOnce.script_name(),
-        "tentgent-rerank-once"
-    );
-    assert_eq!(
         RuntimeEntrypoint::HfSnapshot.script_name(),
         "tentgent-hf-snapshot"
-    );
-    assert_eq!(RuntimeEntrypoint::Server.script_name(), "tentgent-server");
-    assert_eq!(
-        RuntimeEntrypoint::TrainLoraRun.script_name(),
-        "tentgent-train-lora-run"
-    );
-    assert_eq!(
-        RuntimeEntrypoint::VisionChatOnce.script_name(),
-        "tentgent-vision-chat-once"
-    );
-    assert_eq!(
-        RuntimeEntrypoint::VideoUnderstandingOnce.script_name(),
-        "tentgent-video-understanding"
     );
 }
 
@@ -129,12 +84,6 @@ fn runtime_ports_cover_resolution_bootstrap_executables_and_state() {
             .python_binary_path(&runtime)
             .expect("resolve python binary"),
         PathBuf::from("/var/tentgent/python-env/bin/python")
-    );
-    assert_eq!(
-        ports
-            .entrypoint_path(&runtime, RuntimeEntrypoint::Server)
-            .expect("resolve server entrypoint"),
-        PathBuf::from("/var/tentgent/python-env/bin/tentgent-server")
     );
     assert_eq!(
         ports

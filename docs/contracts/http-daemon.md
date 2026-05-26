@@ -582,6 +582,9 @@ working context, not audit logs.
       "provider_model": "gpt-4.1-mini",
       "host": "127.0.0.1",
       "port": 8780,
+      "requested_port": 8780,
+      "port_auto": true,
+      "bound_port": null,
       "lazy_load": false,
       "idle_seconds": null,
       "created_at": "2026-04-28T00:00:00Z",
@@ -607,6 +610,9 @@ and returns:
     "provider_model": "gpt-4.1-mini",
     "host": "127.0.0.1",
     "port": 8780,
+    "requested_port": 8780,
+    "port_auto": true,
+    "bound_port": null,
     "lazy_load": false,
     "idle_seconds": null,
     "created_at": "2026-04-28T00:00:00Z",
@@ -632,6 +638,14 @@ endpoint families such as `embedding`, `rerank`,
 `audio-transcription`, `audio-speech`, `vision-chat`, `video-understanding`,
 and `image-generation`. Older `server.toml` files without `capability` are read
 as `chat`.
+
+`port` is the effective port clients should call. For stopped auto-port specs,
+it equals `requested_port`. When `port` is omitted at create time, the stored
+spec sets `requested_port` to `8780`, `port_auto` to `true`, and each launch
+scans upward from `8780` until a free port is found. The running process records
+that actual port as `bound_port`, and read/health responses report it as
+top-level `port`. Explicit `port` values set `port_auto` to `false` and fail at
+start time if unavailable.
 
 ## Store Import And Pull Mutations
 
@@ -793,7 +807,8 @@ POST /v1/datasets/{dataset_ref}/export
 POST /v1/datasets/{dataset_ref}/diff
 ```
 
-Provider-backed dataset synth and eval are job-only routes in this slice:
+Provider-backed dataset synth and eval routes are reserved until their runtime
+is ported to the model runtime HTTP boundary:
 `POST /v1/datasets/synth/jobs` and `POST /v1/datasets/eval/jobs`.
 
 All path fields are absolute paths on the daemon host filesystem, not the HTTP
@@ -916,125 +931,10 @@ unexpected local failures return `500 dataset_tool_failed`.
 
 ## Dataset Cloud Tools
 
-The daemon exposes synchronous provider-backed dataset tooling:
-
-```text
-POST /v1/datasets/synth
-POST /v1/datasets/eval
-```
-
-These endpoints follow daemon auth rules and may call OpenAI or Anthropic with
-selected local content. All path fields are daemon-host paths. Direct content is
-for dataset/spec-sized inputs only; multipart upload is future work. Background
-execution is available through the explicit `/jobs` variants described above.
-
-`POST /v1/datasets/synth` accepts exactly one prompt source: `brief`,
-`spec_content`, or absolute `spec_path`. Prompt-only mode does not require
-provider auth:
-
-```json
-{
-  "print_prompt": true,
-  "brief": "Generate support examples in Traditional Chinese.",
-  "split": "train",
-  "count": 20
-}
-```
-
-Provider mode requires `provider`, `model`, `output_path`, and explicit counts:
-
-```json
-{
-  "provider": "openai",
-  "model": "gpt-4.1-mini",
-  "output_path": "/absolute/path/on/daemon-host/generated",
-  "brief": "Generate support examples in Traditional Chinese.",
-  "split": "train",
-  "count": 20,
-  "timeout_seconds": 300,
-  "retries": 1
-}
-```
-
-Single-split mode uses `split` plus `count`. Multi-split mode uses one or more
-of `train_count`, `valid_count`, `test_count`, and `eval_count`; zero-valued
-split counts are ignored, and at least one split count must be greater than
-zero. `spec_content` is limited to 256 KiB. `output_path` must be missing or an
-empty directory. Failed provider runs may leave partial output or `_debug`
-artifacts and are not rolled back.
-
-Prompt-only responses return:
-
-```json
-{
-  "prompt": {
-    "content": "...",
-    "split": "train",
-    "source_kind": "brief"
-  }
-}
-```
-
-Provider responses return the Python runtime outcome and capped progress events:
-
-```json
-{
-  "synth": {
-    "provider": "openai",
-    "model": "gpt-4.1-mini",
-    "output_dir": "/path/generated",
-    "manifest_path": "/path/generated/manifest.json",
-    "record_count": 20,
-    "splits": []
-  },
-  "progress_events": [],
-  "progress_truncated": false
-}
-```
-
-`POST /v1/datasets/eval` accepts exactly one input source: managed
-`dataset_ref`, direct `input_content`, or absolute `input_path`.
-
-```json
-{
-  "dataset_ref": "managed-ref-or-prefix",
-  "provider": "openai",
-  "model": "gpt-4.1-mini",
-  "output_path": "/absolute/path/on/daemon-host/eval-report",
-  "max_records": 20
-}
-```
-
-`dataset_ref` resolves to the managed dataset store path, not the original
-source path. `input_content` defaults to `input_format: "jsonl"` and is limited
-to 10 MiB; it is staged under the daemon runtime home before the provider
-runtime runs. `output_path` must be missing or empty. Successful eval responses
-wrap the Python report outcome:
-
-```json
-{
-  "eval": {
-    "provider": "openai",
-    "model": "gpt-4.1-mini",
-    "input_path": "/path/input",
-    "output_dir": "/path/eval-report",
-    "report_json_path": "/path/eval-report/eval-report.json",
-    "report_md_path": "/path/eval-report/eval-report.md",
-    "reviewed_records": 20,
-    "overall_score": 0.82,
-    "warnings": []
-  }
-}
-```
-
-Bad JSON, unknown fields, invalid modes, invalid counts, relative paths, or
-oversized content return `400 bad_request`. Missing input/spec paths return
-`404 path_not_found`; missing/ambiguous dataset refs return `404 not_found` or
-`409 ambiguous_ref`; non-empty output directories return `409 output_exists`;
-provider auth failures return `409 provider_auth_failed`. Provider/runtime
-failures return `502 dataset_synth_failed` or `502 dataset_eval_failed` with
-debug artifact paths when available, but never raw provider output or raw
-request content.
+Provider-backed dataset synth/eval are paused until they are ported to the
+model runtime HTTP boundary. Until then, daemon dataset APIs should expose local
+validation, template rendering, import, export, diff, list, inspect, and remove
+workflows only.
 
 ## LoRA Train Plans
 
@@ -1188,6 +1088,8 @@ entries:
 
 ```text
 POST /v1/models/{model_ref}/capabilities
+GET /v1/models/{model_ref}/capabilities/proofs
+POST /v1/models/{model_ref}/capabilities/verify
 DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
 DELETE /v1/datasets/{dataset_ref}
@@ -1235,6 +1137,41 @@ capability sets, invalid capability values, and bodies that mix `set` with
 `PATCH /v1/models/{model_ref}` remains a legacy compatibility alias that
 accepts one `capability` string and replaces the model capability set with that
 single value.
+
+`GET /v1/models/{model_ref}/capabilities/proofs` returns latest local proof
+records for the model:
+
+```json
+{
+  "model": {
+    "...": "same shape as GET /v1/models/{model_ref}"
+  },
+  "proofs": [
+    {
+      "model_ref": "<model_ref>",
+      "capability": "vision-chat",
+      "status": "verified",
+      "source": "server-start",
+      "primary_format": "mlx",
+      "backend": "mlx-vlm",
+      "mlx_runtime_family": "mlx-vlm",
+      "server_ref": "<server_ref>",
+      "checked_at": "2026-05-26T00:00:00Z"
+    }
+  ]
+}
+```
+
+`POST /v1/models/{model_ref}/capabilities/verify` accepts one capability:
+
+```json
+{ "capability": "vision-chat" }
+```
+
+The manual verify route records a metadata-level `manual-probe` proof. It does
+not run full endpoint inference in this slice. Local model-bound server starts
+write `server-start` proofs after launch success or failure. Future endpoint
+smoke tests can write `endpoint-smoke` proofs with the same response shape.
 
 `DELETE` requests must have an empty body. Non-empty bodies return JSON `400`
 because this slice has no hidden `force`, dry-run, bulk, or cascade options.
@@ -1325,6 +1262,11 @@ server:
 }
 ```
 
+Omit `port` to request automatic port selection. Auto-port specs keep
+`requested_port = 8780` and rescan from that default on every launch; they do
+not create a new server record just because a previous run had to bind a higher
+port.
+
 An abbreviated response is:
 
 ```json
@@ -1339,6 +1281,9 @@ An abbreviated response is:
     "provider_model": "gpt-4.1-mini",
     "host": "127.0.0.1",
     "port": 8780,
+    "requested_port": 8780,
+    "port_auto": false,
+    "bound_port": null,
     "lazy_load": false,
     "idle_seconds": null,
     "created_at": "2026-04-28T00:00:00Z",
@@ -1393,11 +1338,17 @@ An abbreviated response is:
     "capability": "chat",
     "provider": "openai",
     "provider_model": "gpt-4.1-mini",
+    "host": "127.0.0.1",
+    "port": 8780,
+    "requested_port": 8780,
+    "port_auto": false,
+    "bound_port": 8780,
     "running": true,
     "process": {
       "pid": 12345,
       "launch_mode": "background",
-      "started_at": "2026-04-28T00:00:00Z"
+      "started_at": "2026-04-28T00:00:00Z",
+      "bound_port": 8780
     }
   }
 }

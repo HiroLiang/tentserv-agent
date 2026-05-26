@@ -11,21 +11,24 @@ use tentgent_kernel::features::auth::usecases::{
     AuthSecretResolutionRequest, StdAuthSecretResolverUseCase,
 };
 use tentgent_kernel::features::model::domain::{
-    HfModelPullProgress, MlxRuntimeFamily, ModelCapability, ModelFormat, ModelImportOutcome,
-    ModelInspection, ModelMetadata, ModelRefSelector, ModelRemovalOutcome, ModelSummary,
+    HfModelPullProgress, MlxRuntimeFamily, ModelCapability, ModelCapabilityProof, ModelFormat,
+    ModelImportOutcome, ModelInspection, ModelMetadata, ModelRefSelector, ModelRemovalOutcome,
+    ModelSummary,
 };
 use tentgent_kernel::features::model::infra::{
-    FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
-    FileModelSourceIndexStore, StdHfModelSnapshotFetcher, StdModelIdentityGenerator,
-    StdModelManifestBuilder, StdModelSourceStager, StdModelStoreLayoutInitializer,
+    FileModelCapabilityProofStore, FileModelCatalogStore, FileModelContentStore,
+    FileModelServerReferenceProbe, FileModelSourceIndexStore, StdHfModelSnapshotFetcher,
+    StdModelIdentityGenerator, StdModelManifestBuilder, StdModelSourceStager,
+    StdModelStoreLayoutInitializer, SystemModelClock,
 };
 use tentgent_kernel::features::model::usecases::{
-    ModelCapabilityMutation, ModelCapabilityUpdateRequest, ModelCapabilityUpdateResult,
-    ModelCapabilityUpdateUseCase, ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase,
+    ModelCapabilityMutation, ModelCapabilityProofListRequest, ModelCapabilityProofUseCase,
+    ModelCapabilityUpdateRequest, ModelCapabilityUpdateResult, ModelCapabilityUpdateUseCase,
+    ModelCapabilityVerifyRequest, ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase,
     ModelInspectRequest, ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase,
-    ModelRemoveRequest, ModelRemoveUseCase, StdModelCapabilityUpdateUseCase,
-    StdModelCatalogReadUseCase, StdModelHfPullUseCase, StdModelLocalImportUseCase,
-    StdModelRemoveUseCase,
+    ModelRemoveRequest, ModelRemoveUseCase, StdModelCapabilityProofUseCase,
+    StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase, StdModelHfPullUseCase,
+    StdModelLocalImportUseCase, StdModelRemoveUseCase,
 };
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::StdPythonRuntimeResolver;
@@ -214,6 +217,50 @@ fn handle_model_capability_command(
                 },
             )?;
         }
+        ModelCapabilityCommands::Proofs { reference } => {
+            if is_help_token(&reference) {
+                print_model_capability_subcommand_help("proofs")?;
+                return Ok(());
+            }
+
+            let selector = parse_model_selector("capability proofs", "REF", &reference)?;
+            let result = match model
+                .capability_proof_usecase()
+                .list_model_capability_proofs(ModelCapabilityProofListRequest {
+                    layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
+                    selector,
+                }) {
+                Ok(result) => result,
+                Err(err) => {
+                    return Err(explain_model_lookup_error("capability proofs", "REF", err));
+                }
+            };
+            render_model_capability_proofs(&result.model, &result.proofs);
+        }
+        ModelCapabilityCommands::Verify {
+            reference,
+            capability,
+        } => {
+            if is_help_token(&reference) {
+                print_model_capability_subcommand_help("verify")?;
+                return Ok(());
+            }
+
+            let selector = parse_model_selector("capability verify", "REF", &reference)?;
+            let result = match model.capability_proof_usecase().verify_model_capability(
+                ModelCapabilityVerifyRequest {
+                    layout: runtime_layout_input(LayoutResolveMode::Create),
+                    selector,
+                    capability,
+                },
+            ) {
+                Ok(result) => result,
+                Err(err) => {
+                    return Err(explain_model_lookup_error("capability verify", "REF", err));
+                }
+            };
+            render_model_capability_verify(&result.model, &result.proof);
+        }
     }
 
     Ok(())
@@ -263,6 +310,8 @@ struct CliModelKernel {
     source_indexes: FileModelSourceIndexStore,
     content: FileModelContentStore,
     server_refs: FileModelServerReferenceProbe,
+    proofs: FileModelCapabilityProofStore,
+    clock: SystemModelClock,
 }
 
 impl CliModelKernel {
@@ -282,6 +331,8 @@ impl CliModelKernel {
             source_indexes: FileModelSourceIndexStore,
             content: FileModelContentStore,
             server_refs: FileModelServerReferenceProbe,
+            proofs: FileModelCapabilityProofStore,
+            clock: SystemModelClock,
         }
     }
 
@@ -333,6 +384,15 @@ impl CliModelKernel {
 
     fn capability_update_usecase(&self) -> StdModelCapabilityUpdateUseCase<'_> {
         StdModelCapabilityUpdateUseCase::new(&self.layout_resolver, &self.catalog)
+    }
+
+    fn capability_proof_usecase(&self) -> StdModelCapabilityProofUseCase<'_> {
+        StdModelCapabilityProofUseCase::new(
+            &self.layout_resolver,
+            &self.catalog,
+            &self.proofs,
+            &self.clock,
+        )
     }
 
     fn auth_resolver_usecase(&self) -> StdAuthSecretResolverUseCase<'_> {
@@ -572,6 +632,101 @@ fn render_model_capability_update(result: &ModelCapabilityUpdateResult) {
 
     println!("{table}");
     println!();
+}
+
+fn render_model_capability_proofs(inspection: &ModelInspection, proofs: &[ModelCapabilityProof]) {
+    println!(
+        "{} {} {}",
+        style("==>").cyan().bold(),
+        style("Model capability proofs").bold(),
+        style(&inspection.metadata.short_ref).bold()
+    );
+
+    if proofs.is_empty() {
+        println!(
+            "{} No capability proofs are stored for this model.\n",
+            style("empty").yellow().bold()
+        );
+        return;
+    }
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL_CONDENSED)
+        .apply_modifier(UTF8_ROUND_CORNERS)
+        .set_header(vec![
+            "capability",
+            "status",
+            "source",
+            "backend",
+            "server_ref",
+            "checked_at",
+            "error",
+        ]);
+
+    for proof in proofs {
+        table.add_row(vec![
+            Cell::new(proof.capability.as_str()),
+            Cell::new(proof.status.as_str()),
+            Cell::new(proof.source.as_str()),
+            Cell::new(&proof.backend),
+            Cell::new(proof.server_ref.as_deref().unwrap_or("-")),
+            Cell::new(&proof.checked_at),
+            Cell::new(proof.error.as_deref().unwrap_or("-")),
+        ]);
+    }
+
+    println!("{table}");
+    println!();
+}
+
+fn render_model_capability_verify(inspection: &ModelInspection, proof: &ModelCapabilityProof) {
+    println!(
+        "{} {} {}",
+        style("==>").cyan().bold(),
+        style("Model capability proof recorded").bold(),
+        style(&inspection.metadata.short_ref).bold()
+    );
+
+    let mut table = base_table();
+    add_model_proof_rows(&mut table, proof);
+
+    println!("{table}");
+    println!();
+}
+
+fn add_model_proof_rows(table: &mut Table, proof: &ModelCapabilityProof) {
+    table.add_row(vec![
+        Cell::new("model_ref"),
+        Cell::new(proof.model_ref.as_str()),
+    ]);
+    table.add_row(vec![
+        Cell::new("capability"),
+        Cell::new(proof.capability.as_str()),
+    ]);
+    table.add_row(vec![Cell::new("status"), Cell::new(proof.status.as_str())]);
+    table.add_row(vec![Cell::new("source"), Cell::new(proof.source.as_str())]);
+    table.add_row(vec![
+        Cell::new("primary_format"),
+        Cell::new(proof.primary_format.as_str()),
+    ]);
+    table.add_row(vec![Cell::new("backend"), Cell::new(&proof.backend)]);
+    if let Some(family) = proof.mlx_runtime_family {
+        table.add_row(vec![
+            Cell::new("mlx_runtime_family"),
+            Cell::new(family.as_str()),
+        ]);
+    }
+    if let Some(version) = &proof.runtime_version {
+        table.add_row(vec![Cell::new("runtime_version"), Cell::new(version)]);
+    }
+    if let Some(server_ref) = &proof.server_ref {
+        table.add_row(vec![Cell::new("server_ref"), Cell::new(server_ref)]);
+    }
+    table.add_row(vec![Cell::new("checked_at"), Cell::new(&proof.checked_at)]);
+    if let Some(error) = &proof.error {
+        table.add_row(vec![Cell::new("error"), Cell::new(error)]);
+    }
 }
 
 fn render_capability_warning(metadata: &tentgent_kernel::features::model::domain::ModelMetadata) {
@@ -1082,6 +1237,47 @@ mod tests {
             } => {
                 assert_eq!(reference, "abc123");
                 assert_eq!(capabilities, vec![ModelCapability::Chat]);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_model_capability_proofs_and_verify_commands() {
+        let proofs = Cli::try_parse_from(["tentgent", "model", "capability", "proofs", "abc123"])
+            .expect("parse model capability proofs");
+        match proofs.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Capability {
+                        action: ModelCapabilityCommands::Proofs { reference },
+                    },
+            } => assert_eq!(reference, "abc123"),
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let verify = Cli::try_parse_from([
+            "tentgent",
+            "model",
+            "capability",
+            "verify",
+            "abc123",
+            "vision-chat",
+        ])
+        .expect("parse model capability verify");
+        match verify.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Capability {
+                        action:
+                            ModelCapabilityCommands::Verify {
+                                reference,
+                                capability,
+                            },
+                    },
+            } => {
+                assert_eq!(reference, "abc123");
+                assert_eq!(capability, ModelCapability::VisionChat);
             }
             other => panic!("unexpected command: {other:?}"),
         }

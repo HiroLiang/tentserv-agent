@@ -73,6 +73,8 @@ tentgent model ls
 tentgent model inspect <model-ref-or-prefix>
 tentgent model capability set <model-ref-or-prefix> embedding
 tentgent model capability add <model-ref-or-prefix> vision-chat
+tentgent model capability verify <model-ref-or-prefix> vision-chat
+tentgent model capability proofs <model-ref-or-prefix>
 ```
 
 Accepted model metadata capability values:

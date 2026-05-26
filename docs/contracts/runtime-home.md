@@ -124,7 +124,7 @@ Python project resolution order:
 1. Use `TENTGENT_PYTHON_DIR` when set.
 2. Otherwise look for an installed project relative to the `tentgent` binary:
    `../share/tentgent/python`, then `../libexec/tentgent/python`.
-3. Otherwise fall back to the repository development project at `python/tentgent-daemon`.
+3. Otherwise fall back to the repository development project at `python/tentgent-model-runtime`.
 
 The resolved Python project directory must contain `pyproject.toml`.
 
@@ -147,7 +147,7 @@ Installed release artifacts should place Python project files at:
 share/tentgent/python/
 ```
 
-That directory is the packaged equivalent of the repository `python/tentgent-daemon/` project root.
+That directory is the packaged equivalent of the repository `python/tentgent-model-runtime/` project root.
 
 ## Bootstrap Cache
 

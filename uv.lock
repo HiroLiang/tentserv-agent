@@ -2825,6 +2825,7 @@ version = "0.1.0"
 source = { editable = "python/tentgent-model-runtime" }
 dependencies = [
     { name = "fastapi" },
+    { name = "huggingface-hub" },
     { name = "pydantic" },
     { name = "uvicorn" },
 ]
@@ -2917,6 +2918,7 @@ requires-dist = [
     { name = "diffusers", marker = "extra == 'image'" },
     { name = "diffusers", marker = "extra == 'local-model'" },
     { name = "fastapi" },
+    { name = "huggingface-hub" },
     { name = "llama-cpp-python", marker = "extra == 'llama-cpp'" },
     { name = "llama-cpp-python", marker = "extra == 'local-model'" },
     { name = "mflux", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'image'" },

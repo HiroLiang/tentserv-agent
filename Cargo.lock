@@ -1925,6 +1925,7 @@ dependencies = [
  "miette",
  "reqwest",
  "rpassword",
+ "serde",
  "serde_json",
  "tentgent-daemon",
  "tentgent-kernel",
@@ -1958,6 +1959,7 @@ version = "0.4.1"
 dependencies = [
  "directories",
  "dotenvy",
+ "futures-util",
  "hex",
  "keyring",
  "reqwest",

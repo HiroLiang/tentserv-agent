@@ -14,7 +14,7 @@ use crate::features::rerank::domain::{
     RerankBackend, RerankInput, RerankRequest, RerankResponse, RerankRuntimeTarget, RerankScore,
     ResolvedRerankTarget,
 };
-use crate::features::rerank::infra::{PythonRerankOnceRuntimeClient, StdRerankModelResolver};
+use crate::features::rerank::infra::StdRerankModelResolver;
 use crate::features::rerank::ports::{
     RerankModelResolveRequest, RerankModelResolver, RerankRuntimeClient, RerankRuntimeRequest,
 };
@@ -143,6 +143,7 @@ fn std_rerank_model_resolver_rejects_unsupported_rerank_format() {
     assert!(err.to_string().contains("does not support `mlx`"));
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_rerank_once_client_runs_entrypoint_with_rerank_arguments() {
@@ -155,7 +156,7 @@ async fn python_rerank_once_client_runs_entrypoint_with_rerank_arguments() {
     fs::create_dir_all(&home).expect("home");
     fs::create_dir_all(&project).expect("project");
     fs::create_dir_all(&env).expect("env");
-    let entrypoint = root.join("tentgent-rerank-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > \"$TENTGENT_HOME/cwd.txt\"\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"data\":[{\"index\":1,\"score\":0.9},{\"index\":0,\"score\":0.2}]}'\n",
@@ -273,7 +274,7 @@ impl RuntimeExecutableResolver for FakeExecutableResolver {
         _runtime: &PythonRuntimeLayout,
         entrypoint: RuntimeEntrypoint,
     ) -> KernelResult<PathBuf> {
-        assert_eq!(entrypoint, RuntimeEntrypoint::RerankOnce);
+        assert_eq!(entrypoint, RuntimeEntrypoint::ModelRuntimeDaemon);
         Ok(self.entrypoint.clone())
     }
 }

@@ -112,6 +112,7 @@ where
         layout: &ServerStoreLayout,
         server_ref: &ServerRef,
         pid: u32,
+        bound_port: u16,
         launch_mode: LaunchMode,
         started_at: String,
     ) -> KernelResult<ServerInspection> {
@@ -128,6 +129,7 @@ where
             pid,
             launch_mode,
             started_at,
+            bound_port: Some(bound_port),
         };
         write_process_metadata(&inspection.process_path, &metadata)?;
         self.inspect_exact(layout, spec, true)

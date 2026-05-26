@@ -7,7 +7,7 @@ use std::{
 use miette::{miette, IntoDiagnostic, Result};
 use tentgent_kernel::features::audio::{
     domain::AudioSpeechOutputFormat,
-    infra::{PythonAudioSpeechOnceRuntimeClient, StdAudioSpeechModelResolver},
+    infra::{PythonAudioSpeechModelRuntimeClient, StdAudioSpeechModelResolver},
     usecases::{AudioSpeechPreparationRequest, AudioSpeechUseCase, StdAudioSpeechUseCase},
 };
 use tentgent_kernel::features::model::domain::ModelRefSelector;
@@ -15,7 +15,7 @@ use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
-    StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
+    ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
 use tentgent_kernel::features::runtime::usecases::StdRuntimeResolutionUseCase;
 use tentgent_kernel::foundation::layout::{
@@ -34,7 +34,10 @@ pub async fn handle_speak_command(command: SpeakCommand) -> Result<()> {
     let model_catalog =
         StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
     let model_resolver = StdAudioSpeechModelResolver::new(&model_catalog);
-    let runtime_client = PythonAudioSpeechOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonAudioSpeechModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let speaker = StdAudioSpeechUseCase::new(&runtime_resolution, &model_resolver, &runtime_client);
 
     let result = match speaker
@@ -71,6 +74,7 @@ struct CliAudioSpeechKernel {
     layout_resolver: StdRuntimeLayoutResolver,
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
 }
 
@@ -80,6 +84,7 @@ impl CliAudioSpeechKernel {
             layout_resolver: StdRuntimeLayoutResolver,
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
         }
     }

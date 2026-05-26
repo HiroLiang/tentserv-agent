@@ -17,7 +17,7 @@ through `tentgent runtime bootstrap`, then use the generated tentgent-* entry
 points rather than uv.
 
 Options:
-  --project <PATH>  Python daemon project directory. Defaults to packaged or repo project.
+  --project <PATH>  Python model-runtime project directory. Defaults to packaged or repo project.
   --env <PATH>      Managed Python environment path. Defaults to TENTGENT_HOME/runtime/python-env.
   --uv <PATH>       Use an explicit pinned uv executable path.
   --profile <NAME>  Runtime dependency profile: base, local-model, training, or full. Defaults to base.
@@ -27,7 +27,7 @@ Options:
 
 Environment:
   TENTGENT_HOME                       Override Tentgent runtime home.
-  TENTGENT_PYTHON_DIR                 Override Python daemon project directory.
+  TENTGENT_PYTHON_DIR                 Override Python model-runtime project directory.
   TENTGENT_PYTHON_ENV_DIR             Override managed Python environment path.
   TENTGENT_BOOTSTRAP_UV               Override pinned uv executable path.
   TENTGENT_BOOTSTRAP_UV_CACHE_DIR     Override uv package/cache directory.
@@ -67,11 +67,11 @@ resolve_python_project() {
     echo "${ROOT_DIR}/python"
     return
   fi
-  if [[ -f "${ROOT_DIR}/python/tentgent-daemon/pyproject.toml" ]]; then
-    echo "${ROOT_DIR}/python/tentgent-daemon"
+  if [[ -f "${ROOT_DIR}/python/tentgent-model-runtime/pyproject.toml" ]]; then
+    echo "${ROOT_DIR}/python/tentgent-model-runtime"
     return
   fi
-  fail "could not find Python daemon project; set --project or TENTGENT_PYTHON_DIR"
+  fail "could not find Python model-runtime project; set --project or TENTGENT_PYTHON_DIR"
 }
 
 resolve_python_env() {
@@ -187,16 +187,11 @@ verify_entrypoints() {
   local missing=()
   local name
 
-  for name in python tentgent-chat-once tentgent-server tentgent-train-lora-run tentgent-hf-snapshot; do
+  for name in python tentgent-model-runtime-daemon tentgent-hf-snapshot; do
     if [[ ! -x "${bin_dir}/${name}" ]]; then
       missing+=("${bin_dir}/${name}")
     fi
   done
-  if [[ "${BOOTSTRAP_PROFILE}" == "local-model" || "${BOOTSTRAP_PROFILE}" == "full" ]]; then
-    if [[ ! -x "${bin_dir}/tentgent-model-runtime-daemon" ]]; then
-      missing+=("${bin_dir}/tentgent-model-runtime-daemon")
-    fi
-  fi
 
   if [[ "${#missing[@]}" -gt 0 ]]; then
     printf 'error: missing expected Python runtime entry points:\n' >&2
@@ -285,12 +280,8 @@ SYNC_ARGS=(
   --python "${PYTHON_VERSION}"
   --frozen
   --no-editable
-  --reinstall-package tentgent-daemon
+  --reinstall-package tentgent-model-runtime
 )
-
-if [[ "${BOOTSTRAP_PROFILE}" == "local-model" || "${BOOTSTRAP_PROFILE}" == "full" ]]; then
-  SYNC_ARGS+=(--reinstall-package tentgent-model-runtime)
-fi
 
 if [[ "${DRY_RUN}" == "true" ]]; then
   SYNC_ARGS+=(--dry-run)

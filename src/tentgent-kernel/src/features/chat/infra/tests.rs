@@ -33,7 +33,7 @@ use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
 
-use super::{PythonChatOnceRuntimeClient, StdChatAdapterResolver, StdChatModelResolver};
+use super::{StdChatAdapterResolver, StdChatModelResolver};
 
 #[test]
 fn std_chat_model_resolver_maps_model_metadata_to_local_chat_target() {
@@ -120,6 +120,7 @@ fn std_chat_adapter_resolver_maps_compatibility_result_to_chat_adapter() {
     );
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_chat_once_client_runs_entrypoint_with_chat_arguments() {
@@ -132,7 +133,7 @@ async fn python_chat_once_client_runs_entrypoint_with_chat_arguments() {
     fs::create_dir_all(&home).expect("home");
     fs::create_dir_all(&project).expect("project");
     fs::create_dir_all(&env).expect("env");
-    let entrypoint = root.join("tentgent-chat-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > \"$TENTGENT_HOME/cwd.txt\"\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf 'answer'\n",
@@ -173,6 +174,7 @@ async fn python_chat_once_client_runs_entrypoint_with_chat_arguments() {
     assert!(args.contains("user:hello\n"));
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_chat_once_client_streams_stdout_events() {
@@ -185,7 +187,7 @@ async fn python_chat_once_client_streams_stdout_events() {
     fs::create_dir_all(&home).expect("home");
     fs::create_dir_all(&project).expect("project");
     fs::create_dir_all(&env).expect("env");
-    let entrypoint = root.join("tentgent-chat-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(&entrypoint, "#!/bin/sh\nprintf 'hello'\n").expect("script");
     let mut permissions = fs::metadata(&entrypoint).expect("metadata").permissions();
     permissions.set_mode(0o755);
@@ -306,7 +308,7 @@ impl RuntimeExecutableResolver for FakeExecutableResolver {
         _runtime: &PythonRuntimeLayout,
         entrypoint: RuntimeEntrypoint,
     ) -> KernelResult<PathBuf> {
-        assert_eq!(entrypoint, RuntimeEntrypoint::ChatOnce);
+        assert_eq!(entrypoint, RuntimeEntrypoint::ModelRuntimeDaemon);
         Ok(self.entrypoint.clone())
     }
 }

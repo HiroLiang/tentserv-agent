@@ -16,9 +16,8 @@ use tentgent_kernel::features::dataset::infra::FileDatasetCatalogStore;
 use tentgent_kernel::features::model::domain::ModelRefSelector;
 use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::runtime::infra::{
-    StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
+    ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
-use tentgent_kernel::features::runtime::ports::RuntimeExecutableResolver;
 use tentgent_kernel::features::runtime::usecases::{
     RuntimeResolutionRequest, RuntimeResolutionUseCase, StdRuntimeResolutionUseCase,
 };
@@ -170,6 +169,7 @@ pub(super) struct CliTrainKernel {
     platform_probe: StdPlatformProbe,
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     train_initializer: StdTrainStoreLayoutInitializer,
     plan_store: FileLoraTrainPlanStore,
     run_store: FileLoraTrainRunStore,
@@ -195,6 +195,7 @@ impl CliTrainKernel {
             platform_probe: StdPlatformProbe,
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             train_initializer: StdTrainStoreLayoutInitializer,
             plan_store: FileLoraTrainPlanStore,
             run_store: FileLoraTrainRunStore::default(),
@@ -262,15 +263,6 @@ impl CliTrainKernel {
                 layout,
                 runtime: Default::default(),
             })
-            .into_diagnostic()
-    }
-
-    pub(super) fn python_binary_path(
-        &self,
-        runtime: &tentgent_kernel::features::runtime::domain::PythonRuntimeLayout,
-    ) -> Result<std::path::PathBuf> {
-        self.executable_resolver
-            .python_binary_path(runtime)
             .into_diagnostic()
     }
 }

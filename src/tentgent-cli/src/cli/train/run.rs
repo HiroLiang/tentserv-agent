@@ -1,26 +1,28 @@
 use std::{
     fs::{File, OpenOptions},
-    io::{BufRead, BufReader, Write},
+    io::Write,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::{Arc, Mutex},
-    thread,
 };
 
 use console::style;
 use indicatif::ProgressBar;
 use miette::{miette, IntoDiagnostic, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tentgent_kernel::features::adapter::domain::AdapterImportOutcome;
 use tentgent_kernel::features::adapter::usecases::{
     AdapterImportOptions, AdapterTrainRunImportRequest, AdapterTrainRunImportUseCase,
 };
 use tentgent_kernel::features::model::domain::ModelRefSelector;
-use tentgent_kernel::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeSource};
-use tentgent_kernel::features::train::domain::{LoraTrainRun, LoraTrainRunStatus};
+use tentgent_kernel::features::runtime::infra::ModelRuntimeCapability;
+use tentgent_kernel::features::train::domain::{
+    LoraTrainBackend, LoraTrainPlan, LoraTrainRun, LoraTrainRunStatus, TrainRefSelector,
+};
 use tentgent_kernel::features::train::usecases::{
-    LoraTrainRunFinishRequest, LoraTrainRunInspectRequest, LoraTrainRunUseCase,
-    LoraTrainRunWorkerStartedRequest, LoraTrainRunWriteRequest,
+    LoraTrainPlanInspectRequest, LoraTrainPlanUseCase, LoraTrainRunFinishRequest,
+    LoraTrainRunInspectRequest, LoraTrainRunUseCase, LoraTrainRunWorkerStartedRequest,
+    LoraTrainRunWriteRequest,
 };
 use tentgent_kernel::foundation::layout::LayoutResolveMode;
 
@@ -32,8 +34,6 @@ use super::{
     run_summary::{render_run_summary, RunSummary},
     runtime_layout_input, runtime_layout_input_with_home, CliTrainKernel,
 };
-
-const DAEMON_TOKEN_ENV_VAR: &str = "TENTGENT_DAEMON_TOKEN";
 
 pub fn run_lora_plan(command: TrainLoraRunCommand, kernel: &CliTrainKernel) -> Result<()> {
     let run_usecase = kernel.run_usecase();
@@ -156,42 +156,32 @@ fn execute_training_process(
     display: RunDisplay,
 ) -> Result<CompletedRun> {
     let runtime_resolution = kernel.resolve_runtime(layout.clone())?;
-    let python_runtime = runtime_resolution.runtime;
-    let python = require_python_interpreter(
-        &python_runtime,
-        &kernel.python_binary_path(&python_runtime)?,
-        "python training runtime",
-    )?;
+    let plan_selector = TrainRefSelector::parse(&run.plan_ref).map_err(|err| miette!("{err}"))?;
+    let plan = kernel
+        .plan_usecase()
+        .inspect_plan(LoraTrainPlanInspectRequest {
+            layout: layout.clone(),
+            selector: plan_selector,
+        })
+        .into_diagnostic()?
+        .inspection
+        .plan;
+    let backend = plan
+        .backend
+        .ok_or_else(|| miette!("LoRA train plan is blocked and has no selected backend"))?;
     let raw_log = open_append(&artifacts.raw_log_path)?;
     let raw_log = Arc::new(Mutex::new(raw_log));
+    let endpoint = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(kernel.model_runtime_supervisor.ensure_unbound(
+            &runtime_resolution.layout,
+            &runtime_resolution.runtime,
+            &kernel.executable_resolver,
+            ModelRuntimeCapability::LoraTuning,
+        ))
+    })
+    .into_diagnostic()?;
 
-    let mut process = Command::new(&python);
-    process
-        .current_dir(&python_runtime.project_dir)
-        .env("PYTHONPATH", python_runtime.python_src_dir())
-        .env_remove(DAEMON_TOKEN_ENV_VAR)
-        .arg("-m")
-        .arg("tentgent_daemon.cli.train_lora_run")
-        .arg("--plan-ref")
-        .arg(&run.plan_ref)
-        .arg("--plan-file")
-        .arg(
-            artifacts
-                .run_dir
-                .parent()
-                .and_then(Path::parent)
-                .map(|plan_dir| plan_dir.join("plan.toml"))
-                .ok_or_else(|| miette!("failed to resolve plan.toml for run"))?,
-        )
-        .arg("--run-dir")
-        .arg(&artifacts.run_dir)
-        .arg("--run-ref")
-        .arg(&run.run_ref)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let mut child = process.spawn().into_diagnostic()?;
-    run.pid = Some(child.id());
+    run.pid = Some(endpoint.pid);
     run.status = LoraTrainRunStatus::Running;
     run.phase = Some("train".to_string());
     run.error = None;
@@ -203,43 +193,64 @@ fn execute_training_process(
         })
         .into_diagnostic()?;
 
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| miette!("failed to capture training runtime stderr"))?;
-    let stderr_raw_log = Arc::clone(&raw_log);
-    let debug = display.debug;
-    let render = display.render;
-    let stderr_task = thread::spawn(move || -> std::io::Result<()> {
-        for line in BufReader::new(stderr).lines() {
-            let line = line?;
-            write_raw_line(&stderr_raw_log, "stderr", &line)?;
-            if render && debug {
-                eprintln!("{line}");
-            }
-        }
-        Ok(())
-    });
-
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| miette!("failed to capture training runtime stdout"))?;
     let mut metrics = open_append(&artifacts.metrics_path)?;
     let mut progress: Option<ProgressBar> = None;
     let mut summary = RunSummary::default();
+    let payload = lora_tuning_payload(&plan, backend, &run, &artifacts.run_dir)?;
+    let response_result: tentgent_kernel::foundation::error::KernelResult<
+        LoraTuningResponsePayload,
+    > = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(kernel.model_runtime_supervisor.post_json(
+            &endpoint,
+            "/v1/tuning/lora/runs",
+            &payload,
+            |message| {
+                tentgent_kernel::foundation::error::KernelError::TrainRuntimeUnavailable(message)
+            },
+        ))
+    });
+    let response = match response_result {
+        Ok(response) => response,
+        Err(err) => {
+            run.error = Some(err.to_string());
+            let _ = kernel
+                .run_usecase()
+                .finish_run(LoraTrainRunFinishRequest {
+                    layout,
+                    run,
+                    status: LoraTrainRunStatus::Failed,
+                    exit_code: None,
+                })
+                .into_diagnostic()?;
+            return Err(miette!("LoRA training failed: {err}"));
+        }
+    };
+    if response.status != "done" {
+        run.error = Some(format!(
+            "model runtime returned non-success LoRA tuning status `{}`",
+            response.status
+        ));
+        let _ = kernel
+            .run_usecase()
+            .finish_run(LoraTrainRunFinishRequest {
+                layout,
+                run,
+                status: LoraTrainRunStatus::Failed,
+                exit_code: None,
+            })
+            .into_diagnostic()?;
+        return Err(miette!(
+            "LoRA training failed: model runtime returned status `{}`",
+            response.status
+        ));
+    }
 
-    for line in BufReader::new(stdout).lines() {
-        let line = line.into_diagnostic()?;
+    for event in response.events {
+        let line = serde_json::to_string(&event).into_diagnostic()?;
         write_raw_line(&raw_log, "stdout", &line).into_diagnostic()?;
         if display.render && display.debug {
             println!("{line}");
         }
-
-        let event = match serde_json::from_str::<Value>(&line) {
-            Ok(event) => event,
-            Err(_) => continue,
-        };
 
         capture_done_event(&event, &mut run);
         summary.record_event(&event);
@@ -248,71 +259,196 @@ fn execute_training_process(
             render_event(&event, display.verbose, display.debug, &mut progress);
         }
     }
-
-    let status = child.wait().into_diagnostic()?;
-    stderr_task
-        .join()
-        .map_err(|_| miette!("training runtime stderr reader panicked"))?
-        .into_diagnostic()?;
+    if run.adapter_output_path.is_none() {
+        run.adapter_path = Some(response.adapter_path.clone());
+        run.adapter_output_path = Some(response.adapter_path.clone());
+    }
 
     if let Some(progress) = progress.take() {
         progress.finish_and_clear();
     }
 
     let mut adapter_import = None;
-    if status.success() {
-        if let Some(adapter_output_path) = run.adapter_output_path.clone() {
-            match import_train_run_adapter(kernel, layout.clone(), &mut run, &adapter_output_path) {
-                Ok(outcome) => adapter_import = Some(outcome),
-                Err(err) => {
-                    run.error = Some(format!(
-                        "training completed, but adapter import failed: {err}"
-                    ));
-                    let _ = kernel
-                        .run_usecase()
-                        .finish_run(LoraTrainRunFinishRequest {
-                            layout,
-                            run,
-                            status: LoraTrainRunStatus::Failed,
-                            exit_code: status.code(),
-                        })
-                        .into_diagnostic()?;
-                    return Err(miette!(
-                        "LoRA training completed, but adapter import failed: {err}\n\nadapter output: {adapter_output_path}"
-                    ));
-                }
+    if let Some(adapter_output_path) = run.adapter_output_path.clone() {
+        match import_train_run_adapter(kernel, layout.clone(), &mut run, &adapter_output_path) {
+            Ok(outcome) => adapter_import = Some(outcome),
+            Err(err) => {
+                run.error = Some(format!(
+                    "training completed, but adapter import failed: {err}"
+                ));
+                let _ = kernel
+                    .run_usecase()
+                    .finish_run(LoraTrainRunFinishRequest {
+                        layout,
+                        run,
+                        status: LoraTrainRunStatus::Failed,
+                        exit_code: None,
+                    })
+                    .into_diagnostic()?;
+                return Err(miette!(
+                    "LoRA training completed, but adapter import failed: {err}\n\nadapter output: {adapter_output_path}"
+                ));
             }
         }
     }
 
-    let run_status = if status.success() {
-        LoraTrainRunStatus::Succeeded
-    } else {
-        run.error = Some(format!("training runtime exited with status {status}"));
-        LoraTrainRunStatus::Failed
-    };
     let run = kernel
         .run_usecase()
         .finish_run(LoraTrainRunFinishRequest {
             layout,
             run,
-            status: run_status,
-            exit_code: status.code(),
+            status: LoraTrainRunStatus::Succeeded,
+            exit_code: None,
         })
         .into_diagnostic()?;
-
-    if !status.success() {
-        return Err(miette!(
-            "LoRA training runtime exited with status {status}; raw log: {}",
-            artifacts.raw_log_path.display()
-        ));
-    }
 
     Ok(CompletedRun {
         run,
         summary,
         adapter_import,
     })
+}
+
+fn lora_tuning_payload(
+    plan: &LoraTrainPlan,
+    backend: LoraTrainBackend,
+    run: &LoraTrainRun,
+    run_dir: &Path,
+) -> Result<LoraTuningRequestPayload> {
+    Ok(LoraTuningRequestPayload {
+        backend: backend.as_str().to_string(),
+        model: LoraModelPayload {
+            model_ref: plan.model_ref.clone(),
+            source_path: plan.model.source_path.clone(),
+            primary_format: plan.model.primary_format.clone(),
+            capabilities: vec!["chat".to_string()],
+            short_ref: Some(plan.model_short_ref.clone()),
+        },
+        dataset: LoraDatasetPayload {
+            source_path: plan.dataset.source_path.clone(),
+            max_seq_length: plan.dataset.max_seq_length,
+            mask_prompt: plan.dataset.mask_prompt,
+        },
+        output_dir: run_dir.display().to_string(),
+        lora: LoraConfigPayload {
+            rank: plan.lora.rank,
+            alpha: plan.lora.alpha,
+            dropout: plan.lora.dropout,
+            scale: plan.lora.scale.unwrap_or(20.0),
+            target_modules: plan.lora.target_modules.clone(),
+        },
+        optimization: LoraOptimizationPayload {
+            max_steps: plan.optimization.max_steps,
+            batch_size: plan.optimization.batch_size,
+            learning_rate: plan.optimization.learning_rate,
+            weight_decay: plan.optimization.weight_decay,
+            gradient_accumulation_steps: plan.optimization.gradient_accumulation_steps,
+            optimizer: plan.optimization.optimizer.clone(),
+            seed: plan.optimization.seed,
+        },
+        checkpoint: LoraCheckpointPayload {
+            log_every_steps: plan.checkpoint.log_every_steps,
+            eval_every_steps: plan.checkpoint.eval_every_steps,
+            save_every_steps: plan.checkpoint.save_every_steps,
+        },
+        backend_config: LoraBackendConfigPayload {
+            peft: backend_config_object(&plan.backend_config.peft, "peft")?,
+            mlx: backend_config_object(&plan.backend_config.mlx, "mlx")?,
+        },
+        plan_ref: Some(plan.plan_ref.clone()),
+        run_ref: Some(run.run_ref.clone()),
+    })
+}
+
+fn backend_config_object<T: Serialize>(config: &Option<T>, label: &str) -> Result<Value> {
+    let Some(config) = config else {
+        return Ok(Value::Object(Default::default()));
+    };
+    let value = serde_json::to_value(config)
+        .map_err(|err| miette!("failed to serialize {label} LoRA backend config: {err}"))?;
+    match value {
+        Value::Object(_) => Ok(value),
+        _ => Err(miette!(
+            "{label} LoRA backend config did not serialize as an object"
+        )),
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct LoraTuningRequestPayload {
+    backend: String,
+    model: LoraModelPayload,
+    dataset: LoraDatasetPayload,
+    output_dir: String,
+    lora: LoraConfigPayload,
+    optimization: LoraOptimizationPayload,
+    checkpoint: LoraCheckpointPayload,
+    backend_config: LoraBackendConfigPayload,
+    plan_ref: Option<String>,
+    run_ref: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct LoraModelPayload {
+    model_ref: String,
+    source_path: String,
+    primary_format: String,
+    capabilities: Vec<String>,
+    short_ref: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct LoraDatasetPayload {
+    source_path: String,
+    max_seq_length: u32,
+    mask_prompt: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct LoraConfigPayload {
+    rank: u32,
+    alpha: Option<u32>,
+    dropout: f32,
+    scale: f32,
+    target_modules: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct LoraOptimizationPayload {
+    max_steps: u32,
+    batch_size: u32,
+    learning_rate: f64,
+    weight_decay: f64,
+    gradient_accumulation_steps: u32,
+    optimizer: String,
+    seed: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct LoraCheckpointPayload {
+    log_every_steps: u32,
+    eval_every_steps: u32,
+    save_every_steps: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct LoraBackendConfigPayload {
+    peft: Value,
+    mlx: Value,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct LoraTuningResponsePayload {
+    task_ref: String,
+    status: String,
+    model_ref: String,
+    backend: String,
+    output_dir: String,
+    adapter_path: String,
+    adapter_file: Option<String>,
+    finish_reason: String,
+    events: Vec<Value>,
 }
 
 fn capture_done_event(event: &Value, run: &mut LoraTrainRun) {
@@ -369,33 +505,6 @@ fn import_train_run_adapter(
     run.adapter_ref = Some(result.outcome.metadata.adapter_ref.to_string());
     run.adapter_store_path = Some(result.outcome.store_path.display().to_string());
     Ok(result.outcome)
-}
-
-fn require_python_interpreter(
-    runtime: &PythonRuntimeLayout,
-    python: &Path,
-    label: &str,
-) -> Result<PathBuf> {
-    if python.exists() {
-        return Ok(python.to_path_buf());
-    }
-
-    Err(miette!(
-        "{label} is missing at `{}`; {}",
-        python.display(),
-        missing_runtime_hint(runtime)
-    ))
-}
-
-fn missing_runtime_hint(runtime: &PythonRuntimeLayout) -> &'static str {
-    match runtime.source {
-        PythonRuntimeSource::InstalledPrefix => {
-            "run `tentgent runtime bootstrap`, then run `tentgent doctor` to verify the managed runtime"
-        }
-        PythonRuntimeSource::DevelopmentSource | PythonRuntimeSource::EnvironmentOverride => {
-            "run `tentgent doctor --fix` during development or `tentgent runtime status` to inspect runtime asset paths"
-        }
-    }
 }
 
 struct RunArtifacts {

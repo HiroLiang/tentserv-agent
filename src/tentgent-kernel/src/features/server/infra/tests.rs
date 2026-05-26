@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{net::TcpListener, path::PathBuf};
 
 use crate::features::auth::domain::{AuthSecretMaterial, AuthSecretSource, Provider};
 use crate::features::model::domain::ModelRef;
@@ -15,7 +15,7 @@ use super::identity::{
     local_capability_identity_json_for_test, local_identity_json_for_test,
     StdServerIdentityGenerator,
 };
-use super::runtime::server_runtime_command_parts;
+use super::runtime::{allocate_bind_port_for_spec, server_runtime_command_parts};
 use super::{FileServerCatalogStore, StdServerStoreLayoutInitializer};
 
 #[test]
@@ -70,6 +70,7 @@ fn identity_generator_normalizes_anthropic_alias_inputs() {
             "127.0.0.1",
             8780,
             false,
+            false,
             None,
         )
         .expect("first ref");
@@ -81,6 +82,7 @@ fn identity_generator_normalizes_anthropic_alias_inputs() {
             },
             "127.0.0.1",
             8780,
+            false,
             false,
             None,
         )
@@ -110,6 +112,7 @@ fn file_catalog_stores_specs_and_process_metadata() {
         provider_model: None,
         host: "127.0.0.1".to_string(),
         port: 8780,
+        port_auto: false,
         lazy_load: false,
         idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
@@ -123,12 +126,15 @@ fn file_catalog_stores_specs_and_process_metadata() {
             &layout,
             &server_ref,
             42,
+            8780,
             LaunchMode::Background,
             "2026-05-17T00:00:01Z".to_string(),
         )
         .expect("record process");
     assert!(inspection.running);
-    assert_eq!(inspection.process.expect("process").pid, 42);
+    let process = inspection.process.expect("process");
+    assert_eq!(process.pid, 42);
+    assert_eq!(process.bound_port, Some(8780));
 
     let listed = catalog.list_servers(&layout).expect("list servers");
     assert_eq!(listed.len(), 1);
@@ -158,13 +164,15 @@ fn local_runtime_args_use_model_runtime_daemon_shape() {
         provider_model: None,
         host: "127.0.0.1".to_string(),
         port: 8780,
+        port_auto: false,
         lazy_load: true,
         idle_seconds: Some(30),
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
-    let parts = server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), None)
-        .expect("parts");
+    let parts =
+        server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), None, 8780)
+            .expect("parts");
 
     assert_eq!(
         parts.args,
@@ -206,13 +214,15 @@ fn local_rerank_runtime_args_are_supported() {
         provider_model: None,
         host: "127.0.0.1".to_string(),
         port: 8782,
+        port_auto: false,
         lazy_load: false,
         idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
-    let parts = server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), None)
-        .expect("parts");
+    let parts =
+        server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), None, 8782)
+            .expect("parts");
 
     assert!(parts
         .args
@@ -233,15 +243,20 @@ fn cloud_runtime_args_include_provider_auth_env() {
         provider_model: Some("gpt-4.1-mini".to_string()),
         host: "127.0.0.1".to_string(),
         port: 8781,
+        port_auto: false,
         lazy_load: false,
         idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
     let auth = AuthSecretMaterial::new(Provider::OpenAI, AuthSecretSource::Env, "secret");
 
-    let parts =
-        server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), Some(&auth))
-            .expect("parts");
+    let parts = server_runtime_command_parts(
+        &spec,
+        &PathBuf::from("/tmp/tentgent-home"),
+        Some(&auth),
+        8781,
+    )
+    .expect("parts");
 
     assert_eq!(
         parts.env,
@@ -254,6 +269,28 @@ fn cloud_runtime_args_include_provider_auth_env() {
         "--provider-model".to_string(),
         "gpt-4.1-mini".to_string(),
     ]));
+}
+
+#[test]
+fn auto_port_allocator_scans_forward_from_requested_port() {
+    let listener = busy_listener_below_scan_ceiling();
+    let start = listener.local_addr().expect("listener addr").port();
+    let spec = local_chat_spec_for_port(start, true);
+
+    let selected = allocate_bind_port_for_spec(&spec).expect("auto port");
+
+    assert!(selected > start);
+}
+
+#[test]
+fn explicit_port_allocator_rejects_busy_port() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind busy port");
+    let port = listener.local_addr().expect("listener addr").port();
+    let spec = local_chat_spec_for_port(port, false);
+
+    let err = allocate_bind_port_for_spec(&spec).expect_err("explicit port should fail");
+
+    assert!(err.to_string().contains("is not available"));
 }
 
 struct StaticProcessProbe {
@@ -275,4 +312,35 @@ fn unique_root(label: &str) -> PathBuf {
         "tentgent-kernel-server-infra-{label}-{}-{nanos}",
         std::process::id()
     ))
+}
+
+fn local_chat_spec_for_port(port: u16, port_auto: bool) -> ServerSpec {
+    let server_ref = ServerRef::parse("c".repeat(SERVER_REF_HEX_LENGTH)).expect("server ref");
+    let model_ref = ModelRef::parse("d".repeat(64)).expect("model ref");
+    ServerSpec {
+        short_ref: server_ref.short_ref().to_string(),
+        server_ref,
+        runtime_kind: ServerRuntimeKind::Local,
+        capability: ServerCapability::Chat,
+        model_ref: Some(model_ref),
+        provider: None,
+        provider_model: None,
+        host: "127.0.0.1".to_string(),
+        port,
+        port_auto,
+        lazy_load: false,
+        idle_seconds: None,
+        created_at: "2026-05-17T00:00:00Z".to_string(),
+    }
+}
+
+fn busy_listener_below_scan_ceiling() -> TcpListener {
+    for _ in 0..16 {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind busy port");
+        let port = listener.local_addr().expect("listener addr").port();
+        if port < u16::MAX - 100 {
+            return listener;
+        }
+    }
+    panic!("could not allocate an ephemeral port safely below the scan ceiling");
 }

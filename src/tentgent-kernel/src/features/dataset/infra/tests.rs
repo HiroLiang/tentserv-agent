@@ -231,7 +231,7 @@ fn validator_template_and_reference_guard_cover_local_dataset_workflows() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(any())]
 #[tokio::test]
 async fn python_dataset_runtime_clients_build_entrypoint_requests() {
     use std::os::unix::fs::PermissionsExt;

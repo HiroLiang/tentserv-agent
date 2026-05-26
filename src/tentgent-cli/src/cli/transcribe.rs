@@ -8,7 +8,7 @@ use std::{
 use miette::{miette, IntoDiagnostic, Result};
 use tentgent_kernel::features::audio::{
     domain::AudioTranscriptionOutputFormat,
-    infra::{PythonAudioTranscriptionBatchRuntimeClient, StdAudioTranscriptionModelResolver},
+    infra::{PythonAudioTranscriptionModelRuntimeClient, StdAudioTranscriptionModelResolver},
     usecases::{
         AudioTranscriptionPreparationRequest, AudioTranscriptionUseCase,
         StdAudioTranscriptionUseCase,
@@ -19,7 +19,7 @@ use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
-    StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
+    ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
 use tentgent_kernel::features::runtime::usecases::StdRuntimeResolutionUseCase;
 use tentgent_kernel::foundation::layout::{
@@ -41,8 +41,10 @@ pub async fn handle_transcribe_command(command: TranscribeCommand) -> Result<()>
     let model_catalog =
         StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
     let model_resolver = StdAudioTranscriptionModelResolver::new(&model_catalog);
-    let runtime_client =
-        PythonAudioTranscriptionBatchRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonAudioTranscriptionModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let transcriber =
         StdAudioTranscriptionUseCase::new(&runtime_resolution, &model_resolver, &runtime_client);
 
@@ -67,6 +69,7 @@ struct CliAudioTranscriptionKernel {
     layout_resolver: StdRuntimeLayoutResolver,
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
 }
 
@@ -76,6 +79,7 @@ impl CliAudioTranscriptionKernel {
             layout_resolver: StdRuntimeLayoutResolver,
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
         }
     }

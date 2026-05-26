@@ -202,10 +202,10 @@ function Bootstrap-PythonEnv($RuntimeHome, $ShareDir, $BootstrapTarget) {
     }
 
     if (-not (Test-Path -LiteralPath (Join-Path $projectDir "pyproject.toml"))) {
-        Fail "Python daemon pyproject.toml is missing: $projectDir"
+        Fail "Python model-runtime pyproject.toml is missing: $projectDir"
     }
     if (-not (Test-Path -LiteralPath (Join-Path $projectDir "src"))) {
-        Fail "Python daemon src directory is missing: $projectDir\src"
+        Fail "Python model-runtime src directory is missing: $projectDir\src"
     }
 
     $uvPath = if ($env:TENTGENT_BOOTSTRAP_UV) {
@@ -236,9 +236,7 @@ function Bootstrap-PythonEnv($RuntimeHome, $ShareDir, $BootstrapTarget) {
     $scriptsDir = Join-Path $envDir "Scripts"
     $required = @(
         "python.exe",
-        "tentgent-chat-once.exe",
-        "tentgent-server.exe",
-        "tentgent-train-lora-run.exe",
+        "tentgent-model-runtime-daemon.exe",
         "tentgent-hf-snapshot.exe"
     )
     foreach ($name in $required) {

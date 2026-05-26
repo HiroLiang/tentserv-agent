@@ -21,8 +21,9 @@ handles.
 - `tentgent-kernel` must not depend on `tentgent-daemon`.
 - `tentgent-cli` may launch or control the daemon process, but daemon request
   handling should live in `tentgent-daemon`.
-- `python/tentgent-daemon` remains the Python model runtime/backend subproject
-  until that lower-level adapter is redesigned.
+- `python/tentgent-model-runtime` is the only Python model runtime subproject.
+  Rust may spawn `tentgent-model-runtime-daemon` for managed local execution,
+  then communicates with it over HTTP.
 
 ## Module Shape
 
@@ -219,10 +220,11 @@ The first stable REST surface is:
   Starts a daemon background job that imports a local dataset path into the
   kernel dataset store.
 - `POST /v1/datasets/synth/jobs`
-  Starts a daemon background job for provider-backed dataset synthesis. Provider
-  auth and Python runtime execution happen inside the job.
+  Reserved for provider-backed dataset synthesis after that runtime is ported
+  to the model runtime HTTP boundary.
 - `POST /v1/datasets/eval/jobs`
-  Starts a daemon background job for provider-backed dataset evaluation.
+  Reserved for provider-backed dataset evaluation after that runtime is ported
+  to the model runtime HTTP boundary.
 - `GET /v1/train/lora/plans`
   Kernel-backed LoRA train plan list response.
 - `POST /v1/train/lora/plans/preview`
@@ -300,7 +302,8 @@ instead of defining a parallel durable job domain.
 
 The daemon process itself is not a job. Model-bound server processes are also
 not jobs by default: they are long-lived server lifecycle resources with stored
-server specs, process metadata, health/readiness, and start/stop APIs. A future
+server specs, process metadata, bound-port metadata, health/readiness, and
+start/stop APIs. A future
 server maintenance action may become a job only when it is a detached one-shot
 operation rather than server lifecycle state.
 

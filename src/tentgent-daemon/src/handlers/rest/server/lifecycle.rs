@@ -13,6 +13,10 @@ use tentgent_kernel::{
             ports::AuthSecretValidator,
             usecases::{AuthSecretResolutionRequest, AuthSecretResolverUseCase},
         },
+        model::{
+            domain::{ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelRefSelector},
+            usecases::{ModelCapabilityProofRecordRequest, ModelCapabilityProofUseCase},
+        },
         runtime::{
             domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput},
             usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase},
@@ -189,19 +193,30 @@ pub async fn start(
     } = plan;
     let auth = validate_server_runtime_auth(auth).await?;
     let recorded_inspection = {
-        let pid = {
+        let spawned = {
             let launcher =
                 PythonServerRuntimeLauncher::new(state.app().services().kernel().runtime());
-            launcher
-                .spawn_background(ServerRuntimeLaunchRequest {
-                    layout: layout.clone(),
-                    runtime,
-                    inspection: inspection.clone(),
-                    auth,
-                })
-                .map_err(server_error)?
+            match launcher.spawn_background(ServerRuntimeLaunchRequest {
+                layout: layout.clone(),
+                runtime,
+                inspection: inspection.clone(),
+                auth,
+            }) {
+                Ok(spawned) => spawned,
+                Err(err) => {
+                    let message = err.to_string();
+                    let _ = record_local_server_capability_proof(
+                        &state,
+                        &layout,
+                        &inspection,
+                        ModelCapabilityProofStatus::Failed,
+                        Some(message),
+                    );
+                    return Err(server_error(err));
+                }
+            }
         };
-        state
+        match state
             .app()
             .services()
             .kernel()
@@ -209,24 +224,95 @@ pub async fn start(
             .record_process_start(ServerRecordProcessStartRequest {
                 layout: layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
                 server_ref: inspection.spec.server_ref.clone(),
-                pid,
+                pid: spawned.pid,
+                bound_port: spawned.bound_port,
                 launch_mode: LaunchMode::Background,
-            })
-            .map_err(server_error)?
-            .inspection
+            }) {
+            Ok(result) => result.inspection,
+            Err(err) => {
+                let message = err.to_string();
+                let _ = record_local_server_capability_proof(
+                    &state,
+                    &layout,
+                    &inspection,
+                    ModelCapabilityProofStatus::Failed,
+                    Some(message),
+                );
+                return Err(server_error(err));
+            }
+        }
     };
-    drop(state);
 
     let readiness = if wait_ready {
-        Some(wait_for_server_ready(&recorded_inspection, timeout_seconds).await)
+        let readiness = wait_for_server_ready(&recorded_inspection, timeout_seconds).await;
+        let (status, error) = if readiness.ready {
+            (ModelCapabilityProofStatus::Verified, None)
+        } else {
+            (
+                ModelCapabilityProofStatus::Failed,
+                readiness
+                    .error
+                    .clone()
+                    .or_else(|| Some("server readiness check did not pass".to_string())),
+            )
+        };
+        let _ = record_local_server_capability_proof(
+            &state,
+            &layout,
+            &recorded_inspection,
+            status,
+            error,
+        );
+        Some(readiness)
     } else {
+        let _ = record_local_server_capability_proof(
+            &state,
+            &layout,
+            &recorded_inspection,
+            ModelCapabilityProofStatus::Verified,
+            None,
+        );
         None
     };
+    drop(state);
 
     Ok(Json(ServerStartResponse {
         server: server_inspection_item(recorded_inspection),
         readiness,
     }))
+}
+
+fn record_local_server_capability_proof(
+    state: &RestState,
+    layout: &RuntimeLayout,
+    inspection: &ServerInspection,
+    status: ModelCapabilityProofStatus,
+    error: Option<String>,
+) -> Result<(), tentgent_kernel::foundation::error::KernelError> {
+    let Some(model_ref) = inspection.spec.local_model_ref() else {
+        return Ok(());
+    };
+    let selector = ModelRefSelector::parse(model_ref.as_str()).map_err(|err| {
+        tentgent_kernel::foundation::error::KernelError::ModelStoreUnavailable(format!(
+            "invalid model ref in server spec: {err}"
+        ))
+    })?;
+    state
+        .app()
+        .services()
+        .kernel()
+        .models()
+        .capability_proof_usecase()
+        .record_model_capability_proof(ModelCapabilityProofRecordRequest {
+            layout: layout_input_from_layout(layout, LayoutResolveMode::Create),
+            selector,
+            capability: inspection.spec.capability.required_model_capability(),
+            status,
+            source: ModelCapabilityProofSource::ServerStart,
+            server_ref: Some(inspection.spec.server_ref.to_string()),
+            error,
+        })?;
+    Ok(())
 }
 
 pub async fn stop(

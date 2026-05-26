@@ -4,4 +4,4 @@ mod resolver;
 mod runtime;
 
 pub use resolver::StdRerankModelResolver;
-pub use runtime::PythonRerankOnceRuntimeClient;
+pub use runtime::PythonRerankModelRuntimeClient;

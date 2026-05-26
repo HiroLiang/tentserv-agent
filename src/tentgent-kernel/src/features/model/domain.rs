@@ -14,6 +14,7 @@ pub const LOCAL_SOURCE_DIRNAME: &str = "local";
 pub const STAGING_DIRNAME: &str = "staging";
 pub const VARIANTS_DIRNAME: &str = "variants";
 pub const SOURCE_DIRNAME: &str = "source";
+pub const CAPABILITY_PROOFS_DIRNAME: &str = "capability-proofs";
 
 pub const MODEL_METADATA_FILENAME: &str = "model.toml";
 pub const MODEL_MANIFEST_FILENAME: &str = "manifest.json";
@@ -360,6 +361,52 @@ impl std::fmt::Display for ModelCapabilitySource {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelCapabilityProofStatus {
+    Verified,
+    Failed,
+}
+
+impl ModelCapabilityProofStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Verified => "verified",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+impl std::fmt::Display for ModelCapabilityProofStatus {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelCapabilityProofSource {
+    ManualProbe,
+    ServerStart,
+    EndpointSmoke,
+}
+
+impl ModelCapabilityProofSource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ManualProbe => "manual-probe",
+            Self::ServerStart => "server-start",
+            Self::EndpointSmoke => "endpoint-smoke",
+        }
+    }
+}
+
+impl std::fmt::Display for ModelCapabilityProofSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 pub const fn default_model_capability_source() -> ModelCapabilitySource {
     ModelCapabilitySource::DefaultChat
 }
@@ -625,6 +672,25 @@ pub struct ModelRemovalOutcome {
     pub removed_index_paths: Vec<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelCapabilityProof {
+    pub model_ref: ModelRef,
+    pub capability: ModelCapability,
+    pub status: ModelCapabilityProofStatus,
+    pub source: ModelCapabilityProofSource,
+    pub primary_format: ModelFormat,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mlx_runtime_family: Option<MlxRuntimeFamily>,
+    pub backend: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_ref: Option<String>,
+    pub checked_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HfModelPullProgress {
     pub description: String,
@@ -684,6 +750,19 @@ impl ModelStoreLayout {
 
     pub fn variant_source_dir(&self, model_ref: &ModelRef, format: ModelFormat) -> PathBuf {
         self.variant_dir(model_ref, format).join(SOURCE_DIRNAME)
+    }
+
+    pub fn capability_proofs_dir(&self, model_ref: &ModelRef) -> PathBuf {
+        self.model_dir(model_ref).join(CAPABILITY_PROOFS_DIRNAME)
+    }
+
+    pub fn capability_proof_path(
+        &self,
+        model_ref: &ModelRef,
+        capability: ModelCapability,
+    ) -> PathBuf {
+        self.capability_proofs_dir(model_ref)
+            .join(format!("{}.toml", capability.as_str()))
     }
 
     pub fn local_index_path(&self, model_ref: &ModelRef) -> PathBuf {

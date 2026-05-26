@@ -8,9 +8,10 @@ use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
 
 use super::domain::{
-    HfModelMetadata, HfModelPullProgress, HfModelSourceIndex, LocalModelSourceIndex, ModelFormat,
-    ModelImportMethod, ModelInspection, ModelManifest, ModelMetadata, ModelRef, ModelRefSelector,
-    ModelStoreLayout, ModelSummary, ModelVariantMetadata,
+    HfModelMetadata, HfModelPullProgress, HfModelSourceIndex, LocalModelSourceIndex,
+    ModelCapability, ModelCapabilityProof, ModelFormat, ModelImportMethod, ModelInspection,
+    ModelManifest, ModelMetadata, ModelRef, ModelRefSelector, ModelStoreLayout, ModelSummary,
+    ModelVariantMetadata,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,6 +121,37 @@ pub trait ModelCatalogStore {
         layout: &ModelStoreLayout,
         model_ref: &ModelRef,
         variant: &ModelVariantMetadata,
+    ) -> KernelResult<()>;
+}
+
+/// Supplies timestamps for model proof records.
+pub trait ModelClock {
+    /// Returns the current UTC timestamp formatted as RFC3339.
+    fn now_rfc3339(&self) -> KernelResult<String>;
+}
+
+/// Reads and writes latest model capability proof records.
+pub trait ModelCapabilityProofStore {
+    /// Lists latest capability proofs for one model.
+    fn list_capability_proofs(
+        &self,
+        layout: &ModelStoreLayout,
+        model_ref: &ModelRef,
+    ) -> KernelResult<Vec<ModelCapabilityProof>>;
+
+    /// Saves or replaces the latest proof for one model capability.
+    fn save_capability_proof(
+        &self,
+        layout: &ModelStoreLayout,
+        proof: &ModelCapabilityProof,
+    ) -> KernelResult<()>;
+
+    /// Removes all latest capability proofs for one capability.
+    fn remove_capability_proof(
+        &self,
+        layout: &ModelStoreLayout,
+        model_ref: &ModelRef,
+        capability: ModelCapability,
     ) -> KernelResult<()>;
 }
 

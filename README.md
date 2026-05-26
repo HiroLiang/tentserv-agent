@@ -11,7 +11,7 @@ Use it when you want one local tool to:
 - expose local workflows through a loopback HTTP API
 - run local media workflows such as audio transcription, speech synthesis,
   image generation/editing, vision chat, and video understanding
-- synthesize, validate, evaluate, export, and diff datasets
+- validate, import, export, and diff datasets
 - create LoRA train plans, launch runs, and inspect run logs or metrics
 - keep bounded local chat sessions as short-term working context
 
@@ -192,13 +192,17 @@ families. The model is bound at server start, so direct server requests stay
 small and do not need a `model` payload. When `--capability` is omitted for a
 local model, Tentgent chooses the server endpoint family from the model's stored
 capabilities, preferring more specialized media capabilities before `chat`.
+When `--port` is omitted, server specs start from port `8780` and the launcher
+scans upward at process start until it finds a free loopback port. Explicit
+`--port` values are fixed and fail clearly when unavailable. Running server
+metadata records the actual bound port for later `server ls`, health checks, and
+direct curl calls.
+Local model-bound server starts also record latest capability proof metadata so
+`tentgent model capability proofs <model-ref>` can show which capability paths
+have launched or failed locally.
 
-Run a cloud provider server through the same local server surface:
-
-```bash
-tentgent server run openai:gpt-4.1-mini --host 127.0.0.1 --port 8780
-tentgent server run claude:claude-sonnet-4-20250514 --host 127.0.0.1 --port 8781
-```
+Cloud provider servers are paused until they are ported to the model runtime
+HTTP boundary.
 
 Chat with a server directly:
 
@@ -354,8 +358,8 @@ Use narrower overrides when only one store or runtime path should move:
 ```bash
 export TENTGENT_MODELS_DIR="/Volumes/models/tentgent"
 export TENTGENT_DATASETS_DIR="$HOME/datasets/tentgent"
-export TENTGENT_PYTHON_DIR="$PWD/python/tentgent-daemon"
-export TENTGENT_PYTHON_ENV_DIR="$PWD/python/tentgent-daemon/.venv"
+export TENTGENT_PYTHON_DIR="$PWD/python/tentgent-model-runtime"
+export TENTGENT_PYTHON_ENV_DIR="$PWD/python/tentgent-model-runtime/.venv"
 ```
 
 Common provider environment variables:
@@ -379,8 +383,7 @@ Included:
 
 - provider auth key management for Hugging Face, OpenAI, and Anthropic
 - content-addressed model, adapter, and dataset stores
-- OpenAI and Anthropic local server proxy runtimes
-- dataset validation, prompt templates, multi-split provider synthesis, and provider evaluation
+- dataset validation, prompt templates, local import, export, and diff workflows
 - one-shot local chat for MLX, PEFT safetensors, and llama-cpp GGUF paths
 - one-shot local embedding and rerank commands for compatible safetensors models
 - foreground audio transcription, text-to-speech WAV generation, native
@@ -398,7 +401,8 @@ Known limits:
 - MLX acceleration is currently implemented for chat, LoRA training, native
   vision chat, audio transcription, and image generation. MLX text-to-speech
   remains planned until a stable local `mlx-audio` TTS path is verified.
-- Cloud provider servers do not support request-time local adapters
+- Cloud provider servers and provider-backed dataset synth/eval are paused
+  until they are ported to the model runtime HTTP boundary
 - generated dataset splits are not deduplicated against each other yet
 - provider key set/remove and `doctor --fix` remain CLI-only
 - macOS Developer ID signing and notarization are handled by the release

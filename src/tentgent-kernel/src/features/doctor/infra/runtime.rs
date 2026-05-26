@@ -264,18 +264,10 @@ fn python_bootstrap_hint(source: PythonRuntimeSource) -> &'static str {
     }
 }
 
-fn runtime_entrypoints() -> [RuntimeEntrypoint; 10] {
+fn runtime_entrypoints() -> [RuntimeEntrypoint; 2] {
     [
-        RuntimeEntrypoint::AudioTranscriptionBatch,
-        RuntimeEntrypoint::ChatOnce,
-        RuntimeEntrypoint::DatasetEval,
-        RuntimeEntrypoint::DatasetSynth,
-        RuntimeEntrypoint::EmbeddingOnce,
+        RuntimeEntrypoint::ModelRuntimeDaemon,
         RuntimeEntrypoint::HfSnapshot,
-        RuntimeEntrypoint::ImageGenerateOnce,
-        RuntimeEntrypoint::Server,
-        RuntimeEntrypoint::TrainLoraRun,
-        RuntimeEntrypoint::VisionChatOnce,
     ]
 }
 

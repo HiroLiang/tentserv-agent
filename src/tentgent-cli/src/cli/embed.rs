@@ -4,7 +4,7 @@ use miette::{miette, IntoDiagnostic};
 use serde_json::json;
 use tentgent_kernel::features::embedding::domain::EmbeddingInput;
 use tentgent_kernel::features::embedding::infra::{
-    PythonEmbeddingOnceRuntimeClient, StdEmbeddingModelResolver,
+    PythonEmbeddingModelRuntimeClient, StdEmbeddingModelResolver,
 };
 use tentgent_kernel::features::embedding::usecases::{
     EmbeddingPreparationRequest, EmbeddingUseCase, StdEmbeddingUseCase,
@@ -14,7 +14,7 @@ use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
-    StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
+    ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
 use tentgent_kernel::features::runtime::usecases::StdRuntimeResolutionUseCase;
 use tentgent_kernel::foundation::layout::{
@@ -31,7 +31,10 @@ pub async fn handle_embed_command(command: EmbedCommand) -> miette::Result<()> {
     let model_catalog =
         StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
     let model_resolver = StdEmbeddingModelResolver::new(&model_catalog);
-    let runtime_client = PythonEmbeddingOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonEmbeddingModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let embedding = StdEmbeddingUseCase::new(&runtime_resolution, &model_resolver, &runtime_client);
 
     let result = embedding
@@ -50,6 +53,7 @@ struct CliEmbeddingKernel {
     layout_resolver: StdRuntimeLayoutResolver,
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
 }
 
@@ -59,6 +63,7 @@ impl CliEmbeddingKernel {
             layout_resolver: StdRuntimeLayoutResolver,
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
         }
     }

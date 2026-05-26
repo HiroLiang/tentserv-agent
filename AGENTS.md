@@ -29,14 +29,10 @@ If the current task is about agent workflows, role selection, or role-specific w
 - `src/tentgent-daemon/`
   Rust long-running daemon application host for bootstrap, transports,
   daemon-local runtime systems, and kernel use-case wiring.
-- `python/tentgent-daemon/`
-  Standalone Python subproject that owns model runtimes, backend selection, and adapter lifecycle.
-- `python/tentgent-daemon/src/tentgent_daemon/`
-  Importable Python package for runtime, backend, CLI, and internal helper modules.
 - `python/tentgent-model-runtime/`
-  New Python model runtime subproject for direct HTTP execution workers,
-  loaded model resources, backend implementations, and task lifecycle
-  experiments before Rust daemon integration.
+  Python model runtime subproject for direct HTTP execution workers, loaded
+  model resources, backend implementations, task lifecycle, LoRA tuning, and
+  Hugging Face snapshot helper integration.
 - `python/tentgent-model-runtime/src/tentgent/runtime/`
   Importable Python package for model runtime server, task manager, backend
   resource manager, and concrete model implementations.
@@ -195,6 +191,6 @@ Key current documents:
 
 - If `docs/contracts/` grows, split it by interface or subsystem and keep this file as the top-level router only.
 - If `docs/plans/` grows, keep unfinished work at the top level and move completed plans into `docs/plans/archive/`.
-- If `python/tentgent-daemon/` or `python/tentgent-model-runtime/` grows, add a subtree `README.md` or `AGENTS.md` to route backend-specific reads.
+- If `python/tentgent-model-runtime/` grows, add a subtree `README.md` or `AGENTS.md` to route backend-specific reads.
 - Keep the Python subproject in standard `pyproject.toml + src/` layout so IDE and packaging behavior remain predictable.
 - If a `src/` subtree gains local rules, add a subtree `AGENTS.md` and link to it from this file.

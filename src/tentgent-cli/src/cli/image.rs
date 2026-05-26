@@ -14,7 +14,7 @@ use tentgent_kernel::features::image_generation::{
         ImageGenerationOptions, ImageGenerationOutputFormat, ImageTransformStrength,
     },
     infra::{
-        PythonImageGenerationOnceRuntimeClient, StdImageGenerationAdapterResolver,
+        PythonImageGenerationModelRuntimeClient, StdImageGenerationAdapterResolver,
         StdImageGenerationModelResolver,
     },
     usecases::{
@@ -26,7 +26,7 @@ use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
-    StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
+    ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
 use tentgent_kernel::features::runtime::usecases::StdRuntimeResolutionUseCase;
 use tentgent_kernel::foundation::layout::{
@@ -61,7 +61,10 @@ async fn handle_image_generate_command(command: ImageGenerateCommand) -> Result<
     let adapter_compatibility =
         StdAdapterCompatibilityCheckUseCase::new(&kernel.layout_resolver, &kernel.adapter_catalog);
     let adapter_resolver = StdImageGenerationAdapterResolver::new(&adapter_compatibility);
-    let runtime_client = PythonImageGenerationOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonImageGenerationModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let generator = StdImageGenerationUseCase::new(
         &runtime_resolution,
         &model_resolver,
@@ -94,7 +97,10 @@ async fn handle_image_transform_command(command: ImageTransformCommand) -> Resul
     let adapter_compatibility =
         StdAdapterCompatibilityCheckUseCase::new(&kernel.layout_resolver, &kernel.adapter_catalog);
     let adapter_resolver = StdImageGenerationAdapterResolver::new(&adapter_compatibility);
-    let runtime_client = PythonImageGenerationOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonImageGenerationModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let generator = StdImageGenerationUseCase::new(
         &runtime_resolution,
         &model_resolver,
@@ -127,7 +133,10 @@ async fn handle_image_inpaint_command(command: ImageInpaintCommand) -> Result<()
     let adapter_compatibility =
         StdAdapterCompatibilityCheckUseCase::new(&kernel.layout_resolver, &kernel.adapter_catalog);
     let adapter_resolver = StdImageGenerationAdapterResolver::new(&adapter_compatibility);
-    let runtime_client = PythonImageGenerationOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonImageGenerationModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let generator = StdImageGenerationUseCase::new(
         &runtime_resolution,
         &model_resolver,
@@ -160,7 +169,10 @@ async fn handle_image_control_command(command: ImageControlCommand) -> Result<()
     let adapter_compatibility =
         StdAdapterCompatibilityCheckUseCase::new(&kernel.layout_resolver, &kernel.adapter_catalog);
     let adapter_resolver = StdImageGenerationAdapterResolver::new(&adapter_compatibility);
-    let runtime_client = PythonImageGenerationOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonImageGenerationModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let generator = StdImageGenerationUseCase::new(
         &runtime_resolution,
         &model_resolver,
@@ -183,6 +195,7 @@ struct CliImageGenerationKernel {
     layout_resolver: StdRuntimeLayoutResolver,
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
     adapter_catalog: FileAdapterCatalogStore,
 }
@@ -193,6 +206,7 @@ impl CliImageGenerationKernel {
             layout_resolver: StdRuntimeLayoutResolver,
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
             adapter_catalog: FileAdapterCatalogStore,
         }
@@ -571,7 +585,7 @@ fn image_generation_runtime_report(message: String) -> miette::Report {
         || lower.contains("missing python package: accelerate")
     {
         return miette!(
-            "image generation failed: {message}\n\nruntime hint: Diffusers image generation requires the local-model Python runtime dependencies. Run `tentgent doctor`; in development run `uv sync --extra local-model` under python/tentgent-daemon."
+            "image generation failed: {message}\n\nruntime hint: Diffusers image generation requires the local-model Python runtime dependencies. Run `tentgent doctor`; in development run `uv sync --extra local-model` under python/tentgent-model-runtime."
         );
     }
     if lower.contains("mps") || lower.contains("dtype") {

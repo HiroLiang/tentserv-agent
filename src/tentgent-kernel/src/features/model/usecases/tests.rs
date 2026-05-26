@@ -8,17 +8,18 @@ use crate::features::auth::usecases::{
 };
 use crate::features::model::domain::{
     default_model_capabilities, default_model_capability_source, HfModelMetadata,
-    HfModelPullProgress, MlxRuntimeFamily, ModelCapability, ModelCapabilitySource, ModelFormat,
+    HfModelPullProgress, MlxRuntimeFamily, ModelCapability, ModelCapabilityProof,
+    ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelCapabilitySource, ModelFormat,
     ModelImportOutcome, ModelInspection, ModelMetadata, ModelRef, ModelRefSelector,
     ModelRemovalOutcome, ModelSourceKind, ModelStoreLayout, ModelSummary,
 };
 use crate::features::model::infra::{
-    FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
-    FileModelSourceIndexStore, StdModelIdentityGenerator, StdModelManifestBuilder,
-    StdModelSourceStager, StdModelStoreLayoutInitializer,
+    FileModelCapabilityProofStore, FileModelCatalogStore, FileModelContentStore,
+    FileModelServerReferenceProbe, FileModelSourceIndexStore, StdModelIdentityGenerator,
+    StdModelManifestBuilder, StdModelSourceStager, StdModelStoreLayoutInitializer,
 };
 use crate::features::model::ports::{
-    HfModelSnapshot, HfModelSnapshotFetcher, HfModelSnapshotRequest, ModelCatalogStore,
+    HfModelSnapshot, HfModelSnapshotFetcher, HfModelSnapshotRequest, ModelCatalogStore, ModelClock,
 };
 use crate::features::runtime::domain::{
     PythonRuntimeLayout, PythonRuntimeResolutionInput, PythonRuntimeSource,
@@ -30,14 +31,15 @@ use crate::foundation::layout::{
 };
 
 use super::port::{
-    ModelCapabilityMutation, ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase,
-    ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
-    ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
-    ModelRemoveUseCase,
+    ModelCapabilityMutation, ModelCapabilityProofListRequest, ModelCapabilityProofRecordRequest,
+    ModelCapabilityProofUseCase, ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase,
+    ModelCapabilityVerifyRequest, ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase,
+    ModelInspectRequest, ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase,
+    ModelRemoveRequest, ModelRemoveUseCase,
 };
 use super::{
-    StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase, StdModelHfPullUseCase,
-    StdModelLocalImportUseCase, StdModelRemoveUseCase,
+    StdModelCapabilityProofUseCase, StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase,
+    StdModelHfPullUseCase, StdModelLocalImportUseCase, StdModelRemoveUseCase,
 };
 
 #[test]
@@ -110,6 +112,39 @@ fn model_usecase_ports_cover_catalog_import_pull_and_remove_workflows() {
         })
         .expect("update capability");
     assert_eq!(updated.model.metadata.model_ref, model_ref());
+
+    let proofs = usecases
+        .list_model_capability_proofs(ModelCapabilityProofListRequest {
+            layout: layout_input("/tmp/tentgent-model-usecases"),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+        })
+        .expect("list proofs");
+    assert_eq!(proofs.proofs.len(), 1);
+
+    let verified = usecases
+        .verify_model_capability(ModelCapabilityVerifyRequest {
+            layout: layout_input("/tmp/tentgent-model-usecases"),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            capability: ModelCapability::Chat,
+        })
+        .expect("verify capability");
+    assert_eq!(verified.proof.status, ModelCapabilityProofStatus::Verified);
+
+    let recorded = usecases
+        .record_model_capability_proof(ModelCapabilityProofRecordRequest {
+            layout: layout_input("/tmp/tentgent-model-usecases"),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            capability: ModelCapability::Chat,
+            status: ModelCapabilityProofStatus::Failed,
+            source: ModelCapabilityProofSource::ServerStart,
+            server_ref: Some("server-ref".to_string()),
+            error: Some("boom".to_string()),
+        })
+        .expect("record proof");
+    assert_eq!(
+        recorded.proof.source,
+        ModelCapabilityProofSource::ServerStart
+    );
 }
 
 #[test]
@@ -640,6 +675,89 @@ fn standard_model_capability_update_recalculates_mlx_runtime_family() {
     let _ = fs::remove_dir_all(home);
 }
 
+#[test]
+fn standard_model_capability_proof_usecase_writes_and_lists_latest_proofs() {
+    let home = unique_path("model-capability-proof-usecase");
+    let imported = import_local_for_test(&home, Some(ModelCapability::VisionChat), b"model");
+    let layout_resolver = FakeLayoutResolver;
+    let catalog = FileModelCatalogStore;
+    let proofs = FileModelCapabilityProofStore;
+    let clock = StaticModelClock;
+    let usecase = StdModelCapabilityProofUseCase::new(&layout_resolver, &catalog, &proofs, &clock);
+    let selector =
+        ModelRefSelector::parse(imported.outcome.metadata.short_ref.as_str()).expect("selector");
+
+    let verified = usecase
+        .verify_model_capability(ModelCapabilityVerifyRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector: selector.clone(),
+            capability: ModelCapability::VisionChat,
+        })
+        .expect("verify capability");
+    assert_eq!(verified.proof.status, ModelCapabilityProofStatus::Verified);
+    assert_eq!(
+        verified.proof.source,
+        ModelCapabilityProofSource::ManualProbe
+    );
+    assert_eq!(verified.proof.checked_at, STATIC_TIME);
+
+    let recorded = usecase
+        .record_model_capability_proof(ModelCapabilityProofRecordRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector: selector.clone(),
+            capability: ModelCapability::VisionChat,
+            status: ModelCapabilityProofStatus::Failed,
+            source: ModelCapabilityProofSource::ServerStart,
+            server_ref: Some("server-ref".to_string()),
+            error: Some("runtime failed".to_string()),
+        })
+        .expect("record proof");
+    assert_eq!(recorded.proof.status, ModelCapabilityProofStatus::Failed);
+    assert_eq!(recorded.proof.server_ref.as_deref(), Some("server-ref"));
+
+    let listed = usecase
+        .list_model_capability_proofs(ModelCapabilityProofListRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector,
+        })
+        .expect("list proofs");
+    assert_eq!(listed.proofs.len(), 1);
+    assert_eq!(listed.proofs[0].status, ModelCapabilityProofStatus::Failed);
+    assert_eq!(listed.proofs[0].error.as_deref(), Some("runtime failed"));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn standard_model_capability_verify_records_failed_proof_for_undeclared_capability() {
+    let home = unique_path("model-capability-proof-failed");
+    let imported = import_local_for_test(&home, Some(ModelCapability::Chat), b"model");
+    let layout_resolver = FakeLayoutResolver;
+    let catalog = FileModelCatalogStore;
+    let proofs = FileModelCapabilityProofStore;
+    let clock = StaticModelClock;
+    let usecase = StdModelCapabilityProofUseCase::new(&layout_resolver, &catalog, &proofs, &clock);
+
+    let result = usecase
+        .verify_model_capability(ModelCapabilityVerifyRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector: ModelRefSelector::parse(imported.outcome.metadata.short_ref.as_str())
+                .expect("selector"),
+            capability: ModelCapability::Embedding,
+        })
+        .expect("verify capability");
+
+    assert_eq!(result.proof.status, ModelCapabilityProofStatus::Failed);
+    assert!(result
+        .proof
+        .error
+        .as_deref()
+        .expect("error")
+        .contains("does not advertise capability"));
+
+    let _ = fs::remove_dir_all(home);
+}
+
 fn pull_hf_model_for_test(
     home: &Path,
     metadata: Option<HfModelMetadata>,
@@ -896,12 +1014,87 @@ impl ModelCapabilityUpdateUseCase for FakeModelUseCases {
     }
 }
 
+impl ModelCapabilityProofUseCase for FakeModelUseCases {
+    fn list_model_capability_proofs(
+        &self,
+        request: ModelCapabilityProofListRequest,
+    ) -> KernelResult<super::port::ModelCapabilityProofListResult> {
+        let layout = runtime_layout(request.layout);
+        let store = ModelStoreLayout::from_models_dir(layout.models_dir.clone());
+        Ok(super::port::ModelCapabilityProofListResult {
+            layout,
+            store: store.clone(),
+            model: inspection(&store),
+            proofs: vec![proof_fixture()],
+        })
+    }
+
+    fn verify_model_capability(
+        &self,
+        request: ModelCapabilityVerifyRequest,
+    ) -> KernelResult<super::port::ModelCapabilityProofRecordResult> {
+        let layout = runtime_layout(request.layout);
+        let store = ModelStoreLayout::from_models_dir(layout.models_dir.clone());
+        Ok(super::port::ModelCapabilityProofRecordResult {
+            layout,
+            store: store.clone(),
+            model: inspection(&store),
+            proof: proof_fixture(),
+        })
+    }
+
+    fn record_model_capability_proof(
+        &self,
+        request: ModelCapabilityProofRecordRequest,
+    ) -> KernelResult<super::port::ModelCapabilityProofRecordResult> {
+        let layout = runtime_layout(request.layout);
+        let store = ModelStoreLayout::from_models_dir(layout.models_dir.clone());
+        let mut proof = proof_fixture();
+        proof.status = request.status;
+        proof.source = request.source;
+        proof.server_ref = request.server_ref;
+        proof.error = request.error;
+        Ok(super::port::ModelCapabilityProofRecordResult {
+            layout,
+            store: store.clone(),
+            model: inspection(&store),
+            proof,
+        })
+    }
+}
+
 fn import_outcome(store: &ModelStoreLayout) -> ModelImportOutcome {
     ModelImportOutcome {
         metadata: metadata_fixture(),
         store_path: store.model_dir(&model_ref()),
         source_index_path: store.local_index_path(&model_ref()),
         deduplicated: false,
+    }
+}
+
+fn inspection(store: &ModelStoreLayout) -> ModelInspection {
+    let metadata = metadata_fixture();
+    ModelInspection {
+        store_path: store.model_dir(&metadata.model_ref),
+        manifest_path: store.manifest_path(&metadata.model_ref),
+        variant_source_path: store.variant_source_dir(&metadata.model_ref, metadata.primary_format),
+        metadata,
+    }
+}
+
+fn proof_fixture() -> ModelCapabilityProof {
+    ModelCapabilityProof {
+        model_ref: model_ref(),
+        capability: ModelCapability::Chat,
+        status: ModelCapabilityProofStatus::Verified,
+        source: ModelCapabilityProofSource::ManualProbe,
+        primary_format: ModelFormat::Gguf,
+        mlx_runtime_family: None,
+        backend: "gguf".to_string(),
+        runtime_version: None,
+        server_ref: None,
+        checked_at: STATIC_TIME.to_string(),
+        error: None,
     }
 }
 
@@ -968,6 +1161,16 @@ fn unique_path(label: &str) -> PathBuf {
         .expect("system time")
         .as_nanos();
     std::env::temp_dir().join(format!("tentgent-{label}-{nanos}"))
+}
+
+const STATIC_TIME: &str = "2026-05-17T00:00:00Z";
+
+struct StaticModelClock;
+
+impl ModelClock for StaticModelClock {
+    fn now_rfc3339(&self) -> KernelResult<String> {
+        Ok(STATIC_TIME.to_string())
+    }
 }
 
 struct FakeLayoutResolver;

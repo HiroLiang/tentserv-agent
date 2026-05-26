@@ -3,12 +3,17 @@
 mod bootstrap;
 mod dependency;
 mod executable;
+mod model_daemon;
 mod path;
 mod resolver;
 mod state;
 
 pub use bootstrap::{StdRuntimeBootstrapExecutor, StdRuntimeBootstrapPlanner};
 pub use executable::StdRuntimeExecutableResolver;
+pub use model_daemon::{
+    http_error_detail, ModelRuntimeCapability, ModelRuntimeDaemonEndpoint,
+    ModelRuntimeDaemonSupervisor,
+};
 pub use resolver::StdPythonRuntimeResolver;
 pub use state::StdRuntimeStateProbe;
 

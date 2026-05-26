@@ -158,6 +158,8 @@ tentgent model capability show <model-ref>
 tentgent model capability set <model-ref> embedding
 tentgent model capability add <model-ref> vision-chat
 tentgent model capability remove <model-ref> chat
+tentgent model capability verify <model-ref> vision-chat
+tentgent model capability proofs <model-ref>
 ```
 
 When no explicit capability or confident Hugging Face metadata is available,
@@ -170,6 +172,9 @@ the whole capability set with one value.
 For MLX models, inspect output also shows `mlx_runtime_family` when the stored
 capability maps to a specific MLX runtime family such as `mlx-lm`,
 `mlx-vlm`, `mlx-audio`, or `mlx-diffusion`.
+Capability proof commands read and write local latest proof records. Manual
+`verify` checks stored metadata and backend labeling; local model-bound server
+starts record `server-start` proofs after launch success or failure.
 
 For recommended small Hugging Face fixtures, gated-access reminders, and
 copy-paste smoke commands, see [model-fixtures.md](./model-fixtures.md).
@@ -716,6 +721,12 @@ Launch a long-lived local server:
 tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 ```
 
+`--port` is optional. When omitted, Tentgent creates an auto-port server spec
+that starts scanning at `8780` each time the server is launched. The first free
+port is recorded as the running process `bound_port`; `server ls`, `server ps`,
+and daemon health calls use that actual port. When `--port` is provided, that
+port is fixed and startup fails if it is unavailable.
+
 When `--capability` is omitted for a local model, Tentgent chooses the server
 endpoint family from the model's stored capabilities. The priority is
 `video-understanding`, `vision-chat`, `image-generation`, `audio-transcription`,
@@ -819,33 +830,8 @@ tentgent server ps
 tentgent server stop <server-ref>
 ```
 
-Run a cloud provider server:
-
-```bash
-tentgent auth openai set
-tentgent server run openai:gpt-4.1-mini --host 127.0.0.1 --port 8780
-tentgent server ls
-```
-
-Cloud provider servers run as local HTTP proxies. Provider keys are resolved at launch and are not written to `server.toml`.
-Cloud provider servers support the same `stream=true` SSE response shape as local servers.
-Cloud provider servers do not support `adapter_ref`; adapters are local-runtime only.
-
-Stream from a cloud provider server:
-
-```bash
-curl -N http://127.0.0.1:8780/v1/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "messages": [
-      {"role": "system", "content": "Be concise."},
-      {"role": "user", "content": "Say hello in Traditional Chinese."}
-    ],
-    "max_tokens": 64,
-    "temperature": 0.0,
-    "stream": true
-  }'
-```
+Cloud provider servers are paused until they are ported to the model runtime
+HTTP boundary.
 
 ## Daemon
 
@@ -1034,11 +1020,18 @@ curl -sS http://127.0.0.1:8790/v1/models/pull/jobs \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{"repo_id":"owner/name","revision":null,"capability":"rerank"}'
-curl -sS http://127.0.0.1:8790/v1/models/<model-ref> \
-  -X PATCH \
+curl -sS http://127.0.0.1:8790/v1/models/<model-ref>/capabilities \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -d '{"set":["embedding"]}'
+curl -sS http://127.0.0.1:8790/v1/models/<model-ref>/capabilities/verify \
+  -X POST \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{"capability":"embedding"}'
+curl -sS http://127.0.0.1:8790/v1/models/<model-ref>/capabilities/proofs \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 curl -sS http://127.0.0.1:8790/v1/adapters/import \
   -X POST \
   -H 'Content-Type: application/json' \
@@ -1213,22 +1206,6 @@ Import local datasets for training or evaluation:
 tentgent dataset validate /path/to/dataset.jsonl
 tentgent dataset validate /path/to/dataset-dir
 tentgent dataset template -t chat -l zh-TW -o dataset-template.md
-tentgent dataset synth \
-  -p openai \
-  -m gpt-4.1-mini \
-  -o ./generated-dataset \
-  --train-count 40 \
-  --valid-count 8 \
-  --test-count 8 \
-  --timeout-seconds 300 \
-  --retries 1 \
-  -b "Generate concise support examples in Traditional Chinese."
-tentgent dataset synth --print-prompt --train-count 20 -b "Generate concise support examples in Traditional Chinese."
-tentgent dataset eval ./generated-dataset \
-  -p openai \
-  -m gpt-4.1-mini \
-  -o ./generated-dataset-eval \
-  -c "Check Traditional Chinese quality and whether final replies usually end with 咕嚕."
 tentgent dataset add /path/to/dataset.jsonl
 tentgent dataset add /path/to/dataset-dir
 tentgent dataset ls
@@ -1246,9 +1223,8 @@ New chat and tool-use datasets should use the canonical `tentgent.chat.v1` schem
 Use `dataset template` when you want a paste-ready prompt for OpenAI, Claude, or another agent to produce JSONL that should pass `dataset validate`.
 Its `--task` and `--language` options are prompt hints only. For example, `--task support` asks the template to prefer support-style examples, and `--language zh-TW` asks for Traditional Chinese content; both still produce the same `tentgent.chat.v1` schema.
 
-Use `dataset synth` to ask OpenAI or Claude to generate a local dataset directory. The output directory must be missing or empty. By default it writes one split, controlled by `--split` and optional `--count`. For a training-ready package with held-out files, use `--train-count`, `--valid-count`, `--test-count`, and optionally `--eval-count`; Tentgent writes each split file as soon as that provider call succeeds, so long multi-split runs leave visible file progress. It writes files only; run `dataset validate ./generated-dataset` and then `dataset add ./generated-dataset` when the result looks good. Add `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. `--retries` or `-r` defaults to `1` and retries each split independently after invalid provider JSON, schema mismatches, or transient provider errors; use `--retries 0` to disable retry. When provider output still fails local parsing or a later split times out, Tentgent writes `_debug/<split>/prompt.md`, `_debug/<split>/provider-output.raw.txt` when available, and `_debug/<split>/error.txt` under the output directory.
-
-Use `dataset eval` to ask OpenAI or Claude to review generated or managed data before training. It does not mutate the dataset. The report directory contains `eval-report.json`, `eval-report.md`, `prompt.md`, and `provider-output.raw.txt`. Use `--criteria` or `-c` for project-specific checks such as style, language, or refusal behavior.
+Provider-backed `dataset synth` and `dataset eval` are paused until they are
+ported to the model runtime HTTP boundary.
 
 Most common long options have short aliases. Run `tentgent <command> --help` to see them; help always supports `-h`.
 

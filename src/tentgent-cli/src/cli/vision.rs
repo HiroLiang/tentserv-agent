@@ -11,12 +11,12 @@ use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
-    StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
+    ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
 use tentgent_kernel::features::runtime::usecases::StdRuntimeResolutionUseCase;
 use tentgent_kernel::features::vision::{
     domain::{VisionChatGenerationOptions, VisionChatOutputFormat, VisionChatResponse},
-    infra::{PythonVisionChatOnceRuntimeClient, StdVisionChatModelResolver},
+    infra::{PythonVisionChatModelRuntimeClient, StdVisionChatModelResolver},
     usecases::{StdVisionChatUseCase, VisionChatPreparationRequest, VisionChatUseCase},
 };
 use tentgent_kernel::foundation::layout::{
@@ -41,7 +41,10 @@ async fn handle_vision_chat_command(command: VisionChatCommand) -> Result<()> {
     let model_catalog =
         StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
     let model_resolver = StdVisionChatModelResolver::new(&model_catalog);
-    let runtime_client = PythonVisionChatOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonVisionChatModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let vision = StdVisionChatUseCase::new(&runtime_resolution, &model_resolver, &runtime_client);
 
     let result = vision
@@ -59,6 +62,7 @@ struct CliVisionChatKernel {
     layout_resolver: StdRuntimeLayoutResolver,
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
 }
 
@@ -68,6 +72,7 @@ impl CliVisionChatKernel {
             layout_resolver: StdRuntimeLayoutResolver,
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
         }
     }

@@ -92,11 +92,15 @@ fn runtime_mapper_builds_checks_from_runtime_and_state_without_bootstrap() {
     fs::create_dir_all(&bin_dir).expect("create bin dir");
     fs::write(
         project_dir.join("pyproject.toml"),
-        "[project]\nname = \"tentgent-daemon\"\n",
+        "[project]\nname = \"tentgent-model-runtime\"\n",
     )
     .expect("write pyproject");
     fs::write(bin_dir.join(script_name("python")), "").expect("write python");
-    fs::write(bin_dir.join(script_name("tentgent-chat-once")), "").expect("write entrypoint");
+    fs::write(
+        bin_dir.join(script_name("tentgent-model-runtime-daemon")),
+        "",
+    )
+    .expect("write model runtime entrypoint");
 
     let layout = runtime_layout(root.join("home"));
     let runtime = PythonRuntimeLayout {
@@ -138,7 +142,7 @@ fn runtime_mapper_builds_checks_from_runtime_and_state_without_bootstrap() {
     ));
     assert!(checks
         .iter()
-        .any(|check| check.name == "entrypoint tentgent-chat-once"));
+        .any(|check| check.name == "entrypoint tentgent-model-runtime-daemon"));
 }
 
 #[test]

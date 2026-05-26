@@ -128,39 +128,15 @@ impl std::fmt::Display for PythonRuntimeSource {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuntimeEntrypoint {
-    AudioSpeechOnce,
-    AudioTranscriptionBatch,
-    ChatOnce,
-    DatasetEval,
-    DatasetSynth,
-    EmbeddingOnce,
     HfSnapshot,
-    ImageGenerateOnce,
     ModelRuntimeDaemon,
-    RerankOnce,
-    Server,
-    TrainLoraRun,
-    VideoUnderstandingOnce,
-    VisionChatOnce,
 }
 
 impl RuntimeEntrypoint {
     pub const fn script_name(self) -> &'static str {
         match self {
-            Self::AudioSpeechOnce => "tentgent-audio-speech",
-            Self::AudioTranscriptionBatch => "tentgent-audio-transcribe",
-            Self::ChatOnce => "tentgent-chat-once",
-            Self::DatasetEval => "tentgent-dataset-eval",
-            Self::DatasetSynth => "tentgent-dataset-synth",
-            Self::EmbeddingOnce => "tentgent-embed-once",
             Self::HfSnapshot => "tentgent-hf-snapshot",
-            Self::ImageGenerateOnce => "tentgent-image-generate-once",
             Self::ModelRuntimeDaemon => "tentgent-model-runtime-daemon",
-            Self::RerankOnce => "tentgent-rerank-once",
-            Self::Server => "tentgent-server",
-            Self::TrainLoraRun => "tentgent-train-lora-run",
-            Self::VideoUnderstandingOnce => "tentgent-video-understanding",
-            Self::VisionChatOnce => "tentgent-vision-chat-once",
         }
     }
 }

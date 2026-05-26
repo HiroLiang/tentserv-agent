@@ -93,13 +93,14 @@ async fn probe_server_health(inspection: &ServerInspection) -> ServerHealthProbe
         };
     }
 
-    let target = socket_addr_text(&inspection.spec.host, inspection.spec.port);
+    let port = inspection.effective_port();
+    let target = socket_addr_text(&inspection.spec.host, port);
     let mut stream = match timeout(SERVER_HEALTH_TIMEOUT, TcpStream::connect(&target)).await {
         Ok(Ok(stream)) => stream,
         Ok(Err(err)) => return health_probe_error(format!("connect {target} failed: {err}")),
         Err(_) => return health_probe_error(format!("connect {target} timed out")),
     };
-    let host = host_for_header(&inspection.spec.host, inspection.spec.port);
+    let host = host_for_header(&inspection.spec.host, port);
     let request = format!("GET /healthz HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
     if let Err(err) = timeout(SERVER_HEALTH_TIMEOUT, stream.write_all(request.as_bytes())).await {
         return health_probe_error(format!("write health request timed out: {err}"));
@@ -161,7 +162,7 @@ fn server_health_url(inspection: &ServerInspection) -> String {
     format!(
         "http://{}:{}/healthz",
         host_for_url(&inspection.spec.host),
-        inspection.spec.port
+        inspection.effective_port()
     )
 }
 

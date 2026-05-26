@@ -1,6 +1,8 @@
 # Server Chat
 
 This document defines the HTTP chat request contract for the Python server runtime.
+Cloud provider server mode is paused until it is ported to the model runtime
+HTTP boundary; the active contract below applies to local model-bound servers.
 
 ## Endpoint
 
@@ -80,7 +82,8 @@ Current streaming support is intentionally staged:
 
 - local base-model requests can stream through the selected backend
 - compatible local adapter requests can stream after adapter validation and request-time adapter selection
-- OpenAI and Anthropic cloud provider runtimes stream through the same SSE events after provider delta normalization
+- cloud provider server streaming is paused until it is ported to the model
+  runtime HTTP boundary
 
 ## Adapter Contract
 
@@ -128,7 +131,9 @@ The first implemented paths are conservative:
 
 ## Cloud Provider Client Boundary
 
-Cloud provider runtimes should reuse the same normalized `messages`, `max_tokens`, and `temperature` request fields before provider-specific mapping.
+Cloud provider runtimes are paused. When restored, they should reuse the same
+normalized `messages`, `max_tokens`, and `temperature` request fields before
+provider-specific mapping.
 
 - OpenAI maps normalized messages directly to chat-completion messages.
 - Anthropic maps `system` messages to the top-level `system` field and sends only `user` and `assistant` messages in `messages`.

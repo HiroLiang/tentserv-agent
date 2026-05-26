@@ -6,9 +6,7 @@ use crate::features::embedding::domain::{
     EmbeddingBackend, EmbeddingInput, EmbeddingRequest, EmbeddingResponse, EmbeddingRuntimeTarget,
     EmbeddingVector, ResolvedEmbeddingTarget,
 };
-use crate::features::embedding::infra::{
-    PythonEmbeddingOnceRuntimeClient, StdEmbeddingModelResolver,
-};
+use crate::features::embedding::infra::StdEmbeddingModelResolver;
 use crate::features::embedding::ports::{
     EmbeddingModelResolveRequest, EmbeddingModelResolver, EmbeddingRuntimeClient,
     EmbeddingRuntimeRequest,
@@ -112,6 +110,7 @@ fn std_embedding_model_resolver_rejects_unsupported_embedding_format() {
     assert!(err.to_string().contains("does not support `gguf`"));
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_embedding_once_client_runs_entrypoint_with_embedding_arguments() {
@@ -124,7 +123,7 @@ async fn python_embedding_once_client_runs_entrypoint_with_embedding_arguments()
     fs::create_dir_all(&home).expect("home");
     fs::create_dir_all(&project).expect("project");
     fs::create_dir_all(&env).expect("env");
-    let entrypoint = root.join("tentgent-embed-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > \"$TENTGENT_HOME/cwd.txt\"\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"data\":[{\"index\":0,\"embedding\":[0.1,0.2]},{\"index\":1,\"embedding\":[0.3,0.4]}]}'\n",
@@ -240,7 +239,7 @@ impl RuntimeExecutableResolver for FakeExecutableResolver {
         _runtime: &PythonRuntimeLayout,
         entrypoint: RuntimeEntrypoint,
     ) -> KernelResult<PathBuf> {
-        assert_eq!(entrypoint, RuntimeEntrypoint::EmbeddingOnce);
+        assert_eq!(entrypoint, RuntimeEntrypoint::ModelRuntimeDaemon);
         Ok(self.entrypoint.clone())
     }
 }

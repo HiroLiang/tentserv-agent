@@ -4,4 +4,4 @@ mod resolver;
 mod runtime;
 
 pub use resolver::StdVisionChatModelResolver;
-pub use runtime::PythonVisionChatOnceRuntimeClient;
+pub use runtime::PythonVisionChatModelRuntimeClient;

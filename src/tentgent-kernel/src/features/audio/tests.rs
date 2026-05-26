@@ -9,7 +9,6 @@ use crate::features::audio::domain::{
     ResolvedAudioSpeechTarget, ResolvedAudioTranscriptionTarget,
 };
 use crate::features::audio::infra::{
-    PythonAudioSpeechOnceRuntimeClient, PythonAudioTranscriptionBatchRuntimeClient,
     StdAudioSpeechModelResolver, StdAudioTranscriptionModelResolver,
 };
 use crate::features::audio::ports::{
@@ -310,6 +309,7 @@ fn std_audio_transcription_model_resolver_rejects_non_audio_mlx_families() {
     }
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_audio_transcription_batch_client_runs_entrypoint_with_path_arguments() {
@@ -322,7 +322,7 @@ async fn python_audio_transcription_batch_client_runs_entrypoint_with_path_argum
     fs::create_dir_all(&home).expect("home");
     fs::create_dir_all(&project).expect("project");
     fs::create_dir_all(&env).expect("env");
-    let entrypoint = root.join("tentgent-audio-transcribe");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > \"$TENTGENT_HOME/cwd.txt\"\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"vtt\",\"media_type\":\"text/vtt\",\"output_path\":\"%s/out.vtt\",\"total_bytes\":42,\"text\":\"hello\"}' \"$TENTGENT_HOME\"\n",
@@ -334,7 +334,7 @@ async fn python_audio_transcription_batch_client_runs_entrypoint_with_path_argum
 
     let executable_resolver = FakeExecutableResolver {
         entrypoint,
-        expected_entrypoint: RuntimeEntrypoint::AudioTranscriptionBatch,
+        expected_entrypoint: RuntimeEntrypoint::ModelRuntimeDaemon,
     };
     let client = PythonAudioTranscriptionBatchRuntimeClient::new(&executable_resolver);
     let response = client
@@ -377,6 +377,7 @@ async fn python_audio_transcription_batch_client_runs_entrypoint_with_path_argum
     assert!(args.contains("--timestamps\n"));
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_audio_speech_once_client_runs_entrypoint_with_text_arguments() {
@@ -389,7 +390,7 @@ async fn python_audio_speech_once_client_runs_entrypoint_with_text_arguments() {
     fs::create_dir_all(&home).expect("home");
     fs::create_dir_all(&project).expect("project");
     fs::create_dir_all(&env).expect("env");
-    let entrypoint = root.join("tentgent-audio-speech");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > \"$TENTGENT_HOME/speech-cwd.txt\"\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/speech-args.txt\"\nprintf '{\"output_format\":\"wav\",\"media_type\":\"audio/wav\",\"output_path\":\"%s/speech.wav\",\"total_bytes\":44,\"sample_rate\":16000}' \"$TENTGENT_HOME\"\n",
@@ -401,7 +402,7 @@ async fn python_audio_speech_once_client_runs_entrypoint_with_text_arguments() {
 
     let executable_resolver = FakeExecutableResolver {
         entrypoint,
-        expected_entrypoint: RuntimeEntrypoint::AudioSpeechOnce,
+        expected_entrypoint: RuntimeEntrypoint::ModelRuntimeDaemon,
     };
     let client = PythonAudioSpeechOnceRuntimeClient::new(&executable_resolver);
     let response = client

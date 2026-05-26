@@ -11,7 +11,7 @@ use tentgent_kernel::features::model::infra::FileModelCatalogStore;
 use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
-    StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
+    ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
 };
 use tentgent_kernel::features::runtime::usecases::StdRuntimeResolutionUseCase;
 use tentgent_kernel::features::video_understanding::{
@@ -19,7 +19,7 @@ use tentgent_kernel::features::video_understanding::{
         VideoSamplingOptions, VideoUnderstandingGenerationOptions, VideoUnderstandingOutputFormat,
         VideoUnderstandingResponse,
     },
-    infra::{PythonVideoUnderstandingOnceRuntimeClient, StdVideoUnderstandingModelResolver},
+    infra::{PythonVideoUnderstandingModelRuntimeClient, StdVideoUnderstandingModelResolver},
     usecases::{
         StdVideoUnderstandingUseCase, VideoUnderstandingPreparationRequest,
         VideoUnderstandingUseCase,
@@ -47,8 +47,10 @@ async fn handle_video_understand_command(command: VideoUnderstandCommand) -> Res
     let model_catalog =
         StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
     let model_resolver = StdVideoUnderstandingModelResolver::new(&model_catalog);
-    let runtime_client =
-        PythonVideoUnderstandingOnceRuntimeClient::new(&kernel.executable_resolver);
+    let runtime_client = PythonVideoUnderstandingModelRuntimeClient::new(
+        &kernel.executable_resolver,
+        &kernel.model_runtime_supervisor,
+    );
     let video =
         StdVideoUnderstandingUseCase::new(&runtime_resolution, &model_resolver, &runtime_client);
 
@@ -67,6 +69,7 @@ struct CliVideoUnderstandingKernel {
     layout_resolver: StdRuntimeLayoutResolver,
     runtime_resolver: StdPythonRuntimeResolver,
     executable_resolver: StdRuntimeExecutableResolver,
+    model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
 }
 
@@ -76,6 +79,7 @@ impl CliVideoUnderstandingKernel {
             layout_resolver: StdRuntimeLayoutResolver,
             runtime_resolver: StdPythonRuntimeResolver,
             executable_resolver: StdRuntimeExecutableResolver,
+            model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
         }
     }

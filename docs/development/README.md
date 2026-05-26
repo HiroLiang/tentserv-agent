@@ -65,8 +65,7 @@ TENTGENT_RUN_KEYCHAIN_TESTS=1 cargo test -p tentgent-kernel -- --show-output
 Run Python unit tests that do not require provider network access:
 
 ```bash
-PYTHONPATH=python/tentgent-daemon/src \
-python3 -m unittest discover -s python/tentgent-daemon/tests
+uv run --project python/tentgent-model-runtime pytest
 ```
 
 Use the Makefile wrappers:
@@ -331,27 +330,15 @@ Import a local `.jsonl` file or dataset directory:
 ./target/debug/tentgent dataset validate /path/to/dataset.jsonl
 ./target/debug/tentgent dataset validate /path/to/dataset-dir
 ./target/debug/tentgent dataset template -t chat -l zh-TW -o /path/to/dataset-template.md
-./target/debug/tentgent dataset synth \
-  -p openai \
-  -m gpt-4.1-mini \
-  -o /path/to/generated-dataset \
-  --train-count 40 \
-  --valid-count 8 \
-  --test-count 8 \
-  --timeout-seconds 300 \
-  --retries 1 \
-  -b "Generate concise support examples in Traditional Chinese."
-./target/debug/tentgent dataset synth --print-prompt --train-count 20 -b "Generate concise support examples in Traditional Chinese."
-./target/debug/tentgent dataset eval /path/to/generated-dataset \
-  -p openai \
-  -m gpt-4.1-mini \
-  -o /path/to/generated-dataset-eval \
-  -c "Check language consistency and style drift."
 ./target/debug/tentgent dataset add /path/to/dataset.jsonl
 ./target/debug/tentgent dataset add /path/to/dataset-dir
 ```
 
-Use `dataset template` to generate the manual prompt for OpenAI, Claude, or another agent. Its `--task` and `--language` options are prompt hints, not schema changes. Use `dataset synth` to call a provider directly and write a local package. Split-specific count options can generate train, validation, test, and eval files in one package. Use `--print-prompt` or `-P` to inspect the exact provider prompt without auth or network calls. `--retries` / `-r` retries each split independently after invalid provider output or transient provider failures. Failed provider parsing writes split-scoped `_debug/<split>` files under the output directory. Use `dataset eval` to write a report-only provider review before training. Use `dataset validate` before `dataset add` when working with generated JSONL.
+Use `dataset template` to generate the manual prompt for OpenAI, Claude, or
+another agent. Its `--task` and `--language` options are prompt hints, not
+schema changes. Provider-backed `dataset synth` and `dataset eval` are paused
+until they are ported to the model runtime HTTP boundary. Use `dataset validate`
+before `dataset add` when working with generated JSONL.
 
 The HTTP daemon exposes deterministic dataset tooling for local integrations:
 
@@ -518,13 +505,16 @@ Run the current orchestration scaffold:
 
 ## Chat Commands
 
-Run Python chat directly:
+Run the Python model runtime directly:
 
 ```bash
-python/tentgent-daemon/.venv/bin/tentgent-chat-once \
+python/tentgent-model-runtime/.venv/bin/tentgent-model-runtime-daemon \
   --model-ref <model-ref> \
   --home "$PWD/.tentgent-test" \
-  --message "user:Hello there"
+  --capability chat \
+  --host 127.0.0.1 \
+  --port 8780 \
+  --lazy-load
 ```
 
 Run Rust-wrapped chat:
@@ -570,15 +560,8 @@ Run a detached server:
   --detach
 ```
 
-Run a cloud provider server:
-
-```bash
-./target/debug/tentgent server run openai:gpt-4.1-mini \
-  --home "$PWD/.tentgent-test" \
-  --host 127.0.0.1 \
-  --port 8780 \
-  --detach
-```
+Cloud provider servers are paused until they are ported to the model runtime
+HTTP boundary.
 
 Inspect and manage servers:
 
@@ -604,25 +587,13 @@ uv run --project python/tentgent-model-runtime tentgent-model-runtime-daemon \
   --home "$TENTGENT_HOME" \
   --capability chat \
   --host 127.0.0.1 \
-  --port 8000 \
+  --port 8780 \
   --idle-keep-alive-seconds -1 \
   --lazy-load
 ```
 
-Cloud provider servers still use the provider-capable Python daemon server
-entrypoint:
-
-```bash
-OPENAI_API_KEY=<key> \
-PYTHONPATH=python/tentgent-daemon/src \
-python/tentgent-daemon/.venv/bin/python -m tentgent_daemon.cli.server \
-  --server-ref <server-ref> \
-  --runtime-kind cloud \
-  --provider openai \
-  --provider-model gpt-4.1-mini \
-  --host 127.0.0.1 \
-  --port 8000
-```
+Cloud provider servers are unavailable until that server shape is ported to the
+model runtime HTTP boundary.
 
 The server exposes:
 
@@ -645,7 +616,7 @@ local adapters, and OpenAI or Anthropic cloud provider runtimes.
 Smoke-test streaming with:
 
 ```bash
-curl -N http://127.0.0.1:8000/v1/chat \
+curl -N http://127.0.0.1:8780/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":32,"stream":true}'
 ```

@@ -150,4 +150,29 @@ pub enum ModelCapabilityCommands {
         #[arg(value_name = "CAPABILITY", num_args = 1..)]
         capabilities: Vec<ModelCapability>,
     },
+    /// List latest proof records for one model.
+    #[command(
+        name = "proofs",
+        about = "List latest proof records for one model.",
+        long_about = "List latest proof records for one model capability set. Proofs are local metadata records written by manual probes and runtime events such as server start."
+    )]
+    Proofs {
+        /// Full model_ref or unique short-ref prefix.
+        #[arg(value_name = "REF")]
+        reference: String,
+    },
+    /// Run a local capability probe and write a proof record.
+    #[command(
+        name = "verify",
+        about = "Run a local capability probe and write a proof record.",
+        long_about = "Run a local metadata-level capability probe and write a proof record without changing model content or model_ref. Runtime endpoint smoke proofs are recorded by server/runtime flows."
+    )]
+    Verify {
+        /// Full model_ref or unique short-ref prefix.
+        #[arg(value_name = "REF")]
+        reference: String,
+        /// Capability metadata to probe.
+        #[arg(value_name = "CAPABILITY")]
+        capability: ModelCapability,
+    },
 }

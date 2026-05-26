@@ -9,7 +9,7 @@ pub(super) const PYPROJECT_FILE: &str = "pyproject.toml";
 pub(super) fn development_python_project_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
-        .join("python/tentgent-daemon")
+        .join("python/tentgent-model-runtime")
 }
 
 pub(super) fn development_bootstrap_script() -> PathBuf {

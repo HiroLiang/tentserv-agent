@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import argparse
@@ -9,11 +7,10 @@ import os
 import shutil
 import sys
 import threading
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-# Tentgent renders pull progress in Rust; keep the Python helper from drawing
-# nested tqdm bars when huggingface_hub downloads a snapshot.
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 from huggingface_hub import HfApi, snapshot_download
@@ -60,7 +57,7 @@ class JsonProgressTqdm:
     def __enter__(self) -> "JsonProgressTqdm":
         return self
 
-    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+    def __exit__(self, _exc_type: object, _exc_value: object, _traceback: object) -> None:
         self.close()
 
     def update(self, n: int | float | None = 1) -> None:
@@ -96,38 +93,20 @@ class JsonProgressTqdm:
             print(json.dumps(payload, separators=(",", ":")), flush=True)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Resolve a Hugging Face model revision and download a full snapshot "
-            "into a Tentgent staging directory."
-        )
+        description="Resolve and download a Hugging Face snapshot for Tentgent."
     )
-    parser.add_argument("--repo-id", required=True, help="Hugging Face repo id")
-    parser.add_argument(
-        "--revision",
-        help="Optional branch, tag, or commit to resolve before downloading",
-    )
-    parser.add_argument(
-        "--local-dir",
-        required=True,
-        help="Local staging directory where the snapshot should be materialized",
-    )
-    parser.add_argument(
-        "--result-path",
-        required=True,
-        help="JSON output path for the resolved pull result",
-    )
-    parser.add_argument(
-        "--progress-json",
-        action="store_true",
-        help="Emit snapshot progress as JSON Lines on stdout instead of drawing tqdm bars.",
-    )
-    return parser.parse_args()
+    parser.add_argument("--repo-id", required=True)
+    parser.add_argument("--revision")
+    parser.add_argument("--local-dir", required=True)
+    parser.add_argument("--result-path", required=True)
+    parser.add_argument("--progress-json", action="store_true")
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     token = os.environ.get("HF_TOKEN") or None
     local_dir = Path(args.local_dir).expanduser().resolve()
     result_path = Path(args.result_path).expanduser().resolve()
@@ -142,7 +121,6 @@ def main() -> int:
             raise RuntimeError(
                 f"Hugging Face did not return a resolved commit SHA for {args.repo_id}."
             )
-
         snapshot_download(
             repo_id=args.repo_id,
             revision=resolved_revision,
@@ -150,7 +128,7 @@ def main() -> int:
             local_dir=str(local_dir),
             tqdm_class=JsonProgressTqdm if args.progress_json else None,
         )
-    except Exception as exc:  # pragma: no cover - CLI integration handles the surface area.
+    except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

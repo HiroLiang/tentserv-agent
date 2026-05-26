@@ -17,11 +17,9 @@ members = [
 
 [tool.pyright]
 include = [
-    "python/tentgent-daemon/src",
     "python/tentgent-model-runtime/src",
 ]
 extraPaths = [
-    "python/tentgent-daemon/src",
     "python/tentgent-model-runtime/src",
 ]
 venvPath = "."

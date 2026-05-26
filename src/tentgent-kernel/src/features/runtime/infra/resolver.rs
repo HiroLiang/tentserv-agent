@@ -111,7 +111,9 @@ fn installed_python_project_candidates() -> KernelResult<Vec<PathBuf>> {
 
     Ok([
         bin_dir.join("../share/tentgent/python"),
+        bin_dir.join("../share/tentgent/tentgent-model-runtime"),
         bin_dir.join("../libexec/tentgent/python"),
+        bin_dir.join("../libexec/tentgent/tentgent-model-runtime"),
     ]
     .into_iter()
     .map(normalize_existing_path)

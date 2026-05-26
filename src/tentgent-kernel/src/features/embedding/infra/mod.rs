@@ -4,4 +4,4 @@ mod resolver;
 mod runtime;
 
 pub use resolver::StdEmbeddingModelResolver;
-pub use runtime::PythonEmbeddingOnceRuntimeClient;
+pub use runtime::PythonEmbeddingModelRuntimeClient;

@@ -2,7 +2,8 @@ use std::path::Path;
 
 use serde::Serialize;
 use tentgent_kernel::features::model::domain::{
-    ModelImportOutcome, ModelInspection, ModelMetadata, ModelRemovalOutcome, ModelSummary,
+    ModelCapabilityProof, ModelImportOutcome, ModelInspection, ModelMetadata, ModelRemovalOutcome,
+    ModelSummary,
 };
 use tentgent_kernel::features::model::usecases::ModelCapabilityUpdateResult;
 
@@ -31,6 +32,18 @@ pub struct ModelCapabilityUpdateResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ModelCapabilityProofsResponse {
+    pub model: ModelItem,
+    pub proofs: Vec<ModelCapabilityProofItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelCapabilityVerifyResponse {
+    pub model: ModelItem,
+    pub proof: ModelCapabilityProofItem,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ModelCapabilityUpdateMutationItem {
     pub kind: &'static str,
     pub previous_capabilities: Vec<String>,
@@ -45,6 +58,25 @@ pub struct ModelMutationItem {
     pub deduplicated: bool,
     pub store_path: String,
     pub source_index_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelCapabilityProofItem {
+    pub model_ref: String,
+    pub capability: String,
+    pub status: String,
+    pub source: String,
+    pub primary_format: String,
+    pub backend: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mlx_runtime_family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_ref: Option<String>,
+    pub checked_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -154,6 +186,39 @@ pub fn model_capability_update_response(
     }
 }
 
+pub fn model_capability_proofs_response(
+    inspection: ModelInspection,
+    proofs: Vec<ModelCapabilityProof>,
+) -> ModelCapabilityProofsResponse {
+    ModelCapabilityProofsResponse {
+        model: model_item_from_parts(
+            inspection.metadata,
+            &inspection.store_path,
+            Some(&inspection.manifest_path),
+            Some(&inspection.variant_source_path),
+        ),
+        proofs: proofs
+            .into_iter()
+            .map(model_capability_proof_item)
+            .collect(),
+    }
+}
+
+pub fn model_capability_verify_response(
+    inspection: ModelInspection,
+    proof: ModelCapabilityProof,
+) -> ModelCapabilityVerifyResponse {
+    ModelCapabilityVerifyResponse {
+        model: model_item_from_parts(
+            inspection.metadata,
+            &inspection.store_path,
+            Some(&inspection.manifest_path),
+            Some(&inspection.variant_source_path),
+        ),
+        proof: model_capability_proof_item(proof),
+    }
+}
+
 fn model_item_from_parts(
     metadata: ModelMetadata,
     store_path: &Path,
@@ -186,6 +251,22 @@ fn model_item_from_parts(
         source_path: metadata.source_path,
         manifest_path: manifest_path.map(path_string),
         variant_source_path: variant_source_path.map(path_string),
+    }
+}
+
+fn model_capability_proof_item(proof: ModelCapabilityProof) -> ModelCapabilityProofItem {
+    ModelCapabilityProofItem {
+        model_ref: proof.model_ref.into_string(),
+        capability: proof.capability.to_string(),
+        status: proof.status.to_string(),
+        source: proof.source.to_string(),
+        primary_format: proof.primary_format.to_string(),
+        backend: proof.backend,
+        mlx_runtime_family: proof.mlx_runtime_family.map(|family| family.to_string()),
+        runtime_version: proof.runtime_version,
+        server_ref: proof.server_ref,
+        checked_at: proof.checked_at,
+        error: proof.error,
     }
 }
 

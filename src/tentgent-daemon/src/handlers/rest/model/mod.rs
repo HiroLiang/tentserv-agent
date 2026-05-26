@@ -14,10 +14,11 @@ use tentgent_kernel::{
     features::model::{
         domain::{HfModelPullProgress, ModelCapability, ModelRefSelector},
         usecases::{
-            ModelCapabilityMutation, ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase,
-            ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
-            ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
-            ModelRemoveUseCase,
+            ModelCapabilityMutation, ModelCapabilityProofListRequest, ModelCapabilityProofUseCase,
+            ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase,
+            ModelCapabilityVerifyRequest, ModelCatalogReadUseCase, ModelHfPullRequest,
+            ModelHfPullUseCase, ModelInspectRequest, ModelListRequest, ModelLocalImportRequest,
+            ModelLocalImportUseCase, ModelRemoveRequest, ModelRemoveUseCase,
         },
     },
     features::runtime::domain::PythonRuntimeResolutionInput,
@@ -41,8 +42,10 @@ use crate::{
 };
 
 use self::dto::{
-    model_capability_update_response, model_inspection_item, model_mutation_response,
-    model_removal_item, model_summary_item, ModelCapabilityUpdateResponse, ModelMutationResponse,
+    model_capability_proofs_response, model_capability_update_response,
+    model_capability_verify_response, model_inspection_item, model_mutation_response,
+    model_removal_item, model_summary_item, ModelCapabilityProofsResponse,
+    ModelCapabilityUpdateResponse, ModelCapabilityVerifyResponse, ModelMutationResponse,
     ModelResponse, ModelsResponse,
 };
 
@@ -132,6 +135,59 @@ pub async fn update_capabilities(
 ) -> Result<Json<ModelCapabilityUpdateResponse>, RestError> {
     let mutation = parse_capability_mutation_request(request)?;
     update_capabilities_with_mutation(state, reference, mutation).await
+}
+
+pub async fn capability_proofs(
+    State(state): State<RestState>,
+    Path(reference): Path<String>,
+) -> Result<Json<ModelCapabilityProofsResponse>, RestError> {
+    let selector = ModelRefSelector::parse(&reference).map_err(|err| {
+        RestError::bad_request("bad_request", format!("invalid model reference: {err}"))
+    })?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .models()
+        .capability_proof_usecase()
+        .list_model_capability_proofs(ModelCapabilityProofListRequest {
+            layout: state.app().layout_input(LayoutResolveMode::ReadOnly),
+            selector,
+        })
+        .map_err(model_error)?;
+
+    Ok(Json(model_capability_proofs_response(
+        result.model,
+        result.proofs,
+    )))
+}
+
+pub async fn verify_capability(
+    State(state): State<RestState>,
+    Path(reference): Path<String>,
+    Json(request): Json<ModelCapabilityVerifyRequestBody>,
+) -> Result<Json<ModelCapabilityVerifyResponse>, RestError> {
+    let selector = ModelRefSelector::parse(&reference).map_err(|err| {
+        RestError::bad_request("bad_request", format!("invalid model reference: {err}"))
+    })?;
+    let capability = parse_required_model_capability("capability", &request.capability)?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .models()
+        .capability_proof_usecase()
+        .verify_model_capability(ModelCapabilityVerifyRequest {
+            layout: state.app().layout_input(LayoutResolveMode::Create),
+            selector,
+            capability,
+        })
+        .map_err(model_error)?;
+
+    Ok(Json(model_capability_verify_response(
+        result.model,
+        result.proof,
+    )))
 }
 
 async fn update_capabilities_with_mutation(
@@ -315,6 +371,12 @@ pub struct ModelCapabilitiesUpdateRequestBody {
     pub add: Vec<String>,
     #[serde(default)]
     pub remove: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelCapabilityVerifyRequestBody {
+    pub capability: String,
 }
 
 fn run_model_import_job(

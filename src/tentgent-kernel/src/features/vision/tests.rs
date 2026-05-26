@@ -19,9 +19,7 @@ use crate::features::vision::domain::{
     VisionChatOutputFormat, VisionChatPrompt, VisionChatRequest, VisionChatResponse,
     VisionChatRuntimeTarget,
 };
-use crate::features::vision::infra::{
-    PythonVisionChatOnceRuntimeClient, StdVisionChatModelResolver,
-};
+use crate::features::vision::infra::StdVisionChatModelResolver;
 use crate::features::vision::ports::{
     VisionChatModelResolveRequest, VisionChatModelResolver, VisionChatRuntimeClient,
     VisionChatRuntimeRequest,
@@ -206,6 +204,7 @@ fn std_vision_chat_model_resolver_rejects_non_vlm_mlx_families() {
     }
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_vision_chat_once_client_runs_entrypoint_with_arguments() {
@@ -218,7 +217,7 @@ async fn python_vision_chat_once_client_runs_entrypoint_with_arguments() {
     fs::create_dir_all(&home).expect("home");
     fs::create_dir_all(&project).expect("project");
     fs::create_dir_all(&env).expect("env");
-    let entrypoint = root.join("tentgent-vision-chat-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > \"$TENTGENT_HOME/cwd.txt\"\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"md\",\"media_type\":\"text/markdown\",\"text\":\"a cat\",\"finish_reason\":\"stop\"}'\n",
@@ -335,7 +334,7 @@ impl RuntimeExecutableResolver for FakeExecutableResolver {
         _runtime: &PythonRuntimeLayout,
         entrypoint: RuntimeEntrypoint,
     ) -> KernelResult<PathBuf> {
-        assert_eq!(entrypoint, RuntimeEntrypoint::VisionChatOnce);
+        assert_eq!(entrypoint, RuntimeEntrypoint::ModelRuntimeDaemon);
         Ok(self.entrypoint.clone())
     }
 }

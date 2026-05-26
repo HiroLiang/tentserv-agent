@@ -138,6 +138,7 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
         provider_model: None,
         host: DEFAULT_SERVER_HOST.to_string(),
         port: DEFAULT_SERVER_PORT,
+        port_auto: true,
         lazy_load: true,
         idle_seconds: Some(30),
         created_at: "2026-05-17T00:00:00Z".to_string(),
@@ -146,6 +147,7 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
         pid: 42,
         launch_mode: LaunchMode::Background,
         started_at: "2026-05-17T00:00:01Z".to_string(),
+        bound_port: Some(DEFAULT_SERVER_PORT),
     };
 
     let spec_body = toml::to_string_pretty(&spec).expect("serialize spec");
@@ -156,15 +158,26 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
     assert_eq!(parsed_spec, spec);
     let legacy_body = spec_body
         .lines()
-        .filter(|line| !line.starts_with("capability = "))
+        .filter(|line| !line.starts_with("capability = ") && !line.starts_with("port_auto = "))
         .collect::<Vec<_>>()
         .join("\n");
     let parsed_legacy_spec: ServerSpec = toml::from_str(&legacy_body).expect("parse legacy spec");
     assert_eq!(parsed_legacy_spec.capability, ServerCapability::Chat);
+    assert!(!parsed_legacy_spec.port_auto);
 
     let process_body = toml::to_string_pretty(&process).expect("serialize process");
     assert!(process_body.contains("launch_mode = \"background\""));
+    assert!(process_body.contains("bound_port = 8780"));
     let parsed_process: ServerProcessMetadata =
         toml::from_str(&process_body).expect("parse process");
     assert_eq!(parsed_process, process);
+
+    let legacy_process_body = process_body
+        .lines()
+        .filter(|line| !line.starts_with("bound_port = "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let parsed_legacy_process: ServerProcessMetadata =
+        toml::from_str(&legacy_process_body).expect("parse legacy process");
+    assert_eq!(parsed_legacy_process.bound_port, None);
 }

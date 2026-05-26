@@ -99,6 +99,10 @@ class TaskManager:
                 ):
                     self._tasks.pop(task_ref, None)
 
+    def touch_activity(self) -> None:
+        with self._lock:
+            self._last_activity_at = monotonic()
+
     def begin_closing(self) -> None:
         with self._lock:
             if self._state == TaskManagerState.OPEN:

@@ -179,6 +179,7 @@ impl ServerLifecycleUseCase for StdServerUseCase<'_> {
             &store,
             &request.server_ref,
             request.pid,
+            request.bound_port,
             request.launch_mode,
             self.clock.now_rfc3339()?,
         )?;

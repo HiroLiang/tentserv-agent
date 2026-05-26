@@ -19,10 +19,25 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
         target: &ServerRuntimeTarget,
         host: &str,
         port: u16,
+        port_auto: bool,
         lazy_load: bool,
         idle_seconds: Option<u64>,
     ) -> KernelResult<ServerRef> {
         let server_ref = match target {
+            ServerRuntimeTarget::LocalModel {
+                model_ref,
+                capability,
+                ..
+            } if port_auto && *capability == ServerCapability::Chat => {
+                compute_server_ref(LocalAutoPortServerIdentity {
+                    model_ref: model_ref.as_str(),
+                    host,
+                    port,
+                    port_auto,
+                    lazy_load,
+                    idle_seconds,
+                })?
+            }
             ServerRuntimeTarget::LocalModel {
                 model_ref,
                 capability,
@@ -40,11 +55,37 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
                 model_ref,
                 capability,
                 ..
+            } if port_auto => compute_server_ref(LocalCapabilityAutoPortServerIdentity {
+                model_ref: model_ref.as_str(),
+                capability: capability.as_str(),
+                host,
+                port,
+                port_auto,
+                lazy_load,
+                idle_seconds,
+            })?,
+            ServerRuntimeTarget::LocalModel {
+                model_ref,
+                capability,
+                ..
             } => compute_server_ref(LocalCapabilityServerIdentity {
                 model_ref: model_ref.as_str(),
                 capability: capability.as_str(),
                 host,
                 port,
+                lazy_load,
+                idle_seconds,
+            })?,
+            ServerRuntimeTarget::CloudProvider {
+                provider,
+                provider_model,
+            } if port_auto => compute_server_ref(CloudAutoPortServerIdentity {
+                runtime_kind: ServerRuntimeKind::Cloud,
+                provider: provider.as_str(),
+                provider_model,
+                host,
+                port,
+                port_auto,
                 lazy_load,
                 idle_seconds,
             })?,
@@ -76,11 +117,32 @@ struct LocalServerIdentity<'a> {
 }
 
 #[derive(Debug, Serialize)]
+struct LocalAutoPortServerIdentity<'a> {
+    model_ref: &'a str,
+    host: &'a str,
+    port: u16,
+    port_auto: bool,
+    lazy_load: bool,
+    idle_seconds: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
 struct LocalCapabilityServerIdentity<'a> {
     model_ref: &'a str,
     capability: &'a str,
     host: &'a str,
     port: u16,
+    lazy_load: bool,
+    idle_seconds: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct LocalCapabilityAutoPortServerIdentity<'a> {
+    model_ref: &'a str,
+    capability: &'a str,
+    host: &'a str,
+    port: u16,
+    port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
 }
@@ -92,6 +154,18 @@ struct CloudServerIdentity<'a> {
     provider_model: &'a str,
     host: &'a str,
     port: u16,
+    lazy_load: bool,
+    idle_seconds: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct CloudAutoPortServerIdentity<'a> {
+    runtime_kind: ServerRuntimeKind,
+    provider: &'a str,
+    provider_model: &'a str,
+    host: &'a str,
+    port: u16,
+    port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
 }

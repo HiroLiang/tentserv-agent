@@ -314,7 +314,11 @@ async fn summarize_with_server(
     server: &ServerInspection,
     prompt_messages: &[SessionChatContextMessage],
 ) -> miette::Result<SessionCompactionSummary> {
-    let url = format!("http://{}:{}/v1/chat", server.spec.host, server.spec.port);
+    let url = format!(
+        "http://{}:{}/v1/chat",
+        server.spec.host,
+        server.effective_port()
+    );
     let body = serde_json::json!({
         "messages": prompt_messages
             .iter()

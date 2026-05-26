@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use crate::features::auth::usecases::AuthSecretResolutionRequest;
 use crate::features::model::domain::{
-    HfModelPullProgress, ModelCapability, ModelImportOutcome, ModelInspection, ModelRefSelector,
+    HfModelPullProgress, ModelCapability, ModelCapabilityProof, ModelCapabilityProofSource,
+    ModelCapabilityProofStatus, ModelImportOutcome, ModelInspection, ModelRefSelector,
     ModelRemovalOutcome, ModelStoreLayout, ModelSummary,
 };
 use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput};
@@ -120,6 +121,51 @@ pub struct ModelCapabilityUpdateResult {
     pub removed_capabilities: Vec<ModelCapability>,
 }
 
+/// Request for listing the latest capability proofs for one stored model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityProofListRequest {
+    pub layout: RuntimeLayoutInput,
+    pub selector: ModelRefSelector,
+}
+
+/// Result of listing the latest capability proofs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityProofListResult {
+    pub layout: RuntimeLayout,
+    pub store: ModelStoreLayout,
+    pub model: ModelInspection,
+    pub proofs: Vec<ModelCapabilityProof>,
+}
+
+/// Request for manually probing one model capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityVerifyRequest {
+    pub layout: RuntimeLayoutInput,
+    pub selector: ModelRefSelector,
+    pub capability: ModelCapability,
+}
+
+/// Request for recording a capability proof from an external runtime event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityProofRecordRequest {
+    pub layout: RuntimeLayoutInput,
+    pub selector: ModelRefSelector,
+    pub capability: ModelCapability,
+    pub status: ModelCapabilityProofStatus,
+    pub source: ModelCapabilityProofSource,
+    pub server_ref: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Result of writing one latest capability proof.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityProofRecordResult {
+    pub layout: RuntimeLayout,
+    pub store: ModelStoreLayout,
+    pub model: ModelInspection,
+    pub proof: ModelCapabilityProof,
+}
+
 /// Use-case boundary for read-only model catalog operations.
 pub trait ModelCatalogReadUseCase {
     /// Lists stored models without mutating the model store.
@@ -161,4 +207,25 @@ pub trait ModelCapabilityUpdateUseCase {
         &self,
         request: ModelCapabilityUpdateRequest,
     ) -> KernelResult<ModelCapabilityUpdateResult>;
+}
+
+/// Use-case boundary for model capability proof reads and writes.
+pub trait ModelCapabilityProofUseCase {
+    /// Lists latest proofs stored for one model.
+    fn list_model_capability_proofs(
+        &self,
+        request: ModelCapabilityProofListRequest,
+    ) -> KernelResult<ModelCapabilityProofListResult>;
+
+    /// Runs the local metadata-level probe and writes a proof record.
+    fn verify_model_capability(
+        &self,
+        request: ModelCapabilityVerifyRequest,
+    ) -> KernelResult<ModelCapabilityProofRecordResult>;
+
+    /// Writes a proof record for a runtime event such as server start.
+    fn record_model_capability_proof(
+        &self,
+        request: ModelCapabilityProofRecordRequest,
+    ) -> KernelResult<ModelCapabilityProofRecordResult>;
 }

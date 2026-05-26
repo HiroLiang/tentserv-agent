@@ -5,5 +5,5 @@ mod runtime;
 
 pub use resolver::StdAudioSpeechModelResolver;
 pub use resolver::StdAudioTranscriptionModelResolver;
-pub use runtime::PythonAudioSpeechOnceRuntimeClient;
-pub use runtime::PythonAudioTranscriptionBatchRuntimeClient;
+pub use runtime::PythonAudioSpeechModelRuntimeClient;
+pub use runtime::PythonAudioTranscriptionModelRuntimeClient;

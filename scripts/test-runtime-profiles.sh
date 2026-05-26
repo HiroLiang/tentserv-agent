@@ -4,7 +4,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root_dir="$(cd "${script_dir}/.." && pwd)"
 bootstrap_script="${script_dir}/bootstrap-python-env.sh"
-project_dir="${root_dir}/python/tentgent-daemon"
+project_dir="${root_dir}/python/tentgent-model-runtime"
 
 fail() {
   echo "test-runtime-profiles: $*" >&2

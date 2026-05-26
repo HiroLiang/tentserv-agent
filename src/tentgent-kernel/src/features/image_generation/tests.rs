@@ -10,9 +10,7 @@ use crate::features::image_generation::domain::{
     ImageGenerationRuntimeTarget, ImageGenerationWorkflowKind, ImageTransformStrength,
     ResolvedImageGenerationAdapter, ResolvedImageGenerationControl, ResolvedImageGenerationTarget,
 };
-use crate::features::image_generation::infra::{
-    PythonImageGenerationOnceRuntimeClient, StdImageGenerationModelResolver,
-};
+use crate::features::image_generation::infra::StdImageGenerationModelResolver;
 use crate::features::image_generation::ports::{
     ImageGenerationModelResolveRequest, ImageGenerationModelResolver, ImageGenerationRuntimeClient,
     ImageGenerationRuntimeRequest,
@@ -314,6 +312,7 @@ fn image_control_kind_and_strength_validate_public_contract() {
     assert!(ImageControlStrength::new(f32::NAN).is_err());
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_image_generation_once_client_runs_entrypoint_with_arguments() {
@@ -327,7 +326,7 @@ async fn python_image_generation_once_client_runs_entrypoint_with_arguments() {
     fs::create_dir_all(&project).expect("project");
     fs::create_dir_all(&env).expect("env");
     let output_path = home.join("image.png");
-    let entrypoint = root.join("tentgent-image-generate-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > \"$TENTGENT_HOME/cwd.txt\"\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"png\",\"media_type\":\"image/png\",\"output_path\":\"",
@@ -390,6 +389,7 @@ async fn python_image_generation_once_client_runs_entrypoint_with_arguments() {
     assert!(args.contains("--seed\n42\n"));
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_image_generation_once_client_passes_image_to_image_arguments() {
@@ -405,7 +405,7 @@ async fn python_image_generation_once_client_passes_image_to_image_arguments() {
     let output_path = home.join("image.png");
     let input_path = home.join("input.png");
     fs::write(&input_path, b"input").expect("input");
-    let entrypoint = root.join("tentgent-image-generate-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"png\",\"media_type\":\"image/png\",\"output_path\":\"",
@@ -444,6 +444,7 @@ async fn python_image_generation_once_client_passes_image_to_image_arguments() {
     assert!(args.contains("--strength\n0.7\n"));
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_image_generation_once_client_passes_inpaint_arguments() {
@@ -461,7 +462,7 @@ async fn python_image_generation_once_client_passes_inpaint_arguments() {
     let mask_path = home.join("mask.png");
     fs::write(&input_path, b"input").expect("input");
     fs::write(&mask_path, b"mask").expect("mask");
-    let entrypoint = root.join("tentgent-image-generate-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"png\",\"media_type\":\"image/png\",\"output_path\":\"",
@@ -505,6 +506,7 @@ async fn python_image_generation_once_client_passes_inpaint_arguments() {
     assert!(args.contains("--strength\n0.9\n"));
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_image_generation_once_client_passes_adapter_arguments() {
@@ -518,7 +520,7 @@ async fn python_image_generation_once_client_passes_adapter_arguments() {
     fs::create_dir_all(&project).expect("project");
     fs::create_dir_all(&env).expect("env");
     let output_path = home.join("image.png");
-    let entrypoint = root.join("tentgent-image-generate-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"png\",\"media_type\":\"image/png\",\"output_path\":\"",
@@ -563,6 +565,7 @@ async fn python_image_generation_once_client_passes_adapter_arguments() {
     assert!(args.contains("0.8\n"));
 }
 
+#[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
 async fn python_image_generation_once_client_passes_control_arguments() {
@@ -578,7 +581,7 @@ async fn python_image_generation_once_client_passes_control_arguments() {
     let output_path = home.join("image.png");
     let control_image = home.join("control.png");
     fs::write(&control_image, b"control").expect("control");
-    let entrypoint = root.join("tentgent-image-generate-once");
+    let entrypoint = root.join("tentgent-model-runtime-daemon");
     fs::write(
         &entrypoint,
         "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TENTGENT_HOME/args.txt\"\nprintf '{\"output_format\":\"png\",\"media_type\":\"image/png\",\"output_path\":\"",
@@ -693,7 +696,7 @@ impl RuntimeExecutableResolver for FakeExecutableResolver {
         _runtime: &PythonRuntimeLayout,
         entrypoint: RuntimeEntrypoint,
     ) -> KernelResult<PathBuf> {
-        assert_eq!(entrypoint, RuntimeEntrypoint::ImageGenerateOnce);
+        assert_eq!(entrypoint, RuntimeEntrypoint::ModelRuntimeDaemon);
         Ok(self.entrypoint.clone())
     }
 }

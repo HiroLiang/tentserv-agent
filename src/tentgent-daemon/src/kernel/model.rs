@@ -28,14 +28,16 @@ use tentgent_kernel::{
         },
         model::{
             infra::{
-                FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
-                FileModelSourceIndexStore, StdHfModelSnapshotFetcher, StdModelIdentityGenerator,
-                StdModelManifestBuilder, StdModelSourceStager, StdModelStoreLayoutInitializer,
+                FileModelCapabilityProofStore, FileModelCatalogStore, FileModelContentStore,
+                FileModelServerReferenceProbe, FileModelSourceIndexStore,
+                StdHfModelSnapshotFetcher, StdModelIdentityGenerator, StdModelManifestBuilder,
+                StdModelSourceStager, StdModelStoreLayoutInitializer, SystemModelClock,
             },
             usecases::{
                 ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
-                ModelListResult, StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase,
-                StdModelHfPullUseCase, StdModelLocalImportUseCase, StdModelRemoveUseCase,
+                ModelListResult, StdModelCapabilityProofUseCase, StdModelCapabilityUpdateUseCase,
+                StdModelCatalogReadUseCase, StdModelHfPullUseCase, StdModelLocalImportUseCase,
+                StdModelRemoveUseCase,
             },
         },
         rerank::{
@@ -72,6 +74,8 @@ pub struct ModelKernelComponent {
     source_indexes: FileModelSourceIndexStore,
     content: FileModelContentStore,
     server_refs: FileModelServerReferenceProbe,
+    proofs: FileModelCapabilityProofStore,
+    clock: SystemModelClock,
 }
 
 impl ModelKernelComponent {
@@ -87,6 +91,8 @@ impl ModelKernelComponent {
             source_indexes: FileModelSourceIndexStore,
             content: FileModelContentStore,
             server_refs: FileModelServerReferenceProbe,
+            proofs: FileModelCapabilityProofStore,
+            clock: SystemModelClock,
         }
     }
 
@@ -139,6 +145,15 @@ impl ModelKernelComponent {
 
     pub fn capability_update_usecase(&self) -> StdModelCapabilityUpdateUseCase<'_> {
         StdModelCapabilityUpdateUseCase::new(&self.layout_resolver, &self.catalog)
+    }
+
+    pub fn capability_proof_usecase(&self) -> StdModelCapabilityProofUseCase<'_> {
+        StdModelCapabilityProofUseCase::new(
+            &self.layout_resolver,
+            &self.catalog,
+            &self.proofs,
+            &self.clock,
+        )
     }
 
     pub(crate) fn catalog_store(&self) -> &FileModelCatalogStore {
