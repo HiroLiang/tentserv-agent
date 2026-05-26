@@ -2410,8 +2410,8 @@ async fn model_import_job_preserves_explicit_capability_metadata() {
 }
 
 #[tokio::test]
-async fn model_patch_updates_capability_metadata() {
-    let requested_home = unique_home("models-capability-patch");
+async fn model_capabilities_post_sets_capability_metadata() {
+    let requested_home = unique_home("models-capability-post-set");
     let state = rest_state_for_home(requested_home);
     let home = state.app().layout().home_dir.canonicalize().expect("home");
     let model_ref = "9".repeat(64);
@@ -2420,10 +2420,10 @@ async fn model_patch_updates_capability_metadata() {
     let response = build_router(state.clone())
         .oneshot(
             Request::builder()
-                .method("PATCH")
-                .uri(format!("/v1/models/{}", &model_ref[..12]))
+                .method("POST")
+                .uri(format!("/v1/models/{}/capabilities", &model_ref[..12]))
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"capability":"vision-chat"}"#))
+                .body(Body::from(r#"{"set":["vision-chat"]}"#))
                 .expect("request"),
         )
         .await
@@ -2431,7 +2431,19 @@ async fn model_patch_updates_capability_metadata() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert_eq!(body["mutation"]["kind"], "update_capability");
+    assert_eq!(body["mutation"]["kind"], "update_capabilities");
+    assert_eq!(
+        body["mutation"]["previous_capabilities"],
+        serde_json::json!(["chat", "embedding"])
+    );
+    assert_eq!(
+        body["mutation"]["added"],
+        serde_json::json!(["vision-chat"])
+    );
+    assert_eq!(
+        body["mutation"]["removed"],
+        serde_json::json!(["chat", "embedding"])
+    );
     assert_eq!(
         body["model"]["model_capabilities"],
         serde_json::json!(["vision-chat"])
@@ -2453,6 +2465,120 @@ async fn model_patch_updates_capability_metadata() {
         serde_json::json!(["vision-chat"])
     );
     assert_eq!(body["model"]["model_capability_source"], "manual-update");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn model_capabilities_post_adds_and_removes_capability_metadata() {
+    let requested_home = unique_home("models-capability-post-add-remove");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "8".repeat(64);
+    write_model_fixture_with_capabilities(&home, &model_ref, &["chat"]);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/models/{}/capabilities", &model_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"add":["vision-chat","embedding"],"remove":["chat"]}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["model"]["model_capabilities"],
+        serde_json::json!(["embedding", "vision-chat"])
+    );
+    assert_eq!(
+        body["mutation"]["added"],
+        serde_json::json!(["embedding", "vision-chat"])
+    );
+    assert_eq!(body["mutation"]["removed"], serde_json::json!(["chat"]));
+    assert_eq!(body["model"]["model_capability_source"], "manual-update");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/models/{}", &model_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = json_body(response).await;
+    assert_eq!(
+        body["model"]["model_capabilities"],
+        serde_json::json!(["embedding", "vision-chat"])
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn model_capabilities_post_rejects_empty_final_capability_set() {
+    let requested_home = unique_home("models-capability-post-empty");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "7".repeat(64);
+    write_model_fixture_with_capabilities(&home, &model_ref, &["chat"]);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/models/{}/capabilities", &model_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"remove":["chat"]}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("must not be empty"));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn model_patch_capability_remains_compatibility_alias() {
+    let requested_home = unique_home("models-capability-patch");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "6".repeat(64);
+    write_model_fixture(&home, &model_ref);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/v1/models/{}", &model_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"capability":"vision-chat"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["model"]["model_capabilities"],
+        serde_json::json!(["vision-chat"])
+    );
 
     let _ = fs::remove_dir_all(home);
 }

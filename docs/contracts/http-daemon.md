@@ -1187,19 +1187,27 @@ The daemon exposes safe metadata correction and remove parity for managed store
 entries:
 
 ```text
-PATCH /v1/models/{model_ref}
+POST /v1/models/{model_ref}/capabilities
 DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
 DELETE /v1/datasets/{dataset_ref}
 DELETE /v1/servers/{server_ref}
 ```
 
-`PATCH /v1/models/{model_ref}` accepts one model metadata `capability` value
-and rewrites only model capability metadata. It sets
-`model_capability_source` to `manual-update` and does not change `model_ref`:
+`POST /v1/models/{model_ref}/capabilities` rewrites only model capability
+metadata. It sets `model_capability_source` to `manual-update`, recalculates
+`mlx_runtime_family`, and does not change `model_ref`.
+
+Replace the full capability set:
 
 ```json
-{ "capability": "vision-chat" }
+{ "set": ["chat", "vision-chat"] }
+```
+
+Or apply an add/remove mutation:
+
+```json
+{ "add": ["vision-chat"], "remove": ["chat"] }
 ```
 
 Successful model capability updates return:
@@ -1210,13 +1218,23 @@ Successful model capability updates return:
     "...": "same shape as GET /v1/models/{model_ref}"
   },
   "mutation": {
-    "kind": "update_capability"
+    "kind": "update_capabilities",
+    "previous_capabilities": ["chat"],
+    "capabilities": ["vision-chat"],
+    "added": ["vision-chat"],
+    "removed": ["chat"]
   }
 }
 ```
 
-Invalid capability values return `400 bad_request`; missing models return
+Capability mutations canonicalize and de-duplicate values. Empty final
+capability sets, invalid capability values, and bodies that mix `set` with
+`add` or `remove` return `400 bad_request`; missing models return
 `404 not_found`; ambiguous refs return `409 ambiguous_ref`.
+
+`PATCH /v1/models/{model_ref}` remains a legacy compatibility alias that
+accepts one `capability` string and replaces the model capability set with that
+single value.
 
 `DELETE` requests must have an empty body. Non-empty bodies return JSON `400`
 because this slice has no hidden `force`, dry-run, bulk, or cascade options.

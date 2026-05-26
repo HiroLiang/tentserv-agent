@@ -20,11 +20,12 @@ use tentgent_kernel::features::model::infra::{
     StdModelManifestBuilder, StdModelSourceStager, StdModelStoreLayoutInitializer,
 };
 use tentgent_kernel::features::model::usecases::{
-    ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase, ModelCatalogReadUseCase,
-    ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest, ModelListRequest,
-    ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest, ModelRemoveUseCase,
-    StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase, StdModelHfPullUseCase,
-    StdModelLocalImportUseCase, StdModelRemoveUseCase,
+    ModelCapabilityMutation, ModelCapabilityUpdateRequest, ModelCapabilityUpdateResult,
+    ModelCapabilityUpdateUseCase, ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase,
+    ModelInspectRequest, ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase,
+    ModelRemoveRequest, ModelRemoveUseCase, StdModelCapabilityUpdateUseCase,
+    StdModelCatalogReadUseCase, StdModelHfPullUseCase, StdModelLocalImportUseCase,
+    StdModelRemoveUseCase,
 };
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::StdPythonRuntimeResolver;
@@ -34,7 +35,7 @@ use tentgent_kernel::foundation::layout::{
 };
 
 use super::app::Cli;
-use super::commands::ModelCommands;
+use super::commands::{ModelCapabilityCommands, ModelCommands};
 use super::display::format_bytes;
 
 pub fn handle_model_command(action: ModelCommands) -> Result<()> {
@@ -121,6 +122,9 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
             };
             render_model_inspection(&inspection);
         }
+        ModelCommands::Capability { action } => {
+            handle_model_capability_command(&model, action)?;
+        }
         ModelCommands::SetCapability {
             reference,
             capability,
@@ -135,16 +139,112 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
                 ModelCapabilityUpdateRequest {
                     layout: runtime_layout_input(LayoutResolveMode::Create),
                     selector,
-                    capability,
+                    mutation: ModelCapabilityMutation::Set(vec![capability]),
                 },
             ) {
                 Ok(result) => result,
                 Err(err) => return Err(explain_model_lookup_error("set-capability", "REF", err)),
             };
-            render_model_capability_update(&result.model);
+            render_model_capability_update(&result);
         }
     }
 
+    Ok(())
+}
+
+fn handle_model_capability_command(
+    model: &CliModelKernel,
+    action: ModelCapabilityCommands,
+) -> Result<()> {
+    match action {
+        ModelCapabilityCommands::Show { reference } => {
+            if is_help_token(&reference) {
+                print_model_capability_subcommand_help("show")?;
+                return Ok(());
+            }
+
+            let selector = parse_model_selector("capability show", "REF", &reference)?;
+            let inspection = match model.catalog_usecase().inspect_model(ModelInspectRequest {
+                layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
+                selector,
+            }) {
+                Ok(result) => result.model,
+                Err(err) => {
+                    return Err(explain_model_lookup_error("capability show", "REF", err));
+                }
+            };
+            render_model_capability_show(&inspection);
+        }
+        ModelCapabilityCommands::Set {
+            reference,
+            capabilities,
+        } => {
+            update_model_capabilities(
+                model,
+                "capability set",
+                reference,
+                ModelCapabilityMutation::Set(capabilities),
+            )?;
+        }
+        ModelCapabilityCommands::Add {
+            reference,
+            capabilities,
+        } => {
+            update_model_capabilities(
+                model,
+                "capability add",
+                reference,
+                ModelCapabilityMutation::AddRemove {
+                    add: capabilities,
+                    remove: vec![],
+                },
+            )?;
+        }
+        ModelCapabilityCommands::Remove {
+            reference,
+            capabilities,
+        } => {
+            update_model_capabilities(
+                model,
+                "capability remove",
+                reference,
+                ModelCapabilityMutation::AddRemove {
+                    add: vec![],
+                    remove: capabilities,
+                },
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn update_model_capabilities(
+    model: &CliModelKernel,
+    command: &str,
+    reference: String,
+    mutation: ModelCapabilityMutation,
+) -> Result<()> {
+    if is_help_token(&reference) {
+        let name = command
+            .strip_prefix("capability ")
+            .expect("capability command prefix");
+        print_model_capability_subcommand_help(name)?;
+        return Ok(());
+    }
+
+    let selector = parse_model_selector(command, "REF", &reference)?;
+    let result = match model.capability_update_usecase().update_model_capability(
+        ModelCapabilityUpdateRequest {
+            layout: runtime_layout_input(LayoutResolveMode::Create),
+            selector,
+            mutation,
+        },
+    ) {
+        Ok(result) => result,
+        Err(err) => return Err(explain_model_lookup_error(command, "REF", err)),
+    };
+    render_model_capability_update(&result);
     Ok(())
 }
 
@@ -400,7 +500,50 @@ fn render_model_inspection(inspection: &ModelInspection) {
     println!();
 }
 
-fn render_model_capability_update(inspection: &ModelInspection) {
+fn render_model_capability_show(inspection: &ModelInspection) {
+    println!(
+        "{} {} {}",
+        style("==>").cyan().bold(),
+        style("Model capabilities").bold(),
+        style(&inspection.metadata.short_ref).bold()
+    );
+
+    let mut table = base_table();
+    table.add_row(vec![
+        Cell::new("model_ref"),
+        Cell::new(inspection.metadata.model_ref.as_str()),
+    ]);
+    table.add_row(vec![
+        Cell::new("short_ref"),
+        Cell::new(&inspection.metadata.short_ref),
+    ]);
+    table.add_row(vec![
+        Cell::new("model_capabilities"),
+        Cell::new(model_capabilities_label(
+            &inspection.metadata.model_capabilities,
+        )),
+    ]);
+    table.add_row(vec![
+        Cell::new("model_capability_source"),
+        Cell::new(inspection.metadata.model_capability_source.as_str()),
+    ]);
+    if let Some(family) = inspection.metadata.mlx_runtime_family {
+        table.add_row(vec![
+            Cell::new("mlx_runtime_family"),
+            Cell::new(family.as_str()),
+        ]);
+    }
+    table.add_row(vec![
+        Cell::new("store path"),
+        Cell::new(inspection.store_path.display().to_string()),
+    ]);
+
+    println!("{table}");
+    println!();
+}
+
+fn render_model_capability_update(result: &ModelCapabilityUpdateResult) {
+    let inspection = &result.model;
     println!(
         "{} {} {}",
         style("==>").cyan().bold(),
@@ -410,6 +553,18 @@ fn render_model_capability_update(inspection: &ModelInspection) {
 
     let mut table = base_table();
     add_model_metadata_rows(&mut table, &inspection.metadata);
+    table.add_row(vec![
+        Cell::new("previous_capabilities"),
+        Cell::new(model_capabilities_label(&result.previous_capabilities)),
+    ]);
+    table.add_row(vec![
+        Cell::new("added_capabilities"),
+        Cell::new(model_capabilities_label(&result.added_capabilities)),
+    ]);
+    table.add_row(vec![
+        Cell::new("removed_capabilities"),
+        Cell::new(model_capabilities_label(&result.removed_capabilities)),
+    ]);
     table.add_row(vec![
         Cell::new("store path"),
         Cell::new(inspection.store_path.display().to_string()),
@@ -627,6 +782,22 @@ fn print_model_subcommand_help(name: &str) -> miette::Result<()> {
     Ok(())
 }
 
+fn print_model_capability_subcommand_help(name: &str) -> miette::Result<()> {
+    let mut root = Cli::command();
+    let model = root
+        .find_subcommand_mut("model")
+        .ok_or_else(|| miette!("model command metadata is unavailable"))?;
+    let capability = model
+        .find_subcommand_mut("capability")
+        .ok_or_else(|| miette!("model capability command metadata is unavailable"))?;
+    let subcommand = capability
+        .find_subcommand_mut(name)
+        .ok_or_else(|| miette!("model capability subcommand `{name}` is unavailable"))?;
+    subcommand.print_help().into_diagnostic()?;
+    println!();
+    Ok(())
+}
+
 fn explain_model_lookup_error(command: &str, value_name: &str, err: KernelError) -> miette::Report {
     let message = err.to_string();
     if message.contains(" was not found") || message.contains(" is ambiguous") {
@@ -816,6 +987,107 @@ mod tests {
     }
 
     #[test]
+    fn parses_model_capability_show_command() {
+        let cli = Cli::try_parse_from(["tentgent", "model", "capability", "show", "abc123"])
+            .expect("parse model capability show");
+
+        match cli.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Capability {
+                        action: ModelCapabilityCommands::Show { reference },
+                    },
+            } => {
+                assert_eq!(reference, "abc123");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_model_capability_set_command_with_multiple_values() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "model",
+            "capability",
+            "set",
+            "abc123",
+            "chat",
+            "vision-chat",
+        ])
+        .expect("parse model capability set");
+
+        match cli.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Capability {
+                        action:
+                            ModelCapabilityCommands::Set {
+                                reference,
+                                capabilities,
+                            },
+                    },
+            } => {
+                assert_eq!(reference, "abc123");
+                assert_eq!(
+                    capabilities,
+                    vec![ModelCapability::Chat, ModelCapability::VisionChat]
+                );
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_model_capability_add_and_remove_commands() {
+        let add = Cli::try_parse_from([
+            "tentgent",
+            "model",
+            "capability",
+            "add",
+            "abc123",
+            "embedding",
+        ])
+        .expect("parse model capability add");
+        match add.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Capability {
+                        action:
+                            ModelCapabilityCommands::Add {
+                                reference,
+                                capabilities,
+                            },
+                    },
+            } => {
+                assert_eq!(reference, "abc123");
+                assert_eq!(capabilities, vec![ModelCapability::Embedding]);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let remove =
+            Cli::try_parse_from(["tentgent", "model", "capability", "rm", "abc123", "chat"])
+                .expect("parse model capability remove alias");
+        match remove.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Capability {
+                        action:
+                            ModelCapabilityCommands::Remove {
+                                reference,
+                                capabilities,
+                            },
+                    },
+            } => {
+                assert_eq!(reference, "abc123");
+                assert_eq!(capabilities, vec![ModelCapability::Chat]);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parses_media_model_capability_values_as_metadata() {
         let cli = Cli::try_parse_from([
             "tentgent",
@@ -847,6 +1119,15 @@ mod tests {
     fn model_set_capability_rejects_unknown_cli_value() {
         let err = Cli::try_parse_from(["tentgent", "model", "set-capability", "abc123", "audio"])
             .expect_err("parse error");
+
+        assert!(err.to_string().contains("unsupported model capability"));
+    }
+
+    #[test]
+    fn model_capability_set_rejects_unknown_cli_value() {
+        let err =
+            Cli::try_parse_from(["tentgent", "model", "capability", "set", "abc123", "audio"])
+                .expect_err("parse error");
 
         assert!(err.to_string().contains("unsupported model capability"));
     }

@@ -96,7 +96,17 @@ pub struct ModelRemoveResult {
 pub struct ModelCapabilityUpdateRequest {
     pub layout: RuntimeLayoutInput,
     pub selector: ModelRefSelector,
-    pub capability: ModelCapability,
+    pub mutation: ModelCapabilityMutation,
+}
+
+/// Capability metadata mutation to apply to one stored model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelCapabilityMutation {
+    Set(Vec<ModelCapability>),
+    AddRemove {
+        add: Vec<ModelCapability>,
+        remove: Vec<ModelCapability>,
+    },
 }
 
 /// Result of correcting stored model capability metadata.
@@ -105,6 +115,9 @@ pub struct ModelCapabilityUpdateResult {
     pub layout: RuntimeLayout,
     pub store: ModelStoreLayout,
     pub model: ModelInspection,
+    pub previous_capabilities: Vec<ModelCapability>,
+    pub added_capabilities: Vec<ModelCapability>,
+    pub removed_capabilities: Vec<ModelCapability>,
 }
 
 /// Use-case boundary for read-only model catalog operations.

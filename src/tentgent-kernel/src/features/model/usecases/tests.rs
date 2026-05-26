@@ -30,9 +30,10 @@ use crate::foundation::layout::{
 };
 
 use super::port::{
-    ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase, ModelCatalogReadUseCase,
-    ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest, ModelListRequest,
-    ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest, ModelRemoveUseCase,
+    ModelCapabilityMutation, ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase,
+    ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
+    ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
+    ModelRemoveUseCase,
 };
 use super::{
     StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase, StdModelHfPullUseCase,
@@ -105,7 +106,7 @@ fn model_usecase_ports_cover_catalog_import_pull_and_remove_workflows() {
         .update_model_capability(ModelCapabilityUpdateRequest {
             layout: layout_input("/tmp/tentgent-model-usecases"),
             selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
-            capability: ModelCapability::Embedding,
+            mutation: ModelCapabilityMutation::Set(vec![ModelCapability::Embedding]),
         })
         .expect("update capability");
     assert_eq!(updated.model.metadata.model_ref, model_ref());
@@ -549,6 +550,66 @@ fn standard_model_capability_update_rewrites_metadata_without_changing_ref() {
         updated.model.metadata.model_capability_source,
         ModelCapabilitySource::ManualUpdate
     );
+    assert_eq!(updated.previous_capabilities, vec![ModelCapability::Chat]);
+    assert_eq!(updated.added_capabilities, vec![ModelCapability::Embedding]);
+    assert_eq!(updated.removed_capabilities, vec![ModelCapability::Chat]);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn standard_model_capability_update_adds_removes_and_canonicalizes_metadata() {
+    let home = unique_path("model-capability-update-add-remove");
+    let imported = import_local_for_test(&home, None, b"model");
+
+    let updated = update_capabilities_for_test(
+        &home,
+        imported.outcome.metadata.short_ref.as_str(),
+        ModelCapabilityMutation::AddRemove {
+            add: vec![
+                ModelCapability::VisionChat,
+                ModelCapability::Embedding,
+                ModelCapability::VisionChat,
+            ],
+            remove: vec![ModelCapability::Chat],
+        },
+    );
+
+    assert_eq!(
+        updated.model.metadata.model_capabilities,
+        vec![ModelCapability::Embedding, ModelCapability::VisionChat]
+    );
+    assert_eq!(
+        updated.added_capabilities,
+        vec![ModelCapability::Embedding, ModelCapability::VisionChat]
+    );
+    assert_eq!(updated.removed_capabilities, vec![ModelCapability::Chat]);
+    assert_eq!(
+        updated.model.metadata.model_capability_source,
+        ModelCapabilitySource::ManualUpdate
+    );
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn standard_model_capability_update_rejects_empty_final_capability_set() {
+    let home = unique_path("model-capability-update-empty");
+    let imported = import_local_for_test(&home, None, b"model");
+
+    let err = try_update_capabilities_for_test(
+        &home,
+        imported.outcome.metadata.short_ref.as_str(),
+        ModelCapabilityMutation::AddRemove {
+            add: vec![],
+            remove: vec![ModelCapability::Chat],
+        },
+    )
+    .expect_err("empty capability set should fail");
+
+    assert!(err
+        .to_string()
+        .contains("model capability set must not be empty"));
 
     let _ = fs::remove_dir_all(home);
 }
@@ -680,9 +741,33 @@ fn update_capability_for_test(
         .update_model_capability(ModelCapabilityUpdateRequest {
             layout: layout_input(home.to_str().expect("home path")),
             selector: ModelRefSelector::parse(reference).expect("selector"),
-            capability,
+            mutation: ModelCapabilityMutation::Set(vec![capability]),
         })
         .expect("update capability")
+}
+
+fn update_capabilities_for_test(
+    home: &Path,
+    reference: &str,
+    mutation: ModelCapabilityMutation,
+) -> super::port::ModelCapabilityUpdateResult {
+    try_update_capabilities_for_test(home, reference, mutation).expect("update capability")
+}
+
+fn try_update_capabilities_for_test(
+    home: &Path,
+    reference: &str,
+    mutation: ModelCapabilityMutation,
+) -> KernelResult<super::port::ModelCapabilityUpdateResult> {
+    let layout_resolver = FakeLayoutResolver;
+    let catalog = FileModelCatalogStore;
+    let updater = StdModelCapabilityUpdateUseCase::new(&layout_resolver, &catalog);
+
+    updater.update_model_capability(ModelCapabilityUpdateRequest {
+        layout: layout_input(home.to_str().expect("home path")),
+        selector: ModelRefSelector::parse(reference).expect("selector"),
+        mutation,
+    })
 }
 
 struct FakeModelUseCases;
@@ -804,6 +889,9 @@ impl ModelCapabilityUpdateUseCase for FakeModelUseCases {
                     .variant_source_dir(&metadata.model_ref, metadata.primary_format),
                 metadata,
             },
+            previous_capabilities: vec![ModelCapability::Chat],
+            added_capabilities: vec![ModelCapability::Embedding],
+            removed_capabilities: vec![ModelCapability::Chat],
         })
     }
 }

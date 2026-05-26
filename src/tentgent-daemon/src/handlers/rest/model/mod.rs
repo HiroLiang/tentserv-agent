@@ -14,9 +14,9 @@ use tentgent_kernel::{
     features::model::{
         domain::{HfModelPullProgress, ModelCapability, ModelRefSelector},
         usecases::{
-            ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase, ModelCatalogReadUseCase,
-            ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest, ModelListRequest,
-            ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
+            ModelCapabilityMutation, ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase,
+            ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
+            ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
             ModelRemoveUseCase,
         },
     },
@@ -116,10 +116,32 @@ pub async fn update_capability(
     Path(reference): Path<String>,
     Json(request): Json<ModelCapabilityUpdateRequestBody>,
 ) -> Result<Json<ModelCapabilityUpdateResponse>, RestError> {
+    let capability = parse_required_model_capability("capability", &request.capability)?;
+    update_capabilities_with_mutation(
+        state,
+        reference,
+        ModelCapabilityMutation::Set(vec![capability]),
+    )
+    .await
+}
+
+pub async fn update_capabilities(
+    State(state): State<RestState>,
+    Path(reference): Path<String>,
+    Json(request): Json<ModelCapabilitiesUpdateRequestBody>,
+) -> Result<Json<ModelCapabilityUpdateResponse>, RestError> {
+    let mutation = parse_capability_mutation_request(request)?;
+    update_capabilities_with_mutation(state, reference, mutation).await
+}
+
+async fn update_capabilities_with_mutation(
+    state: RestState,
+    reference: String,
+    mutation: ModelCapabilityMutation,
+) -> Result<Json<ModelCapabilityUpdateResponse>, RestError> {
     let selector = ModelRefSelector::parse(&reference).map_err(|err| {
         RestError::bad_request("bad_request", format!("invalid model reference: {err}"))
     })?;
-    let capability = parse_required_model_capability(&request.capability)?;
     let result = state
         .app()
         .services()
@@ -129,11 +151,11 @@ pub async fn update_capability(
         .update_model_capability(ModelCapabilityUpdateRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             selector,
-            capability,
+            mutation,
         })
-        .map_err(model_error)?;
+        .map_err(model_capability_error)?;
 
-    Ok(Json(model_capability_update_response(result.model)))
+    Ok(Json(model_capability_update_response(result)))
 }
 
 pub async fn import(
@@ -285,6 +307,16 @@ pub struct ModelCapabilityUpdateRequestBody {
     pub capability: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelCapabilitiesUpdateRequestBody {
+    pub set: Option<Vec<String>>,
+    #[serde(default)]
+    pub add: Vec<String>,
+    #[serde(default)]
+    pub remove: Vec<String>,
+}
+
 fn run_model_import_job(
     state: RestState,
     layout: RuntimeLayoutInput,
@@ -357,18 +389,59 @@ fn model_progress_update(progress: HfModelPullProgress) -> JobProgressUpdate {
 
 fn parse_model_capability(value: Option<&str>) -> Result<Option<ModelCapability>, RestError> {
     value
-        .map(|value| {
-            value.parse().map_err(|err| {
-                RestError::bad_request("bad_request", format!("invalid capability: {err}"))
-            })
-        })
+        .map(|value| parse_required_model_capability("capability", value))
         .transpose()
 }
 
-fn parse_required_model_capability(value: &str) -> Result<ModelCapability, RestError> {
+fn parse_required_model_capability(field: &str, value: &str) -> Result<ModelCapability, RestError> {
     value
         .parse()
-        .map_err(|err| RestError::bad_request("bad_request", format!("invalid capability: {err}")))
+        .map_err(|err| RestError::bad_request("bad_request", format!("invalid {field}: {err}")))
+}
+
+fn parse_capability_mutation_request(
+    request: ModelCapabilitiesUpdateRequestBody,
+) -> Result<ModelCapabilityMutation, RestError> {
+    let has_set = request.set.is_some();
+    if has_set && (!request.add.is_empty() || !request.remove.is_empty()) {
+        return Err(RestError::bad_request(
+            "bad_request",
+            "use either `set` or `add`/`remove`, not both",
+        ));
+    }
+
+    if let Some(set) = request.set {
+        let set = parse_model_capability_list("set", set)?;
+        if set.is_empty() {
+            return Err(RestError::bad_request(
+                "bad_request",
+                "`set` must contain at least one capability",
+            ));
+        }
+        return Ok(ModelCapabilityMutation::Set(set));
+    }
+
+    let add = parse_model_capability_list("add", request.add)?;
+    let remove = parse_model_capability_list("remove", request.remove)?;
+    if add.is_empty() && remove.is_empty() {
+        return Err(RestError::bad_request(
+            "bad_request",
+            "request must include `set`, `add`, or `remove` capabilities",
+        ));
+    }
+
+    Ok(ModelCapabilityMutation::AddRemove { add, remove })
+}
+
+fn parse_model_capability_list(
+    field: &str,
+    values: Vec<String>,
+) -> Result<Vec<ModelCapability>, RestError> {
+    values
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| parse_required_model_capability(&format!("{field}[{index}]"), &value))
+        .collect()
 }
 
 fn job_completion_for_import_outcome(
@@ -395,6 +468,16 @@ fn model_error(error: KernelError) -> RestError {
             RestError::store_lookup("model_read_failed", message)
         }
         other => RestError::kernel("model_read_failed", other),
+    }
+}
+
+fn model_capability_error(error: KernelError) -> RestError {
+    match error {
+        KernelError::UnsupportedTarget(message) => RestError::bad_request("bad_request", message),
+        KernelError::ModelStoreUnavailable(message) => {
+            RestError::store_lookup("model_capability_update_failed", message)
+        }
+        other => RestError::kernel("model_capability_update_failed", other),
     }
 }
 

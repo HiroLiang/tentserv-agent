@@ -14,9 +14,9 @@ mod tests;
 pub use catalog::StdModelCatalogReadUseCase;
 pub use import::StdModelLocalImportUseCase;
 pub use port::{
-    ModelCapabilityUpdateRequest, ModelCapabilityUpdateResult, ModelCapabilityUpdateUseCase,
-    ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullResult, ModelHfPullUseCase,
-    ModelInspectRequest, ModelInspectResult, ModelListRequest, ModelListResult,
+    ModelCapabilityMutation, ModelCapabilityUpdateRequest, ModelCapabilityUpdateResult,
+    ModelCapabilityUpdateUseCase, ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullResult,
+    ModelHfPullUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest, ModelListResult,
     ModelLocalImportRequest, ModelLocalImportResult, ModelLocalImportUseCase, ModelRemoveRequest,
     ModelRemoveResult, ModelRemoveUseCase,
 };

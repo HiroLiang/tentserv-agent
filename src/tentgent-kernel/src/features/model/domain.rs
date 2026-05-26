@@ -261,6 +261,27 @@ impl ModelCapability {
     }
 }
 
+pub const MODEL_CAPABILITY_CANONICAL_ORDER: [ModelCapability; 8] = [
+    ModelCapability::Chat,
+    ModelCapability::Embedding,
+    ModelCapability::Rerank,
+    ModelCapability::AudioTranscription,
+    ModelCapability::AudioSpeech,
+    ModelCapability::VisionChat,
+    ModelCapability::VideoUnderstanding,
+    ModelCapability::ImageGeneration,
+];
+
+pub fn normalize_model_capabilities(
+    capabilities: impl IntoIterator<Item = ModelCapability>,
+) -> Vec<ModelCapability> {
+    let requested = capabilities.into_iter().collect::<Vec<_>>();
+    MODEL_CAPABILITY_CANONICAL_ORDER
+        .into_iter()
+        .filter(|capability| requested.contains(capability))
+        .collect()
+}
+
 impl std::fmt::Display for ModelCapability {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.as_str())

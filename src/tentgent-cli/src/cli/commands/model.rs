@@ -67,9 +67,20 @@ pub enum ModelCommands {
         #[arg(value_name = "REF")]
         reference: String,
     },
+    /// Show or mutate stored model capability metadata.
+    #[command(
+        name = "capability",
+        about = "Show or mutate stored model capability metadata.",
+        long_about = "Show or mutate stored model capability metadata without changing model content or model_ref. Tentgent accepts either the full model_ref or a unique short_ref prefix."
+    )]
+    Capability {
+        #[command(subcommand)]
+        action: ModelCapabilityCommands,
+    },
     /// Correct stored model capability metadata.
     #[command(
         name = "set-capability",
+        hide = true,
         about = "Correct stored model capability metadata.",
         long_about = "Correct stored model capability metadata without changing model content or model_ref. Tentgent accepts either the full model_ref or a unique short_ref prefix."
     )]
@@ -80,5 +91,63 @@ pub enum ModelCommands {
         /// Capability metadata to assign to this model.
         #[arg(value_name = "CAPABILITY")]
         capability: ModelCapability,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ModelCapabilityCommands {
+    /// Show stored capability metadata for one model.
+    #[command(
+        name = "show",
+        about = "Show stored capability metadata for one model.",
+        long_about = "Show stored capability metadata for one model without changing model content."
+    )]
+    Show {
+        /// Full model_ref or unique short-ref prefix.
+        #[arg(value_name = "REF")]
+        reference: String,
+    },
+    /// Replace stored capability metadata for one model.
+    #[command(
+        name = "set",
+        about = "Replace stored capability metadata for one model.",
+        long_about = "Replace stored capability metadata for one model without changing model content or model_ref."
+    )]
+    Set {
+        /// Full model_ref or unique short-ref prefix.
+        #[arg(value_name = "REF")]
+        reference: String,
+        /// Capability metadata to assign to this model.
+        #[arg(value_name = "CAPABILITY", num_args = 1..)]
+        capabilities: Vec<ModelCapability>,
+    },
+    /// Add stored capability metadata to one model.
+    #[command(
+        name = "add",
+        about = "Add stored capability metadata to one model.",
+        long_about = "Add stored capability metadata to one model without changing model content or model_ref."
+    )]
+    Add {
+        /// Full model_ref or unique short-ref prefix.
+        #[arg(value_name = "REF")]
+        reference: String,
+        /// Capability metadata to add to this model.
+        #[arg(value_name = "CAPABILITY", num_args = 1..)]
+        capabilities: Vec<ModelCapability>,
+    },
+    /// Remove stored capability metadata from one model.
+    #[command(
+        name = "remove",
+        visible_alias = "rm",
+        about = "Remove stored capability metadata from one model.",
+        long_about = "Remove stored capability metadata from one model without changing model content or model_ref. Tentgent rejects mutations that would leave the model with no capabilities."
+    )]
+    Remove {
+        /// Full model_ref or unique short-ref prefix.
+        #[arg(value_name = "REF")]
+        reference: String,
+        /// Capability metadata to remove from this model.
+        #[arg(value_name = "CAPABILITY", num_args = 1..)]
+        capabilities: Vec<ModelCapability>,
     },
 }

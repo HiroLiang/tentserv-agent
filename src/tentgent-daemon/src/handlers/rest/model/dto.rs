@@ -4,6 +4,7 @@ use serde::Serialize;
 use tentgent_kernel::features::model::domain::{
     ModelImportOutcome, ModelInspection, ModelMetadata, ModelRemovalOutcome, ModelSummary,
 };
+use tentgent_kernel::features::model::usecases::ModelCapabilityUpdateResult;
 
 #[derive(Debug, Serialize)]
 pub struct ModelsResponse {
@@ -32,6 +33,10 @@ pub struct ModelCapabilityUpdateResponse {
 #[derive(Debug, Serialize)]
 pub struct ModelCapabilityUpdateMutationItem {
     pub kind: &'static str,
+    pub previous_capabilities: Vec<String>,
+    pub capabilities: Vec<String>,
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -107,17 +112,44 @@ pub fn model_mutation_response(
 }
 
 pub fn model_capability_update_response(
-    inspection: ModelInspection,
+    result: ModelCapabilityUpdateResult,
 ) -> ModelCapabilityUpdateResponse {
+    let capabilities = result
+        .model
+        .metadata
+        .model_capabilities
+        .iter()
+        .map(|capability| capability.to_string())
+        .collect();
+    let previous_capabilities = result
+        .previous_capabilities
+        .into_iter()
+        .map(|capability| capability.to_string())
+        .collect();
+    let added = result
+        .added_capabilities
+        .into_iter()
+        .map(|capability| capability.to_string())
+        .collect();
+    let removed = result
+        .removed_capabilities
+        .into_iter()
+        .map(|capability| capability.to_string())
+        .collect();
+
     ModelCapabilityUpdateResponse {
         model: model_item_from_parts(
-            inspection.metadata,
-            &inspection.store_path,
-            Some(&inspection.manifest_path),
-            Some(&inspection.variant_source_path),
+            result.model.metadata,
+            &result.model.store_path,
+            Some(&result.model.manifest_path),
+            Some(&result.model.variant_source_path),
         ),
         mutation: ModelCapabilityUpdateMutationItem {
-            kind: "update_capability",
+            kind: "update_capabilities",
+            previous_capabilities,
+            capabilities,
+            added,
+            removed,
         },
     }
 }

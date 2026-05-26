@@ -150,9 +150,12 @@ existing source is `default-chat` or `huggingface-metadata`. It must not
 overwrite `explicit-user` or `manual-update` unless the current request
 explicitly provides a capability.
 
-A model may list multiple capabilities later when source metadata, user edits,
-or another explicit update path proves that it supports more than one serving
-shape.
+A model may list multiple capabilities when source metadata, user edits, or
+another explicit update path proves that it supports more than one serving
+shape. Manual capability updates may replace the whole capability set or apply
+add/remove mutations. Stored capability values are de-duplicated and written in
+canonical model capability order. Mutations that would leave a model with no
+capabilities are invalid.
 
 ## MLX Runtime Family Metadata
 

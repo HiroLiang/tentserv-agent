@@ -188,6 +188,10 @@ fn store_routes() -> Router<RestState> {
         .route("/v1/models/import/jobs", post(model::import_job))
         .route("/v1/models/pull/jobs", post(model::pull_job))
         .route(
+            "/v1/models/{reference}/capabilities",
+            post(model::update_capabilities),
+        )
+        .route(
             "/v1/models/{reference}",
             get(model::inspect)
                 .patch(model::update_capability)

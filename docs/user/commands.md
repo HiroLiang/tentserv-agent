@@ -154,13 +154,19 @@ List and inspect models:
 ```bash
 tentgent model ls
 tentgent model inspect <model-ref>
-tentgent model set-capability <model-ref> embedding
+tentgent model capability show <model-ref>
+tentgent model capability set <model-ref> embedding
+tentgent model capability add <model-ref> vision-chat
+tentgent model capability remove <model-ref> chat
 ```
 
 When no explicit capability or confident Hugging Face metadata is available,
 Tentgent keeps the backward-compatible `chat` default and prints a warning.
-Use `set-capability` to correct stored metadata later without changing
-`model_ref`.
+Use `model capability set`, `add`, or `remove` to correct stored metadata later
+without changing `model_ref`. Capability mutations are canonicalized, de-duped,
+and rejected when they would leave the model with no capabilities. The legacy
+`model set-capability` command remains as a compatibility alias for replacing
+the whole capability set with one value.
 For MLX models, inspect output also shows `mlx_runtime_family` when the stored
 capability maps to a specific MLX runtime family such as `mlx-lm`,
 `mlx-vlm`, `mlx-audio`, or `mlx-diffusion`.

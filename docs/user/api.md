@@ -829,11 +829,16 @@ workspace chunks or spool routes.
 | `GET` | `/v1/models` | None. |
 | `GET` | `/v1/models/{reference}` | None. |
 | `DELETE` | `/v1/models/{reference}` | None. |
-| `PATCH` | `/v1/models/{reference}` | `{"capability":"chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation"}` |
+| `POST` | `/v1/models/{reference}/capabilities` | `{"set":["chat","vision-chat"]}` or `{"add":["vision-chat"],"remove":["chat"]}`. |
+| `PATCH` | `/v1/models/{reference}` | Legacy compatibility alias for replacing the capability set with one `{"capability":"..."}` value. |
 | `POST` | `/v1/models/import` | `{"path":"/absolute/model-dir","capability":"optional-capability"}` |
 | `POST` | `/v1/models/pull` | `{"repo_id":"org/model","revision":"optional","capability":"optional-capability"}` |
 | `POST` | `/v1/models/import/jobs` | Same as `/v1/models/import`, returns a job. |
 | `POST` | `/v1/models/pull/jobs` | Same as `/v1/models/pull`, returns a job. |
+
+Capability mutations canonicalize and de-duplicate values, set
+`model_capability_source` to `manual-update`, and reject requests that would
+leave a model with no capabilities.
 
 ## Adapters
 

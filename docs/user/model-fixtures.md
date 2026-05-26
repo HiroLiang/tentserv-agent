@@ -71,7 +71,8 @@ Inspect and correct metadata:
 ```bash
 tentgent model ls
 tentgent model inspect <model-ref-or-prefix>
-tentgent model set-capability <model-ref-or-prefix> embedding
+tentgent model capability set <model-ref-or-prefix> embedding
+tentgent model capability add <model-ref-or-prefix> vision-chat
 ```
 
 Accepted model metadata capability values:
