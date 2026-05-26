@@ -2,6 +2,51 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.5.0
+
+`v0.5.0` is the mature model-runtime server release. It keeps the CLI plus
+daemon REST product surface from `v0.4.1`, and changes local model servers to
+run through a Rust local-server proxy backed by the shared Python model runtime
+daemon.
+
+What changed:
+
+- Local `tentgent server run <model>` starts a Rust local-server proxy instead
+  of a dedicated permanent Python server process. The proxy forwards the
+  original path, query, headers, and request body to the shared Python model
+  runtime daemon after binding the selected model and capability.
+- Local server requests now reuse the same model runtime daemon lifecycle as
+  one-shot CLI and daemon runtime calls. The Python runtime can idle-shutdown
+  normally and be started again on demand instead of staying alive because a
+  server was created.
+- Added cross-process model-runtime launch locking so CLI, Rust daemon, and
+  local server proxy callers do not race into duplicate Python runtime spawns
+  for the same bound model/capability.
+- Added Rust cloud provider server runtimes for OpenAI, Claude, and Gemini
+  compatible chat surfaces, including OpenAI-compatible
+  `/v1/chat/completions` and SSE streaming wrappers where supported.
+- Added OpenAI cloud image-generation routing and fixed `gpt-image-1` requests
+  by omitting the legacy `response_format` field that the model rejects.
+- Added local model capability mutation and proof commands/API so operators can
+  add, remove, set, verify, and inspect model capability metadata from the CLI
+  and daemon routes.
+- Expanded the direct model-runtime server boundary for chat, embedding,
+  rerank, audio, vision, image, video understanding, and LoRA tuning endpoint
+  families.
+- Updated server and runtime contracts to document the shared runtime daemon,
+  local proxy, cloud runtime, lifecycle, and idle policy boundaries.
+
+Known limits:
+
+- Compatibility proof storage is still metadata-file based and scoped to model
+  capability proof records. The broader post-M7 durable proof store, stale-proof
+  semantics, and dynamic runtime routing remain future roadmap work.
+- Media upload workflows still use daemon job/workspace routes for bounded
+  upload, cleanup, and result-file serving. Direct local server media routes are
+  model-bound and path-based, not generic upload tunnels.
+- Homebrew formula update happens after the GitHub release workflow publishes
+  macOS release archives and `checksums.txt`.
+
 ## v0.4.1
 
 `v0.4.1` is the signed macOS release for the CLI plus daemon REST and M6 media
@@ -222,7 +267,7 @@ Known limits:
 
 `v0.3.0` was the stable 0.3.x baseline for the former terminal UI alpha line
 and the first release candidate for Homebrew tap distribution. The current
-`v0.4.1` surface is CLI plus daemon REST only.
+`v0.5.0` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -253,7 +298,7 @@ Known limits:
 ## v0.3.0-alpha.2
 
 `v0.3.0-alpha.2` was a bugfix preview release for the former terminal UI alpha
-line. The current `v0.4.1` surface is CLI plus daemon REST only.
+line. The current `v0.5.0` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -280,7 +325,7 @@ Known limits:
 ## v0.3.0-alpha.1
 
 `v0.3.0-alpha.1` was a terminal UI preview release. It is kept here for
-historical context; the current `v0.4.1` surface is CLI plus daemon REST
+historical context; the current `v0.5.0` surface is CLI plus daemon REST
 only.
 
 Added:
