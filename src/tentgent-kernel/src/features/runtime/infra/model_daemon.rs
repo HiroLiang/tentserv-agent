@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, OpenOptions},
-    io::{Read, Write},
+    io::{ErrorKind, Read, Write},
     net::{TcpListener, TcpStream, ToSocketAddrs},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -35,6 +35,8 @@ const PORT_SCAN_LIMIT: u16 = 100;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(150);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_secs(30);
+const LOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
+const LOCK_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const IDLE_KEEP_ALIVE_SECONDS: &str = "300";
 const MODEL_IDLE_TIMEOUT_SECONDS: &str = "-1";
 const DAEMON_DIRNAME: &str = "model-runtime-daemons";
@@ -107,6 +109,30 @@ pub struct ModelRuntimeDaemonEndpoint {
     pub model_ref: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelRuntimeDaemonLaunchPolicy {
+    pub idle_keep_alive_seconds: String,
+    pub model_idle_timeout_seconds: String,
+}
+
+impl ModelRuntimeDaemonLaunchPolicy {
+    pub fn with_idle_keep_alive_seconds(seconds: u64) -> Self {
+        Self {
+            idle_keep_alive_seconds: seconds.to_string(),
+            model_idle_timeout_seconds: MODEL_IDLE_TIMEOUT_SECONDS.to_string(),
+        }
+    }
+}
+
+impl Default for ModelRuntimeDaemonLaunchPolicy {
+    fn default() -> Self {
+        Self {
+            idle_keep_alive_seconds: IDLE_KEEP_ALIVE_SECONDS.to_string(),
+            model_idle_timeout_seconds: MODEL_IDLE_TIMEOUT_SECONDS.to_string(),
+        }
+    }
+}
+
 impl ModelRuntimeDaemonEndpoint {
     pub fn url(&self, path: &str) -> String {
         format!(
@@ -153,6 +179,27 @@ impl ModelRuntimeDaemonSupervisor {
             executable_resolver,
             capability,
             Some(model_ref),
+            &ModelRuntimeDaemonLaunchPolicy::default(),
+        )
+        .await
+    }
+
+    pub async fn ensure_model_bound_with_policy(
+        &self,
+        layout: &RuntimeLayout,
+        runtime: &PythonRuntimeLayout,
+        executable_resolver: &dyn RuntimeExecutableResolver,
+        capability: ModelRuntimeCapability,
+        model_ref: &str,
+        policy: &ModelRuntimeDaemonLaunchPolicy,
+    ) -> KernelResult<ModelRuntimeDaemonEndpoint> {
+        self.ensure(
+            layout,
+            runtime,
+            executable_resolver,
+            capability,
+            Some(model_ref),
+            policy,
         )
         .await
     }
@@ -164,8 +211,15 @@ impl ModelRuntimeDaemonSupervisor {
         executable_resolver: &dyn RuntimeExecutableResolver,
         capability: ModelRuntimeCapability,
     ) -> KernelResult<ModelRuntimeDaemonEndpoint> {
-        self.ensure(layout, runtime, executable_resolver, capability, None)
-            .await
+        self.ensure(
+            layout,
+            runtime,
+            executable_resolver,
+            capability,
+            None,
+            &ModelRuntimeDaemonLaunchPolicy::default(),
+        )
+        .await
     }
 
     async fn ensure(
@@ -175,6 +229,7 @@ impl ModelRuntimeDaemonSupervisor {
         executable_resolver: &dyn RuntimeExecutableResolver,
         capability: ModelRuntimeCapability,
         model_ref: Option<&str>,
+        policy: &ModelRuntimeDaemonLaunchPolicy,
     ) -> KernelResult<ModelRuntimeDaemonEndpoint> {
         let key = daemon_key(capability, model_ref);
         if let Some(endpoint) = self.cached_healthy_endpoint(&key).await? {
@@ -191,19 +246,59 @@ impl ModelRuntimeDaemonSupervisor {
             return Ok(endpoint);
         }
 
-        let endpoint = self
-            .spawn_daemon(
-                layout,
-                runtime,
-                executable_resolver,
-                capability,
-                model_ref,
-                &metadata_path,
-            )
-            .await?;
-        self.remember_endpoint(key, endpoint.clone())?;
-        self.ensure_poller();
-        Ok(endpoint)
+        let lock_path = daemon_lock_path(layout, &key);
+        let mut started = std::time::Instant::now();
+        loop {
+            match ModelRuntimeDaemonLock::try_acquire(&lock_path) {
+                Ok(_lock) => {
+                    if let Some(endpoint) = self
+                        .stored_healthy_endpoint(&metadata_path, capability, model_ref)
+                        .await?
+                    {
+                        self.remember_endpoint(key, endpoint.clone())?;
+                        self.ensure_poller();
+                        return Ok(endpoint);
+                    }
+
+                    let endpoint = self
+                        .spawn_daemon(
+                            layout,
+                            runtime,
+                            executable_resolver,
+                            capability,
+                            model_ref,
+                            &metadata_path,
+                            policy,
+                        )
+                        .await?;
+                    self.remember_endpoint(key, endpoint.clone())?;
+                    self.ensure_poller();
+                    return Ok(endpoint);
+                }
+                Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                    if let Some(endpoint) = self
+                        .stored_healthy_endpoint(&metadata_path, capability, model_ref)
+                        .await?
+                    {
+                        self.remember_endpoint(key, endpoint.clone())?;
+                        self.ensure_poller();
+                        return Ok(endpoint);
+                    }
+                    if started.elapsed() > LOCK_WAIT_TIMEOUT {
+                        if fs::remove_file(&lock_path).is_ok() {
+                            started = std::time::Instant::now();
+                        }
+                    }
+                    tokio::time::sleep(LOCK_POLL_INTERVAL).await;
+                }
+                Err(err) => {
+                    return Err(runtime_error(format!(
+                        "acquire model runtime daemon lock `{}` failed: {err}",
+                        lock_path.display()
+                    )))
+                }
+            }
+        }
     }
 
     pub async fn post_json<Payload, Output, ErrorFn>(
@@ -323,6 +418,7 @@ impl ModelRuntimeDaemonSupervisor {
         capability: ModelRuntimeCapability,
         model_ref: Option<&str>,
         metadata_path: &Path,
+        policy: &ModelRuntimeDaemonLaunchPolicy,
     ) -> KernelResult<ModelRuntimeDaemonEndpoint> {
         let port = allocate_bind_port(DEFAULT_HOST, DEFAULT_PORT)?;
         let entrypoint =
@@ -359,9 +455,9 @@ impl ModelRuntimeDaemonSupervisor {
             .arg("--capability")
             .arg(capability.as_str())
             .arg("--idle-keep-alive-seconds")
-            .arg(IDLE_KEEP_ALIVE_SECONDS)
+            .arg(&policy.idle_keep_alive_seconds)
             .arg("--model-idle-timeout-seconds")
-            .arg(MODEL_IDLE_TIMEOUT_SECONDS)
+            .arg(&policy.model_idle_timeout_seconds)
             .arg("--lazy-load")
             .stdin(Stdio::null())
             .stdout(Stdio::from(stdout))
@@ -450,6 +546,29 @@ impl ModelRuntimeDaemonSupervisor {
                 let _ = blocking_healthz(&endpoint.host, endpoint.port);
             }
         });
+    }
+}
+
+struct ModelRuntimeDaemonLock {
+    path: PathBuf,
+}
+
+impl ModelRuntimeDaemonLock {
+    fn try_acquire(path: &Path) -> std::io::Result<Self> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+        writeln!(file, "pid = {}", std::process::id())?;
+        Ok(Self {
+            path: path.to_path_buf(),
+        })
+    }
+}
+
+impl Drop for ModelRuntimeDaemonLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
     }
 }
 
@@ -594,6 +713,13 @@ fn daemon_metadata_path(layout: &RuntimeLayout, key: &str) -> PathBuf {
         .join(DAEMON_DIRNAME)
         .join(key)
         .join(DAEMON_METADATA_FILENAME)
+}
+
+fn daemon_lock_path(layout: &RuntimeLayout, key: &str) -> PathBuf {
+    layout
+        .locks_dir
+        .join(DAEMON_DIRNAME)
+        .join(format!("{key}.lock"))
 }
 
 fn read_metadata_if_exists(path: &Path) -> KernelResult<Option<ModelRuntimeDaemonMetadata>> {

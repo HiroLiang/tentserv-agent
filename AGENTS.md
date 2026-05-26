@@ -82,9 +82,9 @@ Key current documents:
 - `docs/contracts/model-runtime-server.md`
   Direct Python model runtime health and graceful shutdown boundary.
 - `docs/contracts/server-embedding.md`
-  Direct Python server embedding request shape and capability routing.
+  Direct local model-server embedding request shape and capability routing.
 - `docs/contracts/server-rerank.md`
-  Direct Python server rerank request shape and capability routing.
+  Direct local model-server rerank request shape and capability routing.
 - `docs/contracts/http-daemon.md`
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
 - `docs/contracts/tentgent-daemon.md`

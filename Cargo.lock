@@ -1941,6 +1941,7 @@ dependencies = [
  "clap",
  "futures-util",
  "miette",
+ "reqwest",
  "serde",
  "serde_json",
  "tentgent-kernel",

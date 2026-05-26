@@ -1,20 +1,27 @@
+#[cfg(any())]
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::audio::domain::{
-    AudioSpeechBackend, AudioSpeechOutputFormat, AudioSpeechRequest, AudioSpeechResponse,
-    AudioSpeechRuntimeTarget, AudioTranscriptionBackend, AudioTranscriptionOutputFormat,
-    AudioTranscriptionRequest, AudioTranscriptionResponse, AudioTranscriptionRuntimeTarget,
+    AudioSpeechBackend, AudioSpeechOutputFormat, AudioSpeechRuntimeTarget,
+    AudioTranscriptionBackend, AudioTranscriptionOutputFormat, AudioTranscriptionRuntimeTarget,
+};
+#[cfg(any())]
+use crate::features::audio::domain::{
+    AudioSpeechRequest, AudioSpeechResponse, AudioTranscriptionRequest, AudioTranscriptionResponse,
     ResolvedAudioSpeechTarget, ResolvedAudioTranscriptionTarget,
 };
 use crate::features::audio::infra::{
     StdAudioSpeechModelResolver, StdAudioTranscriptionModelResolver,
 };
 use crate::features::audio::ports::{
-    AudioSpeechModelResolveRequest, AudioSpeechModelResolver, AudioSpeechRuntimeClient,
-    AudioSpeechRuntimeRequest, AudioTranscriptionModelResolveRequest,
-    AudioTranscriptionModelResolver, AudioTranscriptionRuntimeClient,
+    AudioSpeechModelResolveRequest, AudioSpeechModelResolver,
+    AudioTranscriptionModelResolveRequest, AudioTranscriptionModelResolver,
+};
+#[cfg(any())]
+use crate::features::audio::ports::{
+    AudioSpeechRuntimeClient, AudioSpeechRuntimeRequest, AudioTranscriptionRuntimeClient,
     AudioTranscriptionRuntimeRequest,
 };
 use crate::features::model::domain::{
@@ -25,9 +32,11 @@ use crate::features::model::usecases::{
     ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
     ModelListResult,
 };
+#[cfg(any())]
 use crate::features::runtime::domain::{
     PythonRuntimeLayout, PythonRuntimeSource, RuntimeEntrypoint,
 };
+#[cfg(any())]
 use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
@@ -494,11 +503,13 @@ impl ModelCatalogReadUseCase for FakeModelCatalog {
     }
 }
 
+#[cfg(any())]
 struct FakeExecutableResolver {
     entrypoint: PathBuf,
     expected_entrypoint: RuntimeEntrypoint,
 }
 
+#[cfg(any())]
 impl RuntimeExecutableResolver for FakeExecutableResolver {
     fn python_binary_path(&self, _runtime: &PythonRuntimeLayout) -> KernelResult<PathBuf> {
         Ok(PathBuf::from("python"))
@@ -514,6 +525,7 @@ impl RuntimeExecutableResolver for FakeExecutableResolver {
     }
 }
 
+#[cfg(any())]
 fn audio_request(home: &Path) -> AudioTranscriptionRequest {
     AudioTranscriptionRequest {
         target: ResolvedAudioTranscriptionTarget {
@@ -533,6 +545,7 @@ fn audio_request(home: &Path) -> AudioTranscriptionRequest {
     }
 }
 
+#[cfg(any())]
 fn audio_speech_request(home: &Path) -> AudioSpeechRequest {
     AudioSpeechRequest {
         target: ResolvedAudioSpeechTarget {
@@ -616,6 +629,7 @@ fn runtime_layout(home: &Path) -> RuntimeLayout {
     }
 }
 
+#[cfg(any())]
 fn python_runtime(project: &Path, env: &Path) -> PythonRuntimeLayout {
     PythonRuntimeLayout {
         project_dir: project.to_path_buf(),

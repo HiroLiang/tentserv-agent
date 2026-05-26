@@ -22,7 +22,7 @@ pub trait PythonRuntimeResolver {
 }
 
 /// Resolves concrete executables inside an already selected Python runtime layout.
-pub trait RuntimeExecutableResolver {
+pub trait RuntimeExecutableResolver: Send + Sync {
     /// Returns the Python interpreter path for the runtime layout.
     fn python_binary_path(&self, runtime: &PythonRuntimeLayout) -> KernelResult<PathBuf>;
 

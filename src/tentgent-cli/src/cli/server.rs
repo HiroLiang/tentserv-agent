@@ -40,8 +40,8 @@ use tentgent_kernel::features::runtime::usecases::{
     RuntimeResolutionRequest, RuntimeResolutionUseCase, StdRuntimeResolutionUseCase,
 };
 use tentgent_kernel::features::server::domain::{
-    CloudProvider, LaunchMode, ServerInspection, ServerRefSelector, ServerRuntimeKind, ServerSpec,
-    ServerStopOutcome, ServerSummary,
+    CloudProvider, LaunchMode, ServerCapability, ServerInspection, ServerRefSelector,
+    ServerRuntimeKind, ServerSpec, ServerStopOutcome, ServerSummary,
 };
 use tentgent_kernel::features::server::infra::{
     FileServerCatalogStore, ServerRuntimeLaunchRequest, ServerRuntimeLauncher,
@@ -58,7 +58,9 @@ use tentgent_kernel::foundation::layout::{
 };
 
 use super::app::Cli;
-use super::commands::{CloudServerRuntimeCommand, ServerCommands, ServerRunCommand};
+use super::commands::{
+    CloudServerRuntimeCommand, LocalServerRuntimeCommand, ServerCommands, ServerRunCommand,
+};
 
 const BACKGROUND_HEALTH_STABLE: Duration = Duration::from_secs(2);
 const BACKGROUND_START_OBSERVATION: Duration = Duration::from_secs(10);
@@ -191,6 +193,24 @@ pub async fn handle_cloud_server_runtime(command: CloudServerRuntimeCommand) -> 
             host: command.host,
             port: command.port,
             runtime_home: command.home.map(|path| path.display().to_string()),
+        },
+    )
+    .await
+}
+
+pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> miette::Result<()> {
+    let _ = command.lazy_load;
+    let capability = ServerCapability::parse(&command.capability)
+        .map_err(|err| miette!("unsupported local server capability: {err}"))?;
+    tentgent_daemon::local_server::run_local_server_runtime(
+        tentgent_daemon::local_server::LocalServerRuntimeConfig {
+            server_ref: command.server_ref,
+            capability,
+            model_ref: command.model_ref,
+            host: command.host,
+            port: command.port,
+            runtime_home: command.home,
+            idle_seconds: command.idle_seconds,
         },
     )
     .await
@@ -790,7 +810,7 @@ fn render_server_spec_outcome(
         );
     } else {
         println!(
-            "{} launching the Python server in {} mode.",
+            "{} launching the local server proxy in {} mode.",
             style("starting").green().bold(),
             if detached { "background" } else { "foreground" }
         );

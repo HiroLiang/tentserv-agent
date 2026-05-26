@@ -715,7 +715,7 @@ plumbing tests, then raise quality settings for real models.
 
 ## Server
 
-Launch a long-lived local server:
+Launch a stable local server proxy:
 
 ```bash
 tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
@@ -733,10 +733,14 @@ endpoint family from the model's stored capabilities. The priority is
 `audio-speech`, `rerank`, `embedding`, then `chat`. Use `--capability chat`,
 `embedding`, `rerank`, `audio-transcription`, `audio-speech`, `vision-chat`,
 `video-understanding`, or `image-generation` to override that choice. Local
-servers bind the selected model at startup, so the direct server request body
-does not need `model_ref`, `model`, or `model_kind` fields. Direct Python
-runtime callers that do not start a model-bound server may still send explicit
-`model` and `model_kind` fields.
+servers bind the selected model in their Rust proxy spec, so the direct server
+request body does not need `model_ref`, `model`, or `model_kind` fields. The
+proxy starts or reuses the shared Python model runtime on demand; that Python
+runtime may idle-shutdown and be started again on a later request. When set,
+`--idle-seconds` becomes the shared Python runtime idle shutdown policy if this
+proxy is the process that starts it. Direct Python runtime callers that do not
+start a model-bound server may still send explicit `model` and `model_kind`
+fields.
 
 Call the server:
 
@@ -1010,8 +1014,8 @@ local debugging.
 Non-loopback or wildcard daemon binds require `TENTGENT_DAEMON_TOKEN` or the
 explicit `--allow-unsafe-bind` flag.
 Detached daemon children inherit daemon configuration environment variables,
-including `TENTGENT_DAEMON_TOKEN`; model-bound server children still remove that
-token before launch.
+including `TENTGENT_DAEMON_TOKEN`; local model-server proxy children remove
+that token before launch.
 `POST /v1/daemon/shutdown` requires `TENTGENT_DAEMON_TOKEN` even on loopback
 and stops only the daemon process; it does not stop running model-bound servers.
 

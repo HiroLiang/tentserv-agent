@@ -1,6 +1,6 @@
 # Server Rerank
 
-This document defines the direct Python server rerank request contract.
+This document defines the direct local model-server rerank request contract.
 
 ## Endpoint
 
@@ -18,7 +18,8 @@ Request body:
 
 For model-bound servers launched through `tentgent server run --capability
 rerank`, `model` and `model_kind` are intentionally omitted from the request.
-The Python process resolves the Rust-bound managed model from runtime home.
+The Rust local-server proxy forwards the request to the shared Python model
+runtime daemon, which resolves the Rust-bound managed model from runtime home.
 
 `query` must be a non-empty string. `documents` must be a non-empty string
 array. `top_n` is optional and must be between `1` and the number of documents.
@@ -43,12 +44,13 @@ tie-breaker.
 
 ## Capability Routing
 
-Direct model-server rerank is stateless. The Python server runtime does not
-read or write Tentgent session files and does not accept daemon session fields.
+Direct model-server rerank is stateless. The shared Python model runtime does
+not read or write Tentgent session files and does not accept daemon session
+fields.
 
-The process serves exactly one endpoint family. `--capability rerank` serves
-`POST /v1/rerank`; servers launched for any other capability reject
-`POST /v1/rerank` with `400 unsupported_target`. See
+The shared runtime process serves exactly one endpoint family. `--capability
+rerank` serves `POST /v1/rerank`; servers launched for any other capability
+reject `POST /v1/rerank` with `400 unsupported_target`. See
 [server-chat.md](./server-chat.md) and [server-embedding.md](./server-embedding.md)
 for sibling endpoint examples.
 

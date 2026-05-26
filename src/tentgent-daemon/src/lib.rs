@@ -5,6 +5,7 @@ pub mod bootstrap;
 pub mod cloud_server;
 pub mod handlers;
 pub mod kernel;
+pub mod local_server;
 pub mod runtime;
 pub mod transport;
 

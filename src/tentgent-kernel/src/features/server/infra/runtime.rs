@@ -3,7 +3,7 @@ use std::net::{TcpListener, ToSocketAddrs};
 use std::process::{Child, Command, ExitStatus, Stdio};
 
 use crate::features::auth::domain::{AuthSecretMaterial, Provider};
-use crate::features::runtime::domain::{PythonRuntimeLayout, RuntimeEntrypoint};
+use crate::features::runtime::domain::PythonRuntimeLayout;
 use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::features::server::domain::{
     CloudProvider, ServerInspection, ServerRuntimeKind, ServerSpec,
@@ -18,13 +18,13 @@ const AUTO_SERVER_PORT_SCAN_LIMIT: u16 = 100;
 
 /// Builds and launches local model and cloud server runtime entrypoints.
 pub struct ServerRuntimeLauncher<'a> {
-    executable_resolver: &'a dyn RuntimeExecutableResolver,
+    _executable_resolver: &'a dyn RuntimeExecutableResolver,
 }
 
 impl<'a> ServerRuntimeLauncher<'a> {
     pub fn new(executable_resolver: &'a dyn RuntimeExecutableResolver) -> Self {
         Self {
-            executable_resolver,
+            _executable_resolver: executable_resolver,
         }
     }
 
@@ -104,11 +104,9 @@ impl<'a> ServerRuntimeLauncher<'a> {
         bound_port: u16,
     ) -> KernelResult<Command> {
         let entrypoint = match request.inspection.spec.runtime_kind {
-            ServerRuntimeKind::Local => {
-                let entrypoint = server_runtime_entrypoint(&request.inspection.spec);
-                self.executable_resolver
-                    .entrypoint_path(&request.runtime, entrypoint)?
-            }
+            ServerRuntimeKind::Local => std::env::current_exe().map_err(|err| {
+                server_runtime_error(format!("failed to resolve current Rust executable: {err}"))
+            })?,
             ServerRuntimeKind::Cloud => std::env::current_exe().map_err(|err| {
                 server_runtime_error(format!("failed to resolve current Rust executable: {err}"))
             })?,
@@ -193,11 +191,6 @@ pub(super) fn server_runtime_command_parts(
     })
 }
 
-fn server_runtime_entrypoint(spec: &ServerSpec) -> RuntimeEntrypoint {
-    debug_assert_eq!(spec.runtime_kind, ServerRuntimeKind::Local);
-    RuntimeEntrypoint::ModelRuntimeDaemon
-}
-
 fn local_model_runtime_command_args(
     spec: &ServerSpec,
     home_dir: &std::path::Path,
@@ -210,6 +203,7 @@ fn local_model_runtime_command_args(
         ))
     })?;
     let mut args = vec![
+        "__local-server-runtime".to_string(),
         "--server-ref".to_string(),
         spec.server_ref.to_string(),
         "--capability".to_string(),
@@ -222,13 +216,12 @@ fn local_model_runtime_command_args(
         home_dir.display().to_string(),
         "--model-ref".to_string(),
         model_ref.to_string(),
-        "--idle-keep-alive-seconds".to_string(),
-        "-1".to_string(),
-        "--model-idle-timeout-seconds".to_string(),
-        model_idle_timeout_seconds(spec),
     ];
     if spec.lazy_load {
         args.push("--lazy-load".to_string());
+    }
+    if let Some(idle_seconds) = spec.idle_seconds {
+        args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
     }
     Ok(args)
 }
@@ -294,12 +287,6 @@ fn cloud_server_runtime_command_args(
         args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
     }
     Ok(args)
-}
-
-fn model_idle_timeout_seconds(spec: &ServerSpec) -> String {
-    spec.idle_seconds
-        .map(|seconds| seconds.to_string())
-        .unwrap_or_else(|| "-1".to_string())
 }
 
 fn auth_provider_for_cloud(provider: CloudProvider) -> Provider {

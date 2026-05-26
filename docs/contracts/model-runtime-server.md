@@ -8,7 +8,9 @@ runtime daemon.
 One Python runtime process serves one endpoint family. Rust chooses the
 capability when it starts the process through the runtime daemon entrypoint. If
 the caller omitted `--capability` for a local model-bound server, Rust infers
-that capability from stored model metadata before launching Python.
+that capability from stored model metadata before launching the Rust server
+proxy. The proxy then starts or reuses the matching Python runtime through the
+shared runtime daemon supervisor on demand.
 
 Supported capability values:
 
@@ -43,10 +45,11 @@ Rust still owns job creation, workspace paths, model resolution, and server
 selection. The Python runtime only loads the selected model, runs inference, and
 returns or writes the prepared result.
 
-When Rust starts this daemon as a model-bound local server, it passes
-`--server-ref`, `--model-ref`, `--home`, and one capability value. In that
-mode, the matching direct server endpoints may omit the full `model` record and
-`model_kind`; Python resolves the managed model from
+When the Rust local-server proxy asks the supervisor to start this daemon for a
+model-bound server request, it passes `--server-ref`, `--model-ref`, `--home`,
+and one capability value. In that mode, the matching direct server endpoints
+may omit the full `model` record and `model_kind`; Python resolves the managed
+model from
 `TENTGENT_HOME/models/store` and infers the runtime kind from the stored primary
 format. Explicit direct-runtime requests may still pass `model` and
 `model_kind`. If a model-bound request includes a different explicit model, the

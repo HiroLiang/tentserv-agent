@@ -1,19 +1,27 @@
+#[cfg(any())]
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(any())]
 use crate::features::adapter::domain::{AdapterBackendSupport, AdapterRef, LoraScale};
 use crate::features::image_generation::domain::{
     ImageControlKind, ImageControlStrength, ImageGenerationBackend, ImageGenerationDimensions,
-    ImageGenerationInput, ImageGenerationOptions, ImageGenerationOutputFormat,
-    ImageGenerationPrompt, ImageGenerationRequest, ImageGenerationResponse,
+    ImageGenerationOptions, ImageGenerationOutputFormat, ImageGenerationPrompt,
     ImageGenerationRuntimeTarget, ImageGenerationWorkflowKind, ImageTransformStrength,
+};
+#[cfg(any())]
+use crate::features::image_generation::domain::{
+    ImageGenerationInput, ImageGenerationRequest, ImageGenerationResponse,
     ResolvedImageGenerationAdapter, ResolvedImageGenerationControl, ResolvedImageGenerationTarget,
 };
 use crate::features::image_generation::infra::StdImageGenerationModelResolver;
 use crate::features::image_generation::ports::{
-    ImageGenerationModelResolveRequest, ImageGenerationModelResolver, ImageGenerationRuntimeClient,
-    ImageGenerationRuntimeRequest,
+    ImageGenerationModelResolveRequest, ImageGenerationModelResolver,
+};
+#[cfg(any())]
+use crate::features::image_generation::ports::{
+    ImageGenerationRuntimeClient, ImageGenerationRuntimeRequest,
 };
 use crate::features::model::domain::{
     default_model_capability_source, MlxRuntimeFamily, ModelCapability, ModelFormat,
@@ -23,9 +31,11 @@ use crate::features::model::usecases::{
     ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
     ModelListResult,
 };
+#[cfg(any())]
 use crate::features::runtime::domain::{
     PythonRuntimeLayout, PythonRuntimeSource, RuntimeEntrypoint,
 };
+#[cfg(any())]
 use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
@@ -682,10 +692,12 @@ impl ModelCatalogReadUseCase for FakeModelCatalog {
     }
 }
 
+#[cfg(any())]
 struct FakeExecutableResolver {
     entrypoint: PathBuf,
 }
 
+#[cfg(any())]
 impl RuntimeExecutableResolver for FakeExecutableResolver {
     fn python_binary_path(&self, _runtime: &PythonRuntimeLayout) -> KernelResult<PathBuf> {
         Ok(PathBuf::from("python"))
@@ -701,6 +713,7 @@ impl RuntimeExecutableResolver for FakeExecutableResolver {
     }
 }
 
+#[cfg(any())]
 fn image_generation_request(output_path: &Path) -> ImageGenerationRequest {
     ImageGenerationRequest {
         target: ResolvedImageGenerationTarget {
@@ -771,6 +784,7 @@ fn model_ref() -> ModelRef {
     ModelRef::parse("8".repeat(64)).expect("model ref")
 }
 
+#[cfg(any())]
 fn adapter_ref() -> AdapterRef {
     AdapterRef::parse("9".repeat(64)).expect("adapter ref")
 }
@@ -807,6 +821,7 @@ fn runtime_layout(home: &Path) -> RuntimeLayout {
     }
 }
 
+#[cfg(any())]
 fn python_runtime(project: &Path, env: &Path) -> PythonRuntimeLayout {
     PythonRuntimeLayout {
         project_dir: project.to_path_buf(),

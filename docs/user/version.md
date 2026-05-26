@@ -21,10 +21,10 @@ What changed:
 - Added daemon-native chat and OpenAI, Claude, and Gemini compatible adapters
   as text-only DTO/SSE translators over the existing kernel chat use cases.
 - Added daemon-native `POST /v1/embeddings` for local safetensors embedding
-  models and direct Python server `/v1/embeddings` for `--capability embedding`
-  server specs.
+  models and direct local model-server `/v1/embeddings` for `--capability
+  embedding` server specs.
 - Added daemon-native `POST /v1/rerank` for local safetensors rerank models and
-  direct Python model-bound server routes for local chat, embedding, rerank,
+  direct local model-bound server routes for local chat, embedding, rerank,
   audio, vision, video, and image server specs.
 - Added one-shot CLI `tentgent embed` and `tentgent rerank` commands for local
   embedding and rerank smoke tests without starting the daemon.

@@ -626,13 +626,13 @@ catalog orchestration in frontends.
 adapters for those ports: server-store directory creation, legacy-compatible
 server-ref hashing, TOML spec/process catalog reads and writes, stale process
 metadata cleanup, process liveness probing, process termination, and RFC3339
-timestamps. It also owns Python server process launchers through an already
-selected runtime layout: local model servers use the direct
-`tentgent-model-runtime-daemon`. Cloud provider servers are not available until
-they are ported to the model runtime HTTP boundary. Runtime launching may inject
-launch-time auth environment variables only for supported runtimes, and provider
-secrets must come from auth use cases and must never be persisted in server
-specs or process metadata.
+timestamps. It also owns server process launchers through an already selected
+runtime layout: local model servers run a Rust local-server proxy, while the
+shared model runtime daemon supervisor starts or reuses Python runtime workers
+on demand. Cloud provider servers run provider-specific Rust server processes.
+Runtime launching may inject launch-time auth environment variables only for
+supported runtimes, and provider secrets must come from auth use cases and must
+never be persisted in server specs or process metadata.
 
 `features/server/usecases/port.rs` defines workflow boundaries for:
 
@@ -647,7 +647,7 @@ specs or process metadata.
 Standard server use cases compose foundation layout, model catalog reads,
 server infra ports, and pure server identity rules. The Rust CLI server command
 and daemon server lifecycle routes compose these kernel server use cases for
-spec creation, catalog reads, process state, and Python server launch.
+spec creation, catalog reads, process state, and server launch.
 
 `features/train/domain.rs` owns pure LoRA training names and planning rules:
 

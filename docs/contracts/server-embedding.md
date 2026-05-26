@@ -1,6 +1,6 @@
 # Server Embedding
 
-This document defines the direct Python server embedding request contract.
+This document defines the direct local model-server embedding request contract.
 
 ## Endpoint
 
@@ -16,7 +16,8 @@ Request body:
 
 For model-bound servers launched through `tentgent server run --capability
 embedding`, `model` and `model_kind` are intentionally omitted from the request.
-The Python process resolves the Rust-bound managed model from runtime home.
+The Rust local-server proxy forwards the request to the shared Python model
+runtime daemon, which resolves the Rust-bound managed model from runtime home.
 
 `input` accepts either one string or a non-empty string array. Empty arrays,
 empty strings, unknown fields, and non-string values return `400 invalid_request`.
@@ -37,12 +38,13 @@ The response preserves input order. Embeddings are JSON numbers, not strings.
 
 ## Capability Routing
 
-Direct model-server embedding is stateless. The Python server runtime does not
-read or write Tentgent session files and does not accept daemon session fields.
+Direct model-server embedding is stateless. The shared Python model runtime does
+not read or write Tentgent session files and does not accept daemon session
+fields.
 
-The process serves exactly one endpoint family. `--capability embedding` serves
-`POST /v1/embeddings`; servers launched for any other capability reject
-`POST /v1/embeddings` with `400 unsupported_target`. See
+The shared runtime process serves exactly one endpoint family. `--capability
+embedding` serves `POST /v1/embeddings`; servers launched for any other
+capability reject `POST /v1/embeddings` with `400 unsupported_target`. See
 [server-chat.md](./server-chat.md) and [server-rerank.md](./server-rerank.md)
 for sibling endpoint examples.
 

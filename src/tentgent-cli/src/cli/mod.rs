@@ -57,6 +57,9 @@ pub async fn run() -> miette::Result<()> {
         Commands::CloudServerRuntime(command) => {
             server::handle_cloud_server_runtime(command).await?
         }
+        Commands::LocalServerRuntime(command) => {
+            server::handle_local_server_runtime(command).await?
+        }
         Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Store { action } => store::handle_store_command(action)?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,
@@ -689,6 +692,47 @@ mod tests {
                 action: ServerCommands::Run(command),
             } => {
                 assert_eq!(command.capability, Some(ServerCapability::VisionChat));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_hidden_local_server_runtime() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "__local-server-runtime",
+            "--server-ref",
+            "abc123",
+            "--capability",
+            "chat",
+            "--model-ref",
+            "def456",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8780",
+            "--home",
+            "/tmp/tentgent",
+            "--lazy-load",
+            "--idle-seconds",
+            "30",
+        ])
+        .expect("parse hidden local server runtime");
+
+        match cli.command {
+            Commands::LocalServerRuntime(command) => {
+                assert_eq!(command.server_ref, "abc123");
+                assert_eq!(command.capability, "chat");
+                assert_eq!(command.model_ref, "def456");
+                assert_eq!(command.host, "127.0.0.1");
+                assert_eq!(command.port, 8780);
+                assert_eq!(
+                    command.home.as_deref(),
+                    Some(std::path::Path::new("/tmp/tentgent"))
+                );
+                assert!(command.lazy_load);
+                assert_eq!(command.idle_seconds, Some(30));
             }
             other => panic!("unexpected command: {other:?}"),
         }

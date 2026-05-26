@@ -1307,14 +1307,19 @@ background mode. `{server_ref}` accepts a full server ref or unique short prefix
 Cloud server starts validate launch-time provider auth from env/keychain and
 never persist secrets in the server spec or response.
 Local server starts verify that the selected model advertises the server
-capability before launching the Python runtime. Local `chat`, `embedding`,
-`rerank`, audio, vision, video, and image-generation server processes are
-launched through the direct Python model runtime daemon with the selected model
-bound at process start. Requests to those model-bound server ports omit
-`model` and `model_kind`; direct Python runtime callers may still provide those
-fields explicitly. The server process remains a server lifecycle resource, not
-a job record; `idle_seconds` maps to loaded model resource release inside the
-Python process, not to daemon-owned process expiration.
+capability before launching a Rust local-server proxy on the requested port.
+The proxy forwards matching `chat`, `embedding`, `rerank`, audio, vision,
+video, and image-generation paths to the shared Python model runtime daemon
+supervisor. The supervisor starts or reuses the capability/model-bound Python
+runtime on demand and lets that Python runtime follow its normal idle shutdown
+lifecycle. Requests to those model-bound server ports omit `model` and
+`model_kind`; direct Python runtime callers may still provide those fields
+explicitly. The server process remains a server lifecycle resource, not a job
+record. `idle_seconds`, when set, is passed to the shared Python runtime
+supervisor as the idle shutdown policy if the proxy is the process that starts
+that capability/model runtime; an already-running shared runtime is reused with
+its existing policy. The local proxy does not keep a separate permanent Python
+process alive.
 
 The body is optional. Omit it or send `{}` to preserve the original response
 shape. Send `wait_ready` to ask the daemon to poll the target server's

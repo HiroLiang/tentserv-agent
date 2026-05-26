@@ -3,26 +3,34 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::dataset::domain::{
-    DatasetFormat, DatasetMetadata, DatasetPromptSource, DatasetRef, DatasetRefSelector,
-    DatasetSourceKind, DatasetSplitKind, DatasetStoreLayout, DatasetSynthCounts,
-    DatasetSynthPromptRequest, DatasetTemplateRequest, LocalDatasetSourceIndex,
+    DatasetFormat, DatasetMetadata, DatasetRef, DatasetRefSelector, DatasetSourceKind,
+    DatasetStoreLayout, DatasetTemplateRequest, LocalDatasetSourceIndex,
+};
+#[cfg(any())]
+use crate::features::dataset::domain::{
+    DatasetPromptSource, DatasetSplitKind, DatasetSynthCounts, DatasetSynthPromptRequest,
 };
 use crate::features::dataset::ports::{
     DatasetCatalogStore, DatasetContentStore, DatasetDiffTarget, DatasetDiffer,
     DatasetIdentityGenerator, DatasetManifestBuilder, DatasetPackageDetector,
     DatasetReferenceGuard, DatasetSourceIndexStore, DatasetSourceStager,
-    DatasetStoreLayoutInitializer, DatasetSynthPromptRuntimeRequest, DatasetSynthRuntimeClient,
-    DatasetTemplateRenderer, DatasetValidator,
+    DatasetStoreLayoutInitializer, DatasetTemplateRenderer, DatasetValidator,
 };
+#[cfg(any())]
+use crate::features::dataset::ports::{
+    DatasetSynthPromptRuntimeRequest, DatasetSynthRuntimeClient,
+};
+#[cfg(any())]
 use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeSource};
 use crate::foundation::layout::RuntimeLayout;
 
+#[cfg(any())]
+use super::CloudDatasetSynthRuntimeClient;
 use super::{
-    CloudDatasetSynthRuntimeClient, FileDatasetCatalogStore, FileDatasetContentStore,
-    FileDatasetReferenceGuard, FileDatasetSourceIndexStore, MarkdownDatasetTemplateRenderer,
-    StdDatasetDiffer, StdDatasetIdentityGenerator, StdDatasetManifestBuilder,
-    StdDatasetPackageDetector, StdDatasetSourceStager, StdDatasetStoreLayoutInitializer,
-    StdDatasetValidator,
+    FileDatasetCatalogStore, FileDatasetContentStore, FileDatasetReferenceGuard,
+    FileDatasetSourceIndexStore, MarkdownDatasetTemplateRenderer, StdDatasetDiffer,
+    StdDatasetIdentityGenerator, StdDatasetManifestBuilder, StdDatasetPackageDetector,
+    StdDatasetSourceStager, StdDatasetStoreLayoutInitializer, StdDatasetValidator,
 };
 
 #[test]
@@ -295,6 +303,7 @@ fn runtime_layout(home: &Path) -> RuntimeLayout {
     }
 }
 
+#[cfg(any())]
 fn python_runtime(project: &Path, env: &Path) -> PythonRuntimeLayout {
     PythonRuntimeLayout {
         project_dir: project.to_path_buf(),

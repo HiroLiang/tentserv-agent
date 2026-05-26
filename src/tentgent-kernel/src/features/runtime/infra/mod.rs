@@ -12,7 +12,7 @@ pub use bootstrap::{StdRuntimeBootstrapExecutor, StdRuntimeBootstrapPlanner};
 pub use executable::StdRuntimeExecutableResolver;
 pub use model_daemon::{
     http_error_detail, ModelRuntimeCapability, ModelRuntimeDaemonEndpoint,
-    ModelRuntimeDaemonSupervisor,
+    ModelRuntimeDaemonLaunchPolicy, ModelRuntimeDaemonSupervisor,
 };
 pub use resolver::StdPythonRuntimeResolver;
 pub use state::StdRuntimeStateProbe;

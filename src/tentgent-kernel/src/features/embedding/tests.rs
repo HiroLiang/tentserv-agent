@@ -1,16 +1,19 @@
+#[cfg(any())]
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::embedding::domain::{
-    EmbeddingBackend, EmbeddingInput, EmbeddingRequest, EmbeddingResponse, EmbeddingRuntimeTarget,
-    EmbeddingVector, ResolvedEmbeddingTarget,
+    EmbeddingBackend, EmbeddingInput, EmbeddingRuntimeTarget,
+};
+#[cfg(any())]
+use crate::features::embedding::domain::{
+    EmbeddingRequest, EmbeddingResponse, EmbeddingVector, ResolvedEmbeddingTarget,
 };
 use crate::features::embedding::infra::StdEmbeddingModelResolver;
-use crate::features::embedding::ports::{
-    EmbeddingModelResolveRequest, EmbeddingModelResolver, EmbeddingRuntimeClient,
-    EmbeddingRuntimeRequest,
-};
+use crate::features::embedding::ports::{EmbeddingModelResolveRequest, EmbeddingModelResolver};
+#[cfg(any())]
+use crate::features::embedding::ports::{EmbeddingRuntimeClient, EmbeddingRuntimeRequest};
 use crate::features::model::domain::{
     default_model_capability_source, ModelCapability, ModelFormat, ModelInspection, ModelMetadata,
     ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
@@ -19,9 +22,11 @@ use crate::features::model::usecases::{
     ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
     ModelListResult,
 };
+#[cfg(any())]
 use crate::features::runtime::domain::{
     PythonRuntimeLayout, PythonRuntimeSource, RuntimeEntrypoint,
 };
+#[cfg(any())]
 use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
@@ -225,10 +230,12 @@ impl ModelCatalogReadUseCase for FakeModelCatalog {
     }
 }
 
+#[cfg(any())]
 struct FakeExecutableResolver {
     entrypoint: PathBuf,
 }
 
+#[cfg(any())]
 impl RuntimeExecutableResolver for FakeExecutableResolver {
     fn python_binary_path(&self, _runtime: &PythonRuntimeLayout) -> KernelResult<PathBuf> {
         Ok(PathBuf::from("python"))
@@ -244,6 +251,7 @@ impl RuntimeExecutableResolver for FakeExecutableResolver {
     }
 }
 
+#[cfg(any())]
 fn embedding_request() -> EmbeddingRequest {
     EmbeddingRequest {
         target: ResolvedEmbeddingTarget {
@@ -315,6 +323,7 @@ fn runtime_layout(home: &Path) -> RuntimeLayout {
     }
 }
 
+#[cfg(any())]
 fn python_runtime(project: &Path, env: &Path) -> PythonRuntimeLayout {
     PythonRuntimeLayout {
         project_dir: project.to_path_buf(),

@@ -17,8 +17,8 @@ use crate::foundation::platform::{
 
 use super::path::normalize_existing_path;
 use super::{
-    StdPythonRuntimeResolver, StdRuntimeBootstrapPlanner, StdRuntimeExecutableResolver,
-    StdRuntimeStateProbe,
+    ModelRuntimeDaemonLaunchPolicy, StdPythonRuntimeResolver, StdRuntimeBootstrapPlanner,
+    StdRuntimeExecutableResolver, StdRuntimeStateProbe,
 };
 
 #[test]
@@ -72,6 +72,14 @@ fn std_runtime_executable_resolver_uses_platform_bin_layout() {
         assert!(python.ends_with("bin/python"));
         assert!(model_runtime.ends_with("bin/tentgent-model-runtime-daemon"));
     }
+}
+
+#[test]
+fn model_runtime_launch_policy_overrides_idle_keep_alive_only() {
+    let policy = ModelRuntimeDaemonLaunchPolicy::with_idle_keep_alive_seconds(30);
+
+    assert_eq!(policy.idle_keep_alive_seconds, "30");
+    assert_eq!(policy.model_idle_timeout_seconds, "-1");
 }
 
 #[test]

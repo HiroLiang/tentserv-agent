@@ -765,13 +765,13 @@ cargo run -- daemon run --host 127.0.0.1 --port 8790
 All daemon CLI launch paths reject wildcard or non-loopback binds without
 `TENTGENT_DAEMON_TOKEN` unless `--allow-unsafe-bind` is passed explicitly.
 Detached daemon children inherit daemon configuration environment variables,
-including `TENTGENT_DAEMON_TOKEN`; model-bound server children still remove that
-token before launch.
+including `TENTGENT_DAEMON_TOKEN`; local model-server proxy children remove
+that token before launch.
 
 At this stage the daemon records process metadata and serves `GET /healthz`,
 `GET /v1/status`, and read-only discovery endpoints for models, adapters,
 datasets, server specs, controlled server lifecycle mutations, and
-`POST /v1/chat` proxying to already-running model-bound servers.
+`POST /v1/chat` proxying to already-running model-bound server ports.
 `POST /v1/chat/completions` adds a limited OpenAI-style success wrapper for
 basic chat-completion clients; its `model` field selects a Tentgent server ref
 or unique prefix, not a provider model name. Both chat routes can optionally use
@@ -810,9 +810,10 @@ The active Rust daemon host lives in `src/tentgent-daemon/`:
 - `src/handlers/rest/` owns endpoint handlers split by feature.
 - `src/runtime/` owns daemon-local job and scheduler state.
 
-Python model-bound server launch helpers are kernel-owned and exposed through
-the CLI and daemon adapters. The removed `tentgent-http` and `tentgent-core`
-crates are no longer workspace members.
+Model-bound server launch helpers are kernel-owned and exposed through the CLI
+and daemon adapters. Local starts launch the Rust proxy, which uses the shared
+Python model runtime daemon supervisor on demand. The removed `tentgent-http`
+and `tentgent-core` crates are no longer workspace members.
 
 ## Documentation Rules
 

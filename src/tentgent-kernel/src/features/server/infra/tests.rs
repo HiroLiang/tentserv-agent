@@ -188,7 +188,7 @@ fn file_catalog_stores_specs_and_process_metadata() {
 }
 
 #[test]
-fn local_runtime_args_use_model_runtime_daemon_shape() {
+fn local_runtime_args_use_rust_proxy_shape() {
     let server_ref = ServerRef::parse("c".repeat(SERVER_REF_HEX_LENGTH)).expect("server ref");
     let model_ref = ModelRef::parse("d".repeat(64)).expect("model ref");
     let spec = ServerSpec {
@@ -214,6 +214,7 @@ fn local_runtime_args_use_model_runtime_daemon_shape() {
     assert_eq!(
         parts.args,
         vec![
+            "__local-server-runtime",
             "--server-ref",
             spec.server_ref.as_str(),
             "--capability",
@@ -226,11 +227,9 @@ fn local_runtime_args_use_model_runtime_daemon_shape() {
             "/tmp/tentgent-home",
             "--model-ref",
             spec.model_ref.as_ref().expect("model ref").as_str(),
-            "--idle-keep-alive-seconds",
-            "-1",
-            "--model-idle-timeout-seconds",
-            "30",
-            "--lazy-load"
+            "--lazy-load",
+            "--idle-seconds",
+            "30"
         ]
     );
     assert!(parts.env.is_empty());

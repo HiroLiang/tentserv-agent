@@ -31,7 +31,9 @@ pub use model::{ModelCapabilityCommands, ModelCommands};
 pub use rerank::RerankCommand;
 pub use runtime::RuntimeBootstrapProfile;
 pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands, RuntimeStatusCommand};
-pub use server::{CloudServerRuntimeCommand, ServerCommands, ServerRunCommand};
+pub use server::{
+    CloudServerRuntimeCommand, LocalServerRuntimeCommand, ServerCommands, ServerRunCommand,
+};
 pub use session::SessionCommands;
 pub use speak::SpeakCommand;
 pub use store::{StoreCommands, StoreGcCommand};
@@ -197,11 +199,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: DaemonCommands,
     },
-    /// Define and launch long-lived local model servers.
+    /// Define and launch stable local model server proxies.
     #[command(
         name = "server",
-        about = "Define and launch long-lived local model servers.",
-        long_about = "Define, launch, inspect, and control long-lived local model servers. Tentgent persists stable server specs under the runtime home, can launch a server in foreground or background mode, and exposes registry-style commands such as `ls`, `ps`, `inspect`, `start`, `stop`, and `rm`."
+        about = "Define and launch stable local model server proxies.",
+        long_about = "Define, launch, inspect, and control stable local model server proxies. Tentgent persists stable server specs under the runtime home, can launch a server proxy in foreground or background mode, and exposes registry-style commands such as `ls`, `ps`, `inspect`, `start`, `stop`, and `rm`."
     )]
     Server {
         #[command(subcommand)]
@@ -210,6 +212,9 @@ pub enum Commands {
     /// Internal cloud server runtime worker.
     #[command(name = "__cloud-server-runtime", hide = true)]
     CloudServerRuntime(CloudServerRuntimeCommand),
+    /// Internal local server proxy runtime worker.
+    #[command(name = "__local-server-runtime", hide = true)]
+    LocalServerRuntime(LocalServerRuntimeCommand),
     /// Inspect and manage local chat sessions.
     #[command(
         name = "session",
