@@ -127,6 +127,9 @@ archived after M7 completed.
 - [cloud-provider-server-mvp.md](./cloud-provider-server-mvp.md)
   Completed OpenAI and Claude cloud provider server routing through local
   `tentgent server` chat.
+- [cloud-runtime-test-tracker.md](./cloud-runtime-test-tracker.md)
+  Completed OpenAI cloud runtime validation tracker for direct cloud servers,
+  daemon cloud routes, dataset synth/eval, and Keychain secret resolution.
 - [http-chat-streaming-mvp.md](./http-chat-streaming-mvp.md)
   Completed Server-Sent Events streaming for local base-model, local adapter,
   and cloud provider chat.

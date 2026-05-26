@@ -348,8 +348,10 @@ fn cloud_image_generation_request(
                 "model": request.model,
                 "prompt": request.prompt,
                 "n": 1,
-                "response_format": "b64_json",
             });
+            if !request.model.starts_with("gpt-image-") {
+                body["response_format"] = Value::String("b64_json".to_string());
+            }
             if let Some(size) = &request.size {
                 body["size"] = Value::String(size.clone());
             }
@@ -1019,6 +1021,47 @@ mod tests {
             "image/png"
         );
         assert_eq!(value["generationConfig"]["maxOutputTokens"], 12);
+    }
+
+    #[test]
+    fn openai_gpt_image_template_omits_response_format() {
+        let http = client()
+            .image_generation_request(
+                &CloudImageGenerationRequest {
+                    provider: Provider::OpenAI,
+                    model: "gpt-image-1".to_string(),
+                    prompt: "red square".to_string(),
+                    size: Some("1024x1024".to_string()),
+                },
+                "sk-test",
+            )
+            .unwrap();
+        let body = http.body().and_then(|body| body.as_bytes()).unwrap();
+        let value: Value = serde_json::from_slice(body).unwrap();
+
+        assert_eq!(value["model"], "gpt-image-1");
+        assert_eq!(value["size"], "1024x1024");
+        assert!(value.get("response_format").is_none());
+    }
+
+    #[test]
+    fn openai_legacy_image_template_requests_b64_json() {
+        let http = client()
+            .image_generation_request(
+                &CloudImageGenerationRequest {
+                    provider: Provider::OpenAI,
+                    model: "dall-e-3".to_string(),
+                    prompt: "red square".to_string(),
+                    size: None,
+                },
+                "sk-test",
+            )
+            .unwrap();
+        let body = http.body().and_then(|body| body.as_bytes()).unwrap();
+        let value: Value = serde_json::from_slice(body).unwrap();
+
+        assert_eq!(value["model"], "dall-e-3");
+        assert_eq!(value["response_format"], "b64_json");
     }
 
     #[test]
