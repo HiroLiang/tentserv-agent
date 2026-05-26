@@ -61,6 +61,7 @@ pub enum RuntimeBootstrapProfile {
     #[value(name = "local-model")]
     LocalModel,
     Training,
+    #[value(alias = "all")]
     Full,
 }
 

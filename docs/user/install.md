@@ -59,6 +59,8 @@ tentgent runtime bootstrap --profile training
 tentgent runtime bootstrap --profile full
 ```
 
+`--profile all` is accepted as an alias for `--profile full`.
+
 To install only the CLI and support files first:
 
 ```bash

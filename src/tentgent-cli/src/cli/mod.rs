@@ -825,6 +825,25 @@ mod tests {
     }
 
     #[test]
+    fn runtime_bootstrap_profile_accepts_all_alias_for_full() {
+        let cli = Cli::try_parse_from(["tentgent", "runtime", "bootstrap", "--profile", "all"])
+            .expect("parse runtime bootstrap profile alias");
+
+        match cli.command {
+            Commands::Runtime { action } => match action {
+                super::commands::RuntimeCommands::Bootstrap(command) => {
+                    assert_eq!(
+                        command.profile,
+                        super::commands::RuntimeBootstrapProfile::Full
+                    );
+                }
+                other => panic!("unexpected runtime command: {other:?}"),
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parses_runtime_status_options() {
         let cli = Cli::try_parse_from([
             "tentgent",

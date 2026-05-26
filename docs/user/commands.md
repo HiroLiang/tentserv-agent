@@ -86,6 +86,7 @@ Install heavier optional runtime profiles only when needed:
 tentgent runtime bootstrap --profile local-model
 tentgent runtime bootstrap --profile training
 tentgent runtime bootstrap --profile full
+tentgent runtime bootstrap --profile all
 ```
 
 Inspect the paths that would be used without syncing:

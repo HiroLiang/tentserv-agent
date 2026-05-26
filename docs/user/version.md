@@ -2,6 +2,18 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.5.2
+
+`v0.5.2` is a patch release for readable runtime diagnostics.
+
+What changed:
+
+- `tentgent runtime status` now renders wrapped field/value rows instead of a
+  two-column box table, so long missing-module and path messages do not stretch
+  or break narrow terminals.
+- `tentgent runtime bootstrap --profile all` is accepted as an alias for
+  `--profile full`.
+
 ## v0.5.1
 
 `v0.5.1` is a patch release for package-manager and direct-installer Python
@@ -282,7 +294,7 @@ Known limits:
 
 `v0.3.0` was the stable 0.3.x baseline for the former terminal UI alpha line
 and the first release candidate for Homebrew tap distribution. The current
-`v0.5.1` surface is CLI plus daemon REST only.
+`v0.5.2` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -313,7 +325,7 @@ Known limits:
 ## v0.3.0-alpha.2
 
 `v0.3.0-alpha.2` was a bugfix preview release for the former terminal UI alpha
-line. The current `v0.5.1` surface is CLI plus daemon REST only.
+line. The current `v0.5.2` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -340,7 +352,7 @@ Known limits:
 ## v0.3.0-alpha.1
 
 `v0.3.0-alpha.1` was a terminal UI preview release. It is kept here for
-historical context; the current `v0.5.1` surface is CLI plus daemon REST
+historical context; the current `v0.5.2` surface is CLI plus daemon REST
 only.
 
 Added:

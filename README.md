@@ -309,6 +309,7 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.5.2`: patch release for readable runtime diagnostics; `runtime status` now renders wrapped field/value rows, and `runtime bootstrap --profile all` aliases `full`.
 - `v0.5.1`: patch release for packaged Python workspace layout; includes the workspace `uv.lock` so managed runtime bootstrap works with `uv --frozen`.
 - `v0.5.0`: mature model-runtime server release; adds Rust local server proxying through the shared Python model runtime daemon, cloud provider server runtimes, direct local/cloud OpenAI-compatible endpoints, local model capability mutation and proof commands, and the OpenAI `gpt-image-1` request fix.
 - `v0.4.1`: signed macOS and M6 media workflow release; adds Developer ID/notarization workflow wiring, native media jobs, MLX media paths, and CLI plus daemon REST consolidation.

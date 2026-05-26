@@ -117,6 +117,8 @@ tentgent runtime bootstrap --profile training
 tentgent runtime bootstrap --profile full
 ```
 
+`--profile all` is accepted as an alias for `--profile full`.
+
 The `local-model` and `full` profiles install the direct
 `tentgent-model-runtime-daemon` entrypoint used by local `chat`, `embedding`,
 `rerank`, audio, vision, video, and image-generation server processes.
@@ -130,7 +132,8 @@ base bootstrap automatically unless `--skip-python-bootstrap` is passed.
 - `--project` overrides the Python daemon project.
 - `--env` overrides the managed Python environment.
 - `--uv` uses an explicit uv executable.
-- `--profile` selects `base`, `local-model`, `training`, or `full`.
+- `--profile` selects `base`, `local-model`, `training`, or `full`; `all`
+  aliases `full`.
 - `--dry-run` asks uv to plan without syncing.
 - `--print-plan` prints the resolved bootstrap plan without syncing.
 
