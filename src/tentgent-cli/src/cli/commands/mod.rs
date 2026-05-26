@@ -31,7 +31,7 @@ pub use model::{ModelCapabilityCommands, ModelCommands};
 pub use rerank::RerankCommand;
 pub use runtime::RuntimeBootstrapProfile;
 pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands, RuntimeStatusCommand};
-pub use server::{ServerCommands, ServerRunCommand};
+pub use server::{CloudServerRuntimeCommand, ServerCommands, ServerRunCommand};
 pub use session::SessionCommands;
 pub use speak::SpeakCommand;
 pub use store::{StoreCommands, StoreGcCommand};
@@ -207,6 +207,9 @@ pub enum Commands {
         #[command(subcommand)]
         action: ServerCommands,
     },
+    /// Internal cloud server runtime worker.
+    #[command(name = "__cloud-server-runtime", hide = true)]
+    CloudServerRuntime(CloudServerRuntimeCommand),
     /// Inspect and manage local chat sessions.
     #[command(
         name = "session",

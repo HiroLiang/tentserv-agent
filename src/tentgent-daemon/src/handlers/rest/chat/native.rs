@@ -61,6 +61,7 @@ impl ChatRequest {
         ChatTransportRequest {
             model_ref: self.model_ref,
             adapter_ref: self.adapter_ref,
+            cloud_provider: None,
             messages: self
                 .messages
                 .into_iter()

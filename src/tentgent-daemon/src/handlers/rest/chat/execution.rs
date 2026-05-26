@@ -12,6 +12,7 @@ use serde::Serialize;
 use tentgent_kernel::{
     features::{
         adapter::domain::AdapterRefSelector,
+        auth::domain::Provider,
         chat::{
             domain::{
                 ChatFinishReason, ChatGenerationOptions, ChatMessage, ChatPrompt, ChatRole,
@@ -37,6 +38,7 @@ use crate::transport::rest::{error::RestError, state::RestState};
 pub(super) struct ChatTransportRequest {
     pub model_ref: String,
     pub adapter_ref: Option<String>,
+    pub cloud_provider: Option<Provider>,
     pub messages: Vec<ChatTransportMessage>,
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
@@ -167,13 +169,14 @@ pub(super) fn chat_preparation_request(
     request: ChatTransportRequest,
     stream: bool,
 ) -> Result<ChatPreparationRequest, RestError> {
-    let model_selector = model_selector(state, &request.model_ref)?;
+    let model_selector = model_selector(state, &request.model_ref);
     let adapter_selector = match request.adapter_ref {
         Some(value) => Some(AdapterRefSelector::parse(&value).map_err(|err| {
             RestError::bad_request("bad_request", format!("invalid adapter reference: {err}"))
         })?),
         None => None,
     };
+    let has_adapter = adapter_selector.is_some();
     let messages = request
         .messages
         .into_iter()
@@ -182,13 +185,28 @@ pub(super) fn chat_preparation_request(
     let prompt = ChatPrompt::new(messages)
         .map_err(|err| RestError::bad_request("bad_request", err.to_string()))?;
 
-    Ok(ChatPreparationRequest {
-        layout: state.app().layout_input(LayoutResolveMode::ReadOnly),
-        runtime: PythonRuntimeResolutionInput::default(),
-        target: ChatTargetSelection::LocalModel {
+    let target = match (model_selector, request.cloud_provider) {
+        (Ok(model_selector), _) => ChatTargetSelection::LocalModel {
             model_selector,
             adapter_selector,
         },
+        (Err(_), Some(provider)) if !has_adapter => ChatTargetSelection::CloudProvider {
+            provider,
+            provider_model: request.model_ref,
+        },
+        (Err(_), Some(_)) => {
+            return Err(RestError::bad_request(
+                "unsupported_target",
+                "cloud provider chat does not support adapter_ref",
+            ))
+        }
+        (Err(error), _) => return Err(error),
+    };
+
+    Ok(ChatPreparationRequest {
+        layout: state.app().layout_input(LayoutResolveMode::ReadOnly),
+        runtime: PythonRuntimeResolutionInput::default(),
+        target,
         prompt,
         options: ChatGenerationOptions {
             max_tokens: request.max_tokens,

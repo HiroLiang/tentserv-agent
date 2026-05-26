@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod bootstrap;
+pub mod cloud_server;
 pub mod handlers;
 pub mod kernel;
 pub mod runtime;

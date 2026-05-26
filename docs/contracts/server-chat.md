@@ -1,8 +1,9 @@
 # Server Chat
 
-This document defines the HTTP chat request contract for the Python server runtime.
-Cloud provider server mode is paused until it is ported to the model runtime
-HTTP boundary; the active contract below applies to local model-bound servers.
+This document defines the HTTP chat request contract for direct model-bound
+servers. Local model servers run through the Python model-runtime daemon.
+Cloud provider servers run as a Rust worker launched by `tentgent server run
+openai:<model>`, `anthropic:<model>`, `claude:<model>`, or `gemini:<model>`.
 
 ## Endpoint
 
@@ -30,17 +31,19 @@ using a stored server may still send explicit runtime model fields.
 Non-streaming responses are JSON encoded as UTF-8. Non-ASCII text should remain
 readable in the response body rather than being escaped as `\uXXXX` sequences.
 
-Direct model-server chat is stateless. The Python server runtime does not read
+Direct model-server chat is stateless. The direct server runtime does not read
 or write Tentgent session files, does not compact transcripts, and does not
 accept daemon-only session fields. Requests containing `session_ref` or
 `max_session_messages` return `400 session_context_unsupported`. Session-aware
 HTTP chat must go through the Rust daemon `POST /v1/chat` proxy, which removes
 session fields before forwarding the final model-bound request.
 
-The process serves chat only when launched with `--capability chat`. A server
-launched for any other capability rejects `POST /v1/chat` with
-`400 unsupported_target`; see [server-embedding.md](./server-embedding.md) and
-[server-rerank.md](./server-rerank.md) for sibling endpoint examples.
+Local model-bound processes serve chat only when launched with `--capability
+chat`. A local server launched for any other capability rejects `POST /v1/chat`
+with `400 unsupported_target`; see [server-embedding.md](./server-embedding.md)
+and [server-rerank.md](./server-rerank.md) for sibling endpoint examples. Cloud
+provider servers use provider capability gates instead because one Rust worker
+can expose multiple provider endpoint templates for the same bound model name.
 
 ## Streaming Contract
 
@@ -78,12 +81,13 @@ Preflight validation errors, adapter lookup errors, provider setup errors, and
 runtimes without streaming support must return normal JSON errors before SSE
 headers are sent.
 
-Current streaming support is intentionally staged:
+Current streaming support:
 
 - local base-model requests can stream through the selected backend
 - compatible local adapter requests can stream after adapter validation and request-time adapter selection
-- cloud provider server streaming is paused until it is ported to the model
-  runtime HTTP boundary
+- cloud provider servers accept `stream=true` and return the same Tentgent SSE
+  event shape; the Rust worker may coalesce provider output into one delta when
+  a provider streaming adapter is not used.
 
 ## Adapter Contract
 
@@ -131,16 +135,21 @@ The first implemented paths are conservative:
 
 ## Cloud Provider Client Boundary
 
-Cloud provider runtimes are paused. When restored, they should reuse the same
+Cloud provider runtimes use the Rust cloud client. They reuse the same
 normalized `messages`, `max_tokens`, and `temperature` request fields before
 provider-specific mapping.
 
 - OpenAI maps normalized messages directly to chat-completion messages.
 - Anthropic maps `system` messages to the top-level `system` field and sends only `user` and `assistant` messages in `messages`.
+- Gemini maps system messages to `systemInstruction` and user/assistant content
+  to `generateContent` parts.
 - Provider API keys must be supplied by launch-time environment and must not be stored in server specs or response errors.
-- Cloud provider runtimes do not load local model records and report `cloud_proxy` in health snapshots.
-- `adapter_ref` is not supported for cloud provider runtimes and should return a clear `501`.
-- Cloud provider streaming must normalize provider-specific delta events into the same SSE `delta` events used by local runtimes.
+- Cloud provider runtimes do not load local model records and report
+  `runtime_kind: cloud` in health snapshots.
+- `adapter_ref` is not supported for cloud provider runtimes and should return a clear error.
+- Cloud provider streaming must return the same SSE `delta` events used by
+  local runtimes; workers may coalesce a non-streaming provider response into
+  one delta until provider-native streaming adapters are added.
 - Provider request and response parsing should live outside HTTP handlers so it can be tested with mocked transports.
 
 ## Error Mapping

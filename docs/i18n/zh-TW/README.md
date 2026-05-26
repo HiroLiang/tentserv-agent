@@ -283,8 +283,8 @@ export TENTGENT_HOME="$HOME/.tentgent"
 ```bash
 export TENTGENT_MODELS_DIR="/Volumes/models/tentgent"
 export TENTGENT_DATASETS_DIR="$HOME/datasets/tentgent"
-export TENTGENT_PYTHON_DIR="$PWD/python/tentgent-daemon"
-export TENTGENT_PYTHON_ENV_DIR="$PWD/python/tentgent-daemon/.venv"
+export TENTGENT_PYTHON_DIR="$PWD/python/tentgent-model-runtime"
+export TENTGENT_PYTHON_ENV_DIR="$PWD/python/tentgent-model-runtime/.venv"
 ```
 
 Tentgent 會先讀 `.env` / env，再 fallback 到系統 Keychain。若要讓 `.env`

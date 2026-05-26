@@ -30,7 +30,19 @@ use tentgent_kernel::{
             },
         },
         audio::usecases::{StdAudioSpeechUseCase, StdAudioTranscriptionUseCase},
-        chat::usecases::StdChatUseCase,
+        auth::{
+            domain::{AuthEnvLoadPolicy, Provider},
+            usecases::{AuthSecretResolutionRequest, AuthSecretResolverUseCase},
+        },
+        chat::{
+            domain::{ChatFinishReason, ChatResponse, ChatRuntimeTarget, ChatStreamEvent},
+            ports::{ChatPortFuture, ChatRuntimeClient, ChatRuntimeRequest},
+            usecases::StdChatUseCase,
+        },
+        cloud::{
+            domain::{CloudChatMessage, CloudChatRequest, CloudChatResponse, CloudStreamEvent},
+            infra::ReqwestCloudModelClient,
+        },
         daemon::infra::{StdDaemonKernel, DEFAULT_DAEMON_PROBE_TIMEOUT},
         dataset::usecases::{StdDatasetEvaluationUseCase, StdDatasetSynthesisUseCase},
         doctor::usecases::{
@@ -173,7 +185,7 @@ impl KernelComponents {
     }
 
     pub fn chat_usecase(&self) -> StdChatUseCase<'_> {
-        StdChatUseCase::new(&self.runtime, &self.models, &self.adapters, &self.runtime)
+        StdChatUseCase::new(&self.runtime, &self.models, &self.adapters, self)
     }
 
     pub fn embedding_usecase(&self) -> StdEmbeddingUseCase<'_> {
@@ -228,6 +240,140 @@ impl KernelComponents {
 
     pub fn doctor_repair_usecase(&self) -> StdDoctorRepairUseCase<'_> {
         self.doctor.repair_usecase(&self.runtime, self)
+    }
+}
+
+impl ChatRuntimeClient for KernelComponents {
+    fn generate_chat<'a>(
+        &'a self,
+        request: ChatRuntimeRequest,
+    ) -> ChatPortFuture<'a, ChatResponse> {
+        Box::pin(async move {
+            match &request.request.target.runtime {
+                ChatRuntimeTarget::LocalModel { .. } => self.runtime.generate_chat(request).await,
+                ChatRuntimeTarget::CloudProvider {
+                    provider,
+                    provider_model,
+                } => {
+                    let secret = self.resolve_cloud_chat_secret(*provider)?;
+                    let client = ReqwestCloudModelClient::new().map_err(cloud_chat_error)?;
+                    let response = client
+                        .complete_chat(
+                            cloud_chat_request(*provider, provider_model, &request, false),
+                            secret.secret(),
+                        )
+                        .await
+                        .map_err(cloud_chat_error)?;
+                    Ok(chat_response_from_cloud(response))
+                }
+            }
+        })
+    }
+
+    fn stream_chat<'a>(
+        &'a self,
+        request: ChatRuntimeRequest,
+        sink: &'a mut dyn FnMut(ChatStreamEvent),
+    ) -> ChatPortFuture<'a, ChatResponse> {
+        Box::pin(async move {
+            match &request.request.target.runtime {
+                ChatRuntimeTarget::LocalModel { .. } => {
+                    self.runtime.stream_chat(request, sink).await
+                }
+                ChatRuntimeTarget::CloudProvider {
+                    provider,
+                    provider_model,
+                } => {
+                    let secret = self.resolve_cloud_chat_secret(*provider)?;
+                    let client = ReqwestCloudModelClient::new().map_err(cloud_chat_error)?;
+                    let mut cloud_sink = |event| match event {
+                        CloudStreamEvent::Delta { text } => sink(ChatStreamEvent::Delta { text }),
+                        CloudStreamEvent::Done { finish_reason } => sink(ChatStreamEvent::Done {
+                            finish_reason: chat_finish_reason_from_cloud(&finish_reason),
+                        }),
+                        CloudStreamEvent::Error { code, message } => {
+                            sink(ChatStreamEvent::Error { code, message })
+                        }
+                    };
+                    let response = client
+                        .stream_chat(
+                            cloud_chat_request(*provider, provider_model, &request, true),
+                            secret.secret(),
+                            &mut cloud_sink,
+                        )
+                        .await
+                        .map_err(cloud_chat_error)?;
+                    Ok(chat_response_from_cloud(response))
+                }
+            }
+        })
+    }
+}
+
+impl KernelComponents {
+    fn resolve_cloud_chat_secret(
+        &self,
+        provider: Provider,
+    ) -> KernelResult<tentgent_kernel::features::auth::domain::AuthSecretMaterial> {
+        self.auth
+            .resolve_secret(AuthSecretResolutionRequest::for_secret_use(
+                provider,
+                AuthEnvLoadPolicy::CwdDotenvOverride,
+            ))?
+            .secret
+            .ok_or_else(|| {
+                KernelError::ChatRuntimeUnavailable(format!(
+                    "{} API key is required for cloud chat",
+                    provider.display_name()
+                ))
+            })
+    }
+}
+
+fn cloud_chat_request(
+    provider: Provider,
+    provider_model: &str,
+    request: &ChatRuntimeRequest,
+    stream: bool,
+) -> CloudChatRequest {
+    CloudChatRequest {
+        provider,
+        model: provider_model.to_string(),
+        messages: request
+            .request
+            .prompt
+            .messages
+            .iter()
+            .map(|message| CloudChatMessage::text(message.role.as_str(), message.content.clone()))
+            .collect(),
+        max_tokens: request.request.options.max_tokens,
+        temperature: request.request.options.temperature,
+        stream,
+    }
+}
+
+fn chat_response_from_cloud(response: CloudChatResponse) -> ChatResponse {
+    ChatResponse {
+        text: response.text,
+        finish_reason: chat_finish_reason_from_cloud(&response.finish_reason),
+    }
+}
+
+fn chat_finish_reason_from_cloud(reason: &str) -> ChatFinishReason {
+    match reason.to_ascii_lowercase().as_str() {
+        "stop" | "end_turn" | "stop_sequence" | "stop_sequence\n" => ChatFinishReason::Stop,
+        "length" | "max_tokens" | "max_output_tokens" => ChatFinishReason::Length,
+        other => ChatFinishReason::Other(other.to_string()),
+    }
+}
+
+fn cloud_chat_error(error: KernelError) -> KernelError {
+    match error {
+        KernelError::RuntimeStateUnavailable(message) => {
+            KernelError::ChatRuntimeUnavailable(message)
+        }
+        KernelError::UnsupportedTarget(message) => KernelError::UnsupportedTarget(message),
+        other => other,
     }
 }
 

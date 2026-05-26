@@ -191,8 +191,9 @@ adapter, or dataset content under `store/<ref>`; use the specific `model rm`,
 - MLX adapters can be selected per request; changing adapters reloads the MLX model for correctness.
 - HTTP `/v1/chat` returns non-streaming JSON by default.
 - Local base-model and compatible adapter requests can use `stream=true` for Server-Sent Events.
-- Cloud provider runtimes are paused until they are ported to the model runtime
-  HTTP boundary.
+- Cloud provider chat, embedding, image generation, and provider-backed dataset
+  workflows use Rust cloud clients and provider keys from env/keychain. They do
+  not start Python model-runtime workers.
 - Windows x86_64 is packaged, but MLX is blocked on Windows.
 - Linux x86_64 is available as a prerelease GitHub Release install path. The
   default base Python runtime has been smoke-tested on Ubuntu 24.04 without

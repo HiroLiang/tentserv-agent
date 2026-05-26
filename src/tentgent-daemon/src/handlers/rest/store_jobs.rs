@@ -164,6 +164,7 @@ pub fn dataset_auth_request(provider: DatasetProvider) -> AuthSecretResolutionRe
     let provider = match provider {
         DatasetProvider::OpenAI => Provider::OpenAI,
         DatasetProvider::Anthropic => Provider::Anthropic,
+        DatasetProvider::Gemini => Provider::Gemini,
     };
     AuthSecretResolutionRequest::for_secret_use(provider, AuthEnvLoadPolicy::CwdDotenvOverride)
 }
@@ -172,6 +173,7 @@ pub fn required_dataset_provider(value: Option<&str>) -> Result<DatasetProvider,
     match required_string(value, "provider")?.as_str() {
         "openai" => Ok(DatasetProvider::OpenAI),
         "anthropic" => Ok(DatasetProvider::Anthropic),
+        "gemini" => Ok(DatasetProvider::Gemini),
         _ => Err(RestError::bad_request(
             "bad_request",
             "`provider` must be one of openai, anthropic",

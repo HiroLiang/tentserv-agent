@@ -5,7 +5,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use tentgent_kernel::features::chat::domain::ChatFinishReason;
+use tentgent_kernel::features::{auth::domain::Provider, chat::domain::ChatFinishReason};
 
 use crate::transport::rest::{error::RestError, state::RestState};
 
@@ -99,6 +99,7 @@ impl ClaudeMessagesRequest {
         Ok(ChatTransportRequest {
             model_ref: self.model,
             adapter_ref: self.adapter_ref,
+            cloud_provider: Some(Provider::Anthropic),
             messages,
             max_tokens: self.max_tokens,
             temperature: self.temperature,

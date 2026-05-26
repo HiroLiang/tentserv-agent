@@ -79,10 +79,43 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
             ServerRuntimeTarget::CloudProvider {
                 provider,
                 provider_model,
-            } if port_auto => compute_server_ref(CloudAutoPortServerIdentity {
+                capability,
+            } if port_auto && *capability == ServerCapability::Chat => {
+                compute_server_ref(CloudAutoPortServerIdentity {
+                    runtime_kind: ServerRuntimeKind::Cloud,
+                    provider: provider.as_str(),
+                    provider_model,
+                    host,
+                    port,
+                    port_auto,
+                    lazy_load,
+                    idle_seconds,
+                })?
+            }
+            ServerRuntimeTarget::CloudProvider {
+                provider,
+                provider_model,
+                capability,
+            } if *capability == ServerCapability::Chat => {
+                compute_server_ref(CloudServerIdentity {
+                    runtime_kind: ServerRuntimeKind::Cloud,
+                    provider: provider.as_str(),
+                    provider_model,
+                    host,
+                    port,
+                    lazy_load,
+                    idle_seconds,
+                })?
+            }
+            ServerRuntimeTarget::CloudProvider {
+                provider,
+                provider_model,
+                capability,
+            } if port_auto => compute_server_ref(CloudCapabilityAutoPortServerIdentity {
                 runtime_kind: ServerRuntimeKind::Cloud,
                 provider: provider.as_str(),
                 provider_model,
+                capability: capability.as_str(),
                 host,
                 port,
                 port_auto,
@@ -92,10 +125,12 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
             ServerRuntimeTarget::CloudProvider {
                 provider,
                 provider_model,
-            } => compute_server_ref(CloudServerIdentity {
+                capability,
+            } => compute_server_ref(CloudCapabilityServerIdentity {
                 runtime_kind: ServerRuntimeKind::Cloud,
                 provider: provider.as_str(),
                 provider_model,
+                capability: capability.as_str(),
                 host,
                 port,
                 lazy_load,
@@ -163,6 +198,31 @@ struct CloudAutoPortServerIdentity<'a> {
     runtime_kind: ServerRuntimeKind,
     provider: &'a str,
     provider_model: &'a str,
+    host: &'a str,
+    port: u16,
+    port_auto: bool,
+    lazy_load: bool,
+    idle_seconds: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct CloudCapabilityServerIdentity<'a> {
+    runtime_kind: ServerRuntimeKind,
+    provider: &'a str,
+    provider_model: &'a str,
+    capability: &'a str,
+    host: &'a str,
+    port: u16,
+    lazy_load: bool,
+    idle_seconds: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct CloudCapabilityAutoPortServerIdentity<'a> {
+    runtime_kind: ServerRuntimeKind,
+    provider: &'a str,
+    provider_model: &'a str,
+    capability: &'a str,
     host: &'a str,
     port: u16,
     port_auto: bool,

@@ -192,6 +192,8 @@ pub enum CloudProvider {
     OpenAI,
     #[serde(rename = "anthropic")]
     Anthropic,
+    #[serde(rename = "gemini")]
+    Gemini,
 }
 
 impl CloudProvider {
@@ -199,6 +201,7 @@ impl CloudProvider {
         match self {
             Self::OpenAI => "openai",
             Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
         }
     }
 }
@@ -448,6 +451,9 @@ pub fn parse_server_runtime_selection(
     {
         return cloud_runtime_selection(CloudProvider::Anthropic, provider_model);
     }
+    if let Some(provider_model) = trimmed.strip_prefix("gemini:") {
+        return cloud_runtime_selection(CloudProvider::Gemini, provider_model);
+    }
 
     let selector = ModelRefSelector::parse(trimmed)
         .map_err(|err| ServerRuntimeSelectionError::InvalidLocalModelRef(err.to_string()))?;
@@ -491,6 +497,7 @@ pub enum ServerRuntimeTarget {
     CloudProvider {
         provider: CloudProvider,
         provider_model: String,
+        capability: ServerCapability,
     },
 }
 

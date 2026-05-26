@@ -27,7 +27,7 @@ pub use layout::StdDatasetStoreLayoutInitializer;
 pub use manifest::StdDatasetManifestBuilder;
 pub use package::StdDatasetPackageDetector;
 pub use reference_guard::FileDatasetReferenceGuard;
-pub use runtime::{PythonDatasetEvalRuntimeClient, PythonDatasetSynthRuntimeClient};
+pub use runtime::{CloudDatasetEvalRuntimeClient, CloudDatasetSynthRuntimeClient};
 pub use staging::StdDatasetSourceStager;
 pub use template::MarkdownDatasetTemplateRenderer;
 pub use validator::StdDatasetValidator;

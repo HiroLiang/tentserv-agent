@@ -17,7 +17,7 @@ use tentgent_kernel::{
         },
         dataset::{
             domain::{DatasetRuntimeDebug, DatasetSynthRuntimeOutput},
-            infra::{PythonDatasetEvalRuntimeClient, PythonDatasetSynthRuntimeClient},
+            infra::{CloudDatasetEvalRuntimeClient, CloudDatasetSynthRuntimeClient},
             ports::{
                 DatasetEvalRuntimeClient, DatasetEvalRuntimeRequest, DatasetPortFuture,
                 DatasetSynthPromptRuntimeRequest, DatasetSynthRuntimeClient,
@@ -324,7 +324,7 @@ impl DatasetSynthRuntimeClient for RuntimeKernelComponent {
         request: DatasetSynthPromptRuntimeRequest,
     ) -> DatasetPortFuture<'_, String> {
         Box::pin(async move {
-            PythonDatasetSynthRuntimeClient::new(self)
+            CloudDatasetSynthRuntimeClient::new()
                 .render_synth_prompt(request)
                 .await
         })
@@ -335,7 +335,7 @@ impl DatasetSynthRuntimeClient for RuntimeKernelComponent {
         request: DatasetSynthRuntimeRequest,
     ) -> DatasetPortFuture<'_, DatasetSynthRuntimeOutput> {
         Box::pin(async move {
-            PythonDatasetSynthRuntimeClient::new(self)
+            CloudDatasetSynthRuntimeClient::new()
                 .synthesize_dataset(request)
                 .await
         })
@@ -348,13 +348,13 @@ impl DatasetEvalRuntimeClient for RuntimeKernelComponent {
         request: DatasetEvalRuntimeRequest,
     ) -> DatasetPortFuture<'_, serde_json::Value> {
         Box::pin(async move {
-            PythonDatasetEvalRuntimeClient::new(self)
+            CloudDatasetEvalRuntimeClient::new()
                 .evaluate_dataset(request)
                 .await
         })
     }
 
     fn runtime_debug(&self, error_detail: &str) -> Option<DatasetRuntimeDebug> {
-        PythonDatasetEvalRuntimeClient::new(self).runtime_debug(error_detail)
+        CloudDatasetEvalRuntimeClient::new().runtime_debug(error_detail)
     }
 }

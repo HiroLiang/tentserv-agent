@@ -54,6 +54,9 @@ pub async fn run() -> miette::Result<()> {
         Commands::Video { action } => video::handle_video_command(action).await?,
         Commands::Image { action } => image::handle_image_command(action).await?,
         Commands::Server { action } => server::handle_server_command(action).await?,
+        Commands::CloudServerRuntime(command) => {
+            server::handle_cloud_server_runtime(command).await?
+        }
         Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Store { action } => store::handle_store_command(action)?,
         Commands::Doctor(command) => doctor::handle_doctor_command(command)?,

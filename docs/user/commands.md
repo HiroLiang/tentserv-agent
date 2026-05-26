@@ -784,11 +784,11 @@ curl -s http://127.0.0.1:8782/v1/rerank \
   -d '{"query":"refund policy","documents":["first text","second text"],"top_n":1}'
 ```
 
-Servers reject endpoint families that do not match their launch capability.
-Image generation chooses the runtime kind from both the bound model format and
-the requested image workflow. LoRA tuning is intentionally not a model-bound
-server capability; managed tuning runs choose their base model through the train
-plan and tuning payload.
+Local servers reject endpoint families that do not match their launch
+capability. Image generation chooses the runtime kind from both the bound model
+format and the requested image workflow. LoRA tuning is intentionally not a
+model-bound server capability; managed tuning runs choose their base model
+through the train plan and tuning payload.
 
 Stream a local base-model response with Server-Sent Events:
 
@@ -830,8 +830,21 @@ tentgent server ps
 tentgent server stop <server-ref>
 ```
 
-Cloud provider servers are paused until they are ported to the model runtime
-HTTP boundary.
+Launch a direct cloud provider server:
+
+```bash
+tentgent server run openai:gpt-4.1-mini --host 127.0.0.1 --port 8783
+tentgent server run anthropic:claude-3-5-sonnet-latest --host 127.0.0.1 --port 8784
+tentgent server run gemini:gemini-2.0-flash --host 127.0.0.1 --port 8785
+tentgent server run gemini:text-embedding-004 --capability embedding --port 8786
+```
+
+Cloud provider servers are Rust workers. They use provider keys from
+env/keychain at launch and expose `/v1/chat`, `/v1/chat/completions`,
+`/v1/messages`, `/v1/embeddings`, and `/v1/images/generations` when the bound
+provider supports that endpoint family. Explicit cloud server capabilities are
+accepted for `chat`, `vision-chat`, `embedding`, and `image-generation`;
+unsupported provider combinations are rejected at server spec creation.
 
 ## Daemon
 
@@ -1220,11 +1233,18 @@ A training dataset directory is ready when it contains `train.jsonl`. Optional c
 
 New chat and tool-use datasets should use the canonical `tentgent.chat.v1` schema in [docs/contracts/dataset-schema.md](../contracts/dataset-schema.md).
 
-Use `dataset template` when you want a paste-ready prompt for OpenAI, Claude, or another agent to produce JSONL that should pass `dataset validate`.
+Use `dataset template` when you want a paste-ready prompt for OpenAI, Claude, Gemini, or another agent to produce JSONL that should pass `dataset validate`.
 Its `--task` and `--language` options are prompt hints only. For example, `--task support` asks the template to prefer support-style examples, and `--language zh-TW` asks for Traditional Chinese content; both still produce the same `tentgent.chat.v1` schema.
 
-Provider-backed `dataset synth` and `dataset eval` are paused until they are
-ported to the model runtime HTTP boundary.
+Provider-backed `dataset synth` and `dataset eval` use Rust cloud clients:
+
+```bash
+tentgent dataset synth --provider gemini --model gemini-2.0-flash \
+  --brief "support chat in zh-TW" --output ./generated-dataset --count 20
+
+tentgent dataset eval ./generated-dataset --provider openai --model gpt-4.1-mini \
+  --output ./dataset-eval --split all --max-records 20
+```
 
 Most common long options have short aliases. Run `tentgent <command> --help` to see them; help always supports `-h`.
 

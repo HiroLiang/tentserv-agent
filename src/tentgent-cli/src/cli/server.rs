@@ -44,7 +44,7 @@ use tentgent_kernel::features::server::domain::{
     ServerStopOutcome, ServerSummary,
 };
 use tentgent_kernel::features::server::infra::{
-    FileServerCatalogStore, PythonServerRuntimeLauncher, ServerRuntimeLaunchRequest,
+    FileServerCatalogStore, ServerRuntimeLaunchRequest, ServerRuntimeLauncher,
     StdServerIdentityGenerator, StdServerProcessController, StdServerStoreLayoutInitializer,
     SystemServerClock,
 };
@@ -58,7 +58,7 @@ use tentgent_kernel::foundation::layout::{
 };
 
 use super::app::Cli;
-use super::commands::{ServerCommands, ServerRunCommand};
+use super::commands::{CloudServerRuntimeCommand, ServerCommands, ServerRunCommand};
 
 const BACKGROUND_HEALTH_STABLE: Duration = Duration::from_secs(2);
 const BACKGROUND_START_OBSERVATION: Duration = Duration::from_secs(10);
@@ -175,6 +175,27 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
     Ok(())
 }
 
+pub async fn handle_cloud_server_runtime(command: CloudServerRuntimeCommand) -> miette::Result<()> {
+    let _ = (command.lazy_load, command.idle_seconds);
+    let provider = match command.provider.trim().to_ascii_lowercase().as_str() {
+        "openai" => Provider::OpenAI,
+        "anthropic" | "claude" => Provider::Anthropic,
+        "gemini" | "google" => Provider::Gemini,
+        other => return Err(miette!("unsupported cloud provider `{other}`")),
+    };
+    tentgent_daemon::cloud_server::run_cloud_server_runtime(
+        tentgent_daemon::cloud_server::CloudServerRuntimeConfig {
+            server_ref: command.server_ref,
+            provider,
+            provider_model: command.provider_model,
+            host: command.host,
+            port: command.port,
+            runtime_home: command.home.map(|path| path.display().to_string()),
+        },
+    )
+    .await
+}
+
 async fn run_server(
     command: ServerRunCommand,
     kernel: &CliServerKernel,
@@ -237,7 +258,7 @@ async fn launch_foreground_server(
     auth: Option<AuthSecretMaterial>,
 ) -> miette::Result<()> {
     let runtime = kernel.resolve_runtime(&layout)?;
-    let launcher = PythonServerRuntimeLauncher::new(&kernel.executable_resolver);
+    let launcher = ServerRuntimeLauncher::new(&kernel.executable_resolver);
     let mut child = match launcher.spawn_foreground(ServerRuntimeLaunchRequest {
         layout: layout.clone(),
         runtime,
@@ -305,7 +326,7 @@ async fn launch_background_server(
     auth: Option<AuthSecretMaterial>,
 ) -> miette::Result<ServerInspection> {
     let runtime = kernel.resolve_runtime(&layout)?;
-    let launcher = PythonServerRuntimeLauncher::new(&kernel.executable_resolver);
+    let launcher = ServerRuntimeLauncher::new(&kernel.executable_resolver);
     let spawned = match launcher.spawn_background(ServerRuntimeLaunchRequest {
         layout: layout.clone(),
         runtime,
@@ -466,6 +487,7 @@ async fn resolve_server_runtime_auth(
     let provider = match inspection.spec.provider {
         Some(CloudProvider::OpenAI) => Provider::OpenAI,
         Some(CloudProvider::Anthropic) => Provider::Anthropic,
+        Some(CloudProvider::Gemini) => Provider::Gemini,
         None => {
             return Err(miette!(
                 "cloud server `{}` is missing provider metadata",

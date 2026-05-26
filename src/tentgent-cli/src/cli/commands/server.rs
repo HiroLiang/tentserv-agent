@@ -3,6 +3,26 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 use tentgent_kernel::features::server::domain::ServerCapability;
 
+#[derive(Debug, Args)]
+pub struct CloudServerRuntimeCommand {
+    #[arg(long, value_name = "SERVER_REF")]
+    pub server_ref: String,
+    #[arg(long, value_name = "PROVIDER")]
+    pub provider: String,
+    #[arg(long, value_name = "MODEL")]
+    pub provider_model: String,
+    #[arg(long, value_name = "HOST")]
+    pub host: String,
+    #[arg(long, value_name = "PORT")]
+    pub port: u16,
+    #[arg(long, value_name = "HOME")]
+    pub home: Option<PathBuf>,
+    #[arg(long)]
+    pub lazy_load: bool,
+    #[arg(long = "idle-seconds", value_name = "N")]
+    pub idle_seconds: Option<u64>,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum ServerCommands {
     /// Create a server spec and launch it in foreground mode by default.

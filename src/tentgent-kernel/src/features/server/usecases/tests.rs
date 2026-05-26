@@ -64,6 +64,10 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         first.outcome.inspection.spec.provider,
         Some(CloudProvider::Anthropic)
     );
+    assert_eq!(
+        first.outcome.inspection.spec.capability,
+        ServerCapability::Chat
+    );
 
     let reused = servers
         .prepare_server(ServerPrepareRequest {
@@ -82,13 +86,34 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         reused.outcome.inspection.spec.server_ref
     );
 
+    let embedding = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            runtime_ref: "gemini:text-embedding-004".to_string(),
+            capability: Some(ServerCapability::Embedding),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(8781),
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect("prepare cloud embedding server");
+    assert!(embedding.outcome.created);
+    assert_eq!(
+        embedding.outcome.inspection.spec.provider,
+        Some(CloudProvider::Gemini)
+    );
+    assert_eq!(
+        embedding.outcome.inspection.spec.capability,
+        ServerCapability::Embedding
+    );
+
     let listed = servers
         .list_servers(ServerListRequest {
             layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
             running_only: false,
         })
         .expect("list servers");
-    assert_eq!(listed.servers.len(), 1);
+    assert_eq!(listed.servers.len(), 2);
 
     let selector = ServerRefSelector::parse(first.outcome.inspection.spec.short_ref.clone())
         .expect("selector");
@@ -99,6 +124,44 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         })
         .expect("remove cloud server");
     assert!(!removed.outcome.inspection.server_dir.exists());
+}
+
+#[test]
+fn standard_server_usecase_rejects_cloud_capabilities_not_supported_by_provider() {
+    let fixture = Fixture::new("cloud-unsupported-capability");
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let err = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            runtime_ref: "anthropic:claude-3-5-sonnet-latest".to_string(),
+            capability: Some(ServerCapability::Embedding),
+            host: None,
+            port: None,
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect_err("anthropic embedding server should be rejected");
+
+    let message = err.to_string();
+    assert!(message.contains("cloud provider `anthropic`"));
+    assert!(message.contains("server capability `embedding`"));
+    assert!(message.contains("[chat, vision-chat]"));
 }
 
 #[test]

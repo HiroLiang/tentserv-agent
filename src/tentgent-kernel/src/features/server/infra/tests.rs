@@ -66,6 +66,7 @@ fn identity_generator_normalizes_anthropic_alias_inputs() {
             &ServerRuntimeTarget::CloudProvider {
                 provider: CloudProvider::Anthropic,
                 provider_model: "claude-3-5-sonnet-latest".to_string(),
+                capability: ServerCapability::Chat,
             },
             "127.0.0.1",
             8780,
@@ -79,6 +80,7 @@ fn identity_generator_normalizes_anthropic_alias_inputs() {
             &ServerRuntimeTarget::CloudProvider {
                 provider: CloudProvider::Anthropic,
                 provider_model: "claude-3-5-sonnet-latest".to_string(),
+                capability: ServerCapability::Chat,
             },
             "127.0.0.1",
             8780,
@@ -89,6 +91,41 @@ fn identity_generator_normalizes_anthropic_alias_inputs() {
         .expect("second ref");
 
     assert_eq!(first, second);
+}
+
+#[test]
+fn cloud_identity_separates_non_chat_capabilities() {
+    let identity = StdServerIdentityGenerator;
+    let chat = identity
+        .server_ref_for_target(
+            &ServerRuntimeTarget::CloudProvider {
+                provider: CloudProvider::OpenAI,
+                provider_model: "gpt-4.1-mini".to_string(),
+                capability: ServerCapability::Chat,
+            },
+            "127.0.0.1",
+            8780,
+            false,
+            false,
+            None,
+        )
+        .expect("chat ref");
+    let embedding = identity
+        .server_ref_for_target(
+            &ServerRuntimeTarget::CloudProvider {
+                provider: CloudProvider::OpenAI,
+                provider_model: "gpt-4.1-mini".to_string(),
+                capability: ServerCapability::Embedding,
+            },
+            "127.0.0.1",
+            8780,
+            false,
+            false,
+            None,
+        )
+        .expect("embedding ref");
+
+    assert_ne!(chat, embedding);
 }
 
 #[test]

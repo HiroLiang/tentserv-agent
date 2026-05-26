@@ -6,7 +6,7 @@ use crate::features::auth::domain::{AuthSecretMaterial, Provider};
 use crate::features::runtime::domain::{PythonRuntimeLayout, RuntimeEntrypoint};
 use crate::features::runtime::ports::RuntimeExecutableResolver;
 use crate::features::server::domain::{
-    CloudProvider, ServerCapability, ServerInspection, ServerRuntimeKind, ServerSpec,
+    CloudProvider, ServerInspection, ServerRuntimeKind, ServerSpec,
 };
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayout;
@@ -16,12 +16,12 @@ use super::error::server_runtime_error;
 const DAEMON_TOKEN_ENV_VAR: &str = "TENTGENT_DAEMON_TOKEN";
 const AUTO_SERVER_PORT_SCAN_LIMIT: u16 = 100;
 
-/// Builds and launches Python server runtime entrypoints.
-pub struct PythonServerRuntimeLauncher<'a> {
+/// Builds and launches local model and cloud server runtime entrypoints.
+pub struct ServerRuntimeLauncher<'a> {
     executable_resolver: &'a dyn RuntimeExecutableResolver,
 }
 
-impl<'a> PythonServerRuntimeLauncher<'a> {
+impl<'a> ServerRuntimeLauncher<'a> {
     pub fn new(executable_resolver: &'a dyn RuntimeExecutableResolver) -> Self {
         Self {
             executable_resolver,
@@ -103,15 +103,16 @@ impl<'a> PythonServerRuntimeLauncher<'a> {
         request: &ServerRuntimeLaunchRequest,
         bound_port: u16,
     ) -> KernelResult<Command> {
-        if request.inspection.spec.runtime_kind == ServerRuntimeKind::Cloud {
-            return Err(server_runtime_error(
-                "cloud provider server runtimes have not been ported to the model runtime HTTP daemon",
-            ));
-        }
-        let entrypoint = server_runtime_entrypoint(&request.inspection.spec);
-        let entrypoint = self
-            .executable_resolver
-            .entrypoint_path(&request.runtime, entrypoint)?;
+        let entrypoint = match request.inspection.spec.runtime_kind {
+            ServerRuntimeKind::Local => {
+                let entrypoint = server_runtime_entrypoint(&request.inspection.spec);
+                self.executable_resolver
+                    .entrypoint_path(&request.runtime, entrypoint)?
+            }
+            ServerRuntimeKind::Cloud => std::env::current_exe().map_err(|err| {
+                server_runtime_error(format!("failed to resolve current Rust executable: {err}"))
+            })?,
+        };
         let parts = server_runtime_command_parts(
             &request.inspection.spec,
             &request.layout.home_dir,
@@ -175,13 +176,6 @@ pub(super) fn server_runtime_command_parts(
     auth: Option<&AuthSecretMaterial>,
     bound_port: u16,
 ) -> KernelResult<ServerRuntimeCommandParts> {
-    if spec.runtime_kind == ServerRuntimeKind::Cloud && spec.capability != ServerCapability::Chat {
-        return Err(server_runtime_error(format!(
-            "server capability `{}` is not implemented yet",
-            spec.capability
-        )));
-    }
-
     let mut env = Vec::new();
     let env_remove = vec![DAEMON_TOKEN_ENV_VAR.to_string()];
 
@@ -279,12 +273,9 @@ fn cloud_server_runtime_command_args(
     ));
 
     let mut args = vec![
+        "__cloud-server-runtime".to_string(),
         "--server-ref".to_string(),
         spec.server_ref.to_string(),
-        "--runtime-kind".to_string(),
-        spec.runtime_kind.as_str().to_string(),
-        "--capability".to_string(),
-        spec.capability.as_str().to_string(),
         "--host".to_string(),
         spec.host.clone(),
         "--port".to_string(),
@@ -315,6 +306,7 @@ fn auth_provider_for_cloud(provider: CloudProvider) -> Provider {
     match provider {
         CloudProvider::OpenAI => Provider::OpenAI,
         CloudProvider::Anthropic => Provider::Anthropic,
+        CloudProvider::Gemini => Provider::Gemini,
     }
 }
 

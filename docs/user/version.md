@@ -348,7 +348,9 @@ Added:
 - `/v1/chat` supports `stream=true` with SSE `delta`, `done`, and `error` events.
 - Local base-model servers can stream backend output incrementally.
 - Compatible local adapters can stream through the same `adapter_ref` request shape as non-streaming chat.
-- OpenAI and Anthropic cloud provider servers normalize provider stream deltas into the same Tentgent SSE response shape.
+- OpenAI, Anthropic, and Gemini cloud provider servers return the same Tentgent
+  SSE response shape; the current Rust worker may coalesce provider output into
+  one delta when a provider streaming adapter is not used.
 - Streaming request validation preserves JSON errors before SSE headers when adapter, auth, model, or request preflight fails.
 
 Known limits:
@@ -383,7 +385,7 @@ Known limits:
 Added:
 
 - OpenAI, Anthropic, and Gemini keys can be verified through `auth status`.
-- `server run openai:<model>` and `server run claude:<model>` can expose provider chat through the local `/v1/chat` surface.
+- `server run openai:<model>`, `server run claude:<model>`, and `server run gemini:<model>` can expose provider chat through the local `/v1/chat` surface.
 - `dataset validate`, `dataset template`, `dataset synth`, and `dataset eval` help produce and review `tentgent.chat.v1` tuning data.
 - server JSON responses preserve UTF-8 text for direct curl readability.
 

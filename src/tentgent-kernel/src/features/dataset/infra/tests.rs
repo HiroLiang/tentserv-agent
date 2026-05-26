@@ -2,34 +2,27 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::features::auth::domain::{AuthSecretMaterial, AuthSecretSource, Provider};
 use crate::features::dataset::domain::{
-    DatasetEvalRequest, DatasetEvalSplit, DatasetFormat, DatasetMetadata, DatasetPromptSource,
-    DatasetProvider, DatasetRef, DatasetRefSelector, DatasetSourceKind, DatasetSplitKind,
-    DatasetStoreLayout, DatasetSynthCounts, DatasetSynthPromptRequest, DatasetSynthRequest,
-    DatasetTemplateRequest, LocalDatasetSourceIndex,
+    DatasetFormat, DatasetMetadata, DatasetPromptSource, DatasetRef, DatasetRefSelector,
+    DatasetSourceKind, DatasetSplitKind, DatasetStoreLayout, DatasetSynthCounts,
+    DatasetSynthPromptRequest, DatasetTemplateRequest, LocalDatasetSourceIndex,
 };
 use crate::features::dataset::ports::{
     DatasetCatalogStore, DatasetContentStore, DatasetDiffTarget, DatasetDiffer,
-    DatasetEvalRuntimeClient, DatasetEvalRuntimeRequest, DatasetIdentityGenerator,
-    DatasetManifestBuilder, DatasetPackageDetector, DatasetReferenceGuard, DatasetRuntimeAuth,
-    DatasetSourceIndexStore, DatasetSourceStager, DatasetStoreLayoutInitializer,
-    DatasetSynthPromptRuntimeRequest, DatasetSynthRuntimeClient, DatasetSynthRuntimeRequest,
+    DatasetIdentityGenerator, DatasetManifestBuilder, DatasetPackageDetector,
+    DatasetReferenceGuard, DatasetSourceIndexStore, DatasetSourceStager,
+    DatasetStoreLayoutInitializer, DatasetSynthPromptRuntimeRequest, DatasetSynthRuntimeClient,
     DatasetTemplateRenderer, DatasetValidator,
 };
-use crate::features::runtime::domain::{
-    PythonRuntimeLayout, PythonRuntimeSource, RuntimeEntrypoint,
-};
-use crate::features::runtime::ports::RuntimeExecutableResolver;
-use crate::foundation::error::KernelResult;
+use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeSource};
 use crate::foundation::layout::RuntimeLayout;
 
 use super::{
-    FileDatasetCatalogStore, FileDatasetContentStore, FileDatasetReferenceGuard,
-    FileDatasetSourceIndexStore, MarkdownDatasetTemplateRenderer, PythonDatasetEvalRuntimeClient,
-    PythonDatasetSynthRuntimeClient, StdDatasetDiffer, StdDatasetIdentityGenerator,
-    StdDatasetManifestBuilder, StdDatasetPackageDetector, StdDatasetSourceStager,
-    StdDatasetStoreLayoutInitializer, StdDatasetValidator,
+    CloudDatasetSynthRuntimeClient, FileDatasetCatalogStore, FileDatasetContentStore,
+    FileDatasetReferenceGuard, FileDatasetSourceIndexStore, MarkdownDatasetTemplateRenderer,
+    StdDatasetDiffer, StdDatasetIdentityGenerator, StdDatasetManifestBuilder,
+    StdDatasetPackageDetector, StdDatasetSourceStager, StdDatasetStoreLayoutInitializer,
+    StdDatasetValidator,
 };
 
 #[test]
@@ -233,32 +226,14 @@ fn validator_template_and_reference_guard_cover_local_dataset_workflows() {
 
 #[cfg(any())]
 #[tokio::test]
-async fn python_dataset_runtime_clients_build_entrypoint_requests() {
-    use std::os::unix::fs::PermissionsExt;
-
+async fn cloud_dataset_runtime_renders_prompt_without_python_entrypoint() {
     let root = unique_path("dataset-runtime");
-    let project = root.join("project");
-    let env = root.join("env");
-    fs::create_dir_all(&project).expect("project");
-    fs::create_dir_all(&env).expect("env");
-    let entrypoint = root.join("dataset-helper");
-    fs::write(
-        &entrypoint,
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$PWD/args.txt\"\ncase \"$*\" in\n  *--print-prompt*) printf 'prompt-body\\n' ;;\n  *--progress-json*) printf '{\"ok\":true}\\n'; printf '{\"type\":\"progress\",\"stage\":\"start\"}\\n' >&2 ;;\n  *) printf '{\"evaluation\":true}\\n' ;;\nesac\n",
-    )
-    .expect("script");
-    let mut permissions = fs::metadata(&entrypoint).expect("metadata").permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&entrypoint, permissions).expect("chmod");
-
-    let resolver = FakeExecutableResolver {
-        entrypoint: entrypoint.clone(),
-    };
-    let runtime = python_runtime(&project, &env);
-    let synth = PythonDatasetSynthRuntimeClient::new(&resolver);
+    fs::create_dir_all(&root).expect("root");
+    let runtime = python_runtime(&root.join("project"), &root.join("env"));
+    let synth = CloudDatasetSynthRuntimeClient::new();
     let prompt = synth
         .render_synth_prompt(DatasetSynthPromptRuntimeRequest {
-            runtime: runtime.clone(),
+            runtime,
             request: DatasetSynthPromptRequest {
                 prompt_source: DatasetPromptSource::Brief("make records".to_string()),
                 split: DatasetSplitKind::Train,
@@ -270,60 +245,9 @@ async fn python_dataset_runtime_clients_build_entrypoint_requests() {
         })
         .await
         .expect("prompt");
-    assert_eq!(prompt, "prompt-body\n");
-
-    let auth = DatasetRuntimeAuth {
-        secret: AuthSecretMaterial::new(Provider::OpenAI, AuthSecretSource::Env, "secret"),
-    };
-    let output = synth
-        .synthesize_dataset(DatasetSynthRuntimeRequest {
-            runtime: runtime.clone(),
-            auth: auth.clone(),
-            request: DatasetSynthRequest {
-                provider: DatasetProvider::OpenAI,
-                provider_model: "gpt-test".to_string(),
-                output_dir: root.join("out"),
-                prompt_source: DatasetPromptSource::Brief("make records".to_string()),
-                split: DatasetSplitKind::Train,
-                counts: DatasetSynthCounts {
-                    train_count: Some(1),
-                    ..DatasetSynthCounts::default()
-                },
-                max_tokens: Some(100),
-                temperature: 0.0,
-                timeout_seconds: 30.0,
-                retries: 1,
-            },
-        })
-        .await
-        .expect("synth");
-    assert_eq!(output.outcome["ok"], true);
-    assert_eq!(output.progress_events.len(), 1);
-
-    let eval = PythonDatasetEvalRuntimeClient::new(&resolver);
-    let output = eval
-        .evaluate_dataset(DatasetEvalRuntimeRequest {
-            runtime,
-            auth,
-            request: DatasetEvalRequest {
-                provider: DatasetProvider::OpenAI,
-                provider_model: "gpt-test".to_string(),
-                input: root.join("input"),
-                output_dir: root.join("eval"),
-                split: DatasetEvalSplit::Train,
-                max_records: 5,
-                criteria: Some("quality".to_string()),
-                max_tokens: None,
-                temperature: 0.0,
-                timeout_seconds: 30.0,
-            },
-        })
-        .await
-        .expect("eval");
-    assert_eq!(output["evaluation"], true);
-
-    let args = fs::read_to_string(project.join("args.txt")).expect("args");
-    assert!(args.contains("--criteria\nquality\n"));
+    assert!(prompt.contains("Tentgent Dataset Generation Template"));
+    assert!(prompt.contains("make records"));
+    assert!(prompt.contains("train=2"));
 }
 
 fn dataset_metadata(
@@ -376,24 +300,6 @@ fn python_runtime(project: &Path, env: &Path) -> PythonRuntimeLayout {
         project_dir: project.to_path_buf(),
         env_dir: env.to_path_buf(),
         source: PythonRuntimeSource::DevelopmentSource,
-    }
-}
-
-struct FakeExecutableResolver {
-    entrypoint: PathBuf,
-}
-
-impl RuntimeExecutableResolver for FakeExecutableResolver {
-    fn python_binary_path(&self, _runtime: &PythonRuntimeLayout) -> KernelResult<PathBuf> {
-        Ok(self.entrypoint.clone())
-    }
-
-    fn entrypoint_path(
-        &self,
-        _runtime: &PythonRuntimeLayout,
-        _entrypoint: RuntimeEntrypoint,
-    ) -> KernelResult<PathBuf> {
-        Ok(self.entrypoint.clone())
     }
 }
 

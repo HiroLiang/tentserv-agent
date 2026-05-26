@@ -25,7 +25,7 @@ use tentgent_kernel::{
             domain::{
                 CloudProvider, LaunchMode, ServerCapability, ServerInspection, ServerRuntimeKind,
             },
-            infra::{PythonServerRuntimeLauncher, ServerRuntimeLaunchRequest},
+            infra::{ServerRuntimeLaunchRequest, ServerRuntimeLauncher},
             usecases::{
                 ServerInspectRequest, ServerLifecycleUseCase, ServerListRequest,
                 ServerPrepareRequest, ServerRecordProcessStartRequest, ServerRemoveRequest,
@@ -194,8 +194,7 @@ pub async fn start(
     let auth = validate_server_runtime_auth(auth).await?;
     let recorded_inspection = {
         let spawned = {
-            let launcher =
-                PythonServerRuntimeLauncher::new(state.app().services().kernel().runtime());
+            let launcher = ServerRuntimeLauncher::new(state.app().services().kernel().runtime());
             match launcher.spawn_background(ServerRuntimeLaunchRequest {
                 layout: layout.clone(),
                 runtime,
@@ -469,6 +468,7 @@ fn cloud_auth_provider(
     match provider {
         Some(CloudProvider::OpenAI) => Ok(Provider::OpenAI),
         Some(CloudProvider::Anthropic) => Ok(Provider::Anthropic),
+        Some(CloudProvider::Gemini) => Ok(Provider::Gemini),
         None => Err(RestError::conflict(
             "provider_auth_missing",
             format!("cloud server `{short_ref}` is missing provider metadata"),

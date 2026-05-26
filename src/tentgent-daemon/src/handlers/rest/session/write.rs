@@ -367,6 +367,7 @@ async fn generate_summary(
             })? {
                 CloudProvider::OpenAI => Provider::OpenAI,
                 CloudProvider::Anthropic => Provider::Anthropic,
+                CloudProvider::Gemini => Provider::Gemini,
             };
             let provider_model = server.spec.provider_model.clone().ok_or_else(|| {
                 RestError::conflict(

@@ -334,11 +334,11 @@ Import a local `.jsonl` file or dataset directory:
 ./target/debug/tentgent dataset add /path/to/dataset-dir
 ```
 
-Use `dataset template` to generate the manual prompt for OpenAI, Claude, or
+Use `dataset template` to generate the manual prompt for OpenAI, Claude, Gemini, or
 another agent. Its `--task` and `--language` options are prompt hints, not
-schema changes. Provider-backed `dataset synth` and `dataset eval` are paused
-until they are ported to the model runtime HTTP boundary. Use `dataset validate`
-before `dataset add` when working with generated JSONL.
+schema changes. Provider-backed `dataset synth` and `dataset eval` use the Rust
+cloud provider client. Use `dataset validate` before `dataset add` when working
+with generated JSONL.
 
 The HTTP daemon exposes deterministic dataset tooling for local integrations:
 
@@ -560,8 +560,8 @@ Run a detached server:
   --detach
 ```
 
-Cloud provider servers are paused until they are ported to the model runtime
-HTTP boundary.
+Cloud provider servers launch Rust workers, for example
+`tentgent server run gemini:gemini-2.0-flash --port 8785`.
 
 Inspect and manage servers:
 
@@ -592,8 +592,9 @@ uv run --project python/tentgent-model-runtime tentgent-model-runtime-daemon \
   --lazy-load
 ```
 
-Cloud provider servers are unavailable until that server shape is ported to the
-model runtime HTTP boundary.
+Cloud provider servers do not use this Python entry point. They launch Rust
+workers from the `tentgent` binary and call provider APIs through the Rust cloud
+client.
 
 The server exposes:
 
@@ -611,7 +612,7 @@ The server exposes:
   launched with `--capability image-generation`
 
 HTTP `stream=true` returns Server-Sent Events for local runtimes, compatible
-local adapters, and OpenAI or Anthropic cloud provider runtimes.
+local adapters, and OpenAI, Anthropic, or Gemini cloud provider runtimes.
 
 Smoke-test streaming with:
 

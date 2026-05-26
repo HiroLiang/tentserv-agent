@@ -5,8 +5,8 @@ This document defines the dataset-store boundary for Tentgent training and evalu
 The current implementation supports local dataset validation, manual generation
 templates, local dataset imports, deterministic manifests, content-derived
 references, deduplication, split detection, safe export to working directories,
-listing, and inspection. Provider-backed `dataset synth` and `dataset eval` are
-paused until their runtime is ported to the model runtime HTTP boundary.
+listing, and inspection. Provider-backed `dataset synth` and `dataset eval`
+run through the Rust cloud provider client for OpenAI, Anthropic, and Gemini.
 
 ## Command Shape
 
@@ -35,11 +35,12 @@ The local import path accepts:
 
 The canonical chat and tool-use schema is defined in [dataset-schema.md](./dataset-schema.md). The store remains responsible for content identity, layout, and indexes; schema validation and backend rendering are separate concerns.
 
-Use `dataset validate <PATH>` to check local JSONL files or dataset directories against the canonical schema before import. Use `dataset template` to print or write a deterministic prompt that asks OpenAI, Claude, or another agent to produce `tentgent.chat.v1` JSONL.
+Use `dataset validate <PATH>` to check local JSONL files or dataset directories against the canonical schema before import. Use `dataset template` to print or write a deterministic prompt that asks OpenAI, Claude, Gemini, or another agent to produce `tentgent.chat.v1` JSONL.
 
-Provider-backed `dataset synth` and `dataset eval` should be restored as HTTP
-model-runtime endpoints before they are advertised as implemented commands
-again.
+Provider-backed `dataset synth` writes generated JSONL split files to the
+requested output directory. `dataset eval` writes `prompt.md` and `report.json`
+to the requested report directory. These commands resolve provider secrets via
+the standard auth resolver and do not call Python runtime entrypoints.
 
 ## Template Source
 
@@ -174,14 +175,11 @@ For `--path`, the local path is treated as the right side. Tentgent computes its
 
 ## Dataset Eval Reports
 
-Provider-backed eval reports are paused until the evaluator runtime is ported to
-the model runtime HTTP boundary. When restored, the report directory must be
-missing or empty and contain:
+Provider-backed eval reports use the Rust cloud client. The report directory
+must be missing or empty and contains:
 
-- `eval-report.json`: structured `tentgent.dataset.eval.report.v1` report
-- `eval-report.md`: human-readable summary
+- `report.json`: structured report envelope with provider output text
 - `prompt.md`: exact provider evaluation prompt
-- `provider-output.raw.txt`: raw provider response
 
 The evaluator supports `--split train|valid|test|eval_cases|all`, `--max-records <N>`, and `--criteria <TEXT>`. Criteria are useful for project-specific style checks, such as whether final assistant replies follow a desired verbal habit.
 

@@ -288,6 +288,7 @@ impl std::fmt::Display for DatasetEvalSplit {
 pub enum DatasetProvider {
     OpenAI,
     Anthropic,
+    Gemini,
 }
 
 impl DatasetProvider {
@@ -295,6 +296,7 @@ impl DatasetProvider {
         match self {
             Self::OpenAI => "openai",
             Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
         }
     }
 }

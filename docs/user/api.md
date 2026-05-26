@@ -885,8 +885,8 @@ For ControlNet-style image control adapters, set `target_capability` to
 | `POST` | `/v1/datasets/template` | `{"task":"optional-task","language":"optional-language"}` |
 | `POST` | `/v1/datasets/{reference}/export` | `{"output_path":"/absolute/output-path"}` |
 | `POST` | `/v1/datasets/{reference}/diff` | `{"right_dataset_ref":"optional-ref","right_path":"optional-path"}` |
-| `POST` | `/v1/datasets/synth/jobs` | Reserved until provider-backed dataset synthesis is ported to the model runtime HTTP boundary. |
-| `POST` | `/v1/datasets/eval/jobs` | Reserved until provider-backed dataset evaluation is ported to the model runtime HTTP boundary. |
+| `POST` | `/v1/datasets/synth/jobs` | Provider-backed dataset synthesis job through OpenAI, Anthropic, or Gemini. |
+| `POST` | `/v1/datasets/eval/jobs` | Provider-backed dataset evaluation job through OpenAI, Anthropic, or Gemini. |
 
 ## LoRA Training
 

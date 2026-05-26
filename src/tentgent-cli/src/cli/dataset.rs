@@ -31,9 +31,9 @@ use tentgent_kernel::{
                 DatasetTemplateRequest, DatasetValidationOutcome,
             },
             infra::{
+                CloudDatasetEvalRuntimeClient, CloudDatasetSynthRuntimeClient,
                 FileDatasetCatalogStore, FileDatasetContentStore, FileDatasetReferenceGuard,
-                FileDatasetSourceIndexStore, MarkdownDatasetTemplateRenderer,
-                PythonDatasetEvalRuntimeClient, PythonDatasetSynthRuntimeClient, StdDatasetDiffer,
+                FileDatasetSourceIndexStore, MarkdownDatasetTemplateRenderer, StdDatasetDiffer,
                 StdDatasetIdentityGenerator, StdDatasetManifestBuilder, StdDatasetPackageDetector,
                 StdDatasetSourceStager, StdDatasetStoreLayoutInitializer, StdDatasetValidator,
             },
@@ -52,8 +52,7 @@ use tentgent_kernel::{
             },
         },
         runtime::{
-            domain::PythonRuntimeResolutionInput,
-            infra::{StdPythonRuntimeResolver, StdRuntimeExecutableResolver},
+            domain::PythonRuntimeResolutionInput, infra::StdPythonRuntimeResolver,
             usecases::StdRuntimeResolutionUseCase,
         },
     },
@@ -158,8 +157,7 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             if print_prompt {
                 let runtime_resolution = dataset.runtime_resolution_usecase();
                 let auth_resolver = dataset.auth_resolver_usecase();
-                let runtime_client =
-                    PythonDatasetSynthRuntimeClient::new(&dataset.executable_resolver);
+                let runtime_client = CloudDatasetSynthRuntimeClient::new();
                 let synthesis = StdDatasetSynthesisUseCase::new(
                     &runtime_resolution,
                     &auth_resolver,
@@ -207,7 +205,7 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             render_dataset_synth_started(provider, &model, &output_dir, split, &counts, retries);
             let runtime_resolution = dataset.runtime_resolution_usecase();
             let auth_resolver = dataset.auth_resolver_usecase();
-            let runtime_client = PythonDatasetSynthRuntimeClient::new(&dataset.executable_resolver);
+            let runtime_client = CloudDatasetSynthRuntimeClient::new();
             let synthesis = StdDatasetSynthesisUseCase::new(
                 &runtime_resolution,
                 &auth_resolver,
@@ -267,7 +265,7 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             render_dataset_eval_started(provider, &model, &input, &output_dir, split, max_records);
             let runtime_resolution = dataset.runtime_resolution_usecase();
             let auth_resolver = dataset.auth_resolver_usecase();
-            let runtime_client = PythonDatasetEvalRuntimeClient::new(&dataset.executable_resolver);
+            let runtime_client = CloudDatasetEvalRuntimeClient::new();
             let evaluation = StdDatasetEvaluationUseCase::new(
                 &runtime_resolution,
                 &auth_resolver,
@@ -409,7 +407,6 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
 struct CliDatasetKernel {
     layout_resolver: StdRuntimeLayoutResolver,
     runtime_resolver: StdPythonRuntimeResolver,
-    executable_resolver: StdRuntimeExecutableResolver,
     env_probe: StdAuthEnvSecretProbe,
     keychain_store: SystemKeychainAuthSecretStore,
     cache: ProcessSessionAuthSecretCache,
@@ -432,7 +429,6 @@ impl CliDatasetKernel {
         Self {
             layout_resolver: StdRuntimeLayoutResolver,
             runtime_resolver: StdPythonRuntimeResolver,
-            executable_resolver: StdRuntimeExecutableResolver,
             env_probe: StdAuthEnvSecretProbe,
             keychain_store: SystemKeychainAuthSecretStore::new(),
             cache: ProcessSessionAuthSecretCache::new(),
@@ -1360,6 +1356,7 @@ fn provider_auth_provider(provider: DatasetProvider) -> Provider {
     match provider {
         DatasetProvider::OpenAI => Provider::OpenAI,
         DatasetProvider::Anthropic => Provider::Anthropic,
+        DatasetProvider::Gemini => Provider::Gemini,
     }
 }
 
@@ -1367,10 +1364,11 @@ fn parse_dataset_provider(command: &str, value_name: &str, value: &str) -> Resul
     match value.trim().to_ascii_lowercase().as_str() {
         "openai" => Ok(DatasetProvider::OpenAI),
         "anthropic" | "claude" => Ok(DatasetProvider::Anthropic),
+        "gemini" | "google" => Ok(DatasetProvider::Gemini),
         _ => Err(usage_error(
             command,
             value_name,
-            "provider must be one of: openai, anthropic, claude",
+            "provider must be one of: openai, anthropic, claude, gemini",
         )),
     }
 }

@@ -197,6 +197,7 @@ fn auth_provider_for_dataset_provider(provider: DatasetProvider) -> Provider {
     match provider {
         DatasetProvider::OpenAI => Provider::OpenAI,
         DatasetProvider::Anthropic => Provider::Anthropic,
+        DatasetProvider::Gemini => Provider::Gemini,
     }
 }
 

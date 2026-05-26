@@ -1,12 +1,16 @@
+use crate::features::auth::domain::Provider;
+use crate::features::cloud::domain::{
+    provider_capabilities, provider_supports, CloudEndpointCapability,
+};
 use crate::features::model::domain::{
     ModelCapability, ModelFormat, ModelRefSelector, ModelStoreLayout,
 };
 use crate::features::model::ports::ModelCatalogStore;
 use crate::features::server::domain::{
     ensure_server_model_capability, infer_server_capability_from_model_capabilities,
-    normalize_server_host, parse_server_runtime_selection, ServerCapability, ServerRef,
-    ServerRuntimeKind, ServerRuntimeSelection, ServerRuntimeTarget, ServerSpec, ServerStoreLayout,
-    DEFAULT_SERVER_PORT,
+    normalize_server_host, parse_server_runtime_selection, CloudProvider, ServerCapability,
+    ServerRef, ServerRuntimeKind, ServerRuntimeSelection, ServerRuntimeTarget, ServerSpec,
+    ServerStoreLayout, DEFAULT_SERVER_PORT,
 };
 use crate::features::server::ports::ServerIdentityGenerator;
 use crate::foundation::error::{KernelError, KernelResult};
@@ -60,14 +64,11 @@ pub(super) fn resolve_server_runtime_target(
             provider_model,
         } => {
             let capability = capability.unwrap_or(ServerCapability::Chat);
-            if capability != ServerCapability::Chat {
-                return Err(KernelError::UnsupportedTarget(format!(
-                    "cloud server capability `{capability}` is not implemented yet"
-                )));
-            }
+            ensure_cloud_server_capability_supported(provider, capability)?;
             Ok(ServerRuntimeTarget::CloudProvider {
                 provider,
                 provider_model,
+                capability,
             })
         }
     }
@@ -94,7 +95,16 @@ pub(super) fn ensure_server_spec_launchable(
     model_catalog: &dyn ModelCatalogStore,
 ) -> KernelResult<()> {
     match spec.runtime_kind {
-        ServerRuntimeKind::Cloud => Ok(()),
+        ServerRuntimeKind::Cloud => {
+            let provider = spec.provider.ok_or_else(|| {
+                KernelError::ServerStoreUnavailable(format!(
+                    "cloud server spec `{}` is missing provider metadata",
+                    spec.short_ref
+                ))
+            })?;
+            ensure_cloud_server_capability_supported(provider, spec.capability)?;
+            Ok(())
+        }
         ServerRuntimeKind::Local => {
             let Some(model_ref) = spec.model_ref.as_ref() else {
                 return Err(KernelError::ServerStoreUnavailable(format!(
@@ -179,11 +189,12 @@ fn spec_for_ref(
         ServerRuntimeTarget::CloudProvider {
             provider,
             provider_model,
+            capability,
         } => ServerSpec {
             server_ref,
             short_ref,
             runtime_kind: ServerRuntimeKind::Cloud,
-            capability: ServerCapability::Chat,
+            capability,
             model_ref: None,
             provider: Some(provider),
             provider_model: Some(provider_model),
@@ -194,6 +205,60 @@ fn spec_for_ref(
             idle_seconds,
             created_at,
         },
+    }
+}
+
+fn ensure_cloud_server_capability_supported(
+    provider: CloudProvider,
+    capability: ServerCapability,
+) -> KernelResult<()> {
+    let Some(cloud_capability) = cloud_endpoint_capability_for_server(capability) else {
+        return Err(KernelError::UnsupportedTarget(format!(
+            "cloud provider `{provider}` does not support server capability `{capability}`; supported cloud capabilities are {}",
+            cloud_capabilities_label(provider)
+        )));
+    };
+    let auth_provider = auth_provider_for_cloud_provider(provider);
+    if provider_supports(auth_provider, cloud_capability) {
+        return Ok(());
+    }
+
+    Err(KernelError::UnsupportedTarget(format!(
+        "cloud provider `{provider}` does not support server capability `{capability}`; supported cloud capabilities are {}",
+        cloud_capabilities_label(provider)
+    )))
+}
+
+fn cloud_endpoint_capability_for_server(
+    capability: ServerCapability,
+) -> Option<CloudEndpointCapability> {
+    match capability {
+        ServerCapability::Chat => Some(CloudEndpointCapability::Chat),
+        ServerCapability::VisionChat => Some(CloudEndpointCapability::VisionChat),
+        ServerCapability::Embedding => Some(CloudEndpointCapability::Embedding),
+        ServerCapability::ImageGeneration => Some(CloudEndpointCapability::ImageGeneration),
+        ServerCapability::AudioSpeech
+        | ServerCapability::AudioTranscription
+        | ServerCapability::Rerank
+        | ServerCapability::VideoUnderstanding => None,
+    }
+}
+
+fn cloud_capabilities_label(provider: CloudProvider) -> String {
+    let auth_provider = auth_provider_for_cloud_provider(provider);
+    let values = provider_capabilities(auth_provider)
+        .iter()
+        .map(|capability| capability.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{values}]")
+}
+
+fn auth_provider_for_cloud_provider(provider: CloudProvider) -> Provider {
+    match provider {
+        CloudProvider::OpenAI => Provider::OpenAI,
+        CloudProvider::Anthropic => Provider::Anthropic,
+        CloudProvider::Gemini => Provider::Gemini,
     }
 }
 

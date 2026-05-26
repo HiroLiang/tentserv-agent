@@ -102,6 +102,7 @@ fn video_routes() -> Router<RestState> {
 
 fn image_routes() -> Router<RestState> {
     Router::new()
+        .route("/v1/images/generations", post(images::generate))
         .route(
             "/v1/images/generations/job",
             post(images::create_generation_job),

@@ -220,11 +220,9 @@ The first stable REST surface is:
   Starts a daemon background job that imports a local dataset path into the
   kernel dataset store.
 - `POST /v1/datasets/synth/jobs`
-  Reserved for provider-backed dataset synthesis after that runtime is ported
-  to the model runtime HTTP boundary.
+  Starts a provider-backed dataset synthesis job through the Rust cloud client.
 - `POST /v1/datasets/eval/jobs`
-  Reserved for provider-backed dataset evaluation after that runtime is ported
-  to the model runtime HTTP boundary.
+  Starts a provider-backed dataset evaluation job through the Rust cloud client.
 - `GET /v1/train/lora/plans`
   Kernel-backed LoRA train plan list response.
 - `POST /v1/train/lora/plans/preview`

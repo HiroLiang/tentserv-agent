@@ -633,8 +633,10 @@ When omitted for a local model, server lifecycle routes choose a capability
 from the model's stored capabilities using this priority:
 `video-understanding`, `vision-chat`, `image-generation`, `audio-transcription`,
 `audio-speech`, `rerank`, `embedding`, then `chat`. Cloud server specs default
-to `chat`. Server lifecycle routes also accept explicit local model-runtime
-endpoint families such as `embedding`, `rerank`,
+to `chat` and accept explicit `chat`, `vision-chat`, `embedding`, or
+`image-generation` capabilities when the selected provider supports that
+endpoint family. Server lifecycle routes also accept explicit local
+model-runtime endpoint families such as `embedding`, `rerank`,
 `audio-transcription`, `audio-speech`, `vision-chat`, `video-understanding`,
 and `image-generation`. Older `server.toml` files without `capability` are read
 as `chat`.
@@ -807,8 +809,8 @@ POST /v1/datasets/{dataset_ref}/export
 POST /v1/datasets/{dataset_ref}/diff
 ```
 
-Provider-backed dataset synth and eval routes are reserved until their runtime
-is ported to the model runtime HTTP boundary:
+Provider-backed dataset synth and eval routes run as daemon jobs through the
+Rust cloud provider client:
 `POST /v1/datasets/synth/jobs` and `POST /v1/datasets/eval/jobs`.
 
 All path fields are absolute paths on the daemon host filesystem, not the HTTP
@@ -931,10 +933,10 @@ unexpected local failures return `500 dataset_tool_failed`.
 
 ## Dataset Cloud Tools
 
-Provider-backed dataset synth/eval are paused until they are ported to the
-model runtime HTTP boundary. Until then, daemon dataset APIs should expose local
-validation, template rendering, import, export, diff, list, inspect, and remove
-workflows only.
+Provider-backed dataset synth/eval are implemented in Rust through the shared
+cloud provider client. OpenAI, Anthropic, and Gemini provider requests resolve
+secrets through the daemon auth resolver; Python model-runtime processes are not
+started for these workflows.
 
 ## LoRA Train Plans
 
@@ -1573,9 +1575,12 @@ Daemon-owned rerank errors are JSON:
 
 ## Compatible Chat Adapters
 
-`POST /v1/chat/completions` is a limited compatibility route for local clients
-that already send the OpenAI Chat Completions wire shape. Success responses are
-OpenAI-shaped. Daemon-owned errors keep the daemon JSON error shape.
+`POST /v1/chat/completions` is a compatibility route for clients that already
+send the OpenAI Chat Completions wire shape. If `model` resolves to a managed
+local model or alias, the daemon uses the local chat use case. Otherwise the
+route treats `model` as an OpenAI provider model and uses the Rust cloud client.
+Success responses are OpenAI-shaped. Daemon-owned errors keep the daemon JSON
+error shape.
 
 Request body:
 
@@ -1595,8 +1600,8 @@ Request body:
 }
 ```
 
-In this daemon compatibility route, `model` selects the Tentgent `model_ref` or
-model alias. It is not a remote provider model name.
+In this daemon compatibility route, local model refs and aliases take
+precedence. Non-local model names are remote OpenAI provider model names.
 
 MVP limits:
 
@@ -1605,8 +1610,10 @@ MVP limits:
   `assistant` map directly.
 - `adapter_ref` is a Tentgent extension field; SDK users may need an extra-body
   mechanism to pass it.
-- OpenAI tools/function calling, tool-call messages, non-text content parts,
-  audio, and non-text modalities return `400 unsupported_chat_feature`.
+- OpenAI tools/function calling, tool-call messages, audio, and non-text
+  modalities return `400 unsupported_chat_feature`. OpenAI image content parts
+  are accepted by direct cloud server workers; daemon local-model compatibility
+  remains text-only.
 - OpenAI-compatible error objects are out of scope; daemon-owned errors keep the
   daemon JSON shape.
 

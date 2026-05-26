@@ -3,6 +3,11 @@ use serde::Serialize;
 use serde_json::Value;
 use tentgent_kernel::{
     features::{
+        auth::{
+            domain::{AuthEnvLoadPolicy, Provider},
+            usecases::{AuthSecretResolutionRequest, AuthSecretResolverUseCase},
+        },
+        cloud::{domain::CloudEmbeddingRequest, infra::ReqwestCloudModelClient},
         embedding::{
             domain::EmbeddingInput,
             usecases::{EmbeddingExecutionResult, EmbeddingPreparationRequest, EmbeddingUseCase},
@@ -22,10 +27,62 @@ pub async fn create(
     State(state): State<RestState>,
     Json(request): Json<Value>,
 ) -> Result<Json<EmbeddingResponseBody>, RestError> {
-    let request = embedding_preparation_request(&state, request)?;
+    let body = EmbeddingRequestBody::from_value(request)?;
+    if let Some(provider) = body.cloud_provider {
+        let result = cloud_embed(&state, provider, &body).await?;
+        return Ok(Json(result));
+    }
+    let request = embedding_preparation_request(&state, body)?;
     let result = embed(state, request).await?;
 
     Ok(Json(embedding_response(result)))
+}
+
+async fn cloud_embed(
+    state: &RestState,
+    provider: Provider,
+    request: &EmbeddingRequestBody,
+) -> Result<EmbeddingResponseBody, RestError> {
+    let secret = state
+        .app()
+        .services()
+        .kernel()
+        .auth()
+        .resolve_secret(AuthSecretResolutionRequest::for_secret_use(
+            provider,
+            AuthEnvLoadPolicy::CwdDotenvOverride,
+        ))
+        .map_err(|error| RestError::kernel("embedding_auth_failed", error))?
+        .secret
+        .ok_or_else(|| {
+            RestError::bad_request(
+                "embedding_auth_failed",
+                format!("{} API key is required", provider.display_name()),
+            )
+        })?;
+    let client = ReqwestCloudModelClient::new()
+        .map_err(|error| RestError::kernel("embedding_runtime_failed", error))?;
+    let response = client
+        .create_embedding(
+            CloudEmbeddingRequest {
+                provider,
+                model: request.model_ref.clone(),
+                input: request.input.items.clone(),
+            },
+            secret.secret(),
+        )
+        .await
+        .map_err(|error| RestError::kernel("embedding_runtime_failed", error))?;
+
+    Ok(EmbeddingResponseBody {
+        model_ref: request.model_ref.clone(),
+        data: response
+            .vectors
+            .into_iter()
+            .enumerate()
+            .map(|(index, embedding)| EmbeddingItem { index, embedding })
+            .collect(),
+    })
 }
 
 async fn embed(
@@ -56,9 +113,8 @@ async fn embed(
 
 fn embedding_preparation_request(
     state: &RestState,
-    request: Value,
+    request: EmbeddingRequestBody,
 ) -> Result<EmbeddingPreparationRequest, RestError> {
-    let request = EmbeddingRequestBody::from_value(request)?;
     let model_selector = model_selector(state, &request.model_ref)?;
 
     Ok(EmbeddingPreparationRequest {
@@ -143,6 +199,7 @@ struct ModelAliasError {
 pub struct EmbeddingRequestBody {
     pub model_ref: String,
     pub input: EmbeddingInput,
+    pub cloud_provider: Option<Provider>,
 }
 
 impl EmbeddingRequestBody {
@@ -152,7 +209,7 @@ impl EmbeddingRequestBody {
         })?;
         let unknown = object
             .keys()
-            .filter(|key| key.as_str() != "model_ref" && key.as_str() != "input")
+            .filter(|key| !matches!(key.as_str(), "model_ref" | "model" | "input" | "provider"))
             .map(String::as_str)
             .collect::<Vec<_>>();
         if !unknown.is_empty() {
@@ -165,17 +222,42 @@ impl EmbeddingRequestBody {
             ));
         }
 
-        let model_ref = object
+        let model_value = object
             .get("model_ref")
+            .or_else(|| object.get("model"))
             .and_then(Value::as_str)
-            .ok_or_else(|| RestError::bad_request("bad_request", "`model_ref` must be a string"))?
+            .ok_or_else(|| {
+                RestError::bad_request("bad_request", "`model_ref` or `model` must be a string")
+            })?
             .to_string();
+        let cloud_provider = object
+            .get("provider")
+            .and_then(Value::as_str)
+            .map(parse_cloud_provider)
+            .transpose()?
+            .or_else(|| object.get("model").map(|_| Provider::OpenAI));
         let input = object
             .get("input")
             .ok_or_else(|| RestError::bad_request("bad_request", "`input` is required"))?;
         let input = embedding_input(input)?;
 
-        Ok(Self { model_ref, input })
+        Ok(Self {
+            model_ref: model_value,
+            input,
+            cloud_provider,
+        })
+    }
+}
+
+fn parse_cloud_provider(value: &str) -> Result<Provider, RestError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "openai" => Ok(Provider::OpenAI),
+        "gemini" | "google" => Ok(Provider::Gemini),
+        "anthropic" | "claude" => Ok(Provider::Anthropic),
+        other => Err(RestError::bad_request(
+            "bad_request",
+            format!("unsupported embedding provider `{other}`"),
+        )),
     }
 }
 

@@ -5,7 +5,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use tentgent_kernel::features::chat::domain::ChatFinishReason;
+use tentgent_kernel::features::{auth::domain::Provider, chat::domain::ChatFinishReason};
 
 use crate::transport::rest::{error::RestError, state::RestState};
 
@@ -134,6 +134,7 @@ impl GeminiGenerateContentRequest {
         Ok(ChatTransportRequest {
             model_ref,
             adapter_ref: self.adapter_ref,
+            cloud_provider: Some(Provider::Gemini),
             messages,
             max_tokens: generation_config.max_output_tokens,
             temperature: generation_config.temperature,
