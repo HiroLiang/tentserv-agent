@@ -80,7 +80,7 @@ pub async fn create(
         .prepare_server(ServerPrepareRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             runtime_ref: request.runtime_ref,
-            capability: request.capability.unwrap_or(ServerCapability::Chat),
+            capability: request.capability,
             host: request.host,
             port: request.port,
             lazy_load: request.lazy_load.unwrap_or(false),

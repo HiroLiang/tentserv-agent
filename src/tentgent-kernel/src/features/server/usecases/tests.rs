@@ -52,7 +52,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
             runtime_ref: "claude:claude-3-5-sonnet-latest".to_string(),
-            capability: ServerCapability::Chat,
+            capability: Some(ServerCapability::Chat),
             host: Some("127.0.0.1".to_string()),
             port: Some(8780),
             lazy_load: false,
@@ -69,7 +69,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
             runtime_ref: "anthropic:claude-3-5-sonnet-latest".to_string(),
-            capability: ServerCapability::Chat,
+            capability: Some(ServerCapability::Chat),
             host: Some("127.0.0.1".to_string()),
             port: Some(8780),
             lazy_load: false,
@@ -126,7 +126,7 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
             runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: ServerCapability::Chat,
+            capability: Some(ServerCapability::Chat),
             host: None,
             port: Some(8781),
             lazy_load: true,
@@ -217,7 +217,7 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
             .prepare_server(ServerPrepareRequest {
                 layout: fixture.layout_input(LayoutResolveMode::Create),
                 runtime_ref: fixture.model_ref.short_ref().to_string(),
-                capability: ServerCapability::Chat,
+                capability: Some(ServerCapability::Chat),
                 host: None,
                 port: Some(8781),
                 lazy_load: false,
@@ -230,6 +230,52 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
         assert!(message.contains("requires model capability `chat`"));
         assert!(message.contains(capability.as_str()));
     }
+}
+
+#[test]
+fn standard_server_usecase_infers_capability_from_local_model_metadata() {
+    let fixture = Fixture::new("inferred-vision");
+    fixture.write_model_format_capabilities(
+        ModelFormat::Safetensors,
+        vec![
+            ModelCapability::Chat,
+            ModelCapability::VisionChat,
+            ModelCapability::VideoUnderstanding,
+        ],
+    );
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let prepared = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            runtime_ref: fixture.model_ref.short_ref().to_string(),
+            capability: None,
+            host: None,
+            port: Some(8781),
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect("prepare inferred server");
+
+    assert_eq!(
+        prepared.outcome.inspection.spec.capability,
+        ServerCapability::VideoUnderstanding
+    );
 }
 
 #[test]
@@ -324,7 +370,7 @@ fn standard_server_usecase_prepares_embedding_specs() {
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
             runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: ServerCapability::Embedding,
+            capability: Some(ServerCapability::Embedding),
             host: None,
             port: Some(8781),
             lazy_load: false,
@@ -368,7 +414,7 @@ fn standard_server_usecase_prepares_rerank_specs() {
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
             runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: ServerCapability::Rerank,
+            capability: Some(ServerCapability::Rerank),
             host: None,
             port: Some(8782),
             lazy_load: false,
@@ -463,7 +509,7 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
             .prepare_server(ServerPrepareRequest {
                 layout: fixture.layout_input(LayoutResolveMode::Create),
                 runtime_ref: fixture.model_ref.short_ref().to_string(),
-                capability: server_capability,
+                capability: Some(server_capability),
                 host: None,
                 port: Some(8782),
                 lazy_load: false,
@@ -531,7 +577,7 @@ fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
             .prepare_server(ServerPrepareRequest {
                 layout: fixture.layout_input(LayoutResolveMode::Create),
                 runtime_ref: fixture.model_ref.short_ref().to_string(),
-                capability: server_capability,
+                capability: Some(server_capability),
                 host: None,
                 port: Some(8782),
                 lazy_load: false,

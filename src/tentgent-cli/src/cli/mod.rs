@@ -68,10 +68,11 @@ pub async fn run() -> miette::Result<()> {
 #[cfg(test)]
 mod tests {
     use clap::Parser as _;
+    use tentgent_kernel::features::server::domain::ServerCapability;
 
     use super::{
         app::Cli,
-        commands::{Commands, DaemonCommands, StoreCommands},
+        commands::{Commands, DaemonCommands, ServerCommands, StoreCommands},
     };
 
     #[test]
@@ -652,6 +653,39 @@ mod tests {
                 assert_eq!(command.host.as_deref(), Some("127.0.0.1"));
                 assert_eq!(command.port, Some(8790));
                 assert!(command.allow_unsafe_bind);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_server_run_optional_capability() {
+        let inferred = Cli::try_parse_from(["tentgent", "server", "run", "abc123"])
+            .expect("parse inferred server capability");
+        match inferred.command {
+            Commands::Server {
+                action: ServerCommands::Run(command),
+            } => {
+                assert_eq!(command.runtime_ref, "abc123");
+                assert_eq!(command.capability, None);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let explicit = Cli::try_parse_from([
+            "tentgent",
+            "server",
+            "run",
+            "abc123",
+            "--capability",
+            "vision-chat",
+        ])
+        .expect("parse explicit server capability");
+        match explicit.command {
+            Commands::Server {
+                action: ServerCommands::Run(command),
+            } => {
+                assert_eq!(command.capability, Some(ServerCapability::VisionChat));
             }
             other => panic!("unexpected command: {other:?}"),
         }

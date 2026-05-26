@@ -1,13 +1,14 @@
 use std::path::PathBuf;
 
-use crate::features::model::domain::{ModelRef, ModelRefSelector};
+use crate::features::model::domain::{ModelCapability, ModelRef, ModelRefSelector};
 
 use super::domain::{
-    parse_server_runtime_selection, CloudProvider, LaunchMode, ServerCapability,
-    ServerProcessMetadata, ServerRef, ServerRefParseError, ServerRefSelector, ServerRuntimeKind,
-    ServerRuntimeSelection, ServerSpec, ServerStoreLayout, DEFAULT_SERVER_HOST,
-    DEFAULT_SERVER_PORT, SERVER_PROCESS_FILENAME, SERVER_REF_HEX_LENGTH, SERVER_SPEC_FILENAME,
-    SERVER_STDERR_LOG_FILENAME, SERVER_STDOUT_LOG_FILENAME, SHORT_SERVER_REF_LENGTH,
+    infer_server_capability_from_model_capabilities, parse_server_runtime_selection, CloudProvider,
+    LaunchMode, ServerCapability, ServerProcessMetadata, ServerRef, ServerRefParseError,
+    ServerRefSelector, ServerRuntimeKind, ServerRuntimeSelection, ServerSpec, ServerStoreLayout,
+    DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, SERVER_PROCESS_FILENAME, SERVER_REF_HEX_LENGTH,
+    SERVER_SPEC_FILENAME, SERVER_STDERR_LOG_FILENAME, SERVER_STDOUT_LOG_FILENAME,
+    SHORT_SERVER_REF_LENGTH,
 };
 
 #[test]
@@ -102,6 +103,25 @@ fn runtime_ref_parser_keeps_cloud_alias_and_local_model_selectors() {
             selector: ModelRefSelector::parse("abc123").expect("model selector"),
         })
     );
+}
+
+#[test]
+fn server_capability_inference_prefers_specialized_model_capabilities() {
+    let capability = infer_server_capability_from_model_capabilities(&[
+        ModelCapability::Chat,
+        ModelCapability::VisionChat,
+        ModelCapability::VideoUnderstanding,
+    ]);
+
+    assert_eq!(capability, Some(ServerCapability::VideoUnderstanding));
+    assert_eq!(
+        infer_server_capability_from_model_capabilities(&[
+            ModelCapability::Chat,
+            ModelCapability::Embedding,
+        ]),
+        Some(ServerCapability::Embedding)
+    );
+    assert_eq!(infer_server_capability_from_model_capabilities(&[]), None);
 }
 
 #[test]

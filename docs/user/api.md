@@ -904,7 +904,7 @@ For ControlNet-style image control adapters, set `target_capability` to
 | Method | Path | Body |
 | --- | --- | --- |
 | `GET` | `/v1/servers` | None. |
-| `POST` | `/v1/servers` | `{"runtime_ref":"<model-or-cloud-ref>","capability":"chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation","host":"optional","port":8780,"lazy_load":true,"idle_seconds":60}` |
+| `POST` | `/v1/servers` | `{"runtime_ref":"<model-or-cloud-ref>","capability":"optional chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation","host":"optional","port":8780,"lazy_load":true,"idle_seconds":60}` |
 | `GET` | `/v1/servers/{reference}` | None. |
 | `DELETE` | `/v1/servers/{reference}` | Removes a stopped server spec. |
 | `POST` | `/v1/servers/{reference}/start` | `{"wait_ready":true,"timeout_seconds":30}` |

@@ -291,6 +291,26 @@ impl ServerCapability {
     }
 }
 
+pub const SERVER_CAPABILITY_INFERENCE_PRIORITY: &[ServerCapability] = &[
+    ServerCapability::VideoUnderstanding,
+    ServerCapability::VisionChat,
+    ServerCapability::ImageGeneration,
+    ServerCapability::AudioTranscription,
+    ServerCapability::AudioSpeech,
+    ServerCapability::Rerank,
+    ServerCapability::Embedding,
+    ServerCapability::Chat,
+];
+
+pub fn infer_server_capability_from_model_capabilities(
+    model_capabilities: &[ModelCapability],
+) -> Option<ServerCapability> {
+    SERVER_CAPABILITY_INFERENCE_PRIORITY
+        .iter()
+        .copied()
+        .find(|capability| model_capabilities.contains(&capability.required_model_capability()))
+}
+
 impl fmt::Display for ServerCapability {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())

@@ -3,9 +3,10 @@ use crate::features::model::domain::{
 };
 use crate::features::model::ports::ModelCatalogStore;
 use crate::features::server::domain::{
-    ensure_server_model_capability, normalize_server_host, parse_server_runtime_selection,
-    ServerCapability, ServerRef, ServerRuntimeKind, ServerRuntimeSelection, ServerRuntimeTarget,
-    ServerSpec, ServerStoreLayout, DEFAULT_SERVER_PORT,
+    ensure_server_model_capability, infer_server_capability_from_model_capabilities,
+    normalize_server_host, parse_server_runtime_selection, ServerCapability, ServerRef,
+    ServerRuntimeKind, ServerRuntimeSelection, ServerRuntimeTarget, ServerSpec, ServerStoreLayout,
+    DEFAULT_SERVER_PORT,
 };
 use crate::features::server::ports::ServerIdentityGenerator;
 use crate::foundation::error::{KernelError, KernelResult};
@@ -24,7 +25,7 @@ pub(super) fn model_store_layout(layout: &RuntimeLayout) -> ModelStoreLayout {
 
 pub(super) fn resolve_server_runtime_target(
     runtime_ref: &str,
-    capability: ServerCapability,
+    capability: Option<ServerCapability>,
     layout: &RuntimeLayout,
     model_catalog: &dyn ModelCatalogStore,
 ) -> KernelResult<ServerRuntimeTarget> {
@@ -35,6 +36,11 @@ pub(super) fn resolve_server_runtime_target(
             let model_store = model_store_layout(layout);
             let model = model_catalog.inspect_model(&model_store, &selector)?;
             let metadata = &model.metadata;
+            let capability = resolve_local_server_capability(
+                capability,
+                &metadata.model_ref,
+                &metadata.model_capabilities,
+            )?;
             ensure_model_compatible_with_server(
                 capability,
                 &metadata.model_ref,
@@ -53,6 +59,7 @@ pub(super) fn resolve_server_runtime_target(
             provider,
             provider_model,
         } => {
+            let capability = capability.unwrap_or(ServerCapability::Chat);
             if capability != ServerCapability::Chat {
                 return Err(KernelError::UnsupportedTarget(format!(
                     "cloud server capability `{capability}` is not implemented yet"
@@ -64,6 +71,21 @@ pub(super) fn resolve_server_runtime_target(
             })
         }
     }
+}
+
+fn resolve_local_server_capability(
+    requested: Option<ServerCapability>,
+    model_ref: &crate::features::model::domain::ModelRef,
+    model_capabilities: &[ModelCapability],
+) -> KernelResult<ServerCapability> {
+    if let Some(capability) = requested {
+        return Ok(capability);
+    }
+    infer_server_capability_from_model_capabilities(model_capabilities).ok_or_else(|| {
+        KernelError::UnsupportedTarget(format!(
+            "model `{model_ref}` does not advertise a server-compatible capability"
+        ))
+    })
 }
 
 pub(super) fn ensure_server_spec_launchable(

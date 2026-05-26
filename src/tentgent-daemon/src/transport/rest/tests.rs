@@ -3364,7 +3364,7 @@ async fn server_list_and_inspect_read_kernel_catalog() {
 }
 
 #[tokio::test]
-async fn server_create_prepares_kernel_spec() {
+async fn server_create_infers_capability_from_model_metadata() {
     let requested_home = unique_home("servers-create");
     let state = rest_state_for_home(requested_home);
     let home = state.app().layout().home_dir.canonicalize().expect("home");
@@ -3389,7 +3389,7 @@ async fn server_create_prepares_kernel_spec() {
     let body = json_body(response).await;
     assert_eq!(body["created"], true);
     assert_eq!(body["server"]["runtime_kind"], "local");
-    assert_eq!(body["server"]["capability"], "chat");
+    assert_eq!(body["server"]["capability"], "embedding");
     assert_eq!(
         body["server"]["model_ref"].as_str(),
         Some(model_ref.as_str())
@@ -3422,7 +3422,7 @@ async fn server_create_rejects_non_chat_model_for_chat_server() {
                 .uri("/v1/servers")
                 .header("content-type", "application/json")
                 .body(Body::from(format!(
-                    r#"{{"runtime_ref":"{model_ref}","host":"127.0.0.1","port":8998}}"#
+                    r#"{{"runtime_ref":"{model_ref}","capability":"chat","host":"127.0.0.1","port":8998}}"#
                 )))
                 .expect("request"),
         )

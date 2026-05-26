@@ -6,7 +6,9 @@ runtime daemon.
 ## Capabilities
 
 One Python runtime process serves one endpoint family. Rust chooses the
-capability when it starts the process through the runtime daemon entrypoint.
+capability when it starts the process through the runtime daemon entrypoint. If
+the caller omitted `--capability` for a local model-bound server, Rust infers
+that capability from stored model metadata before launching Python.
 
 Supported capability values:
 

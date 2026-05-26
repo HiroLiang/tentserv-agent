@@ -637,6 +637,7 @@ metadata.
 `features/server/usecases/port.rs` defines workflow boundaries for:
 
 - creating or reusing stored server specs without launching them
+  and inferring omitted local endpoint capability from model metadata
 - listing, inspecting, and removing stored stopped servers
 - resolving a stopped server before launch while checking local model
   availability and endpoint capability

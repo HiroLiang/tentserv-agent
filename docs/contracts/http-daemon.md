@@ -623,8 +623,12 @@ and returns:
 ```
 
 `capability` is the endpoint family the stored server spec is meant to serve.
-Server lifecycle routes create `chat` specs by default and accept local
-model-runtime endpoint families such as `embedding`, `rerank`,
+When omitted for a local model, server lifecycle routes choose a capability
+from the model's stored capabilities using this priority:
+`video-understanding`, `vision-chat`, `image-generation`, `audio-transcription`,
+`audio-speech`, `rerank`, `embedding`, then `chat`. Cloud server specs default
+to `chat`. Server lifecycle routes also accept explicit local model-runtime
+endpoint families such as `embedding`, `rerank`,
 `audio-transcription`, `audio-speech`, `vision-chat`, `video-understanding`,
 and `image-generation`. Older `server.toml` files without `capability` are read
 as `chat`.

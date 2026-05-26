@@ -710,13 +710,16 @@ Launch a long-lived local server:
 tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 ```
 
-Server launch defaults to `--capability chat` and requires a chat-capable model.
-Use `--capability embedding`, `rerank`, `audio-transcription`, `audio-speech`,
-`vision-chat`, `video-understanding`, or `image-generation` to bind a model to
-another endpoint family. Local servers bind the selected model at startup, so
-the direct server request body does not need `model_ref`, `model`, or
-`model_kind` fields. Direct Python runtime callers that do not start a
-model-bound server may still send explicit `model` and `model_kind` fields.
+When `--capability` is omitted for a local model, Tentgent chooses the server
+endpoint family from the model's stored capabilities. The priority is
+`video-understanding`, `vision-chat`, `image-generation`, `audio-transcription`,
+`audio-speech`, `rerank`, `embedding`, then `chat`. Use `--capability chat`,
+`embedding`, `rerank`, `audio-transcription`, `audio-speech`, `vision-chat`,
+`video-understanding`, or `image-generation` to override that choice. Local
+servers bind the selected model at startup, so the direct server request body
+does not need `model_ref`, `model`, or `model_kind` fields. Direct Python
+runtime callers that do not start a model-bound server may still send explicit
+`model` and `model_kind` fields.
 
 Call the server:
 

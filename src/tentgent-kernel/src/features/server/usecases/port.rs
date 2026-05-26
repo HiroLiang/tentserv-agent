@@ -12,7 +12,7 @@ use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
 pub struct ServerPrepareRequest {
     pub layout: RuntimeLayoutInput,
     pub runtime_ref: String,
-    pub capability: ServerCapability,
+    pub capability: Option<ServerCapability>,
     pub host: Option<String>,
     pub port: Option<u16>,
     pub lazy_load: bool,
