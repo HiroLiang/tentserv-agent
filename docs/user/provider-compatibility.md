@@ -10,14 +10,14 @@ Status key:
   subset than the upstream provider API.
 - Planned: future adapter work is expected, but callers should not depend on it
   yet.
-- Unsupported: no compatible route exists, or the current route rejects the
-  provider field or endpoint family.
+- Unsupported: no compatible route exists, or the provider field or endpoint
+  family is not supported and should not be relied on.
 
 ## Route Surfaces
 
 | Surface | How to use it | Provider-shaped routes | Notes |
 | --- | --- | --- | --- |
-| Daemon compatibility adapters | `tentgent daemon start --host 127.0.0.1 --port 8790` | `/v1/chat/completions`, `/v1/messages`, `/v1beta/models/{model}:generateContent`, `/v1beta/models/{model}:streamGenerateContent?alt=sse`, `/v1/images/generations` | Daemon chat compatibility routes translate into Tentgent chat execution. They are intentionally narrower than full provider APIs. |
+| Daemon compatibility adapters | `tentgent daemon start --host 127.0.0.1 --port 8790` | `/v1/chat/completions`, `/v1/messages`, `/v1beta/models/{model}:generateContent`, `/v1beta/models/{model}:streamGenerateContent?alt=sse`, `/v1/embeddings`, `/v1/images/generations` | Daemon provider compatibility routes translate into Tentgent execution. They are intentionally narrower than full provider APIs. |
 | Direct cloud provider server | `tentgent server run openai:<model>`, `anthropic:<model>`, or `gemini:<model>` | `/v1/chat`, `/v1/chat/completions`, `/v1/messages`, `/v1beta/models/{operation}`, `/v1/embeddings`, `/v1/images/generations` | A server is bound to one provider model. Unsupported provider/capability combinations fail at server creation or request time. |
 | Native local API | `tentgent daemon start` or a local model-bound server | `/v1/chat`, `/v1/embeddings`, `/v1/rerank`, `/v1/vision/chat`, media job routes | These are Tentgent APIs, not provider-compatible APIs. Use them when provider-shaped routes are unsupported. |
 
@@ -26,8 +26,8 @@ Status key:
 | Endpoint family | OpenAI-compatible | Claude/Anthropic-compatible | Gemini-compatible | Native Tentgent fallback |
 | --- | --- | --- | --- | --- |
 | Chat | Partial. `/v1/chat/completions` supports text chat fields; direct cloud servers can also translate OpenAI image parts for compatible models. | Partial. `/v1/messages` supports Claude-style messages; direct cloud servers can translate text and base64 image blocks for compatible models. | Partial. `generateContent` supports Gemini-style contents; direct cloud servers can translate text and inline image data for compatible models. | `/v1/chat` for local text chat. |
-| Streaming chat | Partial. `stream: true` returns an SSE wrapper for OpenAI-style chat. | Partial. Daemon `/v1/messages` accepts streaming chat, but the direct cloud server currently returns non-streaming Claude-style messages. | Partial. Use `streamGenerateContent?alt=sse`; streaming is route-based rather than a `stream` field. | `/v1/chat` with `stream: true`, or direct local `/v1/chat/stream`. |
-| Embeddings | Partial. Direct cloud provider servers expose `/v1/embeddings` when the selected provider/model supports embeddings. | Unsupported. Anthropic cloud embeddings are not implemented. | Partial. Direct cloud provider servers expose `/v1/embeddings` for Gemini embedding models. | `/v1/embeddings` for local embedding models. |
+| Streaming chat | Partial. `stream: true` returns an SSE wrapper for OpenAI-style chat. | Partial. Daemon `/v1/messages` accepts streaming chat, but the direct cloud server currently returns non-streaming Claude-style messages. | Partial. Use `streamGenerateContent?alt=sse`; streaming is route-based rather than a `stream` field. | `/v1/chat` with `stream: true`. |
+| Embeddings | Partial. Daemon `/v1/embeddings` can route cloud embeddings through `model` / `provider`; direct cloud provider servers expose `/v1/embeddings` when the selected provider/model supports embeddings. | Unsupported. Anthropic cloud embeddings are not implemented. | Partial. Daemon `/v1/embeddings` can route Gemini cloud embeddings through `model` / `provider`; direct cloud provider servers expose `/v1/embeddings` for Gemini embedding models. | `/v1/embeddings` for local embedding models. |
 | Image generation | Partial. `/v1/images/generations` accepts `model`, `prompt`, and optional `size` for OpenAI image models. | Unsupported. Anthropic image generation is not implemented. | Partial. `/v1/images/generations` can route Gemini image generation requests where the provider model supports it. | `/v1/images/generations/job` for local image-generation workflows. |
 | Audio transcription | Unsupported. OpenAI-shaped transcription routes are not implemented. | Unsupported. | Unsupported. | `/v1/audio/transcriptions/job`. |
 | Audio speech | Unsupported. OpenAI-shaped speech routes are not implemented. | Unsupported. | Unsupported. | `/v1/audio/speech/job`. |
@@ -43,11 +43,11 @@ limits rather than optional provider pass-through.
 | Field | OpenAI-compatible | Claude/Anthropic-compatible | Gemini-compatible | Notes |
 | --- | --- | --- | --- | --- |
 | `model` | Supported by daemon adapters. Direct cloud servers are already bound to a model. | Supported by daemon adapters. Direct cloud servers are already bound to a model. | Supported in the path as `{model}` for daemon Gemini routes. Direct cloud servers are already bound to a model. | Native local routes usually use `model_ref`. |
-| `messages` / `contents` | Partial. Text messages are safe; image parts require a direct cloud server and a compatible model. | Partial. Text messages are safe; image blocks require a direct cloud server and a compatible model. | Partial. Text parts are safe; inline image data requires a direct cloud server and a compatible model. | Daemon chat compatibility rejects unsupported non-text parts. |
+| `messages` / `contents` | Partial. Text messages are safe; image parts require a direct cloud server and a compatible model. | Partial. Text messages are safe; image blocks require a direct cloud server and a compatible model. | Partial. Text parts are safe; inline image data requires a direct cloud server and a compatible model. | Daemon chat compatibility does not support unsupported non-text parts. |
 | `max_tokens` / `max_completion_tokens` / `maxOutputTokens` | Supported for chat. | Supported for chat as `max_tokens`. | Supported through `generationConfig.maxOutputTokens`. | Native chat uses `max_tokens`. |
 | `temperature` | Supported for chat. | Supported for chat. | Supported through `generationConfig.temperature`. | Runtime/model limits may still apply. |
 | `stream` | Supported for OpenAI-style chat. | Partial. Supported by daemon `/v1/messages`; not exposed by the direct cloud Claude message route. | Not a body field. Use `streamGenerateContent?alt=sse`. | Native chat supports `stream: true`. |
-| `tools` / function calling | Planned, currently unsupported. | Planned, currently unsupported. | Planned, currently unsupported. | Current compatibility adapters reject or do not accept tool fields. |
+| `tools` / function calling | Planned, currently unsupported. | Planned, currently unsupported. | Planned, currently unsupported. | Current compatibility adapters do not support tool fields; callers should not rely on provider pass-through. |
 | `response_format` | Unsupported as a chat field. Image generation returns base64 JSON data without a caller-supplied `response_format`. | Unsupported. | Unsupported. | `gpt-image-1` routing intentionally omits the legacy OpenAI `response_format` field. |
 | `dimensions` | Unsupported in provider-compatible requests. | Unsupported. | Unsupported in provider-compatible requests. | Local embeddings do not expose a dimension override. |
 | Image size | Supported as `size` on provider-compatible image generation. | Unsupported. | Supported as `size` where the Gemini image model accepts it. | Native local image jobs use `width` and `height`. |
