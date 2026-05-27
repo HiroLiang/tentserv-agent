@@ -111,6 +111,10 @@ Key current documents:
   management, runtime proof storage, dynamic routing, media serving wrappers,
   stream proxy decisions, and resource coordination after the signed `v0.4.1`
   release.
+- `docs/plans/provider-api-compatibility-and-model-support-roadmap.md`
+  Focused roadmap for provider-compatible API surfaces, model support records,
+  runtime parameter profiles, verification gates, bounded dynamic routing, and
+  the staged path to `1.0.0`.
 - `docs/plans/archive/README.md`
   Router for completed or superseded plans that should be consulted only when historical implementation context is needed.
 - `docs/plans/archive/capability-first-release-roadmap.md`

@@ -32,6 +32,10 @@ one pass without a staged breakdown.
   management, runtime proof storage, dynamic runtime routing, media serving
   wrappers, runtime stream proxy decisions, resource coordination, and
   conversion boundaries after the signed `v0.4.1` release.
+- [provider-api-compatibility-and-model-support-roadmap.md](./provider-api-compatibility-and-model-support-roadmap.md)
+  Focused roadmap for OpenAI, Claude/Anthropic, and Gemini-compatible API
+  surfaces, model support records, runtime parameter profiles, verification
+  gates, bounded dynamic routing, and the staged path to `1.0.0`.
 
 ## Deferred Plans
 
