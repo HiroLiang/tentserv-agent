@@ -15,6 +15,10 @@ This document defines the stable HTTP daemon boundary for the Rust
   video understanding.
 - Expose limited OpenAI, Claude, and Gemini compatible chat routes that translate
   DTO and SSE shapes only.
+- Keep user-facing provider compatibility details in
+  [provider-compatibility.md](../user/provider-compatibility.md) so callers can
+  distinguish supported, partial, planned, and unsupported provider-shaped
+  endpoint families.
 - Expose daemon health, status, read-only store discovery, controlled server
   lifecycle mutations, store import/pull mutations, deterministic dataset
   tooling, cloud dataset tooling, LoRA train-plan management, auth status,

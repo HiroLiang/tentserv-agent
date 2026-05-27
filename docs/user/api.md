@@ -118,6 +118,9 @@ by chat compatibility routes until their corresponding adapters exist. Send
 single-image local vision requests through the native Vision Chat endpoint
 below.
 
+For provider-shaped route coverage across OpenAI, Claude/Anthropic, and Gemini
+APIs, see [provider-compatibility.md](./provider-compatibility.md).
+
 ## Vision Chat
 
 Native vision chat accepts one image plus one text prompt and returns generated

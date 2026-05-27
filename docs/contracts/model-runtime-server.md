@@ -45,6 +45,12 @@ Rust still owns job creation, workspace paths, model resolution, and server
 selection. The Python runtime only loads the selected model, runs inference, and
 returns or writes the prepared result.
 
+Provider-shaped OpenAI, Claude/Anthropic, and Gemini route coverage is tracked
+in the user-facing
+[provider compatibility matrix](../user/provider-compatibility.md). That matrix
+is the caller-facing source for which provider endpoint families are supported,
+partial, planned, or unsupported through Tentgent.
+
 When the Rust local-server proxy asks the supervisor to start this daemon for a
 model-bound server request, it passes `--server-ref`, `--model-ref`, `--home`,
 and one capability value. In that mode, the matching direct server endpoints

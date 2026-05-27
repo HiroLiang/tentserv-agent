@@ -31,6 +31,8 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
   User-facing daemon HTTP API reference, including request shapes, result
   routes, job behavior, multipart media upload semantics, and HTTP error
   behavior.
+- [provider-compatibility.md](./provider-compatibility.md)
+  OpenAI, Claude/Anthropic, and Gemini-compatible endpoint support matrix.
 - [model-fixtures.md](./model-fixtures.md)
   Recommended small Hugging Face models and smoke-test commands for chat,
   embedding, rerank, audio transcription, and media workflows.
