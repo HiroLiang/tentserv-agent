@@ -151,6 +151,13 @@ bash -n scripts/update-homebrew-formula.sh
 bash -n scripts/test-update-homebrew-formula.sh
 ```
 
+## Compatibility Audits
+
+- [provider-compatibility-audit/README.md](./provider-compatibility-audit/README.md)
+  Engineering audit of current OpenAI, Claude/Anthropic, and Gemini-shaped
+  daemon and direct cloud server routes, plus the native local model-bound
+  server boundary for the `v0.6.0` compatibility-contract work.
+
 ## CLI Help
 
 Inspect layered help:
