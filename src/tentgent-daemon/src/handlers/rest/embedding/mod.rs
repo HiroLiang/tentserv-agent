@@ -7,7 +7,10 @@ use tentgent_kernel::{
             domain::{AuthEnvLoadPolicy, Provider},
             usecases::{AuthSecretResolutionRequest, AuthSecretResolverUseCase},
         },
-        cloud::{domain::CloudEmbeddingRequest, infra::ReqwestCloudModelClient},
+        cloud::{
+            domain::{CloudEmbeddingRequest, CloudEndpointCapability},
+            infra::ReqwestCloudModelClient,
+        },
         embedding::{
             domain::EmbeddingInput,
             usecases::{EmbeddingExecutionResult, EmbeddingPreparationRequest, EmbeddingUseCase},
@@ -21,7 +24,12 @@ use tentgent_kernel::{
     foundation::{error::KernelError, layout::LayoutResolveMode},
 };
 
-use crate::transport::rest::{error::RestError, state::RestState};
+use crate::{
+    provider_compat::{
+        ensure_provider_capability, map_provider_kernel_error, ProviderCompatRejection,
+    },
+    transport::rest::{error::RestError, state::RestState},
+};
 
 pub async fn create(
     State(state): State<RestState>,
@@ -43,6 +51,7 @@ async fn cloud_embed(
     provider: Provider,
     request: &EmbeddingRequestBody,
 ) -> Result<EmbeddingResponseBody, RestError> {
+    ensure_provider_capability(provider, CloudEndpointCapability::Embedding)?;
     let secret = state
         .app()
         .services()
@@ -72,7 +81,7 @@ async fn cloud_embed(
             secret.secret(),
         )
         .await
-        .map_err(|error| RestError::kernel("embedding_runtime_failed", error))?;
+        .map_err(|error| map_provider_kernel_error("embedding_runtime_failed", error))?;
 
     Ok(EmbeddingResponseBody {
         model_ref: request.model_ref.clone(),
@@ -213,13 +222,11 @@ impl EmbeddingRequestBody {
             .map(String::as_str)
             .collect::<Vec<_>>();
         if !unknown.is_empty() {
-            return Err(RestError::bad_request(
-                "bad_request",
-                format!(
-                    "unsupported embedding request fields: {}",
-                    unknown.join(", ")
-                ),
-            ));
+            return Err(ProviderCompatRejection::unsupported_field(format!(
+                "unsupported embedding request fields: {}",
+                unknown.join(", ")
+            ))
+            .into());
         }
 
         let model_value = object
@@ -254,10 +261,10 @@ fn parse_cloud_provider(value: &str) -> Result<Provider, RestError> {
         "openai" => Ok(Provider::OpenAI),
         "gemini" | "google" => Ok(Provider::Gemini),
         "anthropic" | "claude" => Ok(Provider::Anthropic),
-        other => Err(RestError::bad_request(
-            "bad_request",
-            format!("unsupported embedding provider `{other}`"),
-        )),
+        other => Err(ProviderCompatRejection::unsupported_capability(format!(
+            "unsupported embedding provider `{other}`"
+        ))
+        .into()),
     }
 }
 
@@ -307,6 +314,7 @@ mod request_tests {
         .expect_err("unknown field");
 
         assert!(format!("{err:?}").contains("RestError"));
+        assert!(format!("{err:?}").contains("unsupported_provider_field"));
     }
 }
 

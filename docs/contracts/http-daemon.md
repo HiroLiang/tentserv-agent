@@ -1619,8 +1619,9 @@ MVP limits:
   `assistant` map directly.
 - `adapter_ref` is a Tentgent extension field; SDK users may need an extra-body
   mechanism to pass it.
-- OpenAI tools/function calling, tool-call messages, audio, and non-text
-  modalities return `400 unsupported_chat_feature`. OpenAI image content parts
+- OpenAI tools/function calling, tool-call messages, audio, response formats,
+  and non-text modalities return `400 unsupported_provider_field`. OpenAI image
+  content parts return `400 unsupported_provider_content`. Image content parts
   are accepted by direct cloud server workers; daemon local-model compatibility
   remains text-only.
 - OpenAI-compatible error objects are out of scope; daemon-owned errors keep the
@@ -1669,7 +1670,8 @@ POST /v1/messages
 
 The request accepts `model`, `system`, `messages`, `max_tokens`, `temperature`,
 `stream`, `adapter_ref`, and text-only Claude content blocks. Claude tools and
-non-text blocks return `400 unsupported_chat_feature` or `400 bad_request`.
+non-text blocks return `400 unsupported_provider_field` or
+`400 unsupported_provider_content`.
 Streaming emits Anthropic-style `message_start`, `content_block_delta`, and
 `message_stop` events.
 
@@ -1682,8 +1684,9 @@ POST /v1beta/models/{model}:streamGenerateContent
 
 The request accepts `contents`, `systemInstruction`, `generationConfig`,
 `adapter_ref`, and text-only parts. Gemini tools and non-text parts return
-`400 unsupported_chat_feature` or `400 bad_request`. Streaming uses Gemini-style
-SSE data frames.
+`400 unsupported_provider_field` or `400 unsupported_provider_content`.
+Unsupported Gemini operations return `400 unsupported_provider_operation`.
+Streaming uses Gemini-style SSE data frames.
 
 ## Log Diagnostics
 

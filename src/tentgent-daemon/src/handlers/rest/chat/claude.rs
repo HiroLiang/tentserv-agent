@@ -7,7 +7,10 @@ use serde::Deserialize;
 use serde_json::json;
 use tentgent_kernel::features::{auth::domain::Provider, chat::domain::ChatFinishReason};
 
-use crate::transport::rest::{error::RestError, state::RestState};
+use crate::{
+    provider_compat::ProviderCompatRejection,
+    transport::rest::{error::RestError, state::RestState},
+};
 
 use super::execution::{
     chat_preparation_request, complete_chat, response_id, sse_json_event, stream_chat_response,
@@ -108,10 +111,10 @@ impl ClaudeMessagesRequest {
 
     fn reject_unsupported(&self) -> Result<(), RestError> {
         if self.tools.is_some() || self.tool_choice.is_some() {
-            return Err(RestError::bad_request(
-                "unsupported_chat_feature",
+            return Err(ProviderCompatRejection::unsupported_field(
                 "Claude-compatible tools require kernel tool-call support",
-            ));
+            )
+            .into());
         }
         Ok(())
     }
@@ -278,10 +281,11 @@ fn claude_content(content: ClaudeContent) -> Result<String, RestError> {
             let mut text = String::new();
             for block in blocks {
                 if block.kind != "text" {
-                    return Err(RestError::bad_request(
-                        "bad_request",
-                        format!("unsupported Claude content block `{}`", block.kind),
-                    ));
+                    return Err(ProviderCompatRejection::unsupported_content(format!(
+                        "unsupported Claude content block `{}`",
+                        block.kind
+                    ))
+                    .into());
                 }
                 text.push_str(block.text.as_deref().unwrap_or_default());
             }
@@ -332,7 +336,7 @@ mod tests {
         .expect("request");
 
         let error = request.into_transport().expect_err("tools unsupported");
-        assert!(format!("{error:?}").contains("unsupported_chat_feature"));
+        assert!(format!("{error:?}").contains("unsupported_provider_field"));
     }
 
     #[test]
@@ -348,6 +352,6 @@ mod tests {
         .expect("request");
 
         let error = request.into_transport().expect_err("image unsupported");
-        assert!(format!("{error:?}").contains("bad_request"));
+        assert!(format!("{error:?}").contains("unsupported_provider_content"));
     }
 }

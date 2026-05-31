@@ -40,6 +40,9 @@ Use this directory for concise interface documents that define stable boundaries
   Kernel-owned job workspace, chunk IO, result file, and cleanup port boundary.
 - [http-daemon.md](./http-daemon.md)
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
+- [provider-api-errors.md](./provider-api-errors.md)
+  Stable unsupported-field, content, operation, and capability error semantics
+  for provider-shaped API routes.
 - [tentgent-daemon.md](./tentgent-daemon.md)
   Rust daemon application host, bootstrap, transport, and runtime-state boundary.
 - [training-lora.md](./training-lora.md)

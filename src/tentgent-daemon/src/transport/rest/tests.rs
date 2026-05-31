@@ -432,7 +432,7 @@ async fn gemini_generate_content_rejects_non_text_parts() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = json_body(response).await;
-    assert_eq!(body["error"], "bad_request");
+    assert_eq!(body["error"], "unsupported_provider_content");
 }
 
 #[tokio::test]

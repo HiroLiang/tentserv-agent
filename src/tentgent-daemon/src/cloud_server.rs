@@ -7,16 +7,24 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use tentgent_kernel::features::{
-    auth::domain::Provider,
-    cloud::{
-        domain::{
-            CloudChatContentPart, CloudChatMessage, CloudChatRequest, CloudEmbeddingRequest,
-            CloudImageGenerationRequest,
+use serde_json::{json, Value};
+use tentgent_kernel::{
+    features::{
+        auth::domain::Provider,
+        cloud::{
+            domain::{
+                CloudChatContentPart, CloudChatMessage, CloudChatRequest, CloudEmbeddingRequest,
+                CloudEndpointCapability, CloudImageGenerationRequest,
+            },
+            infra::ReqwestCloudModelClient,
         },
-        infra::ReqwestCloudModelClient,
     },
+    foundation::error::KernelError,
+};
+
+use crate::{
+    provider_compat::{ensure_provider_capability, ProviderCompatRejection},
+    time::unix_timestamp_seconds,
 };
 
 #[derive(Debug, Clone)]
@@ -69,7 +77,8 @@ async fn gemini_generate_content(
     Path(operation): Path<String>,
     Json(request): Json<GeminiGenerateContentRequest>,
 ) -> Result<Response, CloudServerError> {
-    let stream = operation.ends_with(":streamGenerateContent");
+    request.reject_unsupported()?;
+    let stream = gemini_operation_stream(&operation)?;
     let mut messages = Vec::new();
     if let Some(system) = request.system_instruction {
         messages.push(CloudChatMessage {
@@ -163,6 +172,7 @@ async fn openai_chat(
     State(state): State<CloudServerState>,
     Json(request): Json<OpenAiChatRequest>,
 ) -> Result<Response, CloudServerError> {
+    request.reject_unsupported()?;
     let stream = request.stream.unwrap_or(false);
     let cloud_request = CloudChatRequest {
         provider: state.config.provider,
@@ -200,6 +210,7 @@ async fn claude_messages(
     State(state): State<CloudServerState>,
     Json(request): Json<ClaudeMessagesRequest>,
 ) -> Result<Response, CloudServerError> {
+    request.reject_unsupported()?;
     let mut messages = Vec::new();
     if let Some(system) = request.system {
         messages.push(CloudChatMessage::text("system", system));
@@ -237,6 +248,8 @@ async fn embeddings(
     State(state): State<CloudServerState>,
     Json(request): Json<EmbeddingRequest>,
 ) -> Result<Json<EmbeddingResponse>, CloudServerError> {
+    request.reject_unsupported()?;
+    ensure_provider_capability(state.config.provider, CloudEndpointCapability::Embedding)?;
     let client = ReqwestCloudModelClient::new()?;
     let response = client
         .create_embedding(
@@ -263,6 +276,11 @@ async fn images(
     State(state): State<CloudServerState>,
     Json(request): Json<ImageRequest>,
 ) -> Result<Json<ImageResponse>, CloudServerError> {
+    request.reject_unsupported()?;
+    ensure_provider_capability(
+        state.config.provider,
+        CloudEndpointCapability::ImageGeneration,
+    )?;
     let client = ReqwestCloudModelClient::new()?;
     let response = client
         .generate_image(
@@ -332,6 +350,13 @@ struct OpenAiChatRequest {
     max_completion_tokens: Option<u32>,
     temperature: Option<f32>,
     stream: Option<bool>,
+    tools: Option<Value>,
+    tool_choice: Option<Value>,
+    functions: Option<Value>,
+    function_call: Option<Value>,
+    response_format: Option<Value>,
+    modalities: Option<Vec<String>>,
+    audio: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -367,23 +392,57 @@ impl OpenAiMessage {
             OpenAiContent::Parts(parts) => parts
                 .into_iter()
                 .map(|part| match part.kind.as_str() {
-                    "text" => Ok(CloudChatContentPart::Text(part.text.unwrap_or_default())),
+                    "text" => Ok::<CloudChatContentPart, CloudServerError>(
+                        CloudChatContentPart::Text(part.text.unwrap_or_default()),
+                    ),
                     "image_url" => Ok(CloudChatContentPart::ImageUrl {
                         url: part
                             .image_url
                             .map(|image| image.url)
                             .ok_or_else(|| CloudServerError::bad_request("image_url is missing"))?,
                     }),
-                    other => Err(CloudServerError::bad_request(format!(
-                        "unsupported OpenAI content part `{other}`"
-                    ))),
+                    other => Err(CloudServerError::from(
+                        ProviderCompatRejection::unsupported_content(format!(
+                            "unsupported OpenAI content part `{other}`"
+                        )),
+                    )),
                 })
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<Result<Vec<_>, CloudServerError>>()?,
         };
         Ok(CloudChatMessage {
             role: self.role,
             content,
         })
+    }
+}
+
+impl OpenAiChatRequest {
+    fn reject_unsupported(&self) -> Result<(), ProviderCompatRejection> {
+        if self.tools.is_some()
+            || self.tool_choice.is_some()
+            || self.functions.is_some()
+            || self.function_call.is_some()
+        {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "OpenAI-compatible tools and function calling require kernel tool-call support",
+            ));
+        }
+        if self.response_format.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "OpenAI-compatible response_format is not supported by Tentgent chat compatibility yet",
+            ));
+        }
+        if self.audio.is_some()
+            || self
+                .modalities
+                .as_ref()
+                .is_some_and(|modalities| modalities.iter().any(|value| value != "text"))
+        {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "OpenAI-compatible audio output requires kernel multimodal support",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -393,6 +452,9 @@ struct ClaudeMessagesRequest {
     system: Option<String>,
     max_tokens: Option<u32>,
     temperature: Option<f32>,
+    stream: Option<bool>,
+    tools: Option<Value>,
+    tool_choice: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -431,32 +493,54 @@ impl ClaudeMessage {
             ClaudeContent::Blocks(blocks) => blocks
                 .into_iter()
                 .map(|block| match block.kind.as_str() {
-                    "text" => Ok(CloudChatContentPart::Text(block.text.unwrap_or_default())),
+                    "text" => Ok::<CloudChatContentPart, CloudServerError>(
+                        CloudChatContentPart::Text(block.text.unwrap_or_default()),
+                    ),
                     "image" => {
                         let source = block.source.ok_or_else(|| {
                             CloudServerError::bad_request("Claude image source is missing")
                         })?;
                         if source.kind != "base64" {
-                            return Err(CloudServerError::bad_request(format!(
-                                "unsupported Claude image source `{}`",
-                                source.kind
-                            )));
+                            return Err(CloudServerError::from(
+                                ProviderCompatRejection::unsupported_content(format!(
+                                    "unsupported Claude image source `{}`",
+                                    source.kind
+                                )),
+                            ));
                         }
                         Ok(CloudChatContentPart::ImageBase64 {
                             media_type: source.media_type,
                             data: source.data,
                         })
                     }
-                    other => Err(CloudServerError::bad_request(format!(
-                        "unsupported Claude content block `{other}`"
-                    ))),
+                    other => Err(CloudServerError::from(
+                        ProviderCompatRejection::unsupported_content(format!(
+                            "unsupported Claude content block `{other}`"
+                        )),
+                    )),
                 })
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<Result<Vec<_>, CloudServerError>>()?,
         };
         Ok(CloudChatMessage {
             role: self.role,
             content,
         })
+    }
+}
+
+impl ClaudeMessagesRequest {
+    fn reject_unsupported(&self) -> Result<(), ProviderCompatRejection> {
+        if self.tools.is_some() || self.tool_choice.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "Claude-compatible tools require kernel tool-call support",
+            ));
+        }
+        if self.stream.unwrap_or(false) {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "direct cloud Claude messages do not support stream=true yet",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -467,6 +551,9 @@ struct GeminiGenerateContentRequest {
     system_instruction: Option<GeminiContent>,
     #[serde(alias = "generationConfig")]
     generation_config: Option<GeminiGenerationConfig>,
+    tools: Option<Value>,
+    #[serde(alias = "toolConfig")]
+    tool_config: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -511,14 +598,49 @@ fn gemini_parts_into_cloud(
                     data: data.data,
                 });
             }
-            Err(CloudServerError::bad_request("unsupported Gemini part"))
+            Err(ProviderCompatRejection::unsupported_content("unsupported Gemini part").into())
         })
         .collect()
+}
+
+impl GeminiGenerateContentRequest {
+    fn reject_unsupported(&self) -> Result<(), ProviderCompatRejection> {
+        if self.tools.is_some() || self.tool_config.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "Gemini-compatible tools require kernel tool-call support",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn gemini_operation_stream(operation: &str) -> Result<bool, ProviderCompatRejection> {
+    if operation.strip_suffix(":generateContent").is_some() {
+        return Ok(false);
+    }
+    if operation.strip_suffix(":streamGenerateContent").is_some() {
+        return Ok(true);
+    }
+    Err(ProviderCompatRejection::unsupported_operation(
+        "unsupported Gemini generateContent operation",
+    ))
 }
 
 #[derive(Debug, Deserialize)]
 struct EmbeddingRequest {
     input: EmbeddingInput,
+    dimensions: Option<Value>,
+}
+
+impl EmbeddingRequest {
+    fn reject_unsupported(&self) -> Result<(), ProviderCompatRejection> {
+        if self.dimensions.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "provider-compatible embeddings do not support dimensions overrides yet",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -553,6 +675,24 @@ struct EmbeddingItem {
 struct ImageRequest {
     prompt: String,
     size: Option<String>,
+    response_format: Option<Value>,
+    n: Option<Value>,
+}
+
+impl ImageRequest {
+    fn reject_unsupported(&self) -> Result<(), ProviderCompatRejection> {
+        if self.response_format.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "provider-compatible image generation response_format is not supported; Tentgent returns b64_json",
+            ));
+        }
+        if self.n.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "provider-compatible image generation only supports one image per request today",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -569,6 +709,7 @@ struct ImageData {
 #[derive(Debug)]
 struct CloudServerError {
     status: axum::http::StatusCode,
+    code: &'static str,
     message: String,
 }
 
@@ -576,16 +717,34 @@ impl CloudServerError {
     fn bad_request(message: impl Into<String>) -> Self {
         Self {
             status: axum::http::StatusCode::BAD_REQUEST,
+            code: "bad_request",
             message: message.into(),
         }
     }
 }
 
-impl From<tentgent_kernel::foundation::error::KernelError> for CloudServerError {
-    fn from(error: tentgent_kernel::foundation::error::KernelError) -> Self {
+impl From<ProviderCompatRejection> for CloudServerError {
+    fn from(rejection: ProviderCompatRejection) -> Self {
+        let (code, message) = rejection.into_parts();
         Self {
-            status: axum::http::StatusCode::BAD_GATEWAY,
-            message: error.to_string(),
+            status: axum::http::StatusCode::BAD_REQUEST,
+            code,
+            message,
+        }
+    }
+}
+
+impl From<KernelError> for CloudServerError {
+    fn from(error: KernelError) -> Self {
+        match error {
+            KernelError::UnsupportedTarget(message) => {
+                ProviderCompatRejection::unsupported_capability(message).into()
+            }
+            other => Self {
+                status: axum::http::StatusCode::BAD_GATEWAY,
+                code: "cloud_runtime_failed",
+                message: other.to_string(),
+            },
         }
     }
 }
@@ -595,7 +754,7 @@ impl IntoResponse for CloudServerError {
         (
             self.status,
             Json(json!({
-                "error": "cloud_runtime_failed",
+                "error": self.code,
                 "message": self.message,
             })),
         )
@@ -603,9 +762,72 @@ impl IntoResponse for CloudServerError {
     }
 }
 
-fn unix_timestamp_seconds() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or_default()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openai_request_rejects_tools_with_provider_field_code() {
+        let request: OpenAiChatRequest = serde_json::from_value(json!({
+            "messages": [{"role": "user", "content": "hi"}],
+            "tools": [{"type": "function", "function": {"name": "lookup"}}]
+        }))
+        .expect("request");
+
+        let error = request.reject_unsupported().expect_err("tools unsupported");
+
+        let (code, _) = error.into_parts();
+        assert_eq!(code, "unsupported_provider_field");
+    }
+
+    #[test]
+    fn claude_request_rejects_stream_true_with_provider_field_code() {
+        let request: ClaudeMessagesRequest = serde_json::from_value(json!({
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": true
+        }))
+        .expect("request");
+
+        let error = request
+            .reject_unsupported()
+            .expect_err("stream unsupported");
+
+        let (code, _) = error.into_parts();
+        assert_eq!(code, "unsupported_provider_field");
+    }
+
+    #[test]
+    fn gemini_operation_rejects_unsupported_suffix() {
+        let error = gemini_operation_stream("gemini-2.0-flash:countTokens")
+            .expect_err("unsupported operation");
+
+        let (code, _) = error.into_parts();
+        assert_eq!(code, "unsupported_provider_operation");
+    }
+
+    #[test]
+    fn embedding_request_rejects_dimensions_override() {
+        let request: EmbeddingRequest = serde_json::from_value(json!({
+            "input": "hello",
+            "dimensions": 384
+        }))
+        .expect("request");
+
+        let error = request
+            .reject_unsupported()
+            .expect_err("dimensions unsupported");
+
+        let (code, _) = error.into_parts();
+        assert_eq!(code, "unsupported_provider_field");
+    }
+
+    #[test]
+    fn unsupported_kernel_target_maps_to_provider_capability_code() {
+        let error = CloudServerError::from(KernelError::UnsupportedTarget(
+            "Anthropic does not support cloud embedding through Tentgent yet".to_string(),
+        ));
+
+        assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_capability");
+    }
 }

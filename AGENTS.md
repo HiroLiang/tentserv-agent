@@ -87,6 +87,9 @@ Key current documents:
   Direct local model-server rerank request shape and capability routing.
 - `docs/contracts/http-daemon.md`
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
+- `docs/contracts/provider-api-errors.md`
+  Provider-shaped API unsupported-field, content, operation, and capability
+  error semantics.
 - `docs/contracts/tentgent-daemon.md`
   Rust daemon application host, bootstrap, transport, and runtime-state boundary.
 - `docs/contracts/training-lora.md`

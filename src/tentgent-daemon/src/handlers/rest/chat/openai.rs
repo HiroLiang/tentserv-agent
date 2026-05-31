@@ -7,12 +7,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tentgent_kernel::features::{auth::domain::Provider, chat::domain::ChatFinishReason};
 
-use crate::transport::rest::{error::RestError, state::RestState};
+use crate::{
+    provider_compat::ProviderCompatRejection,
+    time::unix_timestamp_seconds,
+    transport::rest::{error::RestError, state::RestState},
+};
 
 use super::execution::{
     chat_preparation_request, complete_chat, finish_reason_str, response_id, sse_data_event,
-    sse_json_event, stream_chat_response, unix_timestamp_seconds, ChatStreamMapper,
-    ChatTransportMessage, ChatTransportRequest,
+    sse_json_event, stream_chat_response, ChatStreamMapper, ChatTransportMessage,
+    ChatTransportRequest,
 };
 
 pub(crate) async fn chat_completions(
@@ -53,6 +57,7 @@ pub(crate) struct OpenAiChatCompletionRequest {
     tool_choice: Option<serde_json::Value>,
     functions: Option<serde_json::Value>,
     function_call: Option<serde_json::Value>,
+    response_format: Option<serde_json::Value>,
     modalities: Option<Vec<String>>,
     audio: Option<serde_json::Value>,
 }
@@ -116,10 +121,16 @@ impl OpenAiChatCompletionRequest {
             || self.functions.is_some()
             || self.function_call.is_some()
         {
-            return Err(RestError::bad_request(
-                "unsupported_chat_feature",
+            return Err(ProviderCompatRejection::unsupported_field(
                 "OpenAI-compatible tools and function calling require kernel tool-call support",
-            ));
+            )
+            .into());
+        }
+        if self.response_format.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "OpenAI-compatible response_format is not supported by Tentgent chat compatibility yet",
+            )
+            .into());
         }
         if self.audio.is_some()
             || self
@@ -127,10 +138,10 @@ impl OpenAiChatCompletionRequest {
                 .as_ref()
                 .is_some_and(|modalities| modalities.iter().any(|value| value != "text"))
         {
-            return Err(RestError::bad_request(
-                "unsupported_chat_feature",
+            return Err(ProviderCompatRejection::unsupported_field(
                 "OpenAI-compatible audio output requires kernel multimodal support",
-            ));
+            )
+            .into());
         }
         Ok(())
     }
@@ -139,10 +150,10 @@ impl OpenAiChatCompletionRequest {
 impl OpenAiMessage {
     fn into_transport(self) -> Result<ChatTransportMessage, RestError> {
         if self.tool_calls.is_some() {
-            return Err(RestError::bad_request(
-                "unsupported_chat_feature",
+            return Err(ProviderCompatRejection::unsupported_field(
                 "OpenAI-compatible tool call messages require kernel tool-call support",
-            ));
+            )
+            .into());
         }
         Ok(ChatTransportMessage {
             role: openai_role(&self.role)?,
@@ -294,10 +305,11 @@ fn openai_content(content: OpenAiContent) -> Result<String, RestError> {
             let mut text = String::new();
             for part in parts {
                 if part.kind != "text" {
-                    return Err(RestError::bad_request(
-                        "bad_request",
-                        format!("unsupported OpenAI content part `{}`", part.kind),
-                    ));
+                    return Err(ProviderCompatRejection::unsupported_content(format!(
+                        "unsupported OpenAI content part `{}`",
+                        part.kind
+                    ))
+                    .into());
                 }
                 text.push_str(part.text.as_deref().unwrap_or_default());
             }
@@ -346,7 +358,22 @@ mod tests {
         .expect("request");
 
         let error = request.into_transport().expect_err("tools unsupported");
-        assert!(format!("{error:?}").contains("unsupported_chat_feature"));
+        assert!(format!("{error:?}").contains("unsupported_provider_field"));
+    }
+
+    #[test]
+    fn request_rejects_response_format_before_kernel_mapping() {
+        let request: OpenAiChatCompletionRequest = serde_json::from_value(json!({
+            "model": "gemma-alias",
+            "messages": [{"role": "user", "content": "hi"}],
+            "response_format": {"type": "json_object"}
+        }))
+        .expect("request");
+
+        let error = request
+            .into_transport()
+            .expect_err("response_format unsupported");
+        assert!(format!("{error:?}").contains("unsupported_provider_field"));
     }
 
     #[test]
@@ -361,6 +388,6 @@ mod tests {
         .expect("request");
 
         let error = request.into_transport().expect_err("image unsupported");
-        assert!(format!("{error:?}").contains("bad_request"));
+        assert!(format!("{error:?}").contains("unsupported_provider_content"));
     }
 }
