@@ -7,7 +7,10 @@ use serde::Deserialize;
 use serde_json::json;
 use tentgent_kernel::features::{auth::domain::Provider, chat::domain::ChatFinishReason};
 
-use crate::transport::rest::{error::RestError, state::RestState};
+use crate::{
+    provider_compat::ProviderCompatRejection,
+    transport::rest::{error::RestError, state::RestState},
+};
 
 use super::execution::{
     chat_preparation_request, complete_chat, sse_json_event, stream_chat_response,
@@ -98,10 +101,10 @@ impl GeminiOperation {
         if let Some(model) = operation.strip_suffix(":streamGenerateContent") {
             return Self::new(model, true);
         }
-        Err(RestError::bad_request(
-            "bad_request",
+        Err(ProviderCompatRejection::unsupported_operation(
             "unsupported Gemini generateContent operation",
-        ))
+        )
+        .into())
     }
 
     fn new(model: &str, stream: bool) -> Result<Self, RestError> {
@@ -143,10 +146,10 @@ impl GeminiGenerateContentRequest {
 
     fn reject_unsupported(&self) -> Result<(), RestError> {
         if self.tools.is_some() || self.tool_config.is_some() {
-            return Err(RestError::bad_request(
-                "unsupported_chat_feature",
+            return Err(ProviderCompatRejection::unsupported_field(
                 "Gemini-compatible tools require kernel tool-call support",
-            ));
+            )
+            .into());
         }
         Ok(())
     }
@@ -248,10 +251,10 @@ fn gemini_content_text(content: GeminiContent) -> Result<String, RestError> {
         match part.text {
             Some(value) => text.push_str(&value),
             None => {
-                return Err(RestError::bad_request(
-                    "bad_request",
+                return Err(ProviderCompatRejection::unsupported_content(
                     "only Gemini text parts are supported",
-                ));
+                )
+                .into());
             }
         }
     }
@@ -303,6 +306,30 @@ mod tests {
         let error = request
             .into_transport("gemma-alias".to_string())
             .expect_err("tools unsupported");
-        assert!(format!("{error:?}").contains("unsupported_chat_feature"));
+        assert!(format!("{error:?}").contains("unsupported_provider_field"));
+    }
+
+    #[test]
+    fn operation_rejects_unsupported_suffix() {
+        let error = GeminiOperation::parse("gemma-alias:countTokens".to_string())
+            .expect_err("unsupported operation");
+
+        assert!(format!("{error:?}").contains("unsupported_provider_operation"));
+    }
+
+    #[test]
+    fn request_rejects_non_text_parts() {
+        let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+            "contents": [{
+                "role": "user",
+                "parts": [{"inlineData": {"mimeType": "image/png", "data": "AA=="}}]
+            }]
+        }))
+        .expect("request");
+
+        let error = request
+            .into_transport("gemma-alias".to_string())
+            .expect_err("inline data unsupported");
+        assert!(format!("{error:?}").contains("unsupported_provider_content"));
     }
 }

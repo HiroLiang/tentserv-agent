@@ -17,7 +17,7 @@ profile work.
 | `max_completion_tokens` | Accepted by OpenAI-shaped chat and treated as fallback when `max_tokens` is absent. | Only OpenAI-shaped routes read this field. |
 | `maxOutputTokens` | Accepted through Gemini `generationConfig`. | No route-level model profile or clamp exists yet. |
 | `temperature` | Forwarded for chat routes when present. | Provider/runtime/model limits may still apply. |
-| `tools` / function calling | Explicitly rejected on daemon OpenAI/Claude/Gemini routes. Ignored by several direct cloud routes. | Stable unsupported-field semantics are not defined yet. |
+| `tools` / function calling | Explicitly rejected on daemon OpenAI/Claude/Gemini routes and direct cloud provider-shaped chat routes. | Stable known-field rejection uses `unsupported_provider_field`. |
 | `response_format` | Ignored by daemon/direct image generation handlers when sent by caller. | Cloud client internally omits it for `gpt-image-*` and sends `b64_json` for older OpenAI image models. |
 | `dimensions` | Rejected by daemon embeddings as an unknown field; ignored by direct cloud embeddings. | No dimension override is forwarded today. |
 | `size` | Accepted by cloud image generation routes. | OpenAI receives `size`; Gemini receives `sampleImageSize`. |
@@ -73,9 +73,12 @@ Unknown-field behavior is currently inconsistent:
 - daemon and direct image-generation handlers generally ignore unknown fields
 - direct cloud embeddings ignore unknown fields
 
-The `v0.6.0` compatibility matrix should avoid saying unsupported fields always
-reject until the `[api] Define stable unsupported provider API error semantics`
-issue standardizes this behavior.
+The `v0.6.0` error-semantics slice stabilizes known unsupported provider fields
+as `unsupported_provider_field`, unsupported provider content as
+`unsupported_provider_content`, unsupported path operations as
+`unsupported_provider_operation`, and provider/capability gaps as
+`unsupported_provider_capability`. It does not make every unknown provider field
+strict yet.
 
 ## Response Shape Notes
 

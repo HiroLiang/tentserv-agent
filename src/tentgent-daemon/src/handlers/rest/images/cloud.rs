@@ -1,20 +1,32 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tentgent_kernel::features::{
     auth::{
         domain::{AuthEnvLoadPolicy, Provider},
         usecases::{AuthSecretResolutionRequest, AuthSecretResolverUseCase},
     },
-    cloud::{domain::CloudImageGenerationRequest, infra::ReqwestCloudModelClient},
+    cloud::{
+        domain::{CloudEndpointCapability, CloudImageGenerationRequest},
+        infra::ReqwestCloudModelClient,
+    },
 };
 
-use crate::transport::rest::{error::RestError, state::RestState};
+use crate::{
+    provider_compat::{
+        ensure_provider_capability, map_provider_kernel_error, ProviderCompatRejection,
+    },
+    time::unix_timestamp_seconds,
+    transport::rest::{error::RestError, state::RestState},
+};
 
 pub async fn generate(
     State(state): State<RestState>,
     Json(request): Json<CloudImageGenerationBody>,
 ) -> Result<Json<CloudImageGenerationResponseBody>, RestError> {
+    request.reject_unsupported()?;
     let provider = request.provider.unwrap_or(Provider::OpenAI);
+    ensure_provider_capability(provider, CloudEndpointCapability::ImageGeneration)?;
     let secret = state
         .app()
         .services()
@@ -45,7 +57,7 @@ pub async fn generate(
             secret.secret(),
         )
         .await
-        .map_err(|error| RestError::kernel("image_generation_runtime_failed", error))?;
+        .map_err(|error| map_provider_kernel_error("image_generation_runtime_failed", error))?;
 
     Ok(Json(CloudImageGenerationResponseBody {
         created: unix_timestamp_seconds(),
@@ -60,8 +72,28 @@ pub struct CloudImageGenerationBody {
     model: String,
     prompt: String,
     size: Option<String>,
+    response_format: Option<Value>,
+    n: Option<Value>,
     #[serde(default, deserialize_with = "deserialize_provider")]
     provider: Option<Provider>,
+}
+
+impl CloudImageGenerationBody {
+    fn reject_unsupported(&self) -> Result<(), RestError> {
+        if self.response_format.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "provider-compatible image generation response_format is not supported; Tentgent returns b64_json",
+            )
+            .into());
+        }
+        if self.n.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "provider-compatible image generation only supports one image per request today",
+            )
+            .into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -90,11 +122,4 @@ where
             ))),
         })
         .transpose()
-}
-
-fn unix_timestamp_seconds() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or_default()
 }

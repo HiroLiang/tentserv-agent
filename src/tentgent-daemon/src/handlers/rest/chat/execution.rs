@@ -308,13 +308,6 @@ pub(super) fn response_id(prefix: &str) -> String {
     format!("{prefix}-{}", unix_timestamp_nanos())
 }
 
-pub(super) fn unix_timestamp_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or_default()
-}
-
 fn unix_timestamp_nanos() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
