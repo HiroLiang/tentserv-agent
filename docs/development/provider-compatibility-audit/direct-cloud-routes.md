@@ -395,11 +395,13 @@ Defaults:
 Explicitly rejected:
 
 - Missing required JSON fields through deserialization.
+- `response_format`
+- `n`
 
 Currently ignored:
 
 - Unknown top-level fields.
-- `model`, `provider`, `n`, and `response_format`.
+- `model` and `provider`, because the bound provider model is used instead.
 
 Example request:
 
@@ -423,5 +425,8 @@ Model-specific notes:
 
 - The server always uses the bound provider model.
 - OpenAI and Gemini provider mapping is handled by the cloud client.
+- `gpt-image-*` requests intentionally omit the legacy OpenAI
+  `response_format` field; older OpenAI image models request base64 JSON inside
+  the cloud client.
 - Anthropic image generation should be rejected when the server spec is
   prepared; if reached at request time, the cloud client reports unsupported.

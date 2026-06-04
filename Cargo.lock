@@ -1938,6 +1938,7 @@ name = "tentgent-daemon"
 version = "0.5.2"
 dependencies = [
  "axum",
+ "base64",
  "clap",
  "futures-util",
  "miette",
