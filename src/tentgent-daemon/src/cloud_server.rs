@@ -253,8 +253,8 @@ async fn claude_messages(
 async fn embeddings(
     State(state): State<CloudServerState>,
     Json(request): Json<EmbeddingRequest>,
-) -> Result<Json<EmbeddingResponse>, CloudServerError> {
-    request.reject_unsupported()?;
+) -> Result<Json<EmbeddingResponseBody>, CloudServerError> {
+    request.validate()?;
     ensure_provider_capability(state.config.provider, CloudEndpointCapability::Embedding)?;
     let client = ReqwestCloudModelClient::new()?;
     let response = client
@@ -267,15 +267,11 @@ async fn embeddings(
             &state.secret,
         )
         .await?;
-    Ok(Json(EmbeddingResponse {
-        model_ref: state.config.provider_model,
-        data: response
-            .vectors
-            .into_iter()
-            .enumerate()
-            .map(|(index, embedding)| EmbeddingItem { index, embedding })
-            .collect(),
-    }))
+    Ok(Json(embedding_response(
+        state.config.provider,
+        state.config.provider_model,
+        response.vectors,
+    )))
 }
 
 async fn images(
@@ -603,13 +599,41 @@ fn gemini_operation_stream(operation: &str) -> Result<bool, ProviderCompatReject
 struct EmbeddingRequest {
     input: EmbeddingInput,
     dimensions: Option<Value>,
+    encoding_format: Option<Value>,
+    user: Option<Value>,
 }
 
 impl EmbeddingRequest {
+    fn validate(&self) -> Result<(), CloudServerError> {
+        self.reject_unsupported()?;
+        self.input.validate()?;
+        Ok(())
+    }
+
     fn reject_unsupported(&self) -> Result<(), ProviderCompatRejection> {
         if self.dimensions.is_some() {
             return Err(ProviderCompatRejection::unsupported_field(
                 "provider-compatible embeddings do not support dimensions overrides yet",
+            ));
+        }
+        if let Some(format) = &self.encoding_format {
+            match format.as_str() {
+                Some("float") => {}
+                Some("base64") => {
+                    return Err(ProviderCompatRejection::unsupported_field(
+                        "provider-compatible embeddings do not support base64 encoding yet",
+                    ))
+                }
+                _ => {
+                    return Err(ProviderCompatRejection::unsupported_field(
+                        "provider-compatible embeddings only support encoding_format `float`",
+                    ))
+                }
+            }
+        }
+        if self.user.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "provider-compatible embeddings do not support user tracking metadata",
             ));
         }
         Ok(())
@@ -630,10 +654,35 @@ impl EmbeddingInput {
             Self::Many(values) => values,
         }
     }
+
+    fn validate(&self) -> Result<(), CloudServerError> {
+        let items = match self {
+            Self::One(value) => std::slice::from_ref(value),
+            Self::Many(values) => values.as_slice(),
+        };
+        if items.is_empty() {
+            return Err(CloudServerError::bad_request(
+                "embedding input must contain at least one string",
+            ));
+        }
+        if items.iter().any(|item| item.trim().is_empty()) {
+            return Err(CloudServerError::bad_request(
+                "embedding input strings must not be empty",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize)]
-struct EmbeddingResponse {
+#[serde(untagged)]
+enum EmbeddingResponseBody {
+    Native(NativeEmbeddingResponse),
+    OpenAi(OpenAiEmbeddingResponse),
+}
+
+#[derive(Debug, Serialize)]
+struct NativeEmbeddingResponse {
     model_ref: String,
     data: Vec<EmbeddingItem>,
 }
@@ -642,6 +691,62 @@ struct EmbeddingResponse {
 struct EmbeddingItem {
     index: usize,
     embedding: Vec<f32>,
+}
+
+#[derive(Debug, Serialize)]
+struct OpenAiEmbeddingResponse {
+    object: &'static str,
+    data: Vec<OpenAiEmbeddingItem>,
+    model: String,
+    usage: Option<Value>,
+}
+
+#[derive(Debug, Serialize)]
+struct OpenAiEmbeddingItem {
+    object: &'static str,
+    index: usize,
+    embedding: Vec<f32>,
+}
+
+fn embedding_response(
+    provider: Provider,
+    model_ref: String,
+    vectors: Vec<Vec<f32>>,
+) -> EmbeddingResponseBody {
+    match provider {
+        Provider::OpenAI => {
+            EmbeddingResponseBody::OpenAi(openai_embedding_response(model_ref, vectors))
+        }
+        _ => EmbeddingResponseBody::Native(native_embedding_response(model_ref, vectors)),
+    }
+}
+
+fn native_embedding_response(model_ref: String, vectors: Vec<Vec<f32>>) -> NativeEmbeddingResponse {
+    NativeEmbeddingResponse {
+        model_ref,
+        data: vectors
+            .into_iter()
+            .enumerate()
+            .map(|(index, embedding)| EmbeddingItem { index, embedding })
+            .collect(),
+    }
+}
+
+fn openai_embedding_response(model: String, vectors: Vec<Vec<f32>>) -> OpenAiEmbeddingResponse {
+    OpenAiEmbeddingResponse {
+        object: "list",
+        data: vectors
+            .into_iter()
+            .enumerate()
+            .map(|(index, embedding)| OpenAiEmbeddingItem {
+                object: "embedding",
+                index,
+                embedding,
+            })
+            .collect(),
+        model,
+        usage: None,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -855,6 +960,71 @@ mod tests {
 
         let (code, _) = error.into_parts();
         assert_eq!(code, "unsupported_provider_field");
+    }
+
+    #[test]
+    fn embedding_request_rejects_base64_encoding() {
+        let request: EmbeddingRequest = serde_json::from_value(json!({
+            "input": "hello",
+            "encoding_format": "base64"
+        }))
+        .expect("request");
+
+        let error = request
+            .reject_unsupported()
+            .expect_err("base64 unsupported");
+
+        let (code, _) = error.into_parts();
+        assert_eq!(code, "unsupported_provider_field");
+    }
+
+    #[test]
+    fn embedding_request_rejects_empty_input_before_cloud_dispatch() {
+        let request: EmbeddingRequest = serde_json::from_value(json!({
+            "input": []
+        }))
+        .expect("request");
+
+        let error = request.validate().expect_err("empty input rejected");
+
+        assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "bad_request");
+        assert!(error.message.contains("at least one string"));
+    }
+
+    #[test]
+    fn openai_embedding_response_uses_openai_list_shape() {
+        let response = embedding_response(
+            Provider::OpenAI,
+            "text-embedding-3-small".to_string(),
+            vec![vec![0.1, 0.2], vec![0.3, 0.4]],
+        );
+        let value = serde_json::to_value(response).expect("json");
+
+        assert_eq!(value["object"], "list");
+        assert_eq!(value["model"], "text-embedding-3-small");
+        assert_eq!(value["usage"], Value::Null);
+        assert_eq!(value["data"][0]["object"], "embedding");
+        assert_eq!(value["data"][0]["index"], 0);
+        assert_eq!(value["data"][0]["embedding"], json!([0.1f32, 0.2f32]));
+        assert_eq!(value["data"][1]["object"], "embedding");
+        assert_eq!(value["data"][1]["index"], 1);
+        assert_eq!(value["data"][1]["embedding"], json!([0.3f32, 0.4f32]));
+    }
+
+    #[test]
+    fn gemini_embedding_response_keeps_native_shape() {
+        let response = embedding_response(
+            Provider::Gemini,
+            "gemini-embedding-001".to_string(),
+            vec![vec![0.1, 0.2]],
+        );
+        let value = serde_json::to_value(response).expect("json");
+
+        assert_eq!(value["model_ref"], "gemini-embedding-001");
+        assert_eq!(value["data"][0]["index"], 0);
+        assert_eq!(value["data"][0]["embedding"], json!([0.1f32, 0.2f32]));
+        assert!(value.get("object").is_none());
     }
 
     #[test]

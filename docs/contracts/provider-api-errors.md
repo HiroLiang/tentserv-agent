@@ -10,9 +10,11 @@ It applies to:
   `/v1/images/generations`
 - direct cloud provider servers launched with `tentgent server run
   openai:<model>`, `anthropic:<model>`, `claude:<model>`, or `gemini:<model>`
+- provider-shaped local ingress adapters launched with
+  `tentgent server run <model-ref>`
 
 It does not apply to native local model-bound server routes except when those
-routes are listed as fallback context in user-facing compatibility docs.
+routes are implemented as provider-shaped ingress adapters.
 
 ## Error Shape
 
@@ -32,10 +34,10 @@ human-readable and may become more specific over time.
 
 | Code | Meaning | Examples |
 | --- | --- | --- |
-| `unsupported_provider_field` | The upstream provider API has a known field, but Tentgent does not support that field in this compatibility route yet. | `tools`, non-text `response_format`, `stream_options.include_usage`, `web_search_options`, `dimensions`, `stream=true` on direct cloud Claude messages. |
+| `unsupported_provider_field` | The upstream provider API has a known field, but Tentgent does not support that field in this compatibility route yet. | `tools`, non-text `response_format`, `stream_options.include_usage`, `web_search_options`, embedding `dimensions`, embedding `encoding_format: "base64"`, `stream=true` on direct cloud Claude messages. |
 | `unsupported_provider_content` | A provider-shaped message, content part, or block uses a content type that this route cannot translate yet. | OpenAI daemon `image_url` parts, Claude daemon `image` blocks, Gemini daemon non-text parts, unknown direct cloud multimodal part shapes. |
 | `unsupported_provider_operation` | A provider-shaped path operation is outside the supported endpoint family. | Gemini operations other than `generateContent` or `streamGenerateContent`. |
-| `unsupported_provider_capability` | The selected provider or endpoint family is not implemented through Tentgent yet. | Anthropic embeddings, Anthropic image generation. |
+| `unsupported_provider_capability` | The selected provider, endpoint family, or bound local model capability cannot run the requested provider-compatible route. | Anthropic embeddings, Anthropic image generation, OpenAI local embeddings requested from a chat-bound local server. |
 
 All codes above return HTTP `400`.
 
@@ -48,6 +50,8 @@ Current behavior:
 
 - known unsupported fields listed above should reject with
   `unsupported_provider_field`
+- local provider-shaped ingress routes check the server-bound capability before
+  calling the Python runtime
 - daemon embeddings manually reject unsupported top-level fields with
   `unsupported_provider_field`
 - some request structs still ignore unknown fields because they do not use

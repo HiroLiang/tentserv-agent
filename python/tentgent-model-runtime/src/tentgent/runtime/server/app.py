@@ -172,25 +172,30 @@ def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
 
 def _include_capability_router(app: FastAPI, capability: RuntimeCapability) -> None:
     if capability == RuntimeCapability.AUDIO_TRANSCRIPTION:
-        app.include_router(audio_transcription.router)
+        _include_runtime_router(app, audio_transcription.router)
     elif capability == RuntimeCapability.AUDIO_SPEECH:
-        app.include_router(audio_speech.router)
+        _include_runtime_router(app, audio_speech.router)
     elif capability == RuntimeCapability.CHAT:
-        app.include_router(chat.router)
+        _include_runtime_router(app, chat.router)
     elif capability == RuntimeCapability.EMBEDDING:
-        app.include_router(embedding.router)
+        _include_runtime_router(app, embedding.router)
     elif capability == RuntimeCapability.IMAGE_GENERATION:
-        app.include_router(image_generation.router)
+        _include_runtime_router(app, image_generation.router)
     elif capability == RuntimeCapability.LORA_TUNING:
-        app.include_router(lora_tuning.router)
+        _include_runtime_router(app, lora_tuning.router)
     elif capability == RuntimeCapability.RERANK:
-        app.include_router(rerank.router)
+        _include_runtime_router(app, rerank.router)
     elif capability == RuntimeCapability.VIDEO_UNDERSTANDING:
-        app.include_router(video_understanding.router)
+        _include_runtime_router(app, video_understanding.router)
     elif capability == RuntimeCapability.VISION_CHAT:
-        app.include_router(vision_chat.router)
+        _include_runtime_router(app, vision_chat.router)
     else:
         raise ValueError(f"unsupported runtime capability `{capability}`")
+
+
+def _include_runtime_router(app: FastAPI, router: Any) -> None:
+    app.include_router(router)
+    app.include_router(router, prefix="/internal")
 
 
 def _include_unsupported_capability_routes(
@@ -218,6 +223,7 @@ def _include_unsupported_capability_routes(
             continue
         for path in paths:
             _add_unsupported_route(app, path, capability)
+            _add_unsupported_route(app, f"/internal{path}", capability)
 
 
 def _add_unsupported_route(

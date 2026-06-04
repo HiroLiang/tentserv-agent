@@ -19,6 +19,7 @@ from tentgent.runtime.backends.records import ModelCapability, ModelFormat
 from tentgent.runtime.backends.rerank import RerankModelKind
 from tentgent.runtime.backends.video_understanding import VideoUnderstandingModelKind
 from tentgent.runtime.backends.vision_chat import VisionChatModelKind
+from tentgent.runtime.server.app import create_app
 from tentgent.runtime.server.lifecycle import RuntimeCapability, RuntimeServerConfig
 from tentgent.runtime.server.managed_models import load_managed_model_record
 from tentgent.runtime.server.routes.audio_speech import (
@@ -356,6 +357,22 @@ class ServerBoundRouteTests(unittest.TestCase):
         self.assertIn("model-bound runtime", str(raised.exception.detail))
 
 
+class RuntimeRouteMountTests(unittest.TestCase):
+    def test_runtime_routes_expose_internal_aliases_and_legacy_paths(self) -> None:
+        app = create_app(
+            RuntimeServerConfig(
+                host="127.0.0.1",
+                port=0,
+                capability=RuntimeCapability.EMBEDDING,
+            )
+        )
+
+        self.assertTrue(_has_post_route(app, "/v1/embeddings"))
+        self.assertTrue(_has_post_route(app, "/internal/v1/embeddings"))
+        self.assertTrue(_has_post_route(app, "/v1/chat"))
+        self.assertTrue(_has_post_route(app, "/internal/v1/chat"))
+
+
 def _request(
     home: Path,
     capability: RuntimeCapability,
@@ -435,6 +452,14 @@ def _write_model(
         encoding="utf-8",
     )
     return source_path
+
+
+def _has_post_route(app: object, path: str) -> bool:
+    return any(
+        getattr(route, "path", None) == path
+        and "POST" in (getattr(route, "methods", None) or set())
+        for route in getattr(app, "routes", [])
+    )
 
 
 if __name__ == "__main__":

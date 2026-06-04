@@ -17,7 +17,7 @@ model-bound servers are native Tentgent servers and are covered in
 | `POST /v1/chat/completions` | `cloud_server.rs` | OpenAI chat completions | Supports text and `image_url` content parts. |
 | `POST /v1/messages` | `cloud_server.rs` | Claude/Anthropic messages | Supports text blocks and base64 image blocks; non-streaming only. |
 | `POST /v1beta/models/{operation}` | `cloud_server.rs` | Gemini generateContent/streamGenerateContent | Supports text and inline image data. |
-| `POST /v1/embeddings` | `cloud_server.rs` | Embedding request shape over bound provider model | Response remains Tentgent embedding shape. |
+| `POST /v1/embeddings` | `cloud_server.rs` | Embedding request shape over bound provider model | OpenAI-bound servers return OpenAI-style embedding lists; other providers currently return Tentgent embedding shape. |
 | `POST /v1/images/generations` | `cloud_server.rs` | Image generation over bound provider model | Request omits `model`; server uses bound provider model. |
 
 ## POST `/v1/chat`
@@ -318,7 +318,7 @@ Required:
 
 Optional:
 
-- none currently read by the handler
+- `encoding_format`, only when set to `float`
 
 Defaults:
 
@@ -326,12 +326,15 @@ Defaults:
 
 Explicitly rejected:
 
-- No route-specific empty-input or unknown-field checks before cloud dispatch.
+- empty input arrays or empty strings
+- `dimensions`
+- `encoding_format: "base64"` or non-`float` values
+- `user`
 
 Currently ignored:
 
 - Unknown top-level fields.
-- `model`, `provider`, `encoding_format`, and `dimensions`.
+- `model` and `provider`, because the bound provider model is used instead.
 
 Example request:
 
@@ -341,7 +344,21 @@ Example request:
 }
 ```
 
-Example response:
+Example OpenAI-bound response:
+
+```json
+{
+  "object": "list",
+  "data": [
+    {"object": "embedding", "index": 0, "embedding": [0.1, 0.2]},
+    {"object": "embedding", "index": 1, "embedding": [0.3, 0.4]}
+  ],
+  "model": "text-embedding-3-small",
+  "usage": null
+}
+```
+
+Example non-OpenAI response:
 
 ```json
 {
@@ -355,10 +372,10 @@ Example response:
 
 Model-specific notes:
 
-- Empty input arrays can reach the cloud client because this route does not use
-  `EmbeddingInput::new`.
-- Response shape is Tentgent-shaped.
-- `dimensions` is ignored today, not forwarded.
+- OpenAI-bound cloud servers return OpenAI-style embedding responses.
+- Gemini-bound cloud servers currently return Tentgent-shaped embedding
+  responses.
+- `dimensions` is rejected and not forwarded.
 
 ## POST `/v1/images/generations`
 

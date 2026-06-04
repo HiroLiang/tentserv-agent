@@ -53,9 +53,12 @@ provider-compatible routes.
   `delta` and `done` SSE events.
 - Local model-bound servers launched with `tentgent server run <model-ref>` use
   native Tentgent request bodies at the Python runtime boundary. Implemented
-  provider-shaped local ingress routes, such as OpenAI `/v1/chat/completions`,
-  translate at the Rust proxy edge and can be counted as local provider
-  compatibility.
+  provider-shaped local ingress routes, such as OpenAI `/v1/chat/completions`
+  and OpenAI `/v1/embeddings`, translate at the Rust proxy edge and can be
+  counted as local provider compatibility.
+- Local model-bound servers mount implemented provider-shaped ingress adapters
+  for this slice. Provider paths that collide with native local paths need
+  request-shape disambiguation before they can be mounted safely.
 - Unknown-field behavior is inconsistent. Daemon embedding rejects unknown
   fields manually, while most provider-shaped request structs ignore unknown
   fields because they do not use `#[serde(deny_unknown_fields)]`.
@@ -71,8 +74,10 @@ Remaining refinements for later docs or fixtures:
 
 - Mark direct cloud provider streaming as partial because it uses generic
   Tentgent `delta`/`done` SSE events rather than provider-native chunk shapes.
-- Clarify that embedding responses are currently Tentgent-shaped, even when the
-  request is provider-shaped.
+- Clarify where embedding responses are provider-shaped. OpenAI-compatible
+  embedding requests now return OpenAI-style lists through daemon OpenAI cloud
+  routing, direct OpenAI cloud servers, and local OpenAI embedding ingress,
+  while native local and Gemini cloud embedding responses remain Tentgent-shaped.
 - Keep native local model-bound routes in the fallback column, but list
   implemented provider-shaped local ingress routes in the compatibility
   surface.
@@ -88,9 +93,9 @@ Remaining refinements for later docs or fixtures:
   streaming chunk behavior, and direct cloud streaming differences. Do not
   count native local `/v1/chat` itself as OpenAI compatibility.
 - `[test] Add OpenAI embeddings compatibility fixtures`
-  Cover daemon cloud embeddings, local embeddings, direct cloud embedding
-  validation gaps, unknown-field rejection, invalid input, and the current
-  Tentgent-shaped embedding response.
+  Cover daemon cloud embeddings, local OpenAI embedding ingress, direct cloud
+  embedding validation gaps, unknown-field rejection, invalid input,
+  capability-gate errors, and OpenAI-shaped embedding responses.
 - `[test] Add OpenAI image generation compatibility fixtures`
   Cover OpenAI image request mapping, ignored image fields, and `gpt-image-*`
   `response_format` behavior.

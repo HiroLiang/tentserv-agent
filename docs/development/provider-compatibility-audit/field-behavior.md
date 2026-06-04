@@ -8,7 +8,7 @@ profile work.
 
 | Field | Current behavior | Notes |
 | --- | --- | --- |
-| `model` | Required on daemon provider-shaped chat and image routes; accepted by daemon embeddings. Ignored by direct cloud provider servers and local model-bound OpenAI chat ingress. | Direct cloud servers use the bound provider model from `tentgent server run <provider>:<model>`. Local model-bound servers use the bound local model from `tentgent server run <model-ref>`. |
+| `model` | Required on daemon provider-shaped chat and image routes; accepted by daemon embeddings. Ignored by direct cloud provider servers and local model-bound OpenAI chat and embedding ingress. | Direct cloud servers use the bound provider model from `tentgent server run <provider>:<model>`. Local model-bound servers use the bound local model from `tentgent server run <model-ref>`. |
 | `model_ref` | Native Tentgent model selector. Accepted by daemon embeddings. Omitted from local model-bound server requests because the server is already bound to one model. | Local model routes use `model_ref`; provider-shaped chat routes use `model`. |
 | `messages` | Required by OpenAI/Claude-shaped chat routes. | Daemon and local OpenAI routes are text-first. Direct cloud routes accept more image content. |
 | `contents` | Required by Gemini-shaped chat routes. | Daemon route accepts text parts only. Direct cloud route accepts text and `inlineData`. |
@@ -19,7 +19,8 @@ profile work.
 | `temperature` | Forwarded for chat routes when present. | Provider/runtime/model limits may still apply. |
 | `tools` / function calling | Explicitly rejected on daemon OpenAI/Claude/Gemini routes and direct cloud provider-shaped chat routes. | Stable known-field rejection uses `unsupported_provider_field`. |
 | `response_format` | Ignored by daemon/direct image generation handlers when sent by caller. | Cloud client internally omits it for `gpt-image-*` and sends `b64_json` for older OpenAI image models. |
-| `dimensions` | Rejected by daemon embeddings as an unknown field; ignored by direct cloud embeddings. | No dimension override is forwarded today. |
+| `dimensions` | Rejected by daemon, direct cloud, and local OpenAI-compatible embeddings. | No dimension override is forwarded today. |
+| `encoding_format` | OpenAI-compatible embeddings accept `float`; `base64` is rejected. | Embedding responses return float arrays today. |
 | `size` | Accepted by cloud image generation routes. | OpenAI receives `size`; Gemini receives `sampleImageSize`. |
 | `voice`, `language`, `output_format` | Not accepted by provider-compatible audio routes because those routes do not exist yet. | Native audio job routes have separate contracts. |
 
@@ -49,7 +50,7 @@ Current behavior:
 
 - Chat token and temperature fields are forwarded when accepted by the route.
 - Image `size` is forwarded or translated when accepted by the route.
-- Embedding `dimensions` is not forwarded.
+- Embedding `dimensions` is rejected and not forwarded.
 - Provider or backend errors are the current source of truth when a model does
   not support a forwarded parameter.
 
@@ -71,7 +72,9 @@ Unknown-field behavior is currently inconsistent:
 - daemon embeddings reject unknown top-level fields manually
 - daemon and direct cloud chat handlers generally ignore unknown fields
 - daemon and direct image-generation handlers generally ignore unknown fields
-- direct cloud embeddings ignore unknown fields
+- direct cloud embeddings ignore unknown fields, except known unsupported
+  embedding fields such as `dimensions`, `encoding_format: "base64"`, and
+  `user`
 
 The `v0.6.0` error-semantics slice stabilizes known unsupported provider fields
 as `unsupported_provider_field`, unsupported provider content as
@@ -91,10 +94,14 @@ strict yet.
 - Local model-bound OpenAI chat ingress returns OpenAI-shaped non-streaming and
   streaming response shapes while forwarding native Tentgent chat bodies to the
   Python runtime.
+- Local model-bound OpenAI embeddings ingress returns OpenAI-shaped embedding
+  list responses while forwarding native Tentgent embedding bodies to the
+  Python runtime.
 - Direct cloud OpenAI/Gemini streaming currently returns generic Tentgent
   `delta` and `done` SSE events.
-- Embedding responses are Tentgent-shaped for both daemon and direct cloud
-  routes.
+- OpenAI-compatible embedding responses are OpenAI-shaped when routed through
+  OpenAI provider models or local model-bound OpenAI embedding ingress. Native
+  local embeddings and Gemini cloud embeddings currently remain Tentgent-shaped.
 - Image generation responses are OpenAI-like, with `created` and `b64_json`.
 - Local model-bound native routes return native Tentgent response shapes. Local
   provider-shaped ingress routes translate native runtime results back into the

@@ -794,6 +794,20 @@ curl -s http://127.0.0.1:8781/v1/embeddings \
   -d '{"input":["first text","second text"]}'
 ```
 
+The same local embedding server also accepts OpenAI-compatible embedding
+requests through an ingress adapter. The request `model` is accepted for client
+compatibility but the server still uses the bound local model.
+
+```bash
+curl -s http://127.0.0.1:8781/v1/embeddings \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "text-embedding-3-small",
+    "input": ["first text", "second text"],
+    "encoding_format": "float"
+  }'
+```
+
 Launch and call a direct local rerank server:
 
 ```bash
@@ -949,6 +963,16 @@ curl -sS http://127.0.0.1:8790/v1/embeddings \
   -d '{
     "model_ref": "<embedding-model-ref>",
     "input": ["first text", "second text"]
+  }'
+
+curl -sS http://127.0.0.1:8790/v1/embeddings \
+  -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "text-embedding-3-small",
+    "input": ["first text", "second text"],
+    "encoding_format": "float"
   }'
 
 curl -sS http://127.0.0.1:8790/v1/rerank \
