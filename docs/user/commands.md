@@ -761,6 +761,25 @@ Direct model-server chat is stateless. Do not send `session_ref` or
 `max_session_messages` to a server port such as `8780`; those daemon-only fields
 belong on daemon `POST /v1/chat` requests, usually port `8790`.
 
+The same local chat server also accepts text-only OpenAI Chat Completions
+requests through an ingress adapter. The request `model` is accepted for client
+compatibility but the server still uses the bound local model from
+`tentgent server run <model-ref>`.
+
+```bash
+curl -s http://127.0.0.1:8780/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "gpt-4.1-mini",
+    "messages": [
+      {"role": "user", "content": "Hello there"}
+    ],
+    "max_tokens": 128,
+    "temperature": 0.0,
+    "stream": false
+  }'
+```
+
 Launch and call a direct local embedding server:
 
 ```bash

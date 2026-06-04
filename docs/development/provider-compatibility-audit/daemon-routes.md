@@ -29,8 +29,16 @@ Optional:
 - `adapter_ref`
 - `max_tokens`
 - `max_completion_tokens`
+- `n`, only when set to `1`
 - `temperature`
 - `stream`
+- `stream_options`, only when `include_usage` and `include_obfuscation` are
+  unset or `false`
+- `modalities`, only when every value is `text`
+- `response_format`, only when set to `{ "type": "text" }`
+- `tool_choice` and deprecated `function_call`, only when set to `none`
+- `parallel_tool_calls`, only when set to `false`
+- `store`, only when set to `false`
 
 Defaults:
 
@@ -41,11 +49,26 @@ Defaults:
 
 Explicitly rejected:
 
-- `tools`, `tool_choice`, `functions`, `function_call`
-- message `tool_calls`
+- `tools`, deprecated `functions`, non-`none` `tool_choice`, non-`none`
+  deprecated `function_call`, and `parallel_tool_calls: true`
+- structured `response_format` values such as `json_object` and `json_schema`
+- message `tool_calls`, deprecated message `function_call`, assistant `audio`,
+  and assistant `refusal`
 - `audio`
 - `modalities` containing anything other than `text`
-- non-text content parts such as `image_url`
+- non-text content parts such as `image_url`, `input_audio`, `file`, and
+  `refusal`
+- `n` values greater than `1`
+- `stream_options.include_usage: true` and
+  `stream_options.include_obfuscation: true`
+- advanced generation controls that are not mapped to the kernel yet:
+  `stop`, `top_p`, `frequency_penalty`, `presence_penalty`, `logit_bias`,
+  `logprobs`, `top_logprobs`, `prediction`, `reasoning_effort`, and
+  `verbosity`
+- provider-side metadata, storage, cache, safety, and service fields:
+  `metadata`, `store: true`, `seed`, `service_tier`, `user`,
+  `safety_identifier`, `prompt_cache_key`, and `prompt_cache_retention`
+- `web_search_options`
 - roles outside `developer`, `system`, `user`, and `assistant`
 
 Currently ignored:
@@ -53,6 +76,7 @@ Currently ignored:
 - Unknown top-level fields.
 - Unknown fields inside known nested structs, unless later validation reads
   them.
+- Message `name` fields.
 
 Example request:
 

@@ -8,7 +8,7 @@ use serde_json::json;
 use tentgent_kernel::features::{auth::domain::Provider, chat::domain::ChatFinishReason};
 
 use crate::{
-    provider_compat::ProviderCompatRejection,
+    provider_compat::{OpenAiChatCompatFields, OpenAiTextMessage},
     time::unix_timestamp_seconds,
     transport::rest::{error::RestError, state::RestState},
 };
@@ -47,40 +47,13 @@ pub(crate) async fn chat_completions(
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpenAiChatCompletionRequest {
     model: String,
-    messages: Vec<OpenAiMessage>,
+    messages: Vec<OpenAiTextMessage>,
     adapter_ref: Option<String>,
     max_tokens: Option<u32>,
-    max_completion_tokens: Option<u32>,
     temperature: Option<f32>,
     stream: Option<bool>,
-    tools: Option<serde_json::Value>,
-    tool_choice: Option<serde_json::Value>,
-    functions: Option<serde_json::Value>,
-    function_call: Option<serde_json::Value>,
-    response_format: Option<serde_json::Value>,
-    modalities: Option<Vec<String>>,
-    audio: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiMessage {
-    role: String,
-    content: OpenAiContent,
-    tool_calls: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum OpenAiContent {
-    Text(String),
-    Parts(Vec<OpenAiContentPart>),
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiContentPart {
-    #[serde(rename = "type")]
-    kind: String,
-    text: Option<String>,
+    #[serde(flatten)]
+    compat: OpenAiChatCompatFields,
 }
 
 #[derive(Debug, Clone)]
@@ -100,7 +73,8 @@ struct OpenAiDelta<'a> {
 
 impl OpenAiChatCompletionRequest {
     fn into_transport(self) -> Result<ChatTransportRequest, RestError> {
-        self.reject_unsupported()?;
+        self.compat.reject_unsupported()?;
+        let max_tokens = self.max_tokens.or(self.compat.max_completion_tokens());
         Ok(ChatTransportRequest {
             model_ref: self.model,
             adapter_ref: self.adapter_ref,
@@ -108,56 +82,10 @@ impl OpenAiChatCompletionRequest {
             messages: self
                 .messages
                 .into_iter()
-                .map(OpenAiMessage::into_transport)
+                .map(openai_message_into_transport)
                 .collect::<Result<Vec<_>, _>>()?,
-            max_tokens: self.max_tokens.or(self.max_completion_tokens),
+            max_tokens,
             temperature: self.temperature,
-        })
-    }
-
-    fn reject_unsupported(&self) -> Result<(), RestError> {
-        if self.tools.is_some()
-            || self.tool_choice.is_some()
-            || self.functions.is_some()
-            || self.function_call.is_some()
-        {
-            return Err(ProviderCompatRejection::unsupported_field(
-                "OpenAI-compatible tools and function calling require kernel tool-call support",
-            )
-            .into());
-        }
-        if self.response_format.is_some() {
-            return Err(ProviderCompatRejection::unsupported_field(
-                "OpenAI-compatible response_format is not supported by Tentgent chat compatibility yet",
-            )
-            .into());
-        }
-        if self.audio.is_some()
-            || self
-                .modalities
-                .as_ref()
-                .is_some_and(|modalities| modalities.iter().any(|value| value != "text"))
-        {
-            return Err(ProviderCompatRejection::unsupported_field(
-                "OpenAI-compatible audio output requires kernel multimodal support",
-            )
-            .into());
-        }
-        Ok(())
-    }
-}
-
-impl OpenAiMessage {
-    fn into_transport(self) -> Result<ChatTransportMessage, RestError> {
-        if self.tool_calls.is_some() {
-            return Err(ProviderCompatRejection::unsupported_field(
-                "OpenAI-compatible tool call messages require kernel tool-call support",
-            )
-            .into());
-        }
-        Ok(ChatTransportMessage {
-            role: openai_role(&self.role)?,
-            content: openai_content(self.content)?,
         })
     }
 }
@@ -282,40 +210,14 @@ fn openai_chunk(
     )
 }
 
-fn openai_role(role: &str) -> Result<String, RestError> {
-    match role.trim().to_ascii_lowercase().as_str() {
-        "developer" | "system" => Ok("system".to_string()),
-        "user" => Ok("user".to_string()),
-        "assistant" => Ok("assistant".to_string()),
-        "" => Err(RestError::bad_request(
-            "bad_request",
-            "message role is empty",
-        )),
-        other => Err(RestError::bad_request(
-            "bad_request",
-            format!("unsupported OpenAI message role `{other}`"),
-        )),
-    }
-}
-
-fn openai_content(content: OpenAiContent) -> Result<String, RestError> {
-    match content {
-        OpenAiContent::Text(text) => Ok(text),
-        OpenAiContent::Parts(parts) => {
-            let mut text = String::new();
-            for part in parts {
-                if part.kind != "text" {
-                    return Err(ProviderCompatRejection::unsupported_content(format!(
-                        "unsupported OpenAI content part `{}`",
-                        part.kind
-                    ))
-                    .into());
-                }
-                text.push_str(part.text.as_deref().unwrap_or_default());
-            }
-            Ok(text)
-        }
-    }
+fn openai_message_into_transport(
+    message: OpenAiTextMessage,
+) -> Result<ChatTransportMessage, RestError> {
+    let message = message.into_text_message()?;
+    Ok(ChatTransportMessage {
+        role: message.role,
+        content: message.content,
+    })
 }
 
 fn openai_finish_reason(reason: &ChatFinishReason) -> &str {

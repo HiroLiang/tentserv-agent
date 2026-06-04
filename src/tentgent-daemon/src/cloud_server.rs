@@ -23,7 +23,10 @@ use tentgent_kernel::{
 };
 
 use crate::{
-    provider_compat::{ensure_provider_capability, ProviderCompatRejection},
+    provider_compat::{
+        ensure_provider_capability, OpenAiChatCompatFields, OpenAiMessageCompatFields,
+        ProviderCompatRejection,
+    },
     time::unix_timestamp_seconds,
 };
 
@@ -172,8 +175,11 @@ async fn openai_chat(
     State(state): State<CloudServerState>,
     Json(request): Json<OpenAiChatRequest>,
 ) -> Result<Response, CloudServerError> {
-    request.reject_unsupported()?;
+    request.compat.reject_unsupported()?;
     let stream = request.stream.unwrap_or(false);
+    let max_tokens = request
+        .max_tokens
+        .or(request.compat.max_completion_tokens());
     let cloud_request = CloudChatRequest {
         provider: state.config.provider,
         model: state.config.provider_model.clone(),
@@ -182,7 +188,7 @@ async fn openai_chat(
             .into_iter()
             .map(OpenAiMessage::into_cloud)
             .collect::<Result<Vec<_>, _>>()?,
-        max_tokens: request.max_tokens.or(request.max_completion_tokens),
+        max_tokens,
         temperature: request.temperature,
         stream,
     };
@@ -347,22 +353,18 @@ struct NativeMessage {
 struct OpenAiChatRequest {
     messages: Vec<OpenAiMessage>,
     max_tokens: Option<u32>,
-    max_completion_tokens: Option<u32>,
     temperature: Option<f32>,
     stream: Option<bool>,
-    tools: Option<Value>,
-    tool_choice: Option<Value>,
-    functions: Option<Value>,
-    function_call: Option<Value>,
-    response_format: Option<Value>,
-    modalities: Option<Vec<String>>,
-    audio: Option<Value>,
+    #[serde(flatten)]
+    compat: OpenAiChatCompatFields,
 }
 
 #[derive(Debug, Deserialize)]
 struct OpenAiMessage {
     role: String,
     content: OpenAiContent,
+    #[serde(flatten)]
+    compat: OpenAiMessageCompatFields,
 }
 
 #[derive(Debug, Deserialize)]
@@ -387,6 +389,7 @@ struct OpenAiImageUrl {
 
 impl OpenAiMessage {
     fn into_cloud(self) -> Result<CloudChatMessage, CloudServerError> {
+        self.compat.reject_unsupported()?;
         let content = match self.content {
             OpenAiContent::Text(text) => vec![CloudChatContentPart::Text(text)],
             OpenAiContent::Parts(parts) => parts
@@ -413,36 +416,6 @@ impl OpenAiMessage {
             role: self.role,
             content,
         })
-    }
-}
-
-impl OpenAiChatRequest {
-    fn reject_unsupported(&self) -> Result<(), ProviderCompatRejection> {
-        if self.tools.is_some()
-            || self.tool_choice.is_some()
-            || self.functions.is_some()
-            || self.function_call.is_some()
-        {
-            return Err(ProviderCompatRejection::unsupported_field(
-                "OpenAI-compatible tools and function calling require kernel tool-call support",
-            ));
-        }
-        if self.response_format.is_some() {
-            return Err(ProviderCompatRejection::unsupported_field(
-                "OpenAI-compatible response_format is not supported by Tentgent chat compatibility yet",
-            ));
-        }
-        if self.audio.is_some()
-            || self
-                .modalities
-                .as_ref()
-                .is_some_and(|modalities| modalities.iter().any(|value| value != "text"))
-        {
-            return Err(ProviderCompatRejection::unsupported_field(
-                "OpenAI-compatible audio output requires kernel multimodal support",
-            ));
-        }
-        Ok(())
     }
 }
 
@@ -774,10 +747,73 @@ mod tests {
         }))
         .expect("request");
 
-        let error = request.reject_unsupported().expect_err("tools unsupported");
+        let error = request
+            .compat
+            .reject_unsupported()
+            .expect_err("tools unsupported");
 
         let (code, _) = error.into_parts();
         assert_eq!(code, "unsupported_provider_field");
+    }
+
+    #[test]
+    fn openai_request_accepts_current_text_only_chat_shape_for_direct_cloud() {
+        let request: OpenAiChatRequest = serde_json::from_value(json!({
+            "messages": [
+                {"role": "developer", "content": [{"type": "text", "text": "Follow policy."}]},
+                {"role": "user", "content": [{"type": "text", "text": "hi"}]}
+            ],
+            "max_completion_tokens": 12,
+            "temperature": 0.2,
+            "stream": true,
+            "stream_options": {"include_usage": false, "include_obfuscation": false},
+            "modalities": ["text"],
+            "response_format": {"type": "text"},
+            "tool_choice": "none",
+            "function_call": "none",
+            "parallel_tool_calls": false,
+            "n": 1,
+            "store": false
+        }))
+        .expect("request");
+
+        request
+            .compat
+            .reject_unsupported()
+            .expect("text-only shape supported");
+
+        assert_eq!(
+            request
+                .max_tokens
+                .or(request.compat.max_completion_tokens()),
+            Some(12)
+        );
+        assert_eq!(request.messages.len(), 2);
+    }
+
+    #[test]
+    fn openai_message_accepts_image_url_parts_for_direct_cloud() {
+        let message: OpenAiMessage = serde_json::from_value(json!({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Describe this image."},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}
+            ]
+        }))
+        .expect("message");
+
+        let message = message.into_cloud().expect("cloud message");
+
+        assert_eq!(message.role, "user");
+        assert_eq!(
+            message.content,
+            vec![
+                CloudChatContentPart::Text("Describe this image.".to_string()),
+                CloudChatContentPart::ImageUrl {
+                    url: "data:image/png;base64,AA==".to_string()
+                }
+            ]
+        );
     }
 
     #[test]

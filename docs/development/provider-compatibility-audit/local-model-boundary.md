@@ -1,25 +1,28 @@
 # Local Model-Bound Server Boundary
 
 Local model-bound servers are launched with `tentgent server run <model-ref>`.
-They are native Tentgent servers, even when they expose route names that look
-similar to provider APIs.
+Their runtime boundary is native Tentgent: provider-shaped requests are
+translated at the Rust proxy edge before the Python model runtime sees them.
 
 This boundary exists to keep provider compatibility work from accidentally
-counting native local runtime routes as OpenAI, Claude/Anthropic, or
-Gemini-compatible behavior.
+turning the Python runtime or native local routes into OpenAI,
+Claude/Anthropic, or Gemini APIs. Provider-compatible local routes are ingress
+adapters only.
 
 ## Launch Shapes
 
 | Launch shape | Server kind | Compatibility classification |
 | --- | --- | --- |
-| `tentgent server run <model-ref>` | Local model-bound server through the Rust proxy and Python runtime supervisor | Native Tentgent API |
-| `tentgent server run <model-ref> --capability <capability>` | Local model-bound server pinned to one local capability family | Native Tentgent API |
+| `tentgent server run <model-ref>` | Local model-bound server through the Rust proxy and Python runtime supervisor | Native Tentgent API with provider-shaped ingress adapters where implemented. |
+| `tentgent server run <model-ref> --capability <capability>` | Local model-bound server pinned to one local capability family | Native Tentgent API with provider-shaped ingress adapters where implemented. |
 | `tentgent server run openai:<model>` | Rust direct cloud provider server | Provider-shaped direct cloud server |
 | `tentgent server run anthropic:<model>` or `claude:<model>` | Rust direct cloud provider server | Provider-shaped direct cloud server |
 | `tentgent server run gemini:<model>` | Rust direct cloud provider server | Provider-shaped direct cloud server |
 
-Only the provider-prefixed launch shapes belong in provider compatibility
-scoring. Local model refs belong in native fallback docs and tests.
+Provider-prefixed launch shapes route to cloud provider clients. Local model
+refs route to the Python model runtime through native Tentgent request bodies.
+When a local provider-shaped ingress route exists, it should be scored as local
+provider compatibility, not as direct cloud compatibility.
 
 ## Native Route Surface
 
@@ -28,7 +31,7 @@ model or explicit `--capability` decides which endpoint family is valid.
 
 | Capability | Native route family | Provider compatibility role |
 | --- | --- | --- |
-| `chat` | `POST /v1/chat` | Native fallback for text chat. |
+| `chat` | `POST /v1/chat` | Native fallback for text chat. `POST /v1/chat/completions` is an OpenAI-shaped local ingress adapter. |
 | `embedding` | `POST /v1/embeddings` | Native fallback for embedding models. |
 | `rerank` | `POST /v1/rerank` | Native-only; no provider-compatible route today. |
 | `vision-chat` | `POST /v1/vision/chat` | Native fallback for local single-image vision chat. |
@@ -86,26 +89,49 @@ Example response:
 This response is native Tentgent shape. It should not be used as evidence that
 `/v1/chat` is OpenAI-, Claude-, or Gemini-compatible.
 
+## Provider-Shaped Local Ingress
+
+Provider-shaped local routes translate request and response bodies at the Rust
+proxy edge. The Python runtime still receives native Tentgent payloads.
+
+Current local ingress coverage:
+
+| Provider shape | Local route | Native upstream route | Notes |
+| --- | --- | --- | --- |
+| OpenAI chat completions | `POST /v1/chat/completions` | `POST /v1/chat` or `POST /v1/chat/stream` | Text-only compatibility. The request `model` is accepted but ignored because the server is already bound to one local model. |
+
+OpenAI local chat accepts text-only chat fields that can map to native local
+chat: `messages`, `max_tokens`, `max_completion_tokens`, `temperature`,
+`stream`, `response_format: {"type":"text"}`, `modalities: ["text"]`,
+`tool_choice: "none"`, `function_call: "none"`, `parallel_tool_calls: false`,
+`n: 1`, and `store: false`.
+
+Known unsupported OpenAI fields fail before the Python runtime is called:
+tools/function calling, structured response formats, audio output, non-text
+content parts, multiple choices, logprobs, web search, provider-side metadata,
+cache, safety, and service-tier fields.
+
 ## Fixture Boundary
 
-Provider compatibility fixtures should test local model-bound servers only when
-the native fallback behavior itself is the subject under test.
+Provider compatibility fixtures may test local model-bound servers when the
+provider-shaped local ingress behavior itself is the subject under test.
 
 Use local model-bound fixtures for:
 
 - native `/v1/chat`, `/v1/embeddings`, `/v1/rerank`, and `/v1/vision/chat`
   fallback behavior
+- implemented provider-shaped local ingress adapters such as OpenAI
+  `/v1/chat/completions`
 - capability gate behavior such as `400 unsupported_target`
 - adapter validation against local chat models
 - lower-level runtime streaming contracts
 
 Do not use local model-bound fixtures for:
 
-- OpenAI `/v1/chat/completions` compatibility
-- Claude/Anthropic `/v1/messages` compatibility
-- Gemini `/v1beta/models/{operation}` compatibility
+- direct cloud provider behavior
+- provider-shaped routes that are not implemented on the local server yet, such
+  as Claude/Anthropic `/v1/messages` and Gemini `/v1beta/models/{operation}`
 - provider-compatible image-generation behavior
-- provider-shaped unknown-field semantics
 
 Those tests should target daemon provider-compatible routes or direct cloud
-provider servers instead.
+provider servers until local ingress support is implemented.

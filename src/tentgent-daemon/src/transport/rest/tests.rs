@@ -27,6 +27,8 @@ use crate::{
     transport::rest::{build_router, security::DaemonSecurityConfig, state::RestState},
 };
 
+mod openai_chat_compat;
+
 #[tokio::test]
 async fn healthz_returns_service_identity() {
     let state = rest_state("healthz");
@@ -311,58 +313,6 @@ async fn chat_rejects_invalid_message_role() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = json_body(response).await;
     assert_eq!(body["error"], "bad_request");
-}
-
-#[tokio::test]
-async fn openai_chat_completions_rejects_invalid_message_role() {
-    let state = rest_state("openai-chat-invalid-role");
-    let response = build_router(state)
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/chat/completions")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"model":"aaaaaaaaaaaa","messages":[{"role":"tool","content":"hi"}]}"#,
-                ))
-                .expect("request"),
-        )
-        .await
-        .expect("response");
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body = json_body(response).await;
-    assert_eq!(body["error"], "bad_request");
-}
-
-#[tokio::test]
-async fn openai_chat_completions_stream_uses_openai_sse_shape() {
-    let state = rest_state("openai-chat-stream");
-    let response = build_router(state)
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/chat/completions")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"model":"aaaaaaaaaaaa","messages":[{"role":"user","content":"hi"}],"stream":true}"#,
-                ))
-                .expect("request"),
-        )
-        .await
-        .expect("response");
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(response
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("text/event-stream")));
-    let body = sse_body(response).await;
-    assert!(body.contains(r#""object":"chat.completion.chunk""#));
-    assert!(body.contains(r#""type":"chat_model_failed""#));
-    assert!(body.contains("data: [DONE]"));
-    assert!(!body.contains("event: error"));
 }
 
 #[tokio::test]

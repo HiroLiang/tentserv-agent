@@ -83,8 +83,16 @@ Optional:
 
 - `max_tokens`
 - `max_completion_tokens`
+- `n`, only when set to `1`
 - `temperature`
 - `stream`
+- `stream_options`, only when `include_usage` and `include_obfuscation` are
+  unset or `false`
+- `modalities`, only when every value is `text`
+- `response_format`, only when set to `{ "type": "text" }`
+- `tool_choice` and deprecated `function_call`, only when set to `none`
+- `parallel_tool_calls`, only when set to `false`
+- `store`, only when set to `false`
 
 Defaults:
 
@@ -99,14 +107,33 @@ Accepted content:
 
 Explicitly rejected:
 
-- unsupported OpenAI content part types
+- `tools`, deprecated `functions`, non-`none` `tool_choice`, non-`none`
+  deprecated `function_call`, and `parallel_tool_calls: true`
+- structured `response_format` values such as `json_object` and `json_schema`
+- `audio`
+- `modalities` containing anything other than `text`
+- unsupported OpenAI content part types such as `input_audio`, `file`, and
+  `refusal`
 - missing `image_url` payload for an `image_url` content part
+- message `tool_calls`, deprecated message `function_call`, assistant `audio`,
+  and assistant `refusal`
+- `n` values greater than `1`
+- `stream_options.include_usage: true` and
+  `stream_options.include_obfuscation: true`
+- advanced generation controls that are not mapped to cloud chat requests yet:
+  `stop`, `top_p`, `frequency_penalty`, `presence_penalty`, `logit_bias`,
+  `logprobs`, `top_logprobs`, `prediction`, `reasoning_effort`, and
+  `verbosity`
+- provider-side metadata, storage, cache, safety, and service fields:
+  `metadata`, `store: true`, `seed`, `service_tier`, `user`,
+  `safety_identifier`, `prompt_cache_key`, and `prompt_cache_retention`
+- `web_search_options`
 
 Currently ignored:
 
 - Unknown top-level fields.
-- Tool/function fields because they are not represented in `OpenAiChatRequest`.
 - Caller-supplied `model`.
+- Message `name` fields.
 
 Example request:
 
