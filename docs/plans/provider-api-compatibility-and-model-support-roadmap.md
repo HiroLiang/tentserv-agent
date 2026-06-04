@@ -89,6 +89,20 @@ Tentgent should aim for domain-swap compatibility only within declared support:
 - Response shapes should be provider-compatible where the compatible endpoint is
   used, and Tentgent-native where the native endpoint is used.
 
+## Post-1.0 Direction
+
+The path to `1.0.0` should leave room for future serving targets that group
+multiple capability-specific local models behind one API target. Automatic
+media pre-processing, where images, audio, video, or files are parsed by the
+configured capability model before their extracted context is sent to a chat
+model, is tracked separately in
+[post-1.0-serving-targets-and-multimodal-context-pipeline.md](./post-1.0-serving-targets-and-multimodal-context-pipeline.md).
+
+That future pipeline is not a `1.0.0` blocker. Before `1.0.0`, the important
+constraint is to keep provider request parsing, native intent types, capability
+metadata, runtime profiles, and attachment handling explicit enough that this
+post-1.0 direction remains possible.
+
 ## Work Tracks
 
 ### P1: Provider API Compatibility Matrix

@@ -39,6 +39,10 @@ one pass without a staged breakdown.
 
 ## Deferred Plans
 
+- [post-1.0-serving-targets-and-multimodal-context-pipeline.md](./post-1.0-serving-targets-and-multimodal-context-pipeline.md)
+  Deferred post-1.0 direction for grouping multiple capability-specific models
+  behind one serving target and pre-processing local media attachments into chat
+  context.
 - No terminal UI redesign track is active. The product surface is CLI plus
   daemon REST.
 
