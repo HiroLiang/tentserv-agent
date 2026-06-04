@@ -8,11 +8,11 @@ profile work.
 
 | Field | Current behavior | Notes |
 | --- | --- | --- |
-| `model` | Required on daemon provider-shaped chat and image routes; accepted by daemon embeddings. Ignored by direct cloud provider servers. | Direct cloud servers use the bound provider model from `tentgent server run <provider>:<model>`. |
+| `model` | Required on daemon provider-shaped chat and image routes; accepted by daemon embeddings. Ignored by direct cloud provider servers and local model-bound OpenAI chat ingress. | Direct cloud servers use the bound provider model from `tentgent server run <provider>:<model>`. Local model-bound servers use the bound local model from `tentgent server run <model-ref>`. |
 | `model_ref` | Native Tentgent model selector. Accepted by daemon embeddings. Omitted from local model-bound server requests because the server is already bound to one model. | Local model routes use `model_ref`; provider-shaped chat routes use `model`. |
-| `messages` | Required by OpenAI/Claude-shaped chat routes. | Daemon routes are text-first. Direct cloud routes accept more image content. |
+| `messages` | Required by OpenAI/Claude-shaped chat routes. | Daemon and local OpenAI routes are text-first. Direct cloud routes accept more image content. |
 | `contents` | Required by Gemini-shaped chat routes. | Daemon route accepts text parts only. Direct cloud route accepts text and `inlineData`. |
-| `stream` | Supported by daemon OpenAI/Claude chat. Direct cloud OpenAI uses generic Tentgent SSE; direct cloud Claude ignores it. | Gemini uses route suffix `:streamGenerateContent`, not a body field. |
+| `stream` | Supported by daemon OpenAI/Claude chat and local OpenAI chat ingress. Direct cloud OpenAI uses generic Tentgent SSE; direct cloud Claude ignores it. | Gemini uses route suffix `:streamGenerateContent`, not a body field. |
 | `max_tokens` | Forwarded for OpenAI/Claude-shaped chat and native cloud chat. | No route-level model profile or clamp exists yet. |
 | `max_completion_tokens` | Accepted by OpenAI-shaped chat and treated as fallback when `max_tokens` is absent. | Only OpenAI-shaped routes read this field. |
 | `maxOutputTokens` | Accepted through Gemini `generationConfig`. | No route-level model profile or clamp exists yet. |
@@ -88,10 +88,14 @@ strict yet.
   shapes.
 - Daemon Gemini chat returns Gemini-shaped non-streaming and streaming response
   shapes.
+- Local model-bound OpenAI chat ingress returns OpenAI-shaped non-streaming and
+  streaming response shapes while forwarding native Tentgent chat bodies to the
+  Python runtime.
 - Direct cloud OpenAI/Gemini streaming currently returns generic Tentgent
   `delta` and `done` SSE events.
 - Embedding responses are Tentgent-shaped for both daemon and direct cloud
   routes.
 - Image generation responses are OpenAI-like, with `created` and `b64_json`.
-- Local model-bound server responses are native Tentgent shapes and should be
-  treated as fallback behavior, not provider-compatible behavior.
+- Local model-bound native routes return native Tentgent response shapes. Local
+  provider-shaped ingress routes translate native runtime results back into the
+  provider response shape at the Rust proxy edge.

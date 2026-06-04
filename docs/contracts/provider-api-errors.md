@@ -32,7 +32,7 @@ human-readable and may become more specific over time.
 
 | Code | Meaning | Examples |
 | --- | --- | --- |
-| `unsupported_provider_field` | The upstream provider API has a known field, but Tentgent does not support that field in this compatibility route yet. | `tools`, `tool_choice`, `functions`, `function_call`, `response_format`, `dimensions`, `stream=true` on direct cloud Claude messages. |
+| `unsupported_provider_field` | The upstream provider API has a known field, but Tentgent does not support that field in this compatibility route yet. | `tools`, non-text `response_format`, `stream_options.include_usage`, `web_search_options`, `dimensions`, `stream=true` on direct cloud Claude messages. |
 | `unsupported_provider_content` | A provider-shaped message, content part, or block uses a content type that this route cannot translate yet. | OpenAI daemon `image_url` parts, Claude daemon `image` blocks, Gemini daemon non-text parts, unknown direct cloud multimodal part shapes. |
 | `unsupported_provider_operation` | A provider-shaped path operation is outside the supported endpoint family. | Gemini operations other than `generateContent` or `streamGenerateContent`. |
 | `unsupported_provider_capability` | The selected provider or endpoint family is not implemented through Tentgent yet. | Anthropic embeddings, Anthropic image generation. |

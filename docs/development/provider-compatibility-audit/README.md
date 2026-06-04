@@ -15,8 +15,8 @@ matrix, unsupported-field semantics, and conformance tests.
   Direct cloud provider server routes and how they differ from daemon
   compatibility adapters.
 - [local-model-boundary.md](./local-model-boundary.md)
-  Native local model-bound server boundary, fallback role, and why it should
-  stay out of provider compatibility scoring.
+  Native local model-bound server boundary, fallback role, and provider-shaped
+  local ingress adapter rules.
 - [field-behavior.md](./field-behavior.md)
   Shared field behavior for `model`, `model_ref`, `stream`, `tools`,
   `response_format`, `dimensions`, `size`, and model-specific parameters.
@@ -27,8 +27,8 @@ Audited surfaces:
 
 - daemon provider-compatible routes from `src/tentgent-daemon/src/transport/rest/router.rs`
 - direct cloud provider server routes from `src/tentgent-daemon/src/cloud_server.rs`
+- local provider-shaped ingress adapters from `src/tentgent-daemon/src/local_server.rs`
 - provider request mapping in `src/tentgent-kernel/src/features/cloud/infra.rs`
-- local model-bound server routes as fallback boundary context only
 
 Native-only local routes such as `/v1/rerank`, `/v1/vision/chat`, audio jobs,
 video jobs, and local image job routes are fallback context only. They are not
@@ -51,9 +51,11 @@ provider-compatible routes.
 - Direct cloud provider servers accept broader image content for chat than the
   daemon compatibility routes, but streaming currently uses generic Tentgent
   `delta` and `done` SSE events.
-- Local model-bound servers launched with `tentgent server run <model-ref>` are
-  native Tentgent servers. They can be listed as fallback routes, but they
-  should not be counted as OpenAI, Claude/Anthropic, or Gemini compatibility.
+- Local model-bound servers launched with `tentgent server run <model-ref>` use
+  native Tentgent request bodies at the Python runtime boundary. Implemented
+  provider-shaped local ingress routes, such as OpenAI `/v1/chat/completions`,
+  translate at the Rust proxy edge and can be counted as local provider
+  compatibility.
 - Unknown-field behavior is inconsistent. Daemon embedding rejects unknown
   fields manually, while most provider-shaped request structs ignore unknown
   fields because they do not use `#[serde(deny_unknown_fields)]`.
@@ -71,7 +73,9 @@ Remaining refinements for later docs or fixtures:
   Tentgent `delta`/`done` SSE events rather than provider-native chunk shapes.
 - Clarify that embedding responses are currently Tentgent-shaped, even when the
   request is provider-shaped.
-- Keep native local model-bound routes in the fallback column only.
+- Keep native local model-bound routes in the fallback column, but list
+  implemented provider-shaped local ingress routes in the compatibility
+  surface.
 
 ## Follow-Up Issue Mapping
 
@@ -80,9 +84,9 @@ Remaining refinements for later docs or fixtures:
   and which error codes and JSON shapes are stable. Use the unknown-field notes
   in [field-behavior.md](./field-behavior.md) as the starting inventory.
 - `[test] Add OpenAI chat completions compatibility fixtures`
-  Cover daemon OpenAI-shaped response, streaming chunk behavior, and direct
-  cloud streaming differences. Do not include local model-bound `/v1/chat` as
-  OpenAI compatibility.
+  Cover daemon OpenAI-shaped response, local model-bound OpenAI ingress,
+  streaming chunk behavior, and direct cloud streaming differences. Do not
+  count native local `/v1/chat` itself as OpenAI compatibility.
 - `[test] Add OpenAI embeddings compatibility fixtures`
   Cover daemon cloud embeddings, local embeddings, direct cloud embedding
   validation gaps, unknown-field rejection, invalid input, and the current
@@ -104,6 +108,6 @@ Remaining refinements for later docs or fixtures:
 
 Use this audit as the handoff for the next implementation slice:
 unsupported-field semantics first, then focused conformance fixtures for each
-provider-shaped route family. Keep local model-bound server examples in native
-Tentgent docs unless the route is explicitly wrapped by a provider
+provider-shaped route family. Keep native local model-bound server examples in
+native Tentgent docs unless the route is explicitly wrapped by a provider
 compatibility adapter.
