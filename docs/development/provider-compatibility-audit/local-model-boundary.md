@@ -25,9 +25,10 @@ When a local provider-shaped ingress route exists, it should be scored as local
 provider compatibility, not as direct cloud compatibility.
 
 The Python model runtime is an internal execution protocol. Rust local-server
-adapters should call its `/internal/v1/*` aliases, even when the client-facing
-local server route is `/v1/*`. Legacy Python `/v1/*` routes remain mounted only
-for direct runtime development smoke tests and backwards compatibility.
+adapters should call its runtime routes with native Tentgent request bodies,
+even when the client-facing local server route is provider-shaped. Prefer
+`/internal/v1/*` aliases where the Python runtime mounts them; otherwise use
+the native runtime `/v1/*` route directly.
 
 ## Native Route Surface
 
@@ -42,7 +43,7 @@ model or explicit `--capability` decides which endpoint family is valid.
 | `vision-chat` | `POST /v1/vision/chat` | Native fallback for local single-image vision chat. |
 | `audio-transcription` | `POST /v1/audio/transcriptions` | Native job/runtime route; no provider-compatible transcription route today. |
 | `audio-speech` | `POST /v1/audio/speech` | Native job/runtime route; no provider-compatible speech route today. |
-| `image-generation` | `POST /v1/images/generations`, `transforms`, `inpaint`, `control` | Native media workflow routes; provider-compatible image generation is a separate adapter surface. |
+| `image-generation` | `POST /v1/images/generations`, `transforms`, `inpaint`, `control` | Native media workflow routes. `POST /v1/images/generations` also accepts OpenAI-shaped text-to-image requests through the local ingress adapter. |
 | `video-understanding` | `POST /v1/video/understanding` | Native media workflow route. |
 
 Lower-level model-runtime contracts also mention `POST /v1/chat/stream`, but
@@ -114,10 +115,11 @@ Current local ingress coverage:
 | --- | --- | --- | --- |
 | OpenAI chat completions | `POST /v1/chat/completions` | `POST /v1/chat` or `POST /v1/chat/stream` | Text-only compatibility. The request `model` is accepted but ignored because the server is already bound to one local model. |
 | OpenAI embeddings | `POST /v1/embeddings` | `POST /v1/embeddings` | OpenAI ingress is selected by a string `model` or OpenAI embedding fields. Accepts `input` plus optional `encoding_format: "float"`. The request `model` is accepted but ignored because the server is already bound to one local model. |
+| OpenAI image generation | `POST /v1/images/generations` | `POST /v1/images/generations` | OpenAI ingress is selected when `output_path` is absent or OpenAI image fields are present. The adapter accepts `model`, `prompt`, and optional `size`, writes to a runtime-owned output path, and returns an OpenAI-style `b64_json` envelope. |
 
-OpenAI image and audio route paths collide with native local media routes. Add
-their local provider-compatible adapters only with request-shape
-disambiguation, so native local media workflows keep their native contracts.
+OpenAI audio route paths collide with native local media routes. Add their
+local provider-compatible adapters only with request-shape disambiguation, so
+native local media workflows keep their native contracts.
 
 OpenAI local chat accepts text-only chat fields that can map to native local
 chat: `messages`, `max_tokens`, `max_completion_tokens`, `temperature`,
@@ -136,6 +138,14 @@ OpenAI local embeddings accept `input` as a string or string array and accept
 inputs, empty input arrays, and empty input strings before the Python runtime is
 called. Responses are wrapped into OpenAI-style embedding list envelopes.
 
+OpenAI local image generation accepts `model`, `prompt`, and optional `size`.
+The local adapter rejects caller `provider`, `response_format`, `n`, unsupported
+top-level fields, empty prompts, and invalid size strings before the Python
+runtime is called. The Rust proxy generates the native `output_path`, calls the
+Python runtime with a native text-to-image request, reads the generated file,
+and returns an OpenAI-style `b64_json` image envelope. Native image generation
+requests that include `output_path` remain native and are proxied unchanged.
+
 ## Fixture Boundary
 
 Provider compatibility fixtures may test local model-bound servers when the
@@ -146,7 +156,8 @@ Use local model-bound fixtures for:
 - native `/v1/chat`, `/v1/embeddings`, `/v1/rerank`, and `/v1/vision/chat`
   fallback behavior
 - implemented provider-shaped local ingress adapters such as OpenAI
-  `/v1/chat/completions` and OpenAI `/v1/embeddings`
+  `/v1/chat/completions`, OpenAI `/v1/embeddings`, and OpenAI
+  `/v1/images/generations`
 - capability gate behavior such as `400 unsupported_provider_capability`
 - adapter validation against local chat models
 - lower-level runtime streaming contracts
@@ -157,7 +168,8 @@ Do not use local model-bound fixtures for:
 - provider-shaped route execution that is not implemented on the local server
   yet, such as Claude/Anthropic `/v1/messages` and Gemini
   `/v1beta/models/{operation}`
-- provider-compatible image-generation behavior
+- unimplemented provider-compatible media behavior such as OpenAI audio,
+  Claude/Anthropic media routes, and Gemini media routes
 
-Those tests should target daemon provider-compatible routes or direct cloud
-provider servers until local ingress support is implemented.
+Those tests should target daemon provider-compatible routes, direct cloud
+provider servers, or future local ingress adapters when support is implemented.

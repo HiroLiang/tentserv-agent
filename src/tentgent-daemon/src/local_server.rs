@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use futures_util::{stream, Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -38,9 +39,10 @@ use crate::{
 };
 
 const PROXY_BODY_LIMIT_BYTES: usize = 256 * 1024 * 1024;
-const RUNTIME_CHAT_PATH: &str = "/internal/v1/chat";
-const RUNTIME_CHAT_STREAM_PATH: &str = "/internal/v1/chat/stream";
-const RUNTIME_EMBEDDINGS_PATH: &str = "/internal/v1/embeddings";
+const RUNTIME_CHAT_PATH: &str = "/v1/chat";
+const RUNTIME_CHAT_STREAM_PATH: &str = "/v1/chat/stream";
+const RUNTIME_EMBEDDINGS_PATH: &str = "/v1/embeddings";
+const RUNTIME_IMAGE_GENERATIONS_PATH: &str = "/v1/images/generations";
 
 #[derive(Debug, Clone)]
 pub struct LocalServerRuntimeConfig {
@@ -94,6 +96,7 @@ pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miett
         .route("/healthz", get(healthz))
         .route("/v1/chat/completions", post(openai_chat_completions))
         .route("/v1/embeddings", post(openai_embeddings))
+        .route("/v1/images/generations", post(image_generations))
         .fallback(proxy_request)
         .with_state(state);
     let listener = tokio::net::TcpListener::bind(addr)
@@ -178,6 +181,32 @@ async fn openai_embeddings(
         .await;
     }
     native_embedding_to_upstream(&state.client, request, &endpoint.base_url).await
+}
+
+async fn image_generations(
+    State(state): State<LocalServerState>,
+    Json(request): Json<Value>,
+) -> Result<Response, LocalServerError> {
+    ensure_local_provider_capability(
+        state.config.capability,
+        ServerCapability::ImageGeneration,
+        "local image generation",
+    )?;
+    let endpoint = ensure_model_endpoint(&state).await?;
+    if local_image_generation_request_uses_openai_shape(&request) {
+        let request = LocalOpenAiImageGenerationRequest::from_value(request)?;
+        return openai_image_generation_to_upstream(
+            &state.client,
+            request,
+            &endpoint.base_url,
+            &state.config.model_ref,
+            &state.layout,
+            &state.config.server_ref,
+            state.config.capability,
+        )
+        .await;
+    }
+    native_image_generation_to_upstream(&state.client, request, &endpoint.base_url).await
 }
 
 async fn ensure_model_endpoint(
@@ -305,6 +334,58 @@ async fn native_embedding_to_upstream(
     response_from_upstream(upstream)
 }
 
+async fn openai_image_generation_to_upstream(
+    client: &reqwest::Client,
+    request: LocalOpenAiImageGenerationRequest,
+    upstream_base_url: &str,
+    bound_model_ref: &str,
+    layout: &tentgent_kernel::foundation::layout::RuntimeLayout,
+    server_ref: &str,
+    capability: ServerCapability,
+) -> Result<Response, LocalServerError> {
+    if capability != ServerCapability::ImageGeneration {
+        return Err(ProviderCompatRejection::unsupported_capability(format!(
+            "OpenAI-compatible local image generation requires an image-generation server; this server is bound to {}",
+            capability.as_str()
+        ))
+        .into());
+    }
+    let output_path = local_openai_image_output_path(layout, server_ref);
+    let upstream = client
+        .post(format!(
+            "{}{}",
+            upstream_base_url.trim_end_matches('/'),
+            RUNTIME_IMAGE_GENERATIONS_PATH
+        ))
+        .json(&request.into_native_image_generation_request(output_path.clone()))
+        .send()
+        .await
+        .map_err(|err| {
+            LocalServerError::bad_gateway(format!("model runtime proxy failed: {err}"))
+        })?;
+    openai_image_generation_response_from_upstream(upstream, bound_model_ref).await
+}
+
+async fn native_image_generation_to_upstream(
+    client: &reqwest::Client,
+    request: Value,
+    upstream_base_url: &str,
+) -> Result<Response, LocalServerError> {
+    let upstream = client
+        .post(format!(
+            "{}{}",
+            upstream_base_url.trim_end_matches('/'),
+            RUNTIME_IMAGE_GENERATIONS_PATH
+        ))
+        .json(&request)
+        .send()
+        .await
+        .map_err(|err| {
+            LocalServerError::bad_gateway(format!("model runtime proxy failed: {err}"))
+        })?;
+    response_from_upstream(upstream)
+}
+
 async fn forward_to_runtime(
     client: &reqwest::Client,
     request: Request<Body>,
@@ -340,7 +421,7 @@ fn runtime_upstream_path_and_query(path_and_query: &str) -> String {
         "/v1/chat" => RUNTIME_CHAT_PATH,
         "/v1/chat/stream" => RUNTIME_CHAT_STREAM_PATH,
         "/v1/embeddings" => RUNTIME_EMBEDDINGS_PATH,
-        "/v1/images/generations" => "/internal/v1/images/generations",
+        "/v1/images/generations" => RUNTIME_IMAGE_GENERATIONS_PATH,
         "/v1/images/transforms" => "/internal/v1/images/transforms",
         "/v1/images/inpaint" => "/internal/v1/images/inpaint",
         "/v1/images/control" => "/internal/v1/images/control",
@@ -369,6 +450,41 @@ fn response_from_upstream(upstream: reqwest::Response) -> Result<Response, Local
     response
         .body(Body::from_stream(upstream.bytes_stream()))
         .map_err(|err| LocalServerError::bad_gateway(format!("build proxy response failed: {err}")))
+}
+
+async fn openai_image_generation_response_from_upstream(
+    upstream: reqwest::Response,
+    bound_model_ref: &str,
+) -> Result<Response, LocalServerError> {
+    if !upstream.status().is_success() {
+        return response_from_upstream(upstream);
+    }
+    let response = upstream
+        .json::<NativeLocalImageGenerationResponse>()
+        .await
+        .map_err(|err| {
+            LocalServerError::bad_gateway(format!("decode image generation response failed: {err}"))
+        })?;
+    let bytes = tokio::fs::read(&response.output_path)
+        .await
+        .map_err(|err| {
+            LocalServerError::bad_gateway(format!(
+                "read image generation output `{}` failed: {err}",
+                response.output_path
+            ))
+        })?;
+    Ok(Json(json!({
+        "created": unix_timestamp_seconds(),
+        "data": [{
+            "b64_json": BASE64_STANDARD.encode(bytes)
+        }],
+        "model": if response.model_ref.is_empty() {
+            bound_model_ref.to_string()
+        } else {
+            response.model_ref
+        }
+    }))
+    .into_response())
 }
 
 async fn openai_embedding_response_from_upstream(
@@ -803,6 +919,152 @@ impl LocalOpenAiEmbeddingRequest {
     }
 }
 
+#[derive(Debug)]
+struct LocalOpenAiImageGenerationRequest {
+    prompt: String,
+    size: Option<String>,
+}
+
+impl LocalOpenAiImageGenerationRequest {
+    fn from_value(value: Value) -> Result<Self, LocalServerError> {
+        let object = value.as_object().ok_or_else(|| {
+            LocalServerError::bad_request("bad_request", "request body must be a JSON object")
+        })?;
+        let unknown = object
+            .keys()
+            .filter(|key| {
+                !matches!(
+                    key.as_str(),
+                    "model" | "prompt" | "size" | "provider" | "response_format" | "n"
+                )
+            })
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        if !unknown.is_empty() {
+            return Err(ProviderCompatRejection::unsupported_field(format!(
+                "unsupported OpenAI-compatible image generation request fields: {}",
+                unknown.join(", ")
+            ))
+            .into());
+        }
+        if object.get("model").is_some_and(|value| !value.is_string()) {
+            return Err(LocalServerError::bad_request(
+                "bad_request",
+                "`model` must be a string when present",
+            ));
+        }
+        if object.get("provider").is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "local OpenAI-compatible image generation uses the bound local model and does not support provider selection",
+            )
+            .into());
+        }
+        if object.get("response_format").is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "OpenAI-compatible local image generation response_format is not supported; Tentgent returns b64_json",
+            )
+            .into());
+        }
+        if object.get("n").is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "OpenAI-compatible local image generation only supports one image per request today",
+            )
+            .into());
+        }
+        let prompt = object
+            .get("prompt")
+            .and_then(Value::as_str)
+            .ok_or_else(|| LocalServerError::bad_request("bad_request", "`prompt` is required"))?
+            .trim()
+            .to_string();
+        if prompt.is_empty() {
+            return Err(LocalServerError::bad_request(
+                "bad_request",
+                "`prompt` must not be empty",
+            ));
+        }
+        let size = object
+            .get("size")
+            .map(local_image_generation_size)
+            .transpose()?;
+        Ok(Self { prompt, size })
+    }
+
+    fn into_native_image_generation_request(
+        self,
+        output_path: PathBuf,
+    ) -> NativeLocalImageGenerationRequest {
+        let dimensions = self
+            .size
+            .as_deref()
+            .and_then(local_image_generation_dimensions);
+        NativeLocalImageGenerationRequest {
+            prompt: self.prompt,
+            output_path: output_path.display().to_string(),
+            output_format: "png".to_string(),
+            width: dimensions.map(|(width, _)| width),
+            height: dimensions.map(|(_, height)| height),
+        }
+    }
+}
+
+fn local_image_generation_request_uses_openai_shape(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    object.get("output_path").is_none()
+        || object.get("model").is_some_and(Value::is_string)
+        || object.get("size").is_some()
+        || object.get("provider").is_some()
+        || object.get("response_format").is_some()
+        || object.get("n").is_some()
+}
+
+fn local_image_generation_size(value: &Value) -> Result<String, LocalServerError> {
+    let size = value.as_str().ok_or_else(|| {
+        LocalServerError::bad_request("bad_request", "`size` must be a string when present")
+    })?;
+    if local_image_generation_dimensions(size).is_none() {
+        return Err(LocalServerError::bad_request(
+            "bad_request",
+            "`size` must use `<width>x<height>` format",
+        ));
+    }
+    Ok(size.to_string())
+}
+
+fn local_image_generation_dimensions(size: &str) -> Option<(u32, u32)> {
+    let (width, height) = size.split_once('x')?;
+    let width = width.parse::<u32>().ok()?;
+    let height = height.parse::<u32>().ok()?;
+    Some((width, height))
+}
+
+fn local_openai_image_output_path(
+    layout: &tentgent_kernel::foundation::layout::RuntimeLayout,
+    server_ref: &str,
+) -> PathBuf {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let safe_server_ref = server_ref
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    layout
+        .runtime_dir
+        .join("local-openai-images")
+        .join(safe_server_ref)
+        .join(format!("{suffix}.png"))
+}
+
 fn local_embedding_request_uses_openai_shape(value: &Value) -> bool {
     let Some(object) = value.as_object() else {
         return false;
@@ -884,6 +1146,23 @@ struct NativeLocalEmbeddingRequest {
 struct NativeLocalEmbeddingResponse {
     model_ref: String,
     data: Vec<NativeLocalEmbeddingItem>,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeLocalImageGenerationRequest {
+    prompt: String,
+    output_path: String,
+    output_format: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NativeLocalImageGenerationResponse {
+    model_ref: String,
+    output_path: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1323,6 +1602,124 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn openai_image_generation_maps_local_request_and_response() {
+        async fn images(
+            AxumState(captured): AxumState<Arc<Mutex<Option<String>>>>,
+            body: String,
+        ) -> Json<Value> {
+            *captured.lock().expect("lock") = Some(body.clone());
+            let body: Value = serde_json::from_str(&body).expect("native json");
+            let output_path = body["output_path"].as_str().expect("output path");
+            std::fs::create_dir_all(
+                std::path::Path::new(output_path)
+                    .parent()
+                    .expect("output parent"),
+            )
+            .expect("create output parent");
+            std::fs::write(output_path, b"image-bytes").expect("write image");
+            Json(json!({
+                "task_ref": "task-1",
+                "status": "completed",
+                "model_ref": "local-image-ref",
+                "output_format": "png",
+                "media_type": "image/png",
+                "output_path": output_path,
+                "total_bytes": 11,
+                "width": 512,
+                "height": 512,
+                "seed": null
+            }))
+        }
+
+        let captured = Arc::new(Mutex::new(None));
+        let (base_url, _task) = spawn_test_server(
+            Router::new()
+                .route(RUNTIME_IMAGE_GENERATIONS_PATH, post(images))
+                .with_state(captured.clone()),
+        )
+        .await;
+        let layout = test_runtime_layout("local-openai-image-generation");
+        let request = LocalOpenAiImageGenerationRequest::from_value(json!({
+            "model": "gpt-image-1",
+            "prompt": "A small red cube",
+            "size": "512x512"
+        }))
+        .expect("request");
+
+        let response = openai_image_generation_to_upstream(
+            &reqwest::Client::new(),
+            request,
+            &base_url,
+            "bound-local-image-ref",
+            &layout,
+            "server/local:image",
+            ServerCapability::ImageGeneration,
+        )
+        .await
+        .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), PROXY_BODY_LIMIT_BYTES)
+            .await
+            .expect("body");
+        let value: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["data"][0]["b64_json"], "aW1hZ2UtYnl0ZXM=");
+        assert_eq!(value["model"], "local-image-ref");
+
+        let captured = captured.lock().expect("lock").clone().expect("captured");
+        let captured: Value = serde_json::from_str(&captured).expect("native json");
+        assert_eq!(captured["prompt"], "A small red cube");
+        assert_eq!(captured["output_format"], "png");
+        assert_eq!(captured["width"], 512);
+        assert_eq!(captured["height"], 512);
+        assert!(captured["output_path"]
+            .as_str()
+            .expect("output path")
+            .contains("local-openai-images/server-local-image/"));
+        assert!(captured.get("model").is_none());
+        assert!(captured.get("provider").is_none());
+        assert!(captured.get("size").is_none());
+    }
+
+    #[tokio::test]
+    async fn openai_image_generation_rejects_non_image_generation_local_server() {
+        let request = LocalOpenAiImageGenerationRequest::from_value(json!({
+            "model": "gpt-image-1",
+            "prompt": "A small red cube"
+        }))
+        .expect("request");
+        let layout = test_runtime_layout("local-openai-image-non-image");
+
+        let error = openai_image_generation_to_upstream(
+            &reqwest::Client::new(),
+            request,
+            "http://127.0.0.1:1",
+            "chat-model-ref",
+            &layout,
+            "server-ref",
+            ServerCapability::Chat,
+        )
+        .await
+        .expect_err("non-image capability rejected");
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_capability");
+    }
+
+    #[test]
+    fn openai_image_generation_rejects_unsupported_local_fields() {
+        let error = LocalOpenAiImageGenerationRequest::from_value(json!({
+            "model": "gpt-image-1",
+            "prompt": "A small red cube",
+            "response_format": "b64_json"
+        }))
+        .expect_err("response_format rejected");
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_field");
+    }
+
+    #[tokio::test]
     async fn native_embeddings_still_proxy_through_local_route() {
         async fn embeddings(body: String) -> Json<Value> {
             Json(json!({
@@ -1377,10 +1774,26 @@ mod tests {
     }
 
     #[test]
-    fn runtime_upstream_path_maps_known_native_routes_to_internal_runtime() {
+    fn local_image_generation_shape_detection_preserves_native_body() {
+        assert!(!local_image_generation_request_uses_openai_shape(&json!({
+            "prompt": "native text",
+            "output_path": "/tmp/out.png"
+        })));
+        assert!(local_image_generation_request_uses_openai_shape(&json!({
+            "model": "gpt-image-1",
+            "prompt": "A small red cube"
+        })));
+        assert!(local_image_generation_request_uses_openai_shape(&json!({
+            "prompt": "A small red cube",
+            "size": "1024x1024"
+        })));
+    }
+
+    #[test]
+    fn runtime_upstream_path_maps_known_native_routes_to_runtime_routes() {
         assert_eq!(
             runtime_upstream_path_and_query("/v1/chat?stream=false"),
-            "/internal/v1/chat?stream=false"
+            "/v1/chat?stream=false"
         );
         assert_eq!(
             runtime_upstream_path_and_query("/v1/embeddings"),
@@ -1388,7 +1801,7 @@ mod tests {
         );
         assert_eq!(
             runtime_upstream_path_and_query("/v1/images/generations"),
-            "/internal/v1/images/generations"
+            RUNTIME_IMAGE_GENERATIONS_PATH
         );
         assert_eq!(
             runtime_upstream_path_and_query("/v1/not-runtime"),
@@ -1418,6 +1831,22 @@ mod tests {
             axum::serve(listener, router).await.expect("serve");
         });
         (http_url_from_host_port("127.0.0.1", port), task)
+    }
+
+    fn test_runtime_layout(label: &str) -> tentgent_kernel::foundation::layout::RuntimeLayout {
+        let home = std::env::temp_dir().join(format!(
+            "tentgent-local-server-{label}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&home);
+        StdRuntimeLayoutResolver
+            .resolve(RuntimeLayoutInput {
+                mode: LayoutResolveMode::Create,
+                home_dir: Some(home),
+                data_root_dir: None,
+            })
+            .expect("layout")
     }
 
     fn assert_embedding_values(value: &Value, expected: &[f64]) {

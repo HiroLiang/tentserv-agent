@@ -123,3 +123,43 @@ where
         })
         .transpose()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openai_image_generation_body_accepts_prompt_size_and_default_provider() {
+        let request: CloudImageGenerationBody = serde_json::from_value(serde_json::json!({
+            "model": "gpt-image-1",
+            "prompt": "A small red cube",
+            "size": "1024x1024"
+        }))
+        .expect("request");
+
+        request
+            .reject_unsupported()
+            .expect("image request supported");
+
+        assert_eq!(request.model, "gpt-image-1");
+        assert_eq!(request.prompt, "A small red cube");
+        assert_eq!(request.size.as_deref(), Some("1024x1024"));
+        assert_eq!(request.provider, None);
+    }
+
+    #[test]
+    fn openai_image_generation_body_accepts_explicit_openai_provider() {
+        let request: CloudImageGenerationBody = serde_json::from_value(serde_json::json!({
+            "provider": "openai",
+            "model": "gpt-image-1",
+            "prompt": "A small red cube"
+        }))
+        .expect("request");
+
+        request
+            .reject_unsupported()
+            .expect("image request supported");
+
+        assert_eq!(request.provider, Some(Provider::OpenAI));
+    }
+}

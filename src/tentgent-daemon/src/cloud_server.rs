@@ -993,6 +993,70 @@ mod tests {
     }
 
     #[test]
+    fn image_request_accepts_prompt_and_size() {
+        let request: ImageRequest = serde_json::from_value(json!({
+            "prompt": "A small red cube",
+            "size": "1024x1024"
+        }))
+        .expect("request");
+
+        request
+            .reject_unsupported()
+            .expect("image request supported");
+
+        assert_eq!(request.prompt, "A small red cube");
+        assert_eq!(request.size.as_deref(), Some("1024x1024"));
+    }
+
+    #[test]
+    fn image_request_rejects_response_format() {
+        let request: ImageRequest = serde_json::from_value(json!({
+            "prompt": "A small red cube",
+            "response_format": "b64_json"
+        }))
+        .expect("request");
+
+        let error = request
+            .reject_unsupported()
+            .expect_err("response_format unsupported");
+
+        let (code, _) = error.into_parts();
+        assert_eq!(code, "unsupported_provider_field");
+    }
+
+    #[test]
+    fn image_request_rejects_n() {
+        let request: ImageRequest = serde_json::from_value(json!({
+            "prompt": "A small red cube",
+            "n": 2
+        }))
+        .expect("request");
+
+        let error = request.reject_unsupported().expect_err("n unsupported");
+
+        let (code, _) = error.into_parts();
+        assert_eq!(code, "unsupported_provider_field");
+    }
+
+    #[test]
+    fn image_request_ignores_caller_model_and_provider() {
+        let request: ImageRequest = serde_json::from_value(json!({
+            "model": "gpt-image-1",
+            "provider": "openai",
+            "prompt": "A small red cube",
+            "size": "1024x1024"
+        }))
+        .expect("request");
+
+        request
+            .reject_unsupported()
+            .expect("direct cloud server ignores route selector fields");
+
+        assert_eq!(request.prompt, "A small red cube");
+        assert_eq!(request.size.as_deref(), Some("1024x1024"));
+    }
+
+    #[test]
     fn openai_embedding_response_uses_openai_list_shape() {
         let response = embedding_response(
             Provider::OpenAI,

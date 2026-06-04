@@ -362,10 +362,14 @@ Defaults:
 Explicitly rejected:
 
 - Unsupported image provider strings during provider deserialization.
+- Unsupported provider/capability combinations such as Anthropic image
+  generation.
+- `response_format`
+- `n`
 
 Currently ignored:
 
-- Unknown top-level fields such as caller-supplied `response_format`.
+- Unknown top-level fields other than known unsupported provider fields.
 
 Example request:
 
@@ -389,6 +393,7 @@ Example response:
 
 Model-specific notes:
 
+- The daemon provider defaults to OpenAI when `provider` is omitted.
 - `gpt-image-*` requests intentionally omit the legacy OpenAI
   `response_format` field.
 - Non-`gpt-image-*` OpenAI image requests send `response_format = "b64_json"`.

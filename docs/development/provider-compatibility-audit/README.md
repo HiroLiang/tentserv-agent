@@ -97,7 +97,8 @@ Remaining refinements for later docs or fixtures:
   embedding validation gaps, unknown-field rejection, invalid input,
   capability-gate errors, and OpenAI-shaped embedding responses.
 - `[test] Add OpenAI image generation compatibility fixtures`
-  Cover OpenAI image request mapping, ignored image fields, and `gpt-image-*`
+  Cover daemon, direct cloud, and local model-bound OpenAI image request
+  mapping, rejected image fields, local capability gates, and `gpt-image-*`
   `response_format` behavior.
 - `[test] Add Claude messages compatibility fixtures`
   Cover daemon Claude-shaped non-streaming and streaming behavior plus rejected

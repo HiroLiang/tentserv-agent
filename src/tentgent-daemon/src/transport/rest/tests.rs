@@ -29,6 +29,7 @@ use crate::{
 
 mod openai_chat_compat;
 mod openai_embeddings_compat;
+mod openai_image_generation_compat;
 
 #[tokio::test]
 async fn healthz_returns_service_identity() {

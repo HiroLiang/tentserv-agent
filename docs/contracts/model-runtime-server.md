@@ -24,26 +24,27 @@ Supported capability values:
 - `video-understanding`
 - `vision-chat`
 
-Preferred internal capability endpoints:
+Runtime capability endpoints:
 
-- `POST /internal/v1/chat`
-- `POST /internal/v1/chat/stream`
-- `POST /internal/v1/embeddings`
-- `POST /internal/v1/rerank`
-- `POST /internal/v1/audio/transcriptions`
-- `POST /internal/v1/audio/speech`
-- `POST /internal/v1/images/generations`
-- `POST /internal/v1/images/transforms`
-- `POST /internal/v1/images/inpaint`
-- `POST /internal/v1/images/control`
-- `POST /internal/v1/tuning/lora/runs`
-- `POST /internal/v1/video/understanding`
-- `POST /internal/v1/vision/chat`
+- `POST /v1/chat`
+- `POST /v1/chat/stream`
+- `POST /v1/embeddings`
+- `POST /v1/rerank`
+- `POST /v1/audio/transcriptions`
+- `POST /v1/audio/speech`
+- `POST /v1/images/generations`
+- `POST /v1/images/transforms`
+- `POST /v1/images/inpaint`
+- `POST /v1/images/control`
+- `POST /v1/tuning/lora/runs`
+- `POST /v1/video/understanding`
+- `POST /v1/vision/chat`
 
-The same handlers are still mounted at legacy `/v1/*` paths for direct runtime
-development smoke tests and backwards compatibility. Rust local-server
-adapters should call the `/internal/v1/*` paths so Python runtime routes remain
-an internal execution protocol, not a public provider-compatible API surface.
+Rust local-server adapters call these runtime routes with native Tentgent
+request bodies, even when the client-facing local server route is
+provider-shaped. If the Python runtime later mounts `/internal/v1/*` aliases,
+Rust may prefer those aliases to keep runtime execution paths visually separate
+from public provider-compatible API surfaces.
 
 Requests to endpoint families not served by the current process return `400`.
 Rust still owns job creation, workspace paths, model resolution, and server

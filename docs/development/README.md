@@ -605,9 +605,11 @@ Cloud provider servers do not use this Python entry point. They launch Rust
 workers from the `tentgent` binary and call provider APIs through the Rust cloud
 client.
 
-Rust callers should use the internal `/internal/v1/*` aliases exposed by the
-Python runtime. The legacy `/v1/*` paths remain available for direct runtime
-development smoke tests and backwards compatibility.
+Rust callers should use native Tentgent request bodies when proxying to the
+Python runtime. The current runtime mounts the native routes at `/v1/*`; if
+`/internal/v1/*` aliases are added later, local-server adapters may prefer those
+aliases to keep runtime execution paths visually separate from public
+provider-compatible API surfaces.
 
 The server exposes:
 
