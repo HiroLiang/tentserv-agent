@@ -24,21 +24,26 @@ Supported capability values:
 - `video-understanding`
 - `vision-chat`
 
-Capability endpoints:
+Preferred internal capability endpoints:
 
-- `POST /v1/chat`
-- `POST /v1/chat/stream`
-- `POST /v1/embeddings`
-- `POST /v1/rerank`
-- `POST /v1/audio/transcriptions`
-- `POST /v1/audio/speech`
-- `POST /v1/images/generations`
-- `POST /v1/images/transforms`
-- `POST /v1/images/inpaint`
-- `POST /v1/images/control`
-- `POST /v1/tuning/lora/runs`
-- `POST /v1/video/understanding`
-- `POST /v1/vision/chat`
+- `POST /internal/v1/chat`
+- `POST /internal/v1/chat/stream`
+- `POST /internal/v1/embeddings`
+- `POST /internal/v1/rerank`
+- `POST /internal/v1/audio/transcriptions`
+- `POST /internal/v1/audio/speech`
+- `POST /internal/v1/images/generations`
+- `POST /internal/v1/images/transforms`
+- `POST /internal/v1/images/inpaint`
+- `POST /internal/v1/images/control`
+- `POST /internal/v1/tuning/lora/runs`
+- `POST /internal/v1/video/understanding`
+- `POST /internal/v1/vision/chat`
+
+The same handlers are still mounted at legacy `/v1/*` paths for direct runtime
+development smoke tests and backwards compatibility. Rust local-server
+adapters should call the `/internal/v1/*` paths so Python runtime routes remain
+an internal execution protocol, not a public provider-compatible API surface.
 
 Requests to endpoint families not served by the current process return `400`.
 Rust still owns job creation, workspace paths, model resolution, and server
@@ -71,8 +76,8 @@ plan.
 
 ### Audio Transcription
 
-`POST /v1/audio/transcriptions` runs batch local audio transcription and writes
-the transcript to the provided output path.
+`POST /internal/v1/audio/transcriptions` runs batch local audio transcription
+and writes the transcript to the provided output path.
 
 Supported `model_kind` values:
 
@@ -86,8 +91,8 @@ byte count, and best-effort plain text.
 
 ### Audio Speech
 
-`POST /v1/audio/speech` runs batch local text-to-speech and writes WAV output to
-the provided output path.
+`POST /internal/v1/audio/speech` runs batch local text-to-speech and writes WAV
+output to the provided output path.
 
 Supported `model_kind` values:
 
@@ -102,10 +107,10 @@ API does not support them. Kokoro-family MLX TTS models also require the
 
 ### Image Generation
 
-`POST /v1/images/generations` runs text-to-image generation.
-`POST /v1/images/transforms` runs image-to-image generation.
-`POST /v1/images/inpaint` runs image and mask inpainting.
-`POST /v1/images/control` runs Diffusers ControlNet-style controlled
+`POST /internal/v1/images/generations` runs text-to-image generation.
+`POST /internal/v1/images/transforms` runs image-to-image generation.
+`POST /internal/v1/images/inpaint` runs image and mask inpainting.
+`POST /internal/v1/images/control` runs Diffusers ControlNet-style controlled
 generation.
 
 Supported `model_kind` values:
@@ -131,8 +136,9 @@ runtime does not provide a compatible ControlNet API.
 
 ### LoRA Tuning
 
-`POST /v1/tuning/lora/runs` runs one local chat / causal-LM LoRA tuning job and
-returns the final adapter output path plus parsed backend events.
+`POST /internal/v1/tuning/lora/runs` runs one local chat / causal-LM LoRA
+tuning job and returns the final adapter output path plus parsed backend
+events.
 
 Supported `backend` values:
 
@@ -152,8 +158,8 @@ adapter, and workspace resolution before it calls the runtime.
 
 ### Vision Chat
 
-`POST /v1/vision/chat` runs one local image-plus-prompt request and returns
-text.
+`POST /internal/v1/vision/chat` runs one local image-plus-prompt request and
+returns text.
 
 Supported `model_kind` values:
 
@@ -167,8 +173,8 @@ returns `text`, `json`, or `md` text output with a media type and finish reason.
 
 ### Video Understanding
 
-`POST /v1/video/understanding` runs one local video-plus-prompt request and
-returns text.
+`POST /internal/v1/video/understanding` runs one local video-plus-prompt request
+and returns text.
 
 Supported `model_kind` values:
 

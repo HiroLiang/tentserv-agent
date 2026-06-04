@@ -118,6 +118,10 @@ Key current documents:
   Focused roadmap for provider-compatible API surfaces, model support records,
   runtime parameter profiles, verification gates, bounded dynamic routing, and
   the staged path to `1.0.0`.
+- `docs/plans/post-1.0-serving-targets-and-multimodal-context-pipeline.md`
+  Deferred post-1.0 direction for grouping capability-specific models behind
+  one serving target and pre-processing local media attachments into chat
+  context.
 - `docs/plans/archive/README.md`
   Router for completed or superseded plans that should be consulted only when historical implementation context is needed.
 - `docs/plans/archive/capability-first-release-roadmap.md`

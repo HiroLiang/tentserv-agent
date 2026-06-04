@@ -43,7 +43,9 @@ pub async fn create(
     let request = embedding_preparation_request(&state, body)?;
     let result = embed(state, request).await?;
 
-    Ok(Json(embedding_response(result)))
+    Ok(Json(EmbeddingResponseBody::Native(
+        native_embedding_response(result),
+    )))
 }
 
 async fn cloud_embed(
@@ -83,15 +85,11 @@ async fn cloud_embed(
         .await
         .map_err(|error| map_provider_kernel_error("embedding_runtime_failed", error))?;
 
-    Ok(EmbeddingResponseBody {
-        model_ref: request.model_ref.clone(),
-        data: response
-            .vectors
-            .into_iter()
-            .enumerate()
-            .map(|(index, embedding)| EmbeddingItem { index, embedding })
-            .collect(),
-    })
+    Ok(embedding_response_for_shape(
+        request.response_shape,
+        request.model_ref.clone(),
+        response.vectors,
+    ))
 }
 
 async fn embed(
@@ -209,6 +207,7 @@ pub struct EmbeddingRequestBody {
     pub model_ref: String,
     pub input: EmbeddingInput,
     pub cloud_provider: Option<Provider>,
+    response_shape: EmbeddingResponseShape,
 }
 
 impl EmbeddingRequestBody {
@@ -218,7 +217,18 @@ impl EmbeddingRequestBody {
         })?;
         let unknown = object
             .keys()
-            .filter(|key| !matches!(key.as_str(), "model_ref" | "model" | "input" | "provider"))
+            .filter(|key| {
+                !matches!(
+                    key.as_str(),
+                    "model_ref"
+                        | "model"
+                        | "input"
+                        | "provider"
+                        | "dimensions"
+                        | "encoding_format"
+                        | "user"
+                )
+            })
             .map(String::as_str)
             .collect::<Vec<_>>();
         if !unknown.is_empty() {
@@ -228,6 +238,7 @@ impl EmbeddingRequestBody {
             ))
             .into());
         }
+        reject_unsupported_embedding_fields(object)?;
 
         let model_value = object
             .get("model_ref")
@@ -243,6 +254,10 @@ impl EmbeddingRequestBody {
             .map(parse_cloud_provider)
             .transpose()?
             .or_else(|| object.get("model").map(|_| Provider::OpenAI));
+        let response_shape = match (object.get("model"), cloud_provider) {
+            (Some(_), Some(Provider::OpenAI)) => EmbeddingResponseShape::OpenAi,
+            _ => EmbeddingResponseShape::Native,
+        };
         let input = object
             .get("input")
             .ok_or_else(|| RestError::bad_request("bad_request", "`input` is required"))?;
@@ -252,8 +267,50 @@ impl EmbeddingRequestBody {
             model_ref: model_value,
             input,
             cloud_provider,
+            response_shape,
         })
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmbeddingResponseShape {
+    Native,
+    OpenAi,
+}
+
+fn reject_unsupported_embedding_fields(
+    object: &serde_json::Map<String, Value>,
+) -> Result<(), RestError> {
+    if object.get("dimensions").is_some() {
+        return Err(ProviderCompatRejection::unsupported_field(
+            "OpenAI-compatible embeddings do not support dimensions overrides yet",
+        )
+        .into());
+    }
+    if let Some(format) = object.get("encoding_format") {
+        match format.as_str() {
+            Some("float") => {}
+            Some("base64") => {
+                return Err(ProviderCompatRejection::unsupported_field(
+                    "OpenAI-compatible embeddings do not support base64 encoding yet",
+                )
+                .into())
+            }
+            _ => {
+                return Err(RestError::bad_request(
+                    "bad_request",
+                    "`encoding_format` must be `float` or `base64`",
+                ))
+            }
+        }
+    }
+    if object.get("user").is_some() {
+        return Err(ProviderCompatRejection::unsupported_field(
+            "OpenAI-compatible embeddings do not support user tracking metadata",
+        )
+        .into());
+    }
+    Ok(())
 }
 
 fn parse_cloud_provider(value: &str) -> Result<Provider, RestError> {
@@ -298,6 +355,33 @@ mod request_tests {
     use super::*;
 
     #[test]
+    fn openai_embedding_request_accepts_string_input_and_float_format() {
+        let request = EmbeddingRequestBody::from_value(serde_json::json!({
+            "model": "text-embedding-3-small",
+            "input": "hello",
+            "encoding_format": "float"
+        }))
+        .expect("request");
+
+        assert_eq!(request.model_ref, "text-embedding-3-small");
+        assert_eq!(request.input.items, vec!["hello"]);
+        assert_eq!(request.cloud_provider, Some(Provider::OpenAI));
+        assert_eq!(request.response_shape, EmbeddingResponseShape::OpenAi);
+    }
+
+    #[test]
+    fn openai_embedding_request_accepts_string_array_input() {
+        let request = EmbeddingRequestBody::from_value(serde_json::json!({
+            "model": "text-embedding-3-small",
+            "input": ["first", "second"]
+        }))
+        .expect("request");
+
+        assert_eq!(request.input.items, vec!["first", "second"]);
+        assert_eq!(request.response_shape, EmbeddingResponseShape::OpenAi);
+    }
+
+    #[test]
     fn embedding_input_rejects_empty_array() {
         let err = embedding_input(&Value::Array(Vec::new())).expect_err("empty array");
 
@@ -316,10 +400,66 @@ mod request_tests {
         assert!(format!("{err:?}").contains("RestError"));
         assert!(format!("{err:?}").contains("unsupported_provider_field"));
     }
+
+    #[test]
+    fn openai_embedding_request_rejects_dimensions_override() {
+        let err = EmbeddingRequestBody::from_value(serde_json::json!({
+            "model": "text-embedding-3-small",
+            "input": "hello",
+            "dimensions": 384
+        }))
+        .expect_err("dimensions unsupported");
+
+        assert!(format!("{err:?}").contains("unsupported_provider_field"));
+    }
+
+    #[test]
+    fn openai_embedding_request_rejects_base64_encoding() {
+        let err = EmbeddingRequestBody::from_value(serde_json::json!({
+            "model": "text-embedding-3-small",
+            "input": "hello",
+            "encoding_format": "base64"
+        }))
+        .expect_err("base64 unsupported");
+
+        assert!(format!("{err:?}").contains("unsupported_provider_field"));
+    }
+
+    #[test]
+    fn openai_embedding_response_uses_openai_list_shape() {
+        let response = openai_embedding_response_from_vectors(
+            "text-embedding-3-small".to_string(),
+            vec![vec![0.1, 0.2], vec![0.3, 0.4]],
+        );
+        let value = serde_json::to_value(response).expect("json");
+
+        assert_eq!(value["object"], "list");
+        assert_eq!(value["model"], "text-embedding-3-small");
+        assert_eq!(value["usage"], Value::Null);
+        assert_eq!(value["data"][0]["object"], "embedding");
+        assert_eq!(value["data"][0]["index"], 0);
+        assert_eq!(
+            value["data"][0]["embedding"],
+            serde_json::json!([0.1f32, 0.2f32])
+        );
+        assert_eq!(value["data"][1]["object"], "embedding");
+        assert_eq!(value["data"][1]["index"], 1);
+        assert_eq!(
+            value["data"][1]["embedding"],
+            serde_json::json!([0.3f32, 0.4f32])
+        );
+    }
 }
 
 #[derive(Debug, Serialize)]
-pub struct EmbeddingResponseBody {
+#[serde(untagged)]
+pub enum EmbeddingResponseBody {
+    Native(NativeEmbeddingResponseBody),
+    OpenAi(OpenAiEmbeddingResponseBody),
+}
+
+#[derive(Debug, Serialize)]
+pub struct NativeEmbeddingResponseBody {
     pub model_ref: String,
     pub data: Vec<EmbeddingItem>,
 }
@@ -330,8 +470,23 @@ pub struct EmbeddingItem {
     pub embedding: Vec<f32>,
 }
 
-fn embedding_response(result: EmbeddingExecutionResult) -> EmbeddingResponseBody {
-    EmbeddingResponseBody {
+#[derive(Debug, Serialize)]
+pub struct OpenAiEmbeddingResponseBody {
+    object: &'static str,
+    data: Vec<OpenAiEmbeddingItem>,
+    model: String,
+    usage: Option<Value>,
+}
+
+#[derive(Debug, Serialize)]
+struct OpenAiEmbeddingItem {
+    object: &'static str,
+    index: usize,
+    embedding: Vec<f32>,
+}
+
+fn native_embedding_response(result: EmbeddingExecutionResult) -> NativeEmbeddingResponseBody {
+    NativeEmbeddingResponseBody {
         model_ref: result.prepared.model.metadata.model_ref.into_string(),
         data: result
             .response
@@ -342,6 +497,55 @@ fn embedding_response(result: EmbeddingExecutionResult) -> EmbeddingResponseBody
                 embedding: item.embedding,
             })
             .collect(),
+    }
+}
+
+fn embedding_response_for_shape(
+    shape: EmbeddingResponseShape,
+    model_ref: String,
+    vectors: Vec<Vec<f32>>,
+) -> EmbeddingResponseBody {
+    match shape {
+        EmbeddingResponseShape::Native => EmbeddingResponseBody::Native(
+            native_embedding_response_from_vectors(model_ref, vectors),
+        ),
+        EmbeddingResponseShape::OpenAi => EmbeddingResponseBody::OpenAi(
+            openai_embedding_response_from_vectors(model_ref, vectors),
+        ),
+    }
+}
+
+fn native_embedding_response_from_vectors(
+    model_ref: String,
+    vectors: Vec<Vec<f32>>,
+) -> NativeEmbeddingResponseBody {
+    NativeEmbeddingResponseBody {
+        model_ref,
+        data: vectors
+            .into_iter()
+            .enumerate()
+            .map(|(index, embedding)| EmbeddingItem { index, embedding })
+            .collect(),
+    }
+}
+
+fn openai_embedding_response_from_vectors(
+    model: String,
+    vectors: Vec<Vec<f32>>,
+) -> OpenAiEmbeddingResponseBody {
+    OpenAiEmbeddingResponseBody {
+        object: "list",
+        data: vectors
+            .into_iter()
+            .enumerate()
+            .map(|(index, embedding)| OpenAiEmbeddingItem {
+                object: "embedding",
+                index,
+                embedding,
+            })
+            .collect(),
+        model,
+        usage: None,
     }
 }
 

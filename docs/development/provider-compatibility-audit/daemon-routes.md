@@ -273,6 +273,7 @@ Required:
 Optional:
 
 - `provider`
+- `encoding_format`, only when set to `float`
 
 Defaults:
 
@@ -286,6 +287,9 @@ Explicitly rejected:
 - Missing `input`.
 - `input` values that are not a string or string array.
 - Empty input arrays or empty strings.
+- `dimensions`
+- `encoding_format: "base64"` or non-`float` values.
+- `user`
 - Provider names outside OpenAI, Gemini/Google, Anthropic/Claude.
 
 Currently ignored:
@@ -311,22 +315,26 @@ Example Gemini cloud request:
 }
 ```
 
-Example response:
+Example OpenAI-compatible response:
 
 ```json
 {
-  "model_ref": "text-embedding-3-small",
+  "object": "list",
   "data": [
-    {"index": 0, "embedding": [0.1, 0.2]},
-    {"index": 1, "embedding": [0.3, 0.4]}
-  ]
+    {"object": "embedding", "index": 0, "embedding": [0.1, 0.2]},
+    {"object": "embedding", "index": 1, "embedding": [0.3, 0.4]}
+  ],
+  "model": "text-embedding-3-small",
+  "usage": null
 }
 ```
 
 Model-specific notes:
 
-- Response shape is Tentgent-shaped, not the full upstream OpenAI embedding
-  shape.
+- OpenAI-compatible requests using `model` and provider OpenAI return an
+  OpenAI-style embedding list.
+- Native local embeddings and non-OpenAI cloud embedding requests remain
+  Tentgent-shaped.
 - Local embedding models still use `model_ref` and require stored `embedding`
   capability metadata.
 - `dimensions` is not accepted by this handler.
