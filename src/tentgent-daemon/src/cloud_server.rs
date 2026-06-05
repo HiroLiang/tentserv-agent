@@ -219,7 +219,10 @@ async fn claude_messages(
     request.reject_unsupported()?;
     let mut messages = Vec::new();
     if let Some(system) = request.system {
-        messages.push(CloudChatMessage::text("system", system));
+        messages.push(CloudChatMessage::text(
+            "system",
+            claude_text_content(system)?,
+        ));
     }
     messages.extend(
         request
@@ -232,7 +235,7 @@ async fn claude_messages(
         provider: state.config.provider,
         model: state.config.provider_model.clone(),
         messages,
-        max_tokens: request.max_tokens,
+        max_tokens: Some(request.max_tokens),
         temperature: request.temperature,
         stream: false,
     };
@@ -245,6 +248,7 @@ async fn claude_messages(
         "content": [{"type": "text", "text": response.text}],
         "model": state.config.provider_model,
         "stop_reason": response.finish_reason,
+        "stop_sequence": null,
         "usage": null
     }))
     .into_response())
@@ -418,8 +422,8 @@ impl OpenAiMessage {
 #[derive(Debug, Deserialize)]
 struct ClaudeMessagesRequest {
     messages: Vec<ClaudeMessage>,
-    system: Option<String>,
-    max_tokens: Option<u32>,
+    system: Option<ClaudeContent>,
+    max_tokens: u32,
     temperature: Option<f32>,
     stream: Option<bool>,
     tools: Option<Value>,
@@ -451,12 +455,13 @@ struct ClaudeContentBlock {
 struct ClaudeImageSource {
     #[serde(rename = "type")]
     kind: String,
-    media_type: String,
-    data: String,
+    media_type: Option<String>,
+    data: Option<String>,
 }
 
 impl ClaudeMessage {
     fn into_cloud(self) -> Result<CloudChatMessage, CloudServerError> {
+        let role = claude_role(&self.role)?;
         let content = match self.content {
             ClaudeContent::Text(text) => vec![CloudChatContentPart::Text(text)],
             ClaudeContent::Blocks(blocks) => blocks
@@ -478,8 +483,12 @@ impl ClaudeMessage {
                             ));
                         }
                         Ok(CloudChatContentPart::ImageBase64 {
-                            media_type: source.media_type,
-                            data: source.data,
+                            media_type: source.media_type.ok_or_else(|| {
+                                CloudServerError::bad_request("Claude image media_type is missing")
+                            })?,
+                            data: source.data.ok_or_else(|| {
+                                CloudServerError::bad_request("Claude image data is missing")
+                            })?,
                         })
                     }
                     other => Err(CloudServerError::from(
@@ -490,10 +499,7 @@ impl ClaudeMessage {
                 })
                 .collect::<Result<Vec<_>, CloudServerError>>()?,
         };
-        Ok(CloudChatMessage {
-            role: self.role,
-            content,
-        })
+        Ok(CloudChatMessage { role, content })
     }
 }
 
@@ -510,6 +516,38 @@ impl ClaudeMessagesRequest {
             ));
         }
         Ok(())
+    }
+}
+
+fn claude_role(role: &str) -> Result<String, CloudServerError> {
+    match role.trim().to_ascii_lowercase().as_str() {
+        "system" => Ok("system".to_string()),
+        "user" => Ok("user".to_string()),
+        "assistant" => Ok("assistant".to_string()),
+        "" => Err(CloudServerError::bad_request("message role is empty")),
+        other => Err(CloudServerError::bad_request(format!(
+            "unsupported Claude message role `{other}`"
+        ))),
+    }
+}
+
+fn claude_text_content(content: ClaudeContent) -> Result<String, CloudServerError> {
+    match content {
+        ClaudeContent::Text(text) => Ok(text),
+        ClaudeContent::Blocks(blocks) => {
+            let mut text = String::new();
+            for block in blocks {
+                if block.kind != "text" {
+                    return Err(ProviderCompatRejection::unsupported_content(format!(
+                        "unsupported Claude content block `{}`",
+                        block.kind
+                    ))
+                    .into());
+                }
+                text.push_str(block.text.as_deref().unwrap_or_default());
+            }
+            Ok(text)
+        }
     }
 }
 
@@ -843,6 +881,7 @@ impl IntoResponse for CloudServerError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::StatusCode;
 
     #[test]
     fn openai_request_rejects_tools_with_provider_field_code() {
@@ -924,6 +963,7 @@ mod tests {
     #[test]
     fn claude_request_rejects_stream_true_with_provider_field_code() {
         let request: ClaudeMessagesRequest = serde_json::from_value(json!({
+            "max_tokens": 16,
             "messages": [{"role": "user", "content": "hi"}],
             "stream": true
         }))
@@ -935,6 +975,105 @@ mod tests {
 
         let (code, _) = error.into_parts();
         assert_eq!(code, "unsupported_provider_field");
+    }
+
+    #[test]
+    fn claude_request_accepts_text_blocks_and_system_blocks_for_direct_cloud() {
+        let request: ClaudeMessagesRequest = serde_json::from_value(json!({
+            "system": [{"type": "text", "text": "Answer briefly."}],
+            "max_tokens": 16,
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "text", "text": "hi"}]
+            }],
+            "temperature": 0.2
+        }))
+        .expect("request");
+
+        request.reject_unsupported().expect("text shape supported");
+        assert_eq!(request.max_tokens, 16);
+        assert_eq!(
+            claude_text_content(request.system.expect("system")).expect("system text"),
+            "Answer briefly."
+        );
+        let message = request
+            .messages
+            .into_iter()
+            .next()
+            .expect("message")
+            .into_cloud()
+            .expect("cloud message");
+
+        assert_eq!(message.role, "user");
+        assert_eq!(
+            message.content,
+            vec![CloudChatContentPart::Text("hi".to_string())]
+        );
+    }
+
+    #[test]
+    fn claude_message_accepts_base64_image_blocks_for_direct_cloud() {
+        let message: ClaudeMessage = serde_json::from_value(json!({
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AA=="}},
+                {"type": "text", "text": "Describe this image."}
+            ]
+        }))
+        .expect("message");
+
+        let message = message.into_cloud().expect("cloud message");
+
+        assert_eq!(message.role, "user");
+        assert_eq!(
+            message.content,
+            vec![
+                CloudChatContentPart::ImageBase64 {
+                    media_type: "image/png".to_string(),
+                    data: "AA==".to_string()
+                },
+                CloudChatContentPart::Text("Describe this image.".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn claude_request_rejects_tool_fields_for_direct_cloud() {
+        for (label, field) in [
+            (
+                "tools",
+                json!({"tools": [{"name": "lookup", "input_schema": {"type": "object"}}]}),
+            ),
+            ("tool_choice", json!({"tool_choice": {"type": "auto"}})),
+        ] {
+            let mut body = json!({
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hi"}]
+            });
+            body.as_object_mut()
+                .expect("object")
+                .extend(field.as_object().expect("field").clone());
+            let request: ClaudeMessagesRequest = serde_json::from_value(body).expect(label);
+
+            let error = request.reject_unsupported().expect_err("tools unsupported");
+
+            let (code, _) = error.into_parts();
+            assert_eq!(code, "unsupported_provider_field");
+        }
+    }
+
+    #[test]
+    fn claude_message_rejects_unsupported_content_for_direct_cloud() {
+        let message: ClaudeMessage = serde_json::from_value(json!({
+            "role": "user",
+            "content": [{"type": "image", "source": {"type": "url", "url": "https://example.com/image.png"}}]
+        }))
+        .expect("message");
+
+        let error = message.into_cloud().expect_err("url image unsupported");
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_content");
     }
 
     #[test]

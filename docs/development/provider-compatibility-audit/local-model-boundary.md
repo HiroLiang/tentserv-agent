@@ -37,7 +37,7 @@ model or explicit `--capability` decides which endpoint family is valid.
 
 | Capability | Native route family | Provider compatibility role |
 | --- | --- | --- |
-| `chat` | `POST /v1/chat` | Native fallback for text chat. `POST /v1/chat/completions` is an OpenAI-shaped local ingress adapter. |
+| `chat` | `POST /v1/chat` | Native fallback for text chat. `POST /v1/chat/completions` and `POST /v1/messages` are provider-shaped local ingress adapters. |
 | `embedding` | `POST /v1/embeddings` | Native fallback for embedding models. `POST /v1/embeddings` also accepts OpenAI-shaped embedding requests through the local ingress adapter. |
 | `rerank` | `POST /v1/rerank` | Native-only; no provider-compatible route today. |
 | `vision-chat` | `POST /v1/vision/chat` | Native fallback for local single-image vision chat. |
@@ -114,6 +114,7 @@ Current local ingress coverage:
 | Provider shape | Local route | Native upstream route | Notes |
 | --- | --- | --- | --- |
 | OpenAI chat completions | `POST /v1/chat/completions` | `POST /v1/chat` or `POST /v1/chat/stream` | Text-only compatibility. The request `model` is accepted but ignored because the server is already bound to one local model. |
+| Claude messages | `POST /v1/messages` | `POST /v1/chat` or `POST /v1/chat/stream` | Text-only compatibility. The request `model` is accepted but ignored because the server is already bound to one local model. |
 | OpenAI embeddings | `POST /v1/embeddings` | `POST /v1/embeddings` | OpenAI ingress is selected by a string `model` or OpenAI embedding fields. Accepts `input` plus optional `encoding_format: "float"`. The request `model` is accepted but ignored because the server is already bound to one local model. |
 | OpenAI image generation | `POST /v1/images/generations` | `POST /v1/images/generations` | OpenAI ingress is selected when `output_path` is absent or OpenAI image fields are present. The adapter accepts `model`, `prompt`, and optional `size`, writes to a runtime-owned output path, and returns an OpenAI-style `b64_json` envelope. |
 
@@ -131,6 +132,13 @@ Known unsupported OpenAI fields fail before the Python runtime is called:
 tools/function calling, structured response formats, audio output, non-text
 content parts, multiple choices, logprobs, web search, provider-side metadata,
 cache, safety, and service-tier fields.
+
+Claude local messages accept text-only Claude message fields that can map to
+native local chat: `model`, `messages`, `system`, `max_tokens`, `temperature`,
+and `stream`. The adapter translates the request into native local chat and
+wraps native local responses into Claude-shaped message or SSE events. Claude
+image blocks, `tool_use`, `tool_result`, `tools`, and `tool_choice` fail before
+the Python runtime is called.
 
 OpenAI local embeddings accept `input` as a string or string array and accept
 `encoding_format: "float"`. The local adapter rejects `dimensions`,
@@ -156,8 +164,8 @@ Use local model-bound fixtures for:
 - native `/v1/chat`, `/v1/embeddings`, `/v1/rerank`, and `/v1/vision/chat`
   fallback behavior
 - implemented provider-shaped local ingress adapters such as OpenAI
-  `/v1/chat/completions`, OpenAI `/v1/embeddings`, and OpenAI
-  `/v1/images/generations`
+  `/v1/chat/completions`, Claude `/v1/messages`, OpenAI `/v1/embeddings`, and
+  OpenAI `/v1/images/generations`
 - capability gate behavior such as `400 unsupported_provider_capability`
 - adapter validation against local chat models
 - lower-level runtime streaming contracts
@@ -166,8 +174,7 @@ Do not use local model-bound fixtures for:
 
 - direct cloud provider behavior
 - provider-shaped route execution that is not implemented on the local server
-  yet, such as Claude/Anthropic `/v1/messages` and Gemini
-  `/v1beta/models/{operation}`
+  yet, such as Gemini `/v1beta/models/{operation}`
 - unimplemented provider-compatible media behavior such as OpenAI audio,
   Claude/Anthropic media routes, and Gemini media routes
 

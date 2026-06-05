@@ -780,6 +780,26 @@ curl -s http://127.0.0.1:8780/v1/chat/completions \
   }'
 ```
 
+The same chat server also accepts text-only Claude Messages requests through an
+ingress adapter. Claude `max_tokens` is required. The request `model` is
+accepted for client compatibility but the server still uses the bound local
+model.
+
+```bash
+curl -s http://127.0.0.1:8780/v1/messages \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "claude-3-5-sonnet-latest",
+    "system": "Answer briefly.",
+    "messages": [
+      {"role": "user", "content": "Hello there"}
+    ],
+    "max_tokens": 128,
+    "temperature": 0.0,
+    "stream": false
+  }'
+```
+
 Launch and call a direct local embedding server:
 
 ```bash

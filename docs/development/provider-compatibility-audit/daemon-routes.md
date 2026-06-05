@@ -127,25 +127,24 @@ Required:
 
 - `model`
 - `messages`
+- `max_tokens`
 
 Optional:
 
 - `system`
 - `adapter_ref`
-- `max_tokens`
 - `temperature`
 - `stream`
 
 Defaults:
 
 - `stream`: `false`
-- `max_tokens`: no daemon route-level default
 - `temperature`: no route-level default
 
 Explicitly rejected:
 
 - `tools`, `tool_choice`
-- non-text content blocks such as `image`
+- non-text content blocks such as `image`, `tool_use`, and `tool_result`
 - roles outside `system`, `user`, and `assistant`
 
 Currently ignored:
@@ -185,6 +184,8 @@ Model-specific notes:
 
 - No route-level model profile exists yet.
 - Claude image blocks are rejected on the daemon route.
+- Claude tool use is intentionally deferred until kernel tool-call support and
+  provider-shaped tool result mapping exist.
 - Direct cloud server `/v1/messages` accepts base64 image blocks, but it is
   non-streaming today.
 

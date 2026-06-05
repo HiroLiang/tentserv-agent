@@ -48,7 +48,7 @@ pub(crate) struct ClaudeMessagesRequest {
     messages: Vec<ClaudeMessage>,
     system: Option<ClaudeContent>,
     adapter_ref: Option<String>,
-    max_tokens: Option<u32>,
+    max_tokens: u32,
     temperature: Option<f32>,
     stream: Option<bool>,
     tools: Option<serde_json::Value>,
@@ -104,7 +104,7 @@ impl ClaudeMessagesRequest {
             adapter_ref: self.adapter_ref,
             cloud_provider: Some(Provider::Anthropic),
             messages,
-            max_tokens: self.max_tokens,
+            max_tokens: Some(self.max_tokens),
             temperature: self.temperature,
         })
     }

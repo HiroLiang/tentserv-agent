@@ -178,12 +178,15 @@ Model-specific notes:
 Required:
 
 - `messages`
+- `max_tokens`
 
 Optional:
 
 - `system`
-- `max_tokens`
 - `temperature`
+- `stream`, only when unset or `false`
+- caller `model`, ignored because the server is already bound to one provider
+  model
 
 Defaults:
 
@@ -201,11 +204,14 @@ Explicitly rejected:
 - unsupported Claude content block types
 - missing image source
 - non-base64 image sources
+- `stream: true`
+- `tools`, `tool_choice`
+- roles outside `system`, `user`, and `assistant`
 
 Currently ignored:
 
 - Unknown top-level fields.
-- `stream`, `model`, `tools`, and `tool_choice`.
+- caller-supplied `model`.
 
 Example request:
 
@@ -230,6 +236,7 @@ Example response:
   "content": [{"type": "text", "text": "..."}],
   "model": "claude-3-5-sonnet-latest",
   "stop_reason": "end_turn",
+  "stop_sequence": null,
   "usage": null
 }
 ```
@@ -237,9 +244,9 @@ Example response:
 Model-specific notes:
 
 - Direct cloud Claude messages do not expose a streaming response path today,
-  even if `stream` is sent.
-- `system` is a string here, unlike the daemon route where `system` uses the
-  broader `ClaudeContent` parser.
+  so `stream: true` is rejected.
+- `system` accepts a string or Claude text blocks. Non-text system blocks are
+  rejected before cloud dispatch.
 
 ## POST `/v1beta/models/{operation}`
 

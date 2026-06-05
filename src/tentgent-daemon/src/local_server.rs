@@ -95,6 +95,7 @@ pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miett
     let router = Router::new()
         .route("/healthz", get(healthz))
         .route("/v1/chat/completions", post(openai_chat_completions))
+        .route("/v1/messages", post(claude_messages))
         .route("/v1/embeddings", post(openai_embeddings))
         .route("/v1/images/generations", post(image_generations))
         .fallback(proxy_request)
@@ -150,6 +151,26 @@ async fn openai_chat_completions(
     )?;
     let endpoint = ensure_model_endpoint(&state).await?;
     openai_chat_completions_to_upstream(
+        &state.client,
+        request,
+        &endpoint.base_url,
+        &state.config.model_ref,
+        state.config.capability,
+    )
+    .await
+}
+
+async fn claude_messages(
+    State(state): State<LocalServerState>,
+    Json(request): Json<LocalClaudeMessagesRequest>,
+) -> Result<Response, LocalServerError> {
+    ensure_local_provider_capability(
+        state.config.capability,
+        ServerCapability::Chat,
+        "Claude-compatible local messages",
+    )?;
+    let endpoint = ensure_model_endpoint(&state).await?;
+    claude_messages_to_upstream(
         &state.client,
         request,
         &endpoint.base_url,
@@ -312,6 +333,46 @@ async fn openai_embeddings_to_upstream(
             LocalServerError::bad_gateway(format!("model runtime proxy failed: {err}"))
         })?;
     openai_embedding_response_from_upstream(upstream, bound_model_ref).await
+}
+
+async fn claude_messages_to_upstream(
+    client: &reqwest::Client,
+    request: LocalClaudeMessagesRequest,
+    upstream_base_url: &str,
+    bound_model_ref: &str,
+    capability: ServerCapability,
+) -> Result<Response, LocalServerError> {
+    if capability != ServerCapability::Chat {
+        return Err(ProviderCompatRejection::unsupported_capability(format!(
+            "Claude-compatible local messages require a chat server; this server is bound to {}",
+            capability.as_str()
+        ))
+        .into());
+    }
+    let stream = request.stream.unwrap_or(false);
+    let native_request = request.into_native_chat_request()?;
+    let route = if stream {
+        RUNTIME_CHAT_STREAM_PATH
+    } else {
+        RUNTIME_CHAT_PATH
+    };
+    let upstream = client
+        .post(format!(
+            "{}{}",
+            upstream_base_url.trim_end_matches('/'),
+            route
+        ))
+        .json(&native_request)
+        .send()
+        .await
+        .map_err(|err| {
+            LocalServerError::bad_gateway(format!("model runtime proxy failed: {err}"))
+        })?;
+    if stream {
+        claude_stream_response_from_upstream(upstream, bound_model_ref).await
+    } else {
+        claude_response_from_upstream(upstream, bound_model_ref).await
+    }
 }
 
 async fn native_embedding_to_upstream(
@@ -548,6 +609,35 @@ async fn openai_response_from_upstream(
     .into_response())
 }
 
+async fn claude_response_from_upstream(
+    upstream: reqwest::Response,
+    bound_model_ref: &str,
+) -> Result<Response, LocalServerError> {
+    if !upstream.status().is_success() {
+        return response_from_upstream(upstream);
+    }
+    let response = upstream
+        .json::<NativeLocalChatResponse>()
+        .await
+        .map_err(|err| {
+            LocalServerError::bad_gateway(format!("decode chat response failed: {err}"))
+        })?;
+    Ok(Json(json!({
+        "id": format!("msg-{}", unix_timestamp_seconds()),
+        "type": "message",
+        "role": "assistant",
+        "content": [{
+            "type": "text",
+            "text": response.text
+        }],
+        "model": bound_model_ref,
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "usage": null
+    }))
+    .into_response())
+}
+
 async fn openai_stream_response_from_upstream(
     upstream: reqwest::Response,
     bound_model_ref: &str,
@@ -560,6 +650,24 @@ async fn openai_stream_response_from_upstream(
         .header(header::CONTENT_TYPE, "text/event-stream")
         .header(header::CACHE_CONTROL, "no-cache")
         .body(Body::from_stream(openai_stream_from_local_sse(
+            upstream.bytes_stream(),
+            bound_model_ref.to_string(),
+        )))
+        .map_err(|err| LocalServerError::bad_gateway(format!("build chat stream failed: {err}")))
+}
+
+async fn claude_stream_response_from_upstream(
+    upstream: reqwest::Response,
+    bound_model_ref: &str,
+) -> Result<Response, LocalServerError> {
+    if !upstream.status().is_success() {
+        return response_from_upstream(upstream);
+    }
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .body(Body::from_stream(claude_stream_from_local_sse(
             upstream.bytes_stream(),
             bound_model_ref.to_string(),
         )))
@@ -604,6 +712,64 @@ where
                             ))),
                             state,
                         ));
+                    }
+                    return None;
+                }
+                match state.upstream.next().await {
+                    Some(Ok(bytes)) => match std::str::from_utf8(&bytes) {
+                        Ok(text) => {
+                            state.buffer.push_str(text);
+                            state.drain_complete_events();
+                        }
+                        Err(error) => {
+                            state.push_error("chat_stream_failed", error.to_string());
+                            state.upstream_done = true;
+                        }
+                    },
+                    Some(Err(error)) => {
+                        state.push_error("chat_stream_failed", error.to_string());
+                        state.upstream_done = true;
+                    }
+                    None => {
+                        state.upstream_done = true;
+                        state.drain_remainder();
+                    }
+                }
+            }
+        },
+    )
+}
+
+fn claude_stream_from_local_sse<S, E>(
+    upstream: S,
+    bound_model_ref: String,
+) -> impl Stream<Item = Result<Bytes, Infallible>>
+where
+    S: Stream<Item = Result<Bytes, E>> + Unpin,
+    E: std::fmt::Display,
+{
+    let mut pending = VecDeque::new();
+    let context = ClaudeLocalStreamContext::new(bound_model_ref);
+    context.push_start(&mut pending);
+    stream::unfold(
+        LocalClaudeStreamState {
+            upstream,
+            context,
+            buffer: String::new(),
+            pending,
+            upstream_done: false,
+            sent_stop: false,
+        },
+        |mut state| async move {
+            loop {
+                if let Some(chunk) = state.pending.pop_front() {
+                    return Some((Ok(Bytes::from(chunk)), state));
+                }
+                if state.upstream_done {
+                    if !state.sent_stop {
+                        state.context.push_stop(&mut state.pending, "end_turn");
+                        state.sent_stop = true;
+                        continue;
                     }
                     return None;
                 }
@@ -684,6 +850,60 @@ impl<S> LocalOpenAiStreamState<S> {
     }
 }
 
+struct LocalClaudeStreamState<S> {
+    upstream: S,
+    context: ClaudeLocalStreamContext,
+    buffer: String,
+    pending: VecDeque<String>,
+    upstream_done: bool,
+    sent_stop: bool,
+}
+
+impl<S> LocalClaudeStreamState<S> {
+    fn drain_complete_events(&mut self) {
+        while let Some(index) = self.buffer.find("\n\n") {
+            let block = self.buffer[..index].to_string();
+            self.buffer.drain(..index + 2);
+            self.push_event_block(&block);
+        }
+    }
+
+    fn drain_remainder(&mut self) {
+        if self.buffer.trim().is_empty() {
+            self.buffer.clear();
+            return;
+        }
+        let block = std::mem::take(&mut self.buffer);
+        self.push_event_block(&block);
+    }
+
+    fn push_event_block(&mut self, block: &str) {
+        if let Some((event, data)) = local_sse_event(block) {
+            let done = claude_events_for_local_event(
+                &mut self.pending,
+                &self.context,
+                &event,
+                data.as_ref(),
+            );
+            self.sent_stop |= done;
+        }
+    }
+
+    fn push_error(&mut self, code: &str, message: String) {
+        self.pending.push_back(claude_sse_json_string(
+            "error",
+            &json!({
+                "type": "error",
+                "error": {
+                    "type": code,
+                    "message": message
+                }
+            }),
+        ));
+        self.sent_stop = true;
+    }
+}
+
 fn local_sse_event(block: &str) -> Option<(String, Option<Value>)> {
     let mut event = None;
     let mut data_lines = Vec::new();
@@ -703,6 +923,62 @@ fn local_sse_event(block: &str) -> Option<(String, Option<Value>)> {
         };
         (event, data)
     })
+}
+
+fn claude_events_for_local_event(
+    pending: &mut VecDeque<String>,
+    context: &ClaudeLocalStreamContext,
+    event: &str,
+    data: Option<&Value>,
+) -> bool {
+    match event {
+        "delta" => {
+            let text = data
+                .and_then(|value| value.get("text"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !text.is_empty() {
+                pending.push_back(claude_sse_json_string(
+                    "content_block_delta",
+                    &json!({
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {
+                            "type": "text_delta",
+                            "text": text
+                        }
+                    }),
+                ));
+            }
+            false
+        }
+        "done" => {
+            context.push_stop(pending, "end_turn");
+            true
+        }
+        "error" | "canceled" => {
+            let code = data
+                .and_then(|value| value.get("type"))
+                .and_then(Value::as_str)
+                .unwrap_or("chat_model_failed");
+            let message = data
+                .and_then(|value| value.get("message"))
+                .and_then(Value::as_str)
+                .unwrap_or("local chat stream failed");
+            pending.push_back(claude_sse_json_string(
+                "error",
+                &json!({
+                    "type": "error",
+                    "error": {
+                        "type": code,
+                        "message": message
+                    }
+                }),
+            ));
+            true
+        }
+        _ => false,
+    }
 }
 
 fn openai_chunks_for_local_event(
@@ -749,12 +1025,95 @@ fn openai_stream_done_string(bound_model_ref: &str, finish_reason: &str) -> Stri
     output
 }
 
+#[derive(Debug, Clone)]
+struct ClaudeLocalStreamContext {
+    id: String,
+    model: String,
+}
+
+impl ClaudeLocalStreamContext {
+    fn new(model: String) -> Self {
+        Self {
+            id: format!("msg-{}", unix_timestamp_seconds()),
+            model,
+        }
+    }
+
+    fn push_start(&self, pending: &mut VecDeque<String>) {
+        pending.push_back(claude_sse_json_string(
+            "message_start",
+            &json!({
+                "type": "message_start",
+                "message": {
+                    "id": self.id,
+                    "type": "message",
+                    "role": "assistant",
+                    "model": self.model,
+                    "content": [],
+                    "stop_reason": null,
+                    "stop_sequence": null,
+                    "usage": null
+                }
+            }),
+        ));
+        pending.push_back(claude_sse_json_string(
+            "content_block_start",
+            &json!({
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {
+                    "type": "text",
+                    "text": ""
+                }
+            }),
+        ));
+    }
+
+    fn push_stop(&self, pending: &mut VecDeque<String>, stop_reason: &str) {
+        pending.push_back(claude_sse_json_string(
+            "content_block_stop",
+            &json!({
+                "type": "content_block_stop",
+                "index": 0
+            }),
+        ));
+        pending.push_back(claude_sse_json_string(
+            "message_delta",
+            &json!({
+                "type": "message_delta",
+                "delta": {
+                    "stop_reason": stop_reason,
+                    "stop_sequence": null
+                },
+                "usage": null
+            }),
+        ));
+        pending.push_back(claude_sse_json_string(
+            "message_stop",
+            &json!({
+                "type": "message_stop"
+            }),
+        ));
+    }
+}
+
 fn openai_done_marker_string() -> String {
     "data: [DONE]\n\n".to_string()
 }
 
 fn openai_sse_json_string(value: &Value) -> String {
     let mut output = String::new();
+    output.push_str("data: ");
+    output.push_str(&value.to_string());
+    output.push_str("\n\n");
+    output
+}
+
+fn claude_sse_json_string(event: &str, value: &Value) -> String {
+    let mut output = String::new();
+    output.push_str("event: ");
+    output.push_str(event);
+    output.push('\n');
     output.push_str("data: ");
     output.push_str(&value.to_string());
     output.push_str("\n\n");
@@ -845,6 +1204,38 @@ struct LocalOpenAiChatCompletionRequest {
     compat: OpenAiChatCompatFields,
 }
 
+#[derive(Debug, Deserialize)]
+struct LocalClaudeMessagesRequest {
+    model: String,
+    messages: Vec<LocalClaudeMessage>,
+    system: Option<LocalClaudeContent>,
+    max_tokens: u32,
+    temperature: Option<f32>,
+    stream: Option<bool>,
+    tools: Option<Value>,
+    tool_choice: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalClaudeMessage {
+    role: String,
+    content: LocalClaudeContent,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum LocalClaudeContent {
+    Text(String),
+    Blocks(Vec<LocalClaudeContentBlock>),
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalClaudeContentBlock {
+    #[serde(rename = "type")]
+    kind: String,
+    text: Option<String>,
+}
+
 impl LocalOpenAiChatCompletionRequest {
     fn into_native_chat_request(self) -> Result<NativeLocalChatRequest, LocalServerError> {
         let _caller_model = self.model.as_deref();
@@ -873,6 +1264,92 @@ impl LocalOpenAiChatCompletionRequest {
             max_tokens,
             temperature: self.temperature,
         })
+    }
+}
+
+impl LocalClaudeMessagesRequest {
+    fn into_native_chat_request(self) -> Result<NativeLocalChatRequest, LocalServerError> {
+        let _caller_model = self.model.as_str();
+        self.reject_unsupported()?;
+        if self.messages.is_empty() {
+            return Err(LocalServerError::bad_request(
+                "bad_request",
+                "Claude-compatible messages requests must contain at least one message",
+            ));
+        }
+        let mut messages = Vec::new();
+        if let Some(system) = self.system {
+            messages.push(NativeLocalChatMessage {
+                role: "system".to_string(),
+                content: claude_text_content(system)?,
+            });
+        }
+        messages.extend(
+            self.messages
+                .into_iter()
+                .map(LocalClaudeMessage::into_native)
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+        Ok(NativeLocalChatRequest {
+            messages,
+            max_tokens: Some(self.max_tokens),
+            temperature: self.temperature,
+        })
+    }
+
+    fn reject_unsupported(&self) -> Result<(), LocalServerError> {
+        if self.tools.is_some() || self.tool_choice.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "Claude-compatible tools require kernel tool-call support",
+            )
+            .into());
+        }
+        Ok(())
+    }
+}
+
+impl LocalClaudeMessage {
+    fn into_native(self) -> Result<NativeLocalChatMessage, LocalServerError> {
+        Ok(NativeLocalChatMessage {
+            role: claude_text_role(&self.role)?,
+            content: claude_text_content(self.content)?,
+        })
+    }
+}
+
+fn claude_text_role(role: &str) -> Result<String, LocalServerError> {
+    match role.trim().to_ascii_lowercase().as_str() {
+        "system" => Ok("system".to_string()),
+        "user" => Ok("user".to_string()),
+        "assistant" => Ok("assistant".to_string()),
+        "" => Err(LocalServerError::bad_request(
+            "bad_request",
+            "message role is empty",
+        )),
+        other => Err(LocalServerError::bad_request(
+            "bad_request",
+            format!("unsupported Claude message role `{other}`"),
+        )),
+    }
+}
+
+fn claude_text_content(content: LocalClaudeContent) -> Result<String, LocalServerError> {
+    match content {
+        LocalClaudeContent::Text(text) => Ok(text),
+        LocalClaudeContent::Blocks(blocks) => {
+            let mut text = String::new();
+            for block in blocks {
+                if block.kind != "text" {
+                    return Err(ProviderCompatRejection::unsupported_content(format!(
+                        "unsupported Claude content block `{}`",
+                        block.kind
+                    ))
+                    .into());
+                }
+                text.push_str(block.text.as_deref().unwrap_or_default());
+            }
+            Ok(text)
+        }
     }
 }
 
@@ -1513,6 +1990,215 @@ mod tests {
 
         assert_eq!(error.status, StatusCode::BAD_REQUEST);
         assert_eq!(error.code, "unsupported_provider_capability");
+    }
+
+    #[tokio::test]
+    async fn claude_messages_maps_local_request_and_response() {
+        async fn chat(
+            AxumState(captured): AxumState<Arc<Mutex<Option<String>>>>,
+            body: String,
+        ) -> Json<Value> {
+            *captured.lock().expect("lock") = Some(body);
+            Json(json!({
+                "task_ref": "task-1",
+                "status": "completed",
+                "text": "hello from local claude"
+            }))
+        }
+
+        let captured = Arc::new(Mutex::new(None));
+        let (base_url, _task) = spawn_test_server(
+            Router::new()
+                .route(RUNTIME_CHAT_PATH, post(chat))
+                .with_state(captured.clone()),
+        )
+        .await;
+        let request: LocalClaudeMessagesRequest = serde_json::from_value(json!({
+            "model": "claude-sonnet-4-5",
+            "system": [{"type": "text", "text": "Answer briefly."}],
+            "max_tokens": 16,
+            "messages": [
+                {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+                {"role": "assistant", "content": "hello"},
+                {"role": "user", "content": "again"}
+            ],
+            "temperature": 0.2
+        }))
+        .expect("request");
+
+        let response = claude_messages_to_upstream(
+            &reqwest::Client::new(),
+            request,
+            &base_url,
+            "local-model-ref",
+            ServerCapability::Chat,
+        )
+        .await
+        .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), PROXY_BODY_LIMIT_BYTES)
+            .await
+            .expect("body");
+        let value: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["type"], "message");
+        assert_eq!(value["role"], "assistant");
+        assert_eq!(value["model"], "local-model-ref");
+        assert_eq!(value["content"][0]["type"], "text");
+        assert_eq!(value["content"][0]["text"], "hello from local claude");
+        assert_eq!(value["stop_reason"], "end_turn");
+        assert_eq!(value["stop_sequence"], Value::Null);
+        assert_eq!(value["usage"], Value::Null);
+
+        let captured = captured.lock().expect("lock").clone().expect("captured");
+        let captured: Value = serde_json::from_str(&captured).expect("native json");
+        assert_eq!(captured["messages"][0]["role"], "system");
+        assert_eq!(captured["messages"][0]["content"], "Answer briefly.");
+        assert_eq!(captured["messages"][1]["role"], "user");
+        assert_eq!(captured["messages"][1]["content"], "hi");
+        assert_eq!(captured["messages"][2]["role"], "assistant");
+        assert_eq!(captured["messages"][2]["content"], "hello");
+        assert_eq!(captured["messages"][3]["role"], "user");
+        assert_eq!(captured["messages"][3]["content"], "again");
+        assert_eq!(captured["max_tokens"], 16);
+        assert_eq!(captured["temperature"], 0.2);
+        assert!(captured.get("model").is_none());
+    }
+
+    #[tokio::test]
+    async fn claude_messages_maps_local_stream_response() {
+        async fn stream(
+            AxumState(captured): AxumState<Arc<Mutex<Option<String>>>>,
+            body: String,
+        ) -> Response {
+            use futures_util::stream;
+
+            *captured.lock().expect("lock") = Some(body);
+            let chunks = stream::iter([
+                Ok::<_, std::convert::Infallible>(
+                    "event: started\ndata: {\"task_ref\":\"task-1\"}\n\n",
+                ),
+                Ok("event: delta\ndata: {\"text\":\"one\"}\n\n"),
+                Ok("event: delta\ndata: {\"text\":\" two\"}\n\n"),
+                Ok("event: done\ndata: {\"task_ref\":\"task-1\",\"text\":\"one two\"}\n\n"),
+            ]);
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .body(Body::from_stream(chunks))
+                .expect("stream response")
+        }
+
+        let captured = Arc::new(Mutex::new(None));
+        let (base_url, _task) = spawn_test_server(
+            Router::new()
+                .route(RUNTIME_CHAT_STREAM_PATH, post(stream))
+                .with_state(captured.clone()),
+        )
+        .await;
+        let request: LocalClaudeMessagesRequest = serde_json::from_value(json!({
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 8,
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": true
+        }))
+        .expect("request");
+
+        let response = claude_messages_to_upstream(
+            &reqwest::Client::new(),
+            request,
+            &base_url,
+            "local-model-ref",
+            ServerCapability::Chat,
+        )
+        .await
+        .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/event-stream")
+        );
+        let body = to_bytes(response.into_body(), PROXY_BODY_LIMIT_BYTES)
+            .await
+            .expect("body");
+        let body = std::str::from_utf8(&body).expect("utf8");
+        assert!(body.contains("event: message_start"));
+        assert!(body.contains("event: content_block_start"));
+        assert!(body.contains("event: content_block_delta"));
+        assert!(body.contains(r#""type":"text_delta""#));
+        assert!(body.contains(r#""text":"one""#));
+        assert!(body.contains(r#""text":" two""#));
+        assert!(body.contains("event: content_block_stop"));
+        assert!(body.contains("event: message_delta"));
+        assert!(body.contains(r#""stop_reason":"end_turn""#));
+        assert!(body.contains("event: message_stop"));
+        assert!(!body.contains("data: [DONE]"));
+
+        let captured = captured.lock().expect("lock").clone().expect("captured");
+        let captured: Value = serde_json::from_str(&captured).expect("native json");
+        assert_eq!(captured["messages"][0]["role"], "user");
+        assert_eq!(captured["messages"][0]["content"], "hi");
+        assert_eq!(captured["max_tokens"], 8);
+    }
+
+    #[tokio::test]
+    async fn claude_messages_rejects_non_chat_local_server() {
+        let request: LocalClaudeMessagesRequest = serde_json::from_value(json!({
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 8,
+            "messages": [{"role": "user", "content": "hi"}]
+        }))
+        .expect("request");
+
+        let error = claude_messages_to_upstream(
+            &reqwest::Client::new(),
+            request,
+            "http://127.0.0.1:1",
+            "embedding-model-ref",
+            ServerCapability::Embedding,
+        )
+        .await
+        .expect_err("non-chat capability rejected");
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_capability");
+    }
+
+    #[test]
+    fn claude_messages_rejects_unsupported_local_tools_and_blocks() {
+        let tools: LocalClaudeMessagesRequest = serde_json::from_value(json!({
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 8,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tools": [{"name": "lookup", "input_schema": {"type": "object"}}]
+        }))
+        .expect("request");
+
+        let error = tools
+            .into_native_chat_request()
+            .expect_err("tools unsupported");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_field");
+
+        let block: LocalClaudeMessagesRequest = serde_json::from_value(json!({
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 8,
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]
+            }]
+        }))
+        .expect("request");
+
+        let error = block
+            .into_native_chat_request()
+            .expect_err("tool result unsupported");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_content");
     }
 
     #[tokio::test]
