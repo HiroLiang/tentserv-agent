@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use clap::Parser;
 use tentgent_daemon::{
     bootstrap_daemon_app,
-    cloud_server::{run_cloud_server_runtime, CloudServerRuntimeConfig},
-    local_server::{run_local_server_runtime, LocalServerRuntimeConfig},
+    server::{
+        cloud::{run_cloud_server_runtime, CloudServerRuntimeConfig},
+        local::{run_local_server_runtime, LocalServerRuntimeConfig},
+    },
     DaemonBootstrapConfig, LoggingConfig, RestConfig,
 };
 use tentgent_kernel::features::auth::domain::Provider;
