@@ -144,6 +144,16 @@ async fn openai_chat_completions_rejects_message_tool_calls() {
 }
 
 #[tokio::test]
+async fn openai_chat_completions_rejects_vision_input_on_daemon_route() {
+    assert_chat_error(
+        "openai-chat-vision-input",
+        r#"{"model":"aaaaaaaaaaaa","messages":[{"role":"user","content":[{"type":"text","text":"Describe this image."},{"type":"image_url","image_url":{"url":"https://example.com/cat.png","detail":"low"}}]}]}"#,
+        "unsupported_provider_content",
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn openai_chat_completions_rejects_non_text_content_parts_on_daemon_route() {
     for (label, content) in [
         (

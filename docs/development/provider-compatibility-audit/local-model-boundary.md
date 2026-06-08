@@ -131,8 +131,8 @@ chat: `messages`, `max_tokens`, `max_completion_tokens`, `temperature`,
 
 Known unsupported OpenAI fields fail before the Python runtime is called:
 tools/function calling, structured response formats, audio output, non-text
-content parts, multiple choices, logprobs, web search, provider-side metadata,
-cache, safety, and service-tier fields.
+content parts including OpenAI `image_url`, multiple choices, logprobs, web
+search, provider-side metadata, cache, safety, and service-tier fields.
 
 Claude local messages accept text-only Claude message fields that can map to
 native local chat: `model`, `messages`, `system`, `max_tokens`, `temperature`,

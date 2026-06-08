@@ -7,7 +7,7 @@ use super::{
         GeminiGenerateContentRequest,
     },
     images::ImageRequest,
-    openai_chat::{OpenAiChatRequest, OpenAiMessage},
+    openai_chat::{openai_chat_response_value, OpenAiChatRequest, OpenAiMessage},
 };
 use axum::http::StatusCode;
 use serde_json::{json, Value};
@@ -74,7 +74,8 @@ fn openai_message_accepts_image_url_parts_for_direct_cloud() {
         "role": "user",
         "content": [
             {"type": "text", "text": "Describe this image."},
-            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}
+            {"type": "image_url", "image_url": {"url": "https://example.com/cat.png", "detail": "low"}},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA==", "detail": "auto"}}
         ]
     }))
     .expect("message");
@@ -87,10 +88,84 @@ fn openai_message_accepts_image_url_parts_for_direct_cloud() {
         vec![
             CloudChatContentPart::Text("Describe this image.".to_string()),
             CloudChatContentPart::ImageUrl {
+                url: "https://example.com/cat.png".to_string()
+            },
+            CloudChatContentPart::ImageUrl {
                 url: "data:image/png;base64,AA==".to_string()
             }
         ]
     );
+}
+
+#[test]
+fn openai_message_rejects_malformed_image_url_parts_for_direct_cloud() {
+    for (label, part) in [
+        ("missing-image-url", json!({"type": "image_url"})),
+        ("missing-url", json!({"type": "image_url", "image_url": {}})),
+        (
+            "empty-url",
+            json!({"type": "image_url", "image_url": {"url": " "}}),
+        ),
+        (
+            "invalid-detail",
+            json!({"type": "image_url", "image_url": {"url": "https://example.com/cat.png", "detail": "full"}}),
+        ),
+    ] {
+        let message: OpenAiMessage = serde_json::from_value(json!({
+            "role": "user",
+            "content": [part]
+        }))
+        .expect(label);
+
+        let error = message.into_cloud().expect_err(label);
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_content");
+    }
+}
+
+#[test]
+fn openai_message_rejects_unsupported_vision_part_shapes_for_direct_cloud() {
+    for (label, part) in [
+        (
+            "input-audio",
+            json!({"type": "input_audio", "input_audio": {"data": "AA==", "format": "wav"}}),
+        ),
+        (
+            "file",
+            json!({"type": "file", "file": {"file_id": "file_123"}}),
+        ),
+    ] {
+        let message: OpenAiMessage = serde_json::from_value(json!({
+            "role": "user",
+            "content": [part]
+        }))
+        .expect(label);
+
+        let error = message.into_cloud().expect_err(label);
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_content");
+    }
+}
+
+#[test]
+fn openai_response_keeps_chat_completion_shape_for_direct_cloud() {
+    let body = openai_chat_response_value(
+        "gpt-4o-mini",
+        "A cat sitting on a chair.".to_string(),
+        "stop".to_string(),
+    );
+
+    assert_eq!(body["object"], "chat.completion");
+    assert_eq!(body["model"], "gpt-4o-mini");
+    assert_eq!(body["choices"][0]["message"]["role"], "assistant");
+    assert_eq!(
+        body["choices"][0]["message"]["content"],
+        "A cat sitting on a chair."
+    );
+    assert_eq!(body["choices"][0]["finish_reason"], "stop");
+    assert!(body["usage"].is_null());
 }
 
 #[test]

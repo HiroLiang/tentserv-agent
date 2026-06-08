@@ -51,6 +51,38 @@ OpenAI chat ingress. Direct cloud provider servers also accept OpenAI
 `image_url` content parts for compatible cloud models. Daemon and local
 model-bound OpenAI chat routes are text-only today.
 
+Direct OpenAI cloud vision input:
+
+```bash
+export TENTGENT_BASE_URL=http://127.0.0.1:8783
+
+curl -sS "$TENTGENT_BASE_URL/v1/chat/completions" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "ignored-by-direct-cloud-server",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "Describe this image."},
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "https://example.com/cat.png",
+              "detail": "low"
+            }
+          }
+        ]
+      }
+    ],
+    "max_tokens": 64
+  }'
+```
+
+Use that shape only with `tentgent server run openai:<vision-model>`. Daemon
+and local model-bound OpenAI chat routes reject `image_url` until local
+multimodal routing is implemented.
+
 ### Embeddings
 
 Daemon OpenAI cloud embeddings:

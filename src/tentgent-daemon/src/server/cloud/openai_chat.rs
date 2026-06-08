@@ -4,7 +4,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tentgent_kernel::features::cloud::{
     domain::{CloudChatContentPart, CloudChatMessage, CloudChatRequest},
     infra::ReqwestCloudModelClient,
@@ -43,18 +43,11 @@ pub(super) async fn openai_chat(
     }
     let client = ReqwestCloudModelClient::new()?;
     let response = client.complete_chat(cloud_request, &state.secret).await?;
-    Ok(Json(json!({
-        "id": format!("chatcmpl-{}", unix_timestamp_seconds()),
-        "object": "chat.completion",
-        "created": unix_timestamp_seconds(),
-        "model": state.config.provider_model,
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": response.text},
-            "finish_reason": response.finish_reason
-        }],
-        "usage": null
-    }))
+    Ok(Json(openai_chat_response_value(
+        &state.config.provider_model,
+        response.text,
+        response.finish_reason,
+    ))
     .into_response())
 }
 
@@ -93,7 +86,8 @@ pub(super) struct OpenAiPart {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct OpenAiImageUrl {
-    pub(super) url: String,
+    pub(super) url: Option<String>,
+    pub(super) detail: Option<String>,
 }
 
 impl OpenAiMessage {
@@ -107,12 +101,14 @@ impl OpenAiMessage {
                     "text" => Ok::<CloudChatContentPart, CloudServerError>(
                         CloudChatContentPart::Text(part.text.unwrap_or_default()),
                     ),
-                    "image_url" => Ok(CloudChatContentPart::ImageUrl {
-                        url: part
+                    "image_url" => {
+                        let image_url = part
                             .image_url
-                            .map(|image| image.url)
-                            .ok_or_else(|| CloudServerError::bad_request("image_url is missing"))?,
-                    }),
+                            .ok_or_else(|| openai_image_url_error("image_url is missing"))?;
+                        Ok(CloudChatContentPart::ImageUrl {
+                            url: openai_image_url(image_url)?,
+                        })
+                    }
                     other => Err(CloudServerError::from(
                         ProviderCompatRejection::unsupported_content(format!(
                             "unsupported OpenAI content part `{other}`"
@@ -126,4 +122,42 @@ impl OpenAiMessage {
             content,
         })
     }
+}
+
+fn openai_image_url(image_url: OpenAiImageUrl) -> Result<String, CloudServerError> {
+    if let Some(detail) = image_url.detail.as_deref() {
+        if !matches!(detail, "auto" | "low" | "high") {
+            return Err(openai_image_url_error(format!(
+                "unsupported OpenAI image_url detail `{detail}`"
+            )));
+        }
+    }
+    let url = image_url
+        .url
+        .filter(|url| !url.trim().is_empty())
+        .ok_or_else(|| openai_image_url_error("image_url.url is required"))?;
+    Ok(url)
+}
+
+fn openai_image_url_error(message: impl Into<String>) -> CloudServerError {
+    ProviderCompatRejection::unsupported_content(message).into()
+}
+
+pub(super) fn openai_chat_response_value(
+    model: &str,
+    text: String,
+    finish_reason: String,
+) -> Value {
+    json!({
+        "id": format!("chatcmpl-{}", unix_timestamp_seconds()),
+        "object": "chat.completion",
+        "created": unix_timestamp_seconds(),
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": text},
+            "finish_reason": finish_reason
+        }],
+        "usage": null
+    })
 }

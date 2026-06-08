@@ -114,7 +114,8 @@ Explicitly rejected:
 - `modalities` containing anything other than `text`
 - unsupported OpenAI content part types such as `input_audio`, `file`, and
   `refusal`
-- missing `image_url` payload for an `image_url` content part
+- missing `image_url` payload, missing `image_url.url`, blank `image_url.url`,
+  or unsupported `image_url.detail` for an `image_url` content part
 - message `tool_calls`, deprecated message `function_call`, assistant `audio`,
   and assistant `refusal`
 - `n` values greater than `1`
