@@ -991,6 +991,51 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_chat_template_uses_messages_url_and_bound_model() {
+        let request = CloudChatRequest {
+            provider: Provider::Anthropic,
+            model: "claude-test".to_string(),
+            messages: vec![
+                CloudChatMessage {
+                    role: "system".to_string(),
+                    content: vec![CloudChatContentPart::Text("Answer briefly.".to_string())],
+                },
+                CloudChatMessage {
+                    role: "user".to_string(),
+                    content: vec![
+                        CloudChatContentPart::ImageBase64 {
+                            media_type: "image/png".to_string(),
+                            data: "AA==".to_string(),
+                        },
+                        CloudChatContentPart::Text("Describe this image.".to_string()),
+                    ],
+                },
+            ],
+            max_tokens: Some(12),
+            temperature: Some(0.2),
+            stream: false,
+        };
+        let http = client().chat_request(&request, "sk-ant", false).unwrap();
+        let body = http.body().and_then(|body| body.as_bytes()).unwrap();
+        let value: Value = serde_json::from_slice(body).unwrap();
+
+        assert_eq!(http.url().as_str(), "https://anthropic.test/v1/messages");
+        assert_eq!(value["model"], "claude-test");
+        assert_eq!(value["system"], "Answer briefly.");
+        assert_eq!(value["max_tokens"], 12);
+        let temperature = value["temperature"].as_f64().expect("temperature");
+        assert!((temperature - 0.2).abs() < 0.00001);
+        assert_eq!(value["stream"], false);
+        assert_eq!(value["messages"][0]["role"], "user");
+        assert_eq!(value["messages"][0]["content"][0]["type"], "image");
+        assert_eq!(
+            value["messages"][0]["content"][0]["source"]["media_type"],
+            "image/png"
+        );
+        assert_eq!(value["messages"][0]["content"][1]["type"], "text");
+    }
+
+    #[test]
     fn gemini_chat_template_uses_generate_content_url_and_inline_data() {
         let request = CloudChatRequest {
             provider: Provider::Gemini,

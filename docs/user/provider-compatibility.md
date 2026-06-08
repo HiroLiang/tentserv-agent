@@ -18,7 +18,7 @@ Status key:
 | Surface | How to use it | Provider-shaped routes | Notes |
 | --- | --- | --- | --- |
 | Daemon compatibility adapters | `tentgent daemon start --host 127.0.0.1 --port 8790` | `/v1/chat/completions`, `/v1/messages`, `/v1beta/models/{model}:generateContent`, `/v1beta/models/{model}:streamGenerateContent?alt=sse`, `/v1/embeddings`, `/v1/images/generations` | Daemon provider compatibility routes translate into Tentgent execution. They are intentionally narrower than full provider APIs. |
-| Direct cloud provider server | `tentgent server run openai:<model>`, `anthropic:<model>`, or `gemini:<model>` | `/v1/chat`, `/v1/chat/completions`, `/v1/messages`, `/v1beta/models/{operation}`, `/v1/embeddings`, `/v1/images/generations` | A server is bound to one provider model. Unsupported provider/capability combinations fail at server creation or request time. |
+| Direct cloud provider server | `tentgent server run openai:<model>`, `anthropic:<model>` / `claude:<model>`, or `gemini:<model>` | `/v1/chat`, `/v1/chat/completions`, `/v1/messages`, `/v1beta/models/{operation}`, `/v1/embeddings`, `/v1/images/generations` | A server is bound to one provider model. Unsupported provider/capability combinations fail at server creation or request time. |
 | Local model-bound server | `tentgent server run <model-ref>` | `/v1/chat`, `/v1/chat/completions`, `/v1/messages`, `/v1/embeddings`, `/v1/images/generations`, and native capability routes | Native routes stay Tentgent-shaped. Implemented provider-shaped ingress routes translate requests into native local runtime calls and wrap responses back into the provider shape. |
 
 ## Endpoint Families
