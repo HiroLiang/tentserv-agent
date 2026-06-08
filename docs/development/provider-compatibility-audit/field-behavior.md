@@ -8,8 +8,8 @@ profile work.
 
 | Field | Current behavior | Notes |
 | --- | --- | --- |
-| `model` | Required on daemon provider-shaped chat and image routes; accepted by daemon embeddings. Ignored by direct cloud provider servers and local model-bound OpenAI chat, Claude messages, Gemini generateContent, embedding, and image-generation ingress. | Direct cloud servers use the bound provider model from `tentgent server run <provider>:<model>`. Local model-bound servers use the bound local model from `tentgent server run <model-ref>`. |
-| `model_ref` | Native Tentgent model selector. Accepted by daemon embeddings. Omitted from local model-bound server requests because the server is already bound to one model. | Local model routes use `model_ref`; provider-shaped chat routes use `model`. |
+| `model` | Required on daemon provider-shaped chat and image routes; accepted by daemon embeddings. Ignored by direct cloud provider servers and local model-bound OpenAI chat, Claude messages, Gemini generateContent, embedding, and image-generation ingress. Rejected on native daemon `/v1/rerank` as a provider-shaped rerank selector. | Direct cloud servers use the bound provider model from `tentgent server run <provider>:<model>`. Local model-bound servers use the bound local model from `tentgent server run <model-ref>`. |
+| `model_ref` | Native Tentgent model selector. Accepted by daemon embeddings and native daemon `/v1/rerank`. Omitted from local model-bound server requests because the server is already bound to one model. | Local model routes use `model_ref`; provider-shaped chat routes use `model`. |
 | `messages` | Required by OpenAI/Claude-shaped chat routes. | Daemon and local OpenAI routes are text-first. Direct cloud routes accept more image content. |
 | `contents` | Required by Gemini-shaped chat routes. | Daemon and local model-bound routes accept text parts only. Direct cloud route accepts text and `inlineData`. |
 | `stream` | Supported by daemon OpenAI/Claude chat, local OpenAI chat ingress, and local Claude messages ingress. Direct cloud OpenAI uses generic Tentgent SSE; direct cloud Claude rejects `stream: true`. | Gemini uses route suffix `:streamGenerateContent`, not a body field; daemon, direct cloud, and local model-bound Gemini routes support that suffix. |
@@ -71,6 +71,9 @@ Future runtime profiles should define:
 Unknown-field behavior is currently inconsistent:
 
 - daemon embeddings reject unknown top-level fields manually
+- daemon native rerank rejects unknown native fields with `bad_request`, but
+  provider-shaped `provider` or `model` selectors reject with
+  `unsupported_provider_capability`
 - daemon and direct cloud chat handlers generally ignore unknown fields
 - daemon and direct image-generation handlers reject known unsupported image
   fields such as `response_format` and `n`, but otherwise ignore unknown fields

@@ -14,6 +14,12 @@ are the most important user-facing compatibility surface for `v0.6.0`.
 | `POST /v1/embeddings` | `handlers/rest/embedding/mod.rs` | Native plus OpenAI/Gemini-shaped request selection | Uses `model_ref` for local models and `model` or `provider` for cloud embeddings. |
 | `POST /v1/images/generations` | `handlers/rest/images/cloud.rs` | OpenAI/Gemini image generation | Cloud-only image generation wrapper. Local image generation uses `/v1/images/generations/job`. |
 
+Native `POST /v1/rerank` is intentionally not listed as a provider-compatible
+route. It remains a Tentgent-shaped endpoint that requires `model_ref`.
+Provider-shaped selector fields such as `provider` or `model` are rejected with
+`unsupported_provider_capability` so callers do not accidentally depend on a
+partial rerank compatibility adapter.
+
 ## POST `/v1/chat/completions`
 
 Handler:

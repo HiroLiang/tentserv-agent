@@ -16,7 +16,10 @@ use tentgent_kernel::{
     foundation::{error::KernelError, layout::LayoutResolveMode},
 };
 
-use crate::transport::rest::{error::RestError, state::RestState};
+use crate::{
+    provider_compat::ProviderCompatRejection,
+    transport::rest::{error::RestError, state::RestState},
+};
 
 pub async fn create(
     State(state): State<RestState>,
@@ -145,6 +148,12 @@ impl RerankRequestBody {
         let object = value.as_object().ok_or_else(|| {
             RestError::bad_request("bad_request", "request body must be a JSON object")
         })?;
+        if object.contains_key("provider") || object.contains_key("model") {
+            return Err(ProviderCompatRejection::unsupported_capability(
+                "provider-compatible rerank is not supported; use native /v1/rerank with model_ref",
+            )
+            .into());
+        }
         let unknown = object
             .keys()
             .filter(|key| !matches!(key.as_str(), "model_ref" | "query" | "documents" | "top_n"))
