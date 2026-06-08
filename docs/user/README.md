@@ -33,6 +33,9 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
   behavior.
 - [provider-compatibility.md](./provider-compatibility.md)
   OpenAI, Claude/Anthropic, and Gemini-compatible endpoint support matrix.
+- [provider-compatible-examples.md](./provider-compatible-examples.md)
+  Copy-paste curl and SDK examples for currently supported provider-shaped
+  Tentgent routes.
 - [model-fixtures.md](./model-fixtures.md)
   Recommended small Hugging Face models and smoke-test commands for chat,
   embedding, rerank, audio transcription, and media workflows.

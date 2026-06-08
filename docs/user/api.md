@@ -120,6 +120,8 @@ below.
 
 For provider-shaped route coverage across OpenAI, Claude/Anthropic, and Gemini
 APIs, see [provider-compatibility.md](./provider-compatibility.md).
+For copy-paste provider-compatible curl and SDK examples, see
+[provider-compatible-examples.md](./provider-compatible-examples.md).
 
 ## Vision Chat
 

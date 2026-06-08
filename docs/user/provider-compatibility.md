@@ -3,6 +3,9 @@
 This matrix shows which OpenAI, Claude/Anthropic, and Gemini-shaped APIs are
 safe to call through Tentgent today.
 
+For copy-paste requests and SDK base URL examples, see
+[provider-compatible-examples.md](./provider-compatible-examples.md).
+
 Status key:
 
 - Supported: documented route and request shape are available.
