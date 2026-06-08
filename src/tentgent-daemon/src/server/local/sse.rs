@@ -130,6 +130,61 @@ where
     )
 }
 
+pub(super) fn gemini_stream_from_local_sse<S, E>(
+    upstream: S,
+    bound_model_ref: String,
+) -> impl Stream<Item = Result<Bytes, Infallible>>
+where
+    S: Stream<Item = Result<Bytes, E>> + Unpin,
+    E: std::fmt::Display,
+{
+    stream::unfold(
+        LocalGeminiStreamState {
+            upstream,
+            bound_model_ref,
+            buffer: String::new(),
+            pending: VecDeque::new(),
+            upstream_done: false,
+            sent_done: false,
+        },
+        |mut state| async move {
+            loop {
+                if let Some(chunk) = state.pending.pop_front() {
+                    return Some((Ok(Bytes::from(chunk)), state));
+                }
+                if state.upstream_done {
+                    if !state.sent_done {
+                        state.push_done("STOP");
+                        state.sent_done = true;
+                        continue;
+                    }
+                    return None;
+                }
+                match state.upstream.next().await {
+                    Some(Ok(bytes)) => match std::str::from_utf8(&bytes) {
+                        Ok(text) => {
+                            state.buffer.push_str(text);
+                            state.drain_complete_events();
+                        }
+                        Err(error) => {
+                            state.push_error("chat_stream_failed", error.to_string());
+                            state.upstream_done = true;
+                        }
+                    },
+                    Some(Err(error)) => {
+                        state.push_error("chat_stream_failed", error.to_string());
+                        state.upstream_done = true;
+                    }
+                    None => {
+                        state.upstream_done = true;
+                        state.drain_remainder();
+                    }
+                }
+            }
+        },
+    )
+}
+
 struct LocalOpenAiStreamState<S> {
     upstream: S,
     bound_model_ref: String,
@@ -191,6 +246,15 @@ struct LocalClaudeStreamState<S> {
     sent_stop: bool,
 }
 
+struct LocalGeminiStreamState<S> {
+    upstream: S,
+    bound_model_ref: String,
+    buffer: String,
+    pending: VecDeque<String>,
+    upstream_done: bool,
+    sent_done: bool,
+}
+
 impl<S> LocalClaudeStreamState<S> {
     fn drain_complete_events(&mut self) {
         while let Some(index) = self.buffer.find("\n\n") {
@@ -236,6 +300,56 @@ impl<S> LocalClaudeStreamState<S> {
     }
 }
 
+impl<S> LocalGeminiStreamState<S> {
+    fn drain_complete_events(&mut self) {
+        while let Some(index) = self.buffer.find("\n\n") {
+            let block = self.buffer[..index].to_string();
+            self.buffer.drain(..index + 2);
+            self.push_event_block(&block);
+        }
+    }
+
+    fn drain_remainder(&mut self) {
+        if self.buffer.trim().is_empty() {
+            self.buffer.clear();
+            return;
+        }
+        let block = std::mem::take(&mut self.buffer);
+        self.push_event_block(&block);
+    }
+
+    fn push_event_block(&mut self, block: &str) {
+        if let Some((event, data)) = local_sse_event(block) {
+            let done = gemini_chunks_for_local_event(
+                &mut self.pending,
+                &self.bound_model_ref,
+                &event,
+                data.as_ref(),
+            );
+            self.sent_done |= done;
+        }
+    }
+
+    fn push_done(&mut self, finish_reason: &str) {
+        self.pending
+            .push_back(gemini_sse_json_string(&gemini_stream_chunk(
+                &self.bound_model_ref,
+                None,
+                Some(finish_reason),
+            )));
+    }
+
+    fn push_error(&mut self, code: &str, message: String) {
+        self.pending.push_back(gemini_sse_json_string(&json!({
+            "error": {
+                "code": code,
+                "message": message
+            }
+        })));
+        self.sent_done = true;
+    }
+}
+
 fn local_sse_event(block: &str) -> Option<(String, Option<Value>)> {
     let mut event = None;
     let mut data_lines = Vec::new();
@@ -255,6 +369,56 @@ fn local_sse_event(block: &str) -> Option<(String, Option<Value>)> {
         };
         (event, data)
     })
+}
+
+fn gemini_chunks_for_local_event(
+    pending: &mut VecDeque<String>,
+    bound_model_ref: &str,
+    event: &str,
+    data: Option<&Value>,
+) -> bool {
+    match event {
+        "delta" => {
+            let text = data
+                .and_then(|value| value.get("text"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !text.is_empty() {
+                pending.push_back(gemini_sse_json_string(&gemini_stream_chunk(
+                    bound_model_ref,
+                    Some(text),
+                    None,
+                )));
+            }
+            false
+        }
+        "done" => {
+            pending.push_back(gemini_sse_json_string(&gemini_stream_chunk(
+                bound_model_ref,
+                None,
+                Some("STOP"),
+            )));
+            true
+        }
+        "error" | "canceled" => {
+            let code = data
+                .and_then(|value| value.get("type"))
+                .and_then(Value::as_str)
+                .unwrap_or("chat_model_failed");
+            let message = data
+                .and_then(|value| value.get("message"))
+                .and_then(Value::as_str)
+                .unwrap_or("local chat stream failed");
+            pending.push_back(gemini_sse_json_string(&json!({
+                "error": {
+                    "code": code,
+                    "message": message
+                }
+            })));
+            true
+        }
+        _ => false,
+    }
 }
 
 fn claude_events_for_local_event(
@@ -452,6 +616,14 @@ fn claude_sse_json_string(event: &str, value: &Value) -> String {
     output
 }
 
+fn gemini_sse_json_string(value: &Value) -> String {
+    let mut output = String::new();
+    output.push_str("data: ");
+    output.push_str(&value.to_string());
+    output.push_str("\n\n");
+    output
+}
+
 fn openai_stream_chunk(
     bound_model_ref: &str,
     delta: Option<Value>,
@@ -469,6 +641,28 @@ fn openai_stream_chunk(
             "logprobs": null
         }],
         "usage": null
+    })
+}
+
+fn gemini_stream_chunk(
+    bound_model_ref: &str,
+    text: Option<&str>,
+    finish_reason: Option<&str>,
+) -> Value {
+    let parts = text
+        .map(|text| vec![json!({ "text": text })])
+        .unwrap_or_default();
+    json!({
+        "candidates": [{
+            "index": 0,
+            "content": {
+                "role": "model",
+                "parts": parts
+            },
+            "finishReason": finish_reason
+        }],
+        "usageMetadata": null,
+        "modelVersion": bound_model_ref
     })
 }
 

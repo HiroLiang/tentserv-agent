@@ -310,11 +310,85 @@ mod tests {
     }
 
     #[test]
+    fn request_accepts_system_instruction_contents_and_generation_config() {
+        let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+            "systemInstruction": {
+                "parts": [{"text": "Answer briefly."}]
+            },
+            "contents": [
+                {"role": "user", "parts": [{"text": "hi"}]},
+                {"role": "model", "parts": [{"text": "hello"}]},
+                {"parts": [{"text": "again"}]}
+            ],
+            "generationConfig": {
+                "maxOutputTokens": 12,
+                "temperature": 0.2
+            },
+            "adapter_ref": "adapter-a"
+        }))
+        .expect("request");
+
+        let request = request
+            .into_transport("gemma-alias".to_string())
+            .expect("transport request");
+
+        assert_eq!(request.model_ref, "gemma-alias");
+        assert_eq!(request.adapter_ref.as_deref(), Some("adapter-a"));
+        assert_eq!(request.cloud_provider, Some(Provider::Gemini));
+        assert_eq!(request.max_tokens, Some(12));
+        assert_eq!(request.temperature, Some(0.2));
+        assert_eq!(
+            request.messages,
+            vec![
+                ChatTransportMessage {
+                    role: "system".to_string(),
+                    content: "Answer briefly.".to_string()
+                },
+                ChatTransportMessage {
+                    role: "user".to_string(),
+                    content: "hi".to_string()
+                },
+                ChatTransportMessage {
+                    role: "assistant".to_string(),
+                    content: "hello".to_string()
+                },
+                ChatTransportMessage {
+                    role: "user".to_string(),
+                    content: "again".to_string()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn request_rejects_tool_config_before_kernel_mapping() {
+        let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+            "contents": [{"role": "user", "parts": [{"text": "hi"}]}],
+            "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}}
+        }))
+        .expect("request");
+
+        let error = request
+            .into_transport("gemma-alias".to_string())
+            .expect_err("toolConfig unsupported");
+        assert!(format!("{error:?}").contains("unsupported_provider_field"));
+    }
+
+    #[test]
     fn operation_rejects_unsupported_suffix() {
         let error = GeminiOperation::parse("gemma-alias:countTokens".to_string())
             .expect_err("unsupported operation");
 
         assert!(format!("{error:?}").contains("unsupported_provider_operation"));
+    }
+
+    #[test]
+    fn operation_accepts_stream_generate_content_suffix() {
+        let operation = GeminiOperation::parse("gemma-alias:streamGenerateContent".to_string())
+            .expect("operation");
+
+        assert_eq!(operation.model, "gemma-alias");
+        assert!(operation.stream);
     }
 
     #[test]

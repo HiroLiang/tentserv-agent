@@ -272,12 +272,13 @@ Accepted content:
 
 Explicitly rejected:
 
+- `tools` and `toolConfig`
 - unsupported Gemini part shapes
+- unsupported operation suffixes
 
 Currently ignored:
 
 - Unknown top-level fields.
-- `tools` and `toolConfig`.
 - Path model, because the bound provider model is used instead.
 
 Example request:
@@ -312,10 +313,10 @@ Example response:
 
 Model-specific notes:
 
-- Streaming returns generic Tentgent `delta` and `done` SSE events, not the
-  daemon Gemini-shaped stream mapper.
-- Any operation not ending in `:streamGenerateContent` is treated as
-  non-streaming.
+- Streaming returns Gemini-shaped SSE `data:` frames with `candidates`,
+  `usageMetadata`, and `modelVersion`.
+- Only operations ending in `:generateContent` or `:streamGenerateContent` are
+  accepted.
 
 ## POST `/v1/embeddings`
 

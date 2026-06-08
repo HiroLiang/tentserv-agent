@@ -2,7 +2,10 @@ use super::{
     claude_messages::{claude_text_content, ClaudeMessage, ClaudeMessagesRequest},
     embeddings::{embedding_response, EmbeddingRequest},
     error::CloudServerError,
-    gemini_generate::gemini_operation_stream,
+    gemini_generate::{
+        gemini_operation_stream, gemini_request_into_cloud, gemini_response_value,
+        GeminiGenerateContentRequest,
+    },
     images::ImageRequest,
     openai_chat::{OpenAiChatRequest, OpenAiMessage},
 };
@@ -213,6 +216,152 @@ fn gemini_operation_rejects_unsupported_suffix() {
 
     let (code, _) = error.into_parts();
     assert_eq!(code, "unsupported_provider_operation");
+}
+
+#[test]
+fn gemini_request_uses_bound_model_and_generation_config_for_direct_cloud() {
+    let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+        "systemInstruction": {
+            "parts": [{"text": "Answer briefly."}]
+        },
+        "contents": [{
+            "role": "user",
+            "parts": [{"text": "hi"}]
+        }],
+        "generationConfig": {
+            "maxOutputTokens": 12,
+            "temperature": 0.2
+        }
+    }))
+    .expect("request");
+
+    let cloud_request = gemini_request_into_cloud(
+        request,
+        "caller-path-model:generateContent",
+        Provider::Gemini,
+        "bound-gemini-model".to_string(),
+    )
+    .expect("cloud request");
+
+    assert_eq!(cloud_request.provider, Provider::Gemini);
+    assert_eq!(cloud_request.model, "bound-gemini-model");
+    assert_eq!(cloud_request.max_tokens, Some(12));
+    assert_eq!(cloud_request.temperature, Some(0.2));
+    assert!(!cloud_request.stream);
+    assert_eq!(cloud_request.messages[0].role, "system");
+    assert_eq!(
+        cloud_request.messages[0].content,
+        vec![CloudChatContentPart::Text("Answer briefly.".to_string())]
+    );
+    assert_eq!(cloud_request.messages[1].role, "user");
+    assert_eq!(
+        cloud_request.messages[1].content,
+        vec![CloudChatContentPart::Text("hi".to_string())]
+    );
+}
+
+#[test]
+fn gemini_request_marks_streaming_operation_for_direct_cloud() {
+    let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+        "contents": [{"parts": [{"text": "hi"}]}]
+    }))
+    .expect("request");
+
+    let cloud_request = gemini_request_into_cloud(
+        request,
+        "caller-path-model:streamGenerateContent",
+        Provider::Gemini,
+        "bound-gemini-model".to_string(),
+    )
+    .expect("cloud request");
+
+    assert!(cloud_request.stream);
+    assert_eq!(cloud_request.model, "bound-gemini-model");
+}
+
+#[test]
+fn gemini_response_value_uses_gemini_candidate_shape_for_direct_cloud() {
+    let value = gemini_response_value(
+        "gemini-2.5-flash",
+        Some("hello".to_string()),
+        Some("STOP".to_string()),
+    );
+
+    assert_eq!(value["modelVersion"], "gemini-2.5-flash");
+    assert_eq!(value["usageMetadata"], Value::Null);
+    assert_eq!(value["candidates"][0]["index"], 0);
+    assert_eq!(value["candidates"][0]["content"]["role"], "model");
+    assert_eq!(
+        value["candidates"][0]["content"]["parts"][0]["text"],
+        "hello"
+    );
+    assert_eq!(value["candidates"][0]["finishReason"], "STOP");
+}
+
+#[test]
+fn gemini_parts_accept_text_and_inline_data_for_direct_cloud() {
+    let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+        "contents": [{
+            "role": "user",
+            "parts": [
+                {"text": "Describe this image."},
+                {"inlineData": {"mimeType": "image/png", "data": "AA=="}}
+            ]
+        }]
+    }))
+    .expect("request");
+
+    let cloud_request = gemini_request_into_cloud(
+        request,
+        "gemini-2.0-flash:generateContent",
+        Provider::Gemini,
+        "bound-gemini-model".to_string(),
+    )
+    .expect("cloud request");
+
+    assert_eq!(
+        cloud_request.messages[0].content,
+        vec![
+            CloudChatContentPart::Text("Describe this image.".to_string()),
+            CloudChatContentPart::ImageBase64 {
+                media_type: "image/png".to_string(),
+                data: "AA==".to_string()
+            }
+        ]
+    );
+}
+
+#[test]
+fn gemini_request_rejects_tool_fields_for_direct_cloud() {
+    for (label, field) in [
+        (
+            "tools",
+            json!({"tools": [{"functionDeclarations": [{"name": "lookup"}]}]}),
+        ),
+        (
+            "tool-config",
+            json!({"toolConfig": {"functionCallingConfig": {"mode": "AUTO"}}}),
+        ),
+    ] {
+        let mut body = json!({
+            "contents": [{"parts": [{"text": "hi"}]}]
+        });
+        body.as_object_mut()
+            .expect("object")
+            .extend(field.as_object().expect("field").clone());
+        let request: GeminiGenerateContentRequest = serde_json::from_value(body).expect(label);
+
+        let error = gemini_request_into_cloud(
+            request,
+            "gemini-2.0-flash:generateContent",
+            Provider::Gemini,
+            "bound-gemini-model".to_string(),
+        )
+        .expect_err("tools unsupported");
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_field");
+    }
 }
 
 #[test]

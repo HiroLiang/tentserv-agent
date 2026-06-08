@@ -21,6 +21,7 @@ use tentgent_kernel::{
 
 use super::{
     claude_messages::{claude_messages_to_upstream, LocalClaudeMessagesRequest},
+    gemini_generate::{gemini_generate_content_to_upstream, LocalGeminiGenerateContentRequest},
     openai_chat::{openai_chat_completions_to_upstream, LocalOpenAiChatCompletionRequest},
     openai_embeddings::{
         local_embedding_request_uses_openai_shape, native_embedding_to_upstream,
@@ -481,6 +482,206 @@ fn claude_messages_rejects_unsupported_local_tools_and_blocks() {
     let error = block
         .into_native_chat_request()
         .expect_err("tool result unsupported");
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.code, "unsupported_provider_content");
+}
+
+#[tokio::test]
+async fn gemini_generate_content_maps_local_request_and_response() {
+    async fn chat(
+        AxumState(captured): AxumState<Arc<Mutex<Option<String>>>>,
+        body: String,
+    ) -> Json<Value> {
+        *captured.lock().expect("lock") = Some(body);
+        Json(json!({
+            "task_ref": "task-1",
+            "status": "completed",
+            "text": "hello from local gemini"
+        }))
+    }
+
+    let captured = Arc::new(Mutex::new(None));
+    let (base_url, _task) = spawn_test_server(
+        Router::new()
+            .route(RUNTIME_CHAT_PATH, post(chat))
+            .with_state(captured.clone()),
+    )
+    .await;
+    let request: LocalGeminiGenerateContentRequest = serde_json::from_value(json!({
+        "systemInstruction": {"parts": [{"text": "Answer briefly."}]},
+        "contents": [
+            {"role": "user", "parts": [{"text": "hi"}]},
+            {"role": "model", "parts": [{"text": "hello"}]},
+            {"parts": [{"text": "again"}]}
+        ],
+        "generationConfig": {
+            "maxOutputTokens": 16,
+            "temperature": 0.2
+        }
+    }))
+    .expect("request");
+
+    let response = gemini_generate_content_to_upstream(
+        &reqwest::Client::new(),
+        request,
+        "caller-path-model:generateContent",
+        &base_url,
+        "local-model-ref",
+        ServerCapability::Chat,
+    )
+    .await
+    .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), PROXY_BODY_LIMIT_BYTES)
+        .await
+        .expect("body");
+    let value: Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(value["modelVersion"], "local-model-ref");
+    assert_eq!(value["candidates"][0]["content"]["role"], "model");
+    assert_eq!(
+        value["candidates"][0]["content"]["parts"][0]["text"],
+        "hello from local gemini"
+    );
+    assert_eq!(value["candidates"][0]["finishReason"], "STOP");
+    assert_eq!(value["usageMetadata"], Value::Null);
+
+    let captured = captured.lock().expect("lock").clone().expect("captured");
+    let captured: Value = serde_json::from_str(&captured).expect("native json");
+    assert_eq!(captured["messages"][0]["role"], "system");
+    assert_eq!(captured["messages"][0]["content"], "Answer briefly.");
+    assert_eq!(captured["messages"][1]["role"], "user");
+    assert_eq!(captured["messages"][1]["content"], "hi");
+    assert_eq!(captured["messages"][2]["role"], "assistant");
+    assert_eq!(captured["messages"][2]["content"], "hello");
+    assert_eq!(captured["messages"][3]["role"], "user");
+    assert_eq!(captured["messages"][3]["content"], "again");
+    assert_eq!(captured["max_tokens"], 16);
+    assert_eq!(captured["temperature"], 0.2);
+    assert!(captured.get("model").is_none());
+}
+
+#[tokio::test]
+async fn gemini_generate_content_maps_local_stream_response() {
+    async fn stream(
+        AxumState(captured): AxumState<Arc<Mutex<Option<String>>>>,
+        body: String,
+    ) -> Response {
+        use futures_util::stream;
+
+        *captured.lock().expect("lock") = Some(body);
+        let chunks = stream::iter([
+            Ok::<_, std::convert::Infallible>(
+                "event: started\ndata: {\"task_ref\":\"task-1\"}\n\n",
+            ),
+            Ok("event: delta\ndata: {\"text\":\"one\"}\n\n"),
+            Ok("event: delta\ndata: {\"text\":\" two\"}\n\n"),
+            Ok("event: done\ndata: {\"task_ref\":\"task-1\",\"text\":\"one two\"}\n\n"),
+        ]);
+        Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "text/event-stream")
+            .body(Body::from_stream(chunks))
+            .expect("stream response")
+    }
+
+    let captured = Arc::new(Mutex::new(None));
+    let (base_url, _task) = spawn_test_server(
+        Router::new()
+            .route(RUNTIME_CHAT_STREAM_PATH, post(stream))
+            .with_state(captured.clone()),
+    )
+    .await;
+    let request: LocalGeminiGenerateContentRequest = serde_json::from_value(json!({
+        "contents": [{"role": "user", "parts": [{"text": "hi"}]}],
+        "generationConfig": {"maxOutputTokens": 8}
+    }))
+    .expect("request");
+
+    let response = gemini_generate_content_to_upstream(
+        &reqwest::Client::new(),
+        request,
+        "caller-path-model:streamGenerateContent",
+        &base_url,
+        "local-model-ref",
+        ServerCapability::Chat,
+    )
+    .await
+    .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("text/event-stream")
+    );
+    let body = to_bytes(response.into_body(), PROXY_BODY_LIMIT_BYTES)
+        .await
+        .expect("body");
+    let body = std::str::from_utf8(&body).expect("utf8");
+    assert!(body.contains(r#""modelVersion":"local-model-ref""#));
+    assert!(body.contains(r#""text":"one""#));
+    assert!(body.contains(r#""text":" two""#));
+    assert!(body.contains(r#""finishReason":"STOP""#));
+    assert!(!body.contains("event:"));
+    assert!(!body.contains("data: [DONE]"));
+
+    let captured = captured.lock().expect("lock").clone().expect("captured");
+    let captured: Value = serde_json::from_str(&captured).expect("native json");
+    assert_eq!(captured["messages"][0]["role"], "user");
+    assert_eq!(captured["messages"][0]["content"], "hi");
+    assert_eq!(captured["max_tokens"], 8);
+}
+
+#[tokio::test]
+async fn gemini_generate_content_rejects_non_chat_local_server() {
+    let request: LocalGeminiGenerateContentRequest = serde_json::from_value(json!({
+        "contents": [{"parts": [{"text": "hi"}]}]
+    }))
+    .expect("request");
+
+    let error = gemini_generate_content_to_upstream(
+        &reqwest::Client::new(),
+        request,
+        "caller-path-model:generateContent",
+        "http://127.0.0.1:1",
+        "embedding-model-ref",
+        ServerCapability::Embedding,
+    )
+    .await
+    .expect_err("non-chat capability rejected");
+
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.code, "unsupported_provider_capability");
+}
+
+#[test]
+fn gemini_generate_content_rejects_unsupported_local_tools_and_parts() {
+    let tools: LocalGeminiGenerateContentRequest = serde_json::from_value(json!({
+        "contents": [{"parts": [{"text": "hi"}]}],
+        "tools": [{"functionDeclarations": [{"name": "lookup"}]}]
+    }))
+    .expect("request");
+
+    let error = tools
+        .into_native_chat_request()
+        .expect_err("tools unsupported");
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.code, "unsupported_provider_field");
+
+    let part: LocalGeminiGenerateContentRequest = serde_json::from_value(json!({
+        "contents": [{
+            "role": "user",
+            "parts": [{"inlineData": {"mimeType": "image/png", "data": "AA=="}}]
+        }]
+    }))
+    .expect("request");
+
+    let error = part
+        .into_native_chat_request()
+        .expect_err("inlineData unsupported locally");
     assert_eq!(error.status, StatusCode::BAD_REQUEST);
     assert_eq!(error.code, "unsupported_provider_content");
 }

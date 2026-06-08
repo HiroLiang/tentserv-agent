@@ -382,6 +382,21 @@ mod request_tests {
     }
 
     #[test]
+    fn gemini_embedding_request_accepts_provider_and_keeps_native_shape() {
+        let request = EmbeddingRequestBody::from_value(serde_json::json!({
+            "provider": "gemini",
+            "model": "gemini-embedding-001",
+            "input": "hello"
+        }))
+        .expect("request");
+
+        assert_eq!(request.model_ref, "gemini-embedding-001");
+        assert_eq!(request.input.items, vec!["hello"]);
+        assert_eq!(request.cloud_provider, Some(Provider::Gemini));
+        assert_eq!(request.response_shape, EmbeddingResponseShape::Native);
+    }
+
+    #[test]
     fn embedding_input_rejects_empty_array() {
         let err = embedding_input(&Value::Array(Vec::new())).expect_err("empty array");
 

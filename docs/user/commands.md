@@ -800,6 +800,24 @@ curl -s http://127.0.0.1:8780/v1/messages \
   }'
 ```
 
+The same chat server also accepts text-only Gemini `generateContent` requests
+through an ingress adapter. The path model is accepted for client compatibility
+but the server still uses the bound local model.
+
+```bash
+curl -s http://127.0.0.1:8780/v1beta/models/gemini-2.5-flash:generateContent \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "contents": [
+      {"role": "user", "parts": [{"text": "Hello there"}]}
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 128,
+      "temperature": 0.0
+    }
+  }'
+```
+
 Launch and call a direct local embedding server:
 
 ```bash

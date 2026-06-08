@@ -26,6 +26,7 @@ use tentgent_kernel::{
 mod capability;
 mod claude_messages;
 mod error;
+mod gemini_generate;
 mod native;
 mod openai_chat;
 mod openai_embeddings;
@@ -37,6 +38,7 @@ mod sse;
 mod tests;
 
 use claude_messages::claude_messages;
+use gemini_generate::gemini_generate_content;
 use openai_chat::openai_chat_completions;
 use openai_embeddings::openai_embeddings;
 use openai_images::image_generations;
@@ -100,6 +102,7 @@ pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miett
         .route("/healthz", get(healthz))
         .route("/v1/chat/completions", post(openai_chat_completions))
         .route("/v1/messages", post(claude_messages))
+        .route("/v1beta/models/{*operation}", post(gemini_generate_content))
         .route("/v1/embeddings", post(openai_embeddings))
         .route("/v1/images/generations", post(image_generations))
         .fallback(proxy_request)
