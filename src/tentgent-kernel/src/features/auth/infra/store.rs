@@ -79,7 +79,9 @@ impl AuthKeychainSecretStore for SystemKeychainAuthSecretStore {
 fn read_native_secret(provider: Provider) -> KernelResult<Option<String>> {
     match generic_password(macos_protected_password_options(provider)) {
         Ok(secret) => macos_secret_bytes_to_string(provider, secret).map(normalize_secret_value),
-        Err(err) if macos_no_entry(err) => read_macos_legacy_secret(provider),
+        Err(err) if macos_no_entry(err) || macos_missing_entitlement(err) => {
+            read_macos_legacy_secret(provider)
+        }
         Err(err) => Err(macos_keychain_access_error(provider, err)),
     }
 }
@@ -249,7 +251,11 @@ fn set_macos_secret_for(
 #[cfg(target_os = "macos")]
 fn remove_macos_secret_if_present(provider: Provider) -> KernelResult<bool> {
     let protected_removed =
-        remove_macos_secret_with_options(provider, macos_protected_password_options(provider))?;
+        match delete_generic_password_options(macos_protected_password_options(provider)) {
+            Ok(()) => true,
+            Err(err) if macos_no_entry(err) || macos_missing_entitlement(err) => false,
+            Err(err) => return Err(macos_keychain_access_error(provider, err)),
+        };
     let legacy_removed =
         remove_macos_secret_with_options(provider, macos_password_options(provider))?;
 
@@ -289,7 +295,12 @@ fn macos_secret_bytes_to_string(provider: Provider, secret: Vec<u8>) -> KernelRe
 
 #[cfg(target_os = "macos")]
 fn macos_no_entry(err: SecurityFrameworkError) -> bool {
-    err.code() == -25300
+    err.code() == MACOS_ERR_SEC_ITEM_NOT_FOUND
+}
+
+#[cfg(target_os = "macos")]
+fn macos_missing_entitlement(err: SecurityFrameworkError) -> bool {
+    err.code() == MACOS_ERR_SEC_MISSING_ENTITLEMENT
 }
 
 #[cfg(target_os = "macos")]
@@ -327,6 +338,12 @@ fn unsupported_native_keychain() -> KernelError {
     )
 }
 
+#[cfg(target_os = "macos")]
+const MACOS_ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+
+#[cfg(target_os = "macos")]
+const MACOS_ERR_SEC_MISSING_ENTITLEMENT: i32 = -34018;
+
 #[cfg(all(test, target_os = "macos"))]
 mod macos_live_tests {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -334,6 +351,16 @@ mod macos_live_tests {
     use security_framework::passwords::{delete_generic_password_options, generic_password};
 
     use super::*;
+
+    #[test]
+    fn macos_keychain_error_classifiers_match_security_framework_codes() {
+        assert!(macos_no_entry(SecurityFrameworkError::from_code(
+            MACOS_ERR_SEC_ITEM_NOT_FOUND
+        )));
+        assert!(macos_missing_entitlement(
+            SecurityFrameworkError::from_code(MACOS_ERR_SEC_MISSING_ENTITLEMENT)
+        ));
+    }
 
     #[test]
     fn protected_keychain_roundtrip_smoke_is_opt_in_and_prints_observed_state() {

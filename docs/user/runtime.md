@@ -275,7 +275,11 @@ This is expected for commands such as:
 - `tentgent model pull <HF_REPO>`
 - `tentgent adapter pull <HF_REPO>`
 
-If you trust your installed or locally built `tentgent` binary, choosing `Always Allow` is reasonable. Rebuilding or relocating an unsigned development binary may cause macOS to ask again.
+If you trust your installed or locally built `tentgent` binary, choosing
+`Always Allow` is reasonable. Rebuilding or relocating an unsigned development
+binary may cause macOS to ask again. Unsigned development binaries may fall back
+to a standard login Keychain entry when macOS rejects the protected Keychain
+entitlement.
 
 To skip Keychain reads for one command, pass a one-shot environment variable:
 
