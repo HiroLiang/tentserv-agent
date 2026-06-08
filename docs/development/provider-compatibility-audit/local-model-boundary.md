@@ -37,7 +37,7 @@ model or explicit `--capability` decides which endpoint family is valid.
 
 | Capability | Native route family | Provider compatibility role |
 | --- | --- | --- |
-| `chat` | `POST /v1/chat` | Native fallback for text chat. `POST /v1/chat/completions` and `POST /v1/messages` are provider-shaped local ingress adapters. |
+| `chat` | `POST /v1/chat` | Native fallback for text chat. `POST /v1/chat/completions`, `POST /v1/messages`, and Gemini `POST /v1beta/models/{operation}` are provider-shaped local ingress adapters. |
 | `embedding` | `POST /v1/embeddings` | Native fallback for embedding models. `POST /v1/embeddings` also accepts OpenAI-shaped embedding requests through the local ingress adapter. |
 | `rerank` | `POST /v1/rerank` | Native-only; no provider-compatible route today. |
 | `vision-chat` | `POST /v1/vision/chat` | Native fallback for local single-image vision chat. |
@@ -115,6 +115,7 @@ Current local ingress coverage:
 | --- | --- | --- | --- |
 | OpenAI chat completions | `POST /v1/chat/completions` | `POST /v1/chat` or `POST /v1/chat/stream` | Text-only compatibility. The request `model` is accepted but ignored because the server is already bound to one local model. |
 | Claude messages | `POST /v1/messages` | `POST /v1/chat` or `POST /v1/chat/stream` | Text-only compatibility. The request `model` is accepted but ignored because the server is already bound to one local model. |
+| Gemini generateContent | `POST /v1beta/models/{operation}` | `POST /v1/chat` or `POST /v1/chat/stream` | Text-only compatibility. Path `{operation}` selects `generateContent` or `streamGenerateContent`; the path model is accepted but ignored because the server is already bound to one local model. |
 | OpenAI embeddings | `POST /v1/embeddings` | `POST /v1/embeddings` | OpenAI ingress is selected by a string `model` or OpenAI embedding fields. Accepts `input` plus optional `encoding_format: "float"`. The request `model` is accepted but ignored because the server is already bound to one local model. |
 | OpenAI image generation | `POST /v1/images/generations` | `POST /v1/images/generations` | OpenAI ingress is selected when `output_path` is absent or OpenAI image fields are present. The adapter accepts `model`, `prompt`, and optional `size`, writes to a runtime-owned output path, and returns an OpenAI-style `b64_json` envelope. |
 
@@ -140,6 +141,14 @@ wraps native local responses into Claude-shaped message or SSE events. Claude
 image blocks, `tool_use`, `tool_result`, `tools`, and `tool_choice` fail before
 the Python runtime is called.
 
+Gemini local generateContent accepts text-only Gemini message fields that can
+map to native local chat: `contents`, `systemInstruction`,
+`generationConfig.maxOutputTokens`, `generationConfig.temperature`, and the
+`:streamGenerateContent` operation. The adapter translates the request into
+native local chat and wraps native local responses into Gemini-shaped JSON or
+SSE data frames. Gemini `inlineData`, `tools`, `toolConfig`, and unsupported
+operation suffixes fail before the Python runtime is called.
+
 OpenAI local embeddings accept `input` as a string or string array and accept
 `encoding_format: "float"`. The local adapter rejects `dimensions`,
 `encoding_format: "base64"`, `user`, unsupported top-level fields, token-array
@@ -164,8 +173,9 @@ Use local model-bound fixtures for:
 - native `/v1/chat`, `/v1/embeddings`, `/v1/rerank`, and `/v1/vision/chat`
   fallback behavior
 - implemented provider-shaped local ingress adapters such as OpenAI
-  `/v1/chat/completions`, Claude `/v1/messages`, OpenAI `/v1/embeddings`, and
-  OpenAI `/v1/images/generations`
+  `/v1/chat/completions`, Claude `/v1/messages`, Gemini
+  `/v1beta/models/{operation}`, OpenAI `/v1/embeddings`, and OpenAI
+  `/v1/images/generations`
 - capability gate behavior such as `400 unsupported_provider_capability`
 - adapter validation against local chat models
 - lower-level runtime streaming contracts
@@ -173,8 +183,6 @@ Use local model-bound fixtures for:
 Do not use local model-bound fixtures for:
 
 - direct cloud provider behavior
-- provider-shaped route execution that is not implemented on the local server
-  yet, such as Gemini `/v1beta/models/{operation}`
 - unimplemented provider-compatible media behavior such as OpenAI audio,
   Claude/Anthropic media routes, and Gemini media routes
 

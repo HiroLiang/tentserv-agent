@@ -49,13 +49,16 @@ provider-compatible routes.
   provider-shaped routes generally ignore caller-supplied `model` fields and
   use the bound model instead.
 - Direct cloud provider servers accept broader image content for chat than the
-  daemon compatibility routes, but streaming currently uses generic Tentgent
-  `delta` and `done` SSE events.
+  daemon compatibility routes. Streaming shape remains provider-specific:
+  OpenAI uses generic Tentgent `delta` and `done` SSE events, Gemini returns
+  Gemini-shaped SSE data frames, and Claude direct cloud messages remain
+  non-streaming.
 - Local model-bound servers launched with `tentgent server run <model-ref>` use
   native Tentgent request bodies at the Python runtime boundary. Implemented
   provider-shaped local ingress routes, such as OpenAI `/v1/chat/completions`,
-  Claude `/v1/messages`, and OpenAI `/v1/embeddings`, translate at the Rust
-  proxy edge and can be counted as local provider compatibility.
+  Claude `/v1/messages`, Gemini `/v1beta/models/{operation}`, and OpenAI
+  `/v1/embeddings`, translate at the Rust proxy edge and can be counted as
+  local provider compatibility.
 - Local model-bound servers mount implemented provider-shaped ingress adapters
   for this slice. Provider paths that collide with native local paths need
   request-shape disambiguation before they can be mounted safely.
@@ -72,8 +75,8 @@ daemon compatibility wording is no longer chat-only.
 
 Remaining refinements for later docs or fixtures:
 
-- Mark direct cloud provider streaming as partial because it uses generic
-  Tentgent `delta`/`done` SSE events rather than provider-native chunk shapes.
+- Mark direct cloud OpenAI streaming as partial because it uses generic Tentgent
+  `delta`/`done` SSE events rather than OpenAI chunk shapes.
 - Clarify where embedding responses are provider-shaped. OpenAI-compatible
   embedding requests now return OpenAI-style lists through daemon OpenAI cloud
   routing, direct OpenAI cloud servers, and local OpenAI embedding ingress,
@@ -105,9 +108,8 @@ Remaining refinements for later docs or fixtures:
   behavior, streaming shape where implemented, direct cloud base64 image block
   translation, and rejected tool/image/tool-result blocks.
 - `[test] Add Gemini compatible endpoint fixtures`
-  Cover daemon Gemini non-streaming, streaming, text-only constraints, and
-  rejected tools/non-text parts, then decide direct cloud streaming and tool
-  behavior.
+  Cover daemon and local model-bound Gemini non-streaming, streaming, text-only
+  constraints, direct cloud request mapping, and rejected tools/non-text parts.
 - `[docs] Add provider-compatible curl and SDK examples`
   Use the final matrix and this audit to avoid implying full provider parity.
 

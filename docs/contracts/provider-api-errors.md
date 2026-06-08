@@ -35,7 +35,7 @@ human-readable and may become more specific over time.
 | Code | Meaning | Examples |
 | --- | --- | --- |
 | `unsupported_provider_field` | The upstream provider API has a known field, but Tentgent does not support that field in this compatibility route yet. | `tools`, `tool_choice`, non-text chat `response_format`, image `response_format`, image `n`, `stream_options.include_usage`, `web_search_options`, embedding `dimensions`, embedding `encoding_format: "base64"`, `stream=true` on direct cloud Claude messages. |
-| `unsupported_provider_content` | A provider-shaped message, content part, or block uses a content type that this route cannot translate yet. | OpenAI daemon `image_url` parts, Claude daemon/local `image`, `tool_use`, and `tool_result` blocks, Gemini daemon non-text parts, unknown direct cloud multimodal part shapes. |
+| `unsupported_provider_content` | A provider-shaped message, content part, or block uses a content type that this route cannot translate yet. | OpenAI daemon `image_url` parts, Claude daemon/local `image`, `tool_use`, and `tool_result` blocks, Gemini daemon/local non-text parts, unknown direct cloud multimodal part shapes. |
 | `unsupported_provider_operation` | A provider-shaped path operation is outside the supported endpoint family. | Gemini operations other than `generateContent` or `streamGenerateContent`. |
 | `unsupported_provider_capability` | The selected provider, endpoint family, or bound local model capability cannot run the requested provider-compatible route. | Anthropic embeddings, Anthropic image generation, OpenAI local embeddings requested from a chat-bound local server, OpenAI local image generation requested from a non-image-generation local server. |
 
