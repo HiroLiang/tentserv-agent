@@ -27,6 +27,7 @@ use crate::{
     transport::rest::{build_router, security::DaemonSecurityConfig, state::RestState},
 };
 
+mod claude_messages_compat;
 mod openai_chat_compat;
 mod openai_embeddings_compat;
 mod openai_image_generation_compat;

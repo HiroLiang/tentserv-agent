@@ -185,8 +185,8 @@ pub async fn handle_cloud_server_runtime(command: CloudServerRuntimeCommand) -> 
         "gemini" | "google" => Provider::Gemini,
         other => return Err(miette!("unsupported cloud provider `{other}`")),
     };
-    tentgent_daemon::cloud_server::run_cloud_server_runtime(
-        tentgent_daemon::cloud_server::CloudServerRuntimeConfig {
+    tentgent_daemon::server::cloud::run_cloud_server_runtime(
+        tentgent_daemon::server::cloud::CloudServerRuntimeConfig {
             server_ref: command.server_ref,
             provider,
             provider_model: command.provider_model,
@@ -202,8 +202,8 @@ pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> 
     let _ = command.lazy_load;
     let capability = ServerCapability::parse(&command.capability)
         .map_err(|err| miette!("unsupported local server capability: {err}"))?;
-    tentgent_daemon::local_server::run_local_server_runtime(
-        tentgent_daemon::local_server::LocalServerRuntimeConfig {
+    tentgent_daemon::server::local::run_local_server_runtime(
+        tentgent_daemon::server::local::LocalServerRuntimeConfig {
             server_ref: command.server_ref,
             capability,
             model_ref: command.model_ref,

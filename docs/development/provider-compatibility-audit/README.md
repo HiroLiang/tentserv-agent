@@ -26,8 +26,8 @@ matrix, unsupported-field semantics, and conformance tests.
 Audited surfaces:
 
 - daemon provider-compatible routes from `src/tentgent-daemon/src/transport/rest/router.rs`
-- direct cloud provider server routes from `src/tentgent-daemon/src/cloud_server.rs`
-- local provider-shaped ingress adapters from `src/tentgent-daemon/src/local_server.rs`
+- direct cloud provider server routes from `src/tentgent-daemon/src/server/cloud/`
+- local provider-shaped ingress adapters from `src/tentgent-daemon/src/server/local/`
 - provider request mapping in `src/tentgent-kernel/src/features/cloud/infra.rs`
 
 Native-only local routes such as `/v1/rerank`, `/v1/vision/chat`, audio jobs,
@@ -53,9 +53,9 @@ provider-compatible routes.
   `delta` and `done` SSE events.
 - Local model-bound servers launched with `tentgent server run <model-ref>` use
   native Tentgent request bodies at the Python runtime boundary. Implemented
-  provider-shaped local ingress routes, such as OpenAI `/v1/chat/completions`
-  and OpenAI `/v1/embeddings`, translate at the Rust proxy edge and can be
-  counted as local provider compatibility.
+  provider-shaped local ingress routes, such as OpenAI `/v1/chat/completions`,
+  Claude `/v1/messages`, and OpenAI `/v1/embeddings`, translate at the Rust
+  proxy edge and can be counted as local provider compatibility.
 - Local model-bound servers mount implemented provider-shaped ingress adapters
   for this slice. Provider paths that collide with native local paths need
   request-shape disambiguation before they can be mounted safely.
@@ -101,8 +101,9 @@ Remaining refinements for later docs or fixtures:
   mapping, rejected image fields, local capability gates, and `gpt-image-*`
   `response_format` behavior.
 - `[test] Add Claude messages compatibility fixtures`
-  Cover daemon Claude-shaped non-streaming and streaming behavior plus rejected
-  tool/image blocks, then decide direct cloud ignored-field behavior.
+  Cover daemon, local model-bound, and direct cloud Claude-shaped text message
+  behavior, streaming shape where implemented, direct cloud base64 image block
+  translation, and rejected tool/image/tool-result blocks.
 - `[test] Add Gemini compatible endpoint fixtures`
   Cover daemon Gemini non-streaming, streaming, text-only constraints, and
   rejected tools/non-text parts, then decide direct cloud streaming and tool

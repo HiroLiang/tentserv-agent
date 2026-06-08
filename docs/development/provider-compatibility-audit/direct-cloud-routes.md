@@ -13,12 +13,12 @@ model-bound servers are native Tentgent servers and are covered in
 
 | Route | Handler | Provider shape | Notes |
 | --- | --- | --- | --- |
-| `POST /v1/chat` | `cloud_server.rs` | Tentgent native chat shape over a cloud provider | Bound model; returns native `text` response. |
-| `POST /v1/chat/completions` | `cloud_server.rs` | OpenAI chat completions | Supports text and `image_url` content parts. |
-| `POST /v1/messages` | `cloud_server.rs` | Claude/Anthropic messages | Supports text blocks and base64 image blocks; non-streaming only. |
-| `POST /v1beta/models/{operation}` | `cloud_server.rs` | Gemini generateContent/streamGenerateContent | Supports text and inline image data. |
-| `POST /v1/embeddings` | `cloud_server.rs` | Embedding request shape over bound provider model | OpenAI-bound servers return OpenAI-style embedding lists; other providers currently return Tentgent embedding shape. |
-| `POST /v1/images/generations` | `cloud_server.rs` | Image generation over bound provider model | Request omits `model`; server uses bound provider model. |
+| `POST /v1/chat` | `server/cloud/native_chat.rs` | Tentgent native chat shape over a cloud provider | Bound model; returns native `text` response. |
+| `POST /v1/chat/completions` | `server/cloud/openai_chat.rs` | OpenAI chat completions | Supports text and `image_url` content parts. |
+| `POST /v1/messages` | `server/cloud/claude_messages.rs` | Claude/Anthropic messages | Supports text blocks and base64 image blocks; non-streaming only. |
+| `POST /v1beta/models/{operation}` | `server/cloud/gemini_generate.rs` | Gemini generateContent/streamGenerateContent | Supports text and inline image data. |
+| `POST /v1/embeddings` | `server/cloud/embeddings.rs` | Embedding request shape over bound provider model | OpenAI-bound servers return OpenAI-style embedding lists; other providers currently return Tentgent embedding shape. |
+| `POST /v1/images/generations` | `server/cloud/images.rs` | Image generation over bound provider model | Request omits `model`; server uses bound provider model. |
 
 ## POST `/v1/chat`
 
@@ -178,12 +178,15 @@ Model-specific notes:
 Required:
 
 - `messages`
+- `max_tokens`
 
 Optional:
 
 - `system`
-- `max_tokens`
 - `temperature`
+- `stream`, only when unset or `false`
+- caller `model`, ignored because the server is already bound to one provider
+  model
 
 Defaults:
 
@@ -201,11 +204,14 @@ Explicitly rejected:
 - unsupported Claude content block types
 - missing image source
 - non-base64 image sources
+- `stream: true`
+- `tools`, `tool_choice`
+- roles outside `system`, `user`, and `assistant`
 
 Currently ignored:
 
 - Unknown top-level fields.
-- `stream`, `model`, `tools`, and `tool_choice`.
+- caller-supplied `model`.
 
 Example request:
 
@@ -230,6 +236,7 @@ Example response:
   "content": [{"type": "text", "text": "..."}],
   "model": "claude-3-5-sonnet-latest",
   "stop_reason": "end_turn",
+  "stop_sequence": null,
   "usage": null
 }
 ```
@@ -237,9 +244,9 @@ Example response:
 Model-specific notes:
 
 - Direct cloud Claude messages do not expose a streaming response path today,
-  even if `stream` is sent.
-- `system` is a string here, unlike the daemon route where `system` uses the
-  broader `ClaudeContent` parser.
+  so `stream: true` is rejected.
+- `system` accepts a string or Claude text blocks. Non-text system blocks are
+  rejected before cloud dispatch.
 
 ## POST `/v1beta/models/{operation}`
 

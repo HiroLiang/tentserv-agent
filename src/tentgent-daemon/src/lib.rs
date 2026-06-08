@@ -2,12 +2,11 @@
 
 pub mod app;
 pub mod bootstrap;
-pub mod cloud_server;
 pub mod handlers;
 pub mod kernel;
-pub mod local_server;
 mod provider_compat;
 pub mod runtime;
+pub mod server;
 mod time;
 pub mod transport;
 

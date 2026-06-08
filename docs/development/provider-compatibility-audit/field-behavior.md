@@ -8,16 +8,16 @@ profile work.
 
 | Field | Current behavior | Notes |
 | --- | --- | --- |
-| `model` | Required on daemon provider-shaped chat and image routes; accepted by daemon embeddings. Ignored by direct cloud provider servers and local model-bound OpenAI chat, embedding, and image-generation ingress. | Direct cloud servers use the bound provider model from `tentgent server run <provider>:<model>`. Local model-bound servers use the bound local model from `tentgent server run <model-ref>`. |
+| `model` | Required on daemon provider-shaped chat and image routes; accepted by daemon embeddings. Ignored by direct cloud provider servers and local model-bound OpenAI chat, Claude messages, embedding, and image-generation ingress. | Direct cloud servers use the bound provider model from `tentgent server run <provider>:<model>`. Local model-bound servers use the bound local model from `tentgent server run <model-ref>`. |
 | `model_ref` | Native Tentgent model selector. Accepted by daemon embeddings. Omitted from local model-bound server requests because the server is already bound to one model. | Local model routes use `model_ref`; provider-shaped chat routes use `model`. |
 | `messages` | Required by OpenAI/Claude-shaped chat routes. | Daemon and local OpenAI routes are text-first. Direct cloud routes accept more image content. |
 | `contents` | Required by Gemini-shaped chat routes. | Daemon route accepts text parts only. Direct cloud route accepts text and `inlineData`. |
-| `stream` | Supported by daemon OpenAI/Claude chat and local OpenAI chat ingress. Direct cloud OpenAI uses generic Tentgent SSE; direct cloud Claude ignores it. | Gemini uses route suffix `:streamGenerateContent`, not a body field. |
-| `max_tokens` | Forwarded for OpenAI/Claude-shaped chat and native cloud chat. | No route-level model profile or clamp exists yet. |
+| `stream` | Supported by daemon OpenAI/Claude chat, local OpenAI chat ingress, and local Claude messages ingress. Direct cloud OpenAI uses generic Tentgent SSE; direct cloud Claude rejects `stream: true`. | Gemini uses route suffix `:streamGenerateContent`, not a body field. |
+| `max_tokens` | Forwarded for OpenAI/Claude-shaped chat and native cloud chat. Required by Claude-shaped daemon, local, and direct cloud message routes. | No route-level model profile or clamp exists yet. |
 | `max_completion_tokens` | Accepted by OpenAI-shaped chat and treated as fallback when `max_tokens` is absent. | Only OpenAI-shaped routes read this field. |
 | `maxOutputTokens` | Accepted through Gemini `generationConfig`. | No route-level model profile or clamp exists yet. |
 | `temperature` | Forwarded for chat routes when present. | Provider/runtime/model limits may still apply. |
-| `tools` / function calling | Explicitly rejected on daemon OpenAI/Claude/Gemini routes and direct cloud provider-shaped chat routes. | Stable known-field rejection uses `unsupported_provider_field`. |
+| `tools` / function calling | Explicitly rejected on daemon OpenAI/Claude/Gemini routes, local OpenAI/Claude chat ingress, and direct cloud provider-shaped chat routes. | Stable known-field rejection uses `unsupported_provider_field`. Claude `tool_use` and `tool_result` content blocks use `unsupported_provider_content` until tool-call domain support exists. |
 | `response_format` | OpenAI chat accepts `{ "type": "text" }`; structured chat response formats are rejected. Provider-compatible image generation rejects caller-supplied `response_format`. | Cloud client internally omits it for `gpt-image-*` and sends `b64_json` for older OpenAI image models. |
 | `n` | OpenAI chat accepts `1` and rejects values greater than `1`; provider-compatible image generation rejects caller-supplied `n`. | Image generation is fixed to one generated image per request today. |
 | `dimensions` | Rejected by daemon, direct cloud, and local OpenAI-compatible embeddings. | No dimension override is forwarded today. |
@@ -96,6 +96,9 @@ strict yet.
 - Local model-bound OpenAI chat ingress returns OpenAI-shaped non-streaming and
   streaming response shapes while forwarding native Tentgent chat bodies to the
   Python runtime.
+- Local model-bound Claude messages ingress returns Claude-shaped non-streaming
+  and streaming response shapes while forwarding native Tentgent chat bodies to
+  the Python runtime.
 - Local model-bound OpenAI embeddings ingress returns OpenAI-shaped embedding
   list responses while forwarding native Tentgent embedding bodies to the
   Python runtime.

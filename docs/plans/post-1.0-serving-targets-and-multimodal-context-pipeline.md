@@ -54,6 +54,20 @@ model:
 This makes a local cluster feel like one assistant endpoint while keeping each
 model focused on the capability it can actually perform.
 
+## Tool-Use Orchestration
+
+Provider-compatible tool use should also fit this serving-target model after
+`1.0.0`. OpenAI tool calls, Claude `tool_use` / `tool_result` blocks, and
+Gemini function calls should be translated into Tentgent-owned tool-call intent
+types before any backend sees them.
+
+The future target should decide whether a tool request is handled by an
+external caller loop, a local capability model, or a configured Tentgent tool
+adapter. Tool-call and tool-result messages should remain provider-shaped only
+at the ingress and response edges; the internal pipeline should keep native
+tool-call records so chat, retrieval, media parsing, and capability routing can
+share one contract.
+
 ## Design Constraints To Preserve Before 1.0
 
 - Keep native request intent types separate from provider-shaped payloads so
@@ -67,6 +81,8 @@ model focused on the capability it can actually perform.
   more than one model loaded for one serving target.
 - Keep attachment handling separate from chat text parsing so future file and
   media processing can run before chat dispatch.
+- Keep provider-shaped tool calls separate from native tool-call intent records
+  so OpenAI, Claude, and Gemini tool loops can share one orchestration layer.
 - Keep proof records tied to the model, backend, platform, and capability tuple,
   because a serving target is only as stable as its weakest configured
   capability.
@@ -75,6 +91,7 @@ model focused on the capability it can actually perform.
 
 - No automatic local multimodal context assembly.
 - No multi-model serving target configuration surface.
+- No provider-compatible tool-call orchestration.
 - No promise that provider-compatible multimodal requests behave like local
   native multimodal pipelines.
 - No implicit fallback to another model when a configured capability is missing.
@@ -87,4 +104,5 @@ model focused on the capability it can actually perform.
 4. Add explicit attachment records and bounded context artifacts.
 5. Add vision/audio/video pre-processing into chat context.
 6. Add resource gating for multi-model runtime plans.
-7. Decide which provider-compatible routes can safely use the pipeline.
+7. Add native tool-call intent records and provider-shaped tool event mapping.
+8. Decide which provider-compatible routes can safely use the pipeline.
