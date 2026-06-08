@@ -13,12 +13,12 @@ model-bound servers are native Tentgent servers and are covered in
 
 | Route | Handler | Provider shape | Notes |
 | --- | --- | --- | --- |
-| `POST /v1/chat` | `cloud_server.rs` | Tentgent native chat shape over a cloud provider | Bound model; returns native `text` response. |
-| `POST /v1/chat/completions` | `cloud_server.rs` | OpenAI chat completions | Supports text and `image_url` content parts. |
-| `POST /v1/messages` | `cloud_server.rs` | Claude/Anthropic messages | Supports text blocks and base64 image blocks; non-streaming only. |
-| `POST /v1beta/models/{operation}` | `cloud_server.rs` | Gemini generateContent/streamGenerateContent | Supports text and inline image data. |
-| `POST /v1/embeddings` | `cloud_server.rs` | Embedding request shape over bound provider model | OpenAI-bound servers return OpenAI-style embedding lists; other providers currently return Tentgent embedding shape. |
-| `POST /v1/images/generations` | `cloud_server.rs` | Image generation over bound provider model | Request omits `model`; server uses bound provider model. |
+| `POST /v1/chat` | `server/cloud/native_chat.rs` | Tentgent native chat shape over a cloud provider | Bound model; returns native `text` response. |
+| `POST /v1/chat/completions` | `server/cloud/openai_chat.rs` | OpenAI chat completions | Supports text and `image_url` content parts. |
+| `POST /v1/messages` | `server/cloud/claude_messages.rs` | Claude/Anthropic messages | Supports text blocks and base64 image blocks; non-streaming only. |
+| `POST /v1beta/models/{operation}` | `server/cloud/gemini_generate.rs` | Gemini generateContent/streamGenerateContent | Supports text and inline image data. |
+| `POST /v1/embeddings` | `server/cloud/embeddings.rs` | Embedding request shape over bound provider model | OpenAI-bound servers return OpenAI-style embedding lists; other providers currently return Tentgent embedding shape. |
+| `POST /v1/images/generations` | `server/cloud/images.rs` | Image generation over bound provider model | Request omits `model`; server uses bound provider model. |
 
 ## POST `/v1/chat`
 

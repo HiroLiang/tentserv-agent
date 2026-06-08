@@ -26,8 +26,8 @@ matrix, unsupported-field semantics, and conformance tests.
 Audited surfaces:
 
 - daemon provider-compatible routes from `src/tentgent-daemon/src/transport/rest/router.rs`
-- direct cloud provider server routes from `src/tentgent-daemon/src/cloud_server.rs`
-- local provider-shaped ingress adapters from `src/tentgent-daemon/src/local_server.rs`
+- direct cloud provider server routes from `src/tentgent-daemon/src/server/cloud/`
+- local provider-shaped ingress adapters from `src/tentgent-daemon/src/server/local/`
 - provider request mapping in `src/tentgent-kernel/src/features/cloud/infra.rs`
 
 Native-only local routes such as `/v1/rerank`, `/v1/vision/chat`, audio jobs,
