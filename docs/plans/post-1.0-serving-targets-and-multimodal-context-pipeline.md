@@ -54,6 +54,24 @@ model:
 This makes a local cluster feel like one assistant endpoint while keeping each
 model focused on the capability it can actually perform.
 
+## Cloud Rerank Direction
+
+Provider-compatible rerank should remain unsupported before `1.0.0`. OpenAI,
+Claude/Anthropic, and the Gemini Developer API do not expose a stable rerank
+endpoint family that Tentgent can mirror as part of the current compatibility
+contract.
+
+Future cloud rerank support should be added as an explicit capability and
+adapter family instead of being hidden behind chat, embeddings, or Gemini
+`generateContent`. If Tentgent adopts a ranking API such as Google Vertex AI
+Search ranking, that work should define its own provider identifier, request
+and response contract, auth requirements, capability metadata, runtime profile,
+and verification fixtures.
+
+Native `/v1/rerank` remains the local Tentgent-shaped fallback until that
+adapter exists. Provider-shaped rerank attempts should fail predictably rather
+than being partially interpreted as native rerank requests.
+
 ## Tool-Use Orchestration
 
 Provider-compatible tool use should also fit this serving-target model after

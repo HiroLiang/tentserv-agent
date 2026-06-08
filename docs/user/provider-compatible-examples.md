@@ -344,3 +344,26 @@ Expected stable error code:
   "error": "unsupported_provider_capability"
 }
 ```
+
+Provider-compatible rerank is not implemented. Native `/v1/rerank` uses
+`model_ref`, not provider `model` selectors:
+
+```bash
+curl -sS "$TENTGENT_BASE_URL/v1/rerank" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "provider": "openai",
+    "model": "text-rerank-001",
+    "query": "refund policy",
+    "documents": ["refunds are processed in 3 days"],
+    "top_n": 1
+  }'
+```
+
+Expected stable error code:
+
+```json
+{
+  "error": "unsupported_provider_capability"
+}
+```

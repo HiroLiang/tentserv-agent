@@ -32,6 +32,7 @@ mod gemini_compat;
 mod openai_chat_compat;
 mod openai_embeddings_compat;
 mod openai_image_generation_compat;
+mod provider_rerank_compat;
 
 #[tokio::test]
 async fn healthz_returns_service_identity() {
