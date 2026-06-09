@@ -546,21 +546,36 @@ fn claude_messages_rejects_unsupported_local_tools_and_blocks() {
     assert_eq!(error.status, StatusCode::BAD_REQUEST);
     assert_eq!(error.code, "unsupported_provider_field");
 
-    let block: LocalClaudeMessagesRequest = serde_json::from_value(json!({
-        "model": "claude-sonnet-4-5",
-        "max_tokens": 8,
-        "messages": [{
-            "role": "user",
-            "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]
-        }]
-    }))
-    .expect("request");
+    for (label, content) in [
+        (
+            "image",
+            json!([{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AA=="}}]),
+        ),
+        (
+            "tool-use",
+            json!([{"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {}}]),
+        ),
+        (
+            "tool-result",
+            json!([{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]),
+        ),
+    ] {
+        let block: LocalClaudeMessagesRequest = serde_json::from_value(json!({
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 8,
+            "messages": [{
+                "role": "user",
+                "content": content
+            }]
+        }))
+        .expect(label);
 
-    let error = block
-        .into_native_chat_request()
-        .expect_err("tool result unsupported");
-    assert_eq!(error.status, StatusCode::BAD_REQUEST);
-    assert_eq!(error.code, "unsupported_provider_content");
+        let error = block
+            .into_native_chat_request()
+            .expect_err("block unsupported");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_content");
+    }
 }
 
 #[tokio::test]

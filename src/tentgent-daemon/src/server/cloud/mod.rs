@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use axum::{
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     routing::{get, post},
     Json, Router,
 };
@@ -26,6 +26,8 @@ use gemini_generate::gemini_generate_content;
 use images::images;
 use native_chat::chat;
 use openai_chat::openai_chat;
+
+use crate::transport::rest::limits::media_upload_body_limit_bytes;
 
 #[derive(Debug, Clone)]
 pub struct CloudServerRuntimeConfig {
@@ -63,6 +65,7 @@ pub async fn run_cloud_server_runtime(config: CloudServerRuntimeConfig) -> miett
         .route("/v1beta/models/{*operation}", post(gemini_generate_content))
         .route("/v1/embeddings", post(embeddings))
         .route("/v1/images/generations", post(images))
+        .layer(DefaultBodyLimit::max(media_upload_body_limit_bytes()))
         .with_state(state);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
