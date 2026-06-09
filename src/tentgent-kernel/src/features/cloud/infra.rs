@@ -367,6 +367,27 @@ fn cloud_image_generation_request(
                 .map_err(build_error)
         }
         Provider::Gemini => {
+            if gemini_image_model_uses_generate_content(&request.model) {
+                let url = gemini_model_url_version(
+                    &endpoints.gemini_base_url,
+                    "v1",
+                    &request.model,
+                    "generateContent",
+                    secret,
+                )?;
+                return client
+                    .request(Method::POST, url)
+                    .json(&gemini_image_generation_body(request))
+                    .build()
+                    .map_err(build_error);
+            }
+            if !gemini_imagen_model_uses_predict(&request.model) {
+                return Err(KernelError::UnsupportedTarget(format!(
+                    "Gemini image generation requires a Gemini image model or Imagen model; `{}` is not recognized as image-generation capable",
+                    request.model
+                )));
+            }
+
             let url = gemini_model_url(
                 &endpoints.gemini_base_url,
                 &request.model,
@@ -546,6 +567,14 @@ fn gemini_chat_body(request: &CloudChatRequest) -> Value {
         body["generationConfig"] = Value::Object(generation_config);
     }
     body
+}
+
+fn gemini_image_generation_body(request: &CloudImageGenerationRequest) -> Value {
+    json!({
+        "contents": [{
+            "parts": [{"text": request.prompt}]
+        }]
+    })
 }
 
 fn gemini_parts(parts: &[CloudChatContentPart]) -> Vec<Value> {
@@ -830,6 +859,7 @@ fn decode_gemini_text_response(value: &Value) -> (String, String) {
 
 fn gemini_image_base64(value: &Value) -> KernelResult<String> {
     let candidates = [
+        gemini_generate_content_image_base64(value),
         value.pointer("/predictions/0/bytesBase64Encoded"),
         value.pointer("/predictions/0/image/bytesBase64Encoded"),
         value.pointer("/predictions/0/image/imageBytes"),
@@ -842,6 +872,26 @@ fn gemini_image_base64(value: &Value) -> KernelResult<String> {
         .find_map(Value::as_str)
         .map(str::to_string)
         .ok_or_else(|| cloud_error("Gemini image response did not contain image bytes"))
+}
+
+fn gemini_generate_content_image_base64(value: &Value) -> Option<&Value> {
+    value
+        .get("candidates")
+        .and_then(Value::as_array)?
+        .iter()
+        .flat_map(|candidate| {
+            candidate
+                .get("content")
+                .and_then(|content| content.get("parts"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        })
+        .find_map(|part| {
+            part.get("inlineData")
+                .or_else(|| part.get("inline_data"))
+                .and_then(|inline_data| inline_data.get("data"))
+        })
 }
 
 fn json_array_to_f32_vec(value: Option<&Value>) -> KernelResult<Vec<f32>> {
@@ -928,10 +978,30 @@ fn gemini_model_path(model: &str) -> String {
 }
 
 fn gemini_model_url(base: &Url, model: &str, operation: &str, secret: &str) -> KernelResult<Url> {
+    gemini_model_url_version(base, "v1beta", model, operation, secret)
+}
+
+fn gemini_model_url_version(
+    base: &Url,
+    version: &str,
+    model: &str,
+    operation: &str,
+    secret: &str,
+) -> KernelResult<Url> {
     let model_path = gemini_model_path(model);
-    let mut url = join_url(base, &format!("/v1beta/{model_path}:{operation}"))?;
+    let mut url = join_url(base, &format!("/{version}/{model_path}:{operation}"))?;
     url.query_pairs_mut().append_pair("key", secret);
     Ok(url)
+}
+
+fn gemini_image_model_uses_generate_content(model: &str) -> bool {
+    let model = model.trim().trim_start_matches("models/");
+    model.starts_with("gemini-") && model.contains("-image")
+}
+
+fn gemini_imagen_model_uses_predict(model: &str) -> bool {
+    let model = model.trim().trim_start_matches("models/");
+    model.starts_with("imagen-")
 }
 
 fn join_url(base: &Url, path: &str) -> KernelResult<Url> {
@@ -1257,6 +1327,116 @@ mod tests {
 
         assert_eq!(value["model"], "dall-e-3");
         assert_eq!(value["response_format"], "b64_json");
+    }
+
+    #[test]
+    fn gemini_image_template_uses_generate_content_for_image_models() {
+        let http = client()
+            .image_generation_request(
+                &CloudImageGenerationRequest {
+                    provider: Provider::Gemini,
+                    model: "gemini-2.5-flash-image".to_string(),
+                    prompt: "red square".to_string(),
+                    size: Some("1024x1024".to_string()),
+                },
+                "gemini-key",
+            )
+            .unwrap();
+        assert_eq!(
+            http.url().as_str(),
+            "https://gemini.test/v1/models/gemini-2.5-flash-image:generateContent?key=gemini-key"
+        );
+        let body = http.body().and_then(|body| body.as_bytes()).unwrap();
+        let value: Value = serde_json::from_slice(body).unwrap();
+
+        assert_eq!(value["contents"][0]["parts"][0]["text"], "red square");
+        assert!(value.get("generationConfig").is_none());
+    }
+
+    #[test]
+    fn gemini_image_template_preserves_imagen_predict_fallback() {
+        let http = client()
+            .image_generation_request(
+                &CloudImageGenerationRequest {
+                    provider: Provider::Gemini,
+                    model: "imagen-4.0-generate-001".to_string(),
+                    prompt: "red square".to_string(),
+                    size: Some("1K".to_string()),
+                },
+                "gemini-key",
+            )
+            .unwrap();
+        assert_eq!(
+            http.url().as_str(),
+            "https://gemini.test/v1beta/models/imagen-4.0-generate-001:predict?key=gemini-key"
+        );
+        let body = http.body().and_then(|body| body.as_bytes()).unwrap();
+        let value: Value = serde_json::from_slice(body).unwrap();
+
+        assert_eq!(value["instances"][0]["prompt"], "red square");
+        assert_eq!(value["parameters"]["sampleCount"], 1);
+        assert_eq!(value["parameters"]["sampleImageSize"], "1K");
+    }
+
+    #[test]
+    fn gemini_image_template_rejects_non_image_models() {
+        let err = client()
+            .image_generation_request(
+                &CloudImageGenerationRequest {
+                    provider: Provider::Gemini,
+                    model: "gemini-2.5-flash".to_string(),
+                    prompt: "red square".to_string(),
+                    size: None,
+                },
+                "gemini-key",
+            )
+            .expect_err("non-image Gemini model rejected");
+
+        let KernelError::UnsupportedTarget(message) = err else {
+            panic!("expected UnsupportedTarget");
+        };
+        assert!(message.contains("Gemini image generation requires"));
+        assert!(message.contains("gemini-2.5-flash"));
+    }
+
+    #[test]
+    fn gemini_image_response_decodes_generate_content_inline_data() {
+        let response = decode_image_generation_response(
+            Provider::Gemini,
+            json!({
+                "candidates": [{
+                    "content": {
+                        "parts": [
+                            {"text": "Here is an image."},
+                            {"inlineData": {"mimeType": "image/png", "data": "AA=="}}
+                        ]
+                    }
+                }]
+            }),
+        )
+        .expect("response");
+
+        assert_eq!(response.b64_json, "AA==");
+        assert_eq!(response.media_type, "image/png");
+    }
+
+    #[test]
+    fn gemini_image_response_decodes_snake_case_generate_content_inline_data() {
+        let response = decode_image_generation_response(
+            Provider::Gemini,
+            json!({
+                "candidates": [{
+                    "content": {
+                        "parts": [
+                            {"inline_data": {"mime_type": "image/png", "data": "AQ=="}}
+                        ]
+                    }
+                }]
+            }),
+        )
+        .expect("response");
+
+        assert_eq!(response.b64_json, "AQ==");
     }
 
     #[test]
