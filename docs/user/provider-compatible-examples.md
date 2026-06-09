@@ -160,8 +160,41 @@ Daemon and local model-bound Claude routes support text-only streaming with
 rejects `stream: true`.
 
 Direct cloud Claude servers accept base64 image blocks for compatible models.
-Daemon and local model-bound Claude routes reject image blocks, tool use, and
-tool results until local tool-call and multimodal adapters are implemented.
+The supported media types are `image/jpeg`, `image/png`, `image/gif`, and
+`image/webp`.
+
+```bash
+tentgent server run claude:claude-sonnet-4-5 \
+  --host 127.0.0.1 \
+  --port 8792
+```
+
+```bash
+curl -sS http://127.0.0.1:8792/v1/messages \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "max_tokens": 128,
+    "messages": [{
+      "role": "user",
+      "content": [
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "AA=="
+          }
+        },
+        {"type": "text", "text": "Describe this image."}
+      ]
+    }]
+  }'
+```
+
+Claude URL image sources and Files API image sources are not implemented in
+Tentgent direct cloud compatibility yet. Daemon and local model-bound Claude
+routes reject image blocks, tool use, and tool results until local tool-call
+and multimodal adapters are implemented.
 
 ## Gemini-Compatible Curl
 

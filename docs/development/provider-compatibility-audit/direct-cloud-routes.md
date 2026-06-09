@@ -204,13 +204,16 @@ Accepted content:
 
 - text content
 - Claude text blocks
-- Claude image blocks with base64 source
+- Claude image blocks with base64 source and `image/jpeg`, `image/png`,
+  `image/gif`, or `image/webp` media type
 
 Explicitly rejected:
 
 - unsupported Claude content block types
 - missing image source
-- non-base64 image sources
+- non-base64 image sources, including URL and Files API sources
+- missing, empty, or unsupported image `media_type`
+- missing, empty, or malformed base64 image `data`
 - `stream: true`
 - `tools`, `tool_choice`
 - roles outside `system`, `user`, and `assistant`
@@ -226,7 +229,20 @@ Example request:
 {
   "system": "Answer briefly.",
   "messages": [
-    {"role": "user", "content": [{"type": "text", "text": "Hello"}]}
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "AA=="
+          }
+        },
+        {"type": "text", "text": "Describe this image."}
+      ]
+    }
   ],
   "max_tokens": 64,
   "temperature": 0.0

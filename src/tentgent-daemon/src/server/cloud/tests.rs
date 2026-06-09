@@ -1,5 +1,7 @@
 use super::{
-    claude_messages::{claude_text_content, ClaudeMessage, ClaudeMessagesRequest},
+    claude_messages::{
+        claude_messages_response_value, claude_text_content, ClaudeMessage, ClaudeMessagesRequest,
+    },
     embeddings::{embedding_response, EmbeddingRequest},
     error::CloudServerError,
     gemini_generate::{
@@ -350,28 +352,35 @@ fn claude_request_accepts_text_blocks_and_system_blocks_for_direct_cloud() {
 
 #[test]
 fn claude_message_accepts_base64_image_blocks_for_direct_cloud() {
-    let message: ClaudeMessage = serde_json::from_value(json!({
+    for (media_type, data) in [
+        ("image/jpeg", "/9j/"),
+        ("image/png", "AA=="),
+        ("image/gif", "R0lGODlh"),
+        ("image/webp", "UklGRg=="),
+    ] {
+        let message: ClaudeMessage = serde_json::from_value(json!({
             "role": "user",
             "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AA=="}},
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}},
                 {"type": "text", "text": "Describe this image."}
             ]
         }))
-        .expect("message");
+        .expect(media_type);
 
-    let message = message.into_cloud().expect("cloud message");
+        let message = message.into_cloud().expect("cloud message");
 
-    assert_eq!(message.role, "user");
-    assert_eq!(
-        message.content,
-        vec![
-            CloudChatContentPart::ImageBase64 {
-                media_type: "image/png".to_string(),
-                data: "AA==".to_string()
-            },
-            CloudChatContentPart::Text("Describe this image.".to_string())
-        ]
-    );
+        assert_eq!(message.role, "user");
+        assert_eq!(
+            message.content,
+            vec![
+                CloudChatContentPart::ImageBase64 {
+                    media_type: media_type.to_string(),
+                    data: data.to_string()
+                },
+                CloudChatContentPart::Text("Describe this image.".to_string())
+            ]
+        );
+    }
 }
 
 #[test]
@@ -401,16 +410,78 @@ fn claude_request_rejects_tool_fields_for_direct_cloud() {
 
 #[test]
 fn claude_message_rejects_unsupported_content_for_direct_cloud() {
-    let message: ClaudeMessage = serde_json::from_value(json!({
+    for (label, content) in [
+        (
+            "url-image",
+            json!([{"type": "image", "source": {"type": "url", "url": "https://example.com/image.png"}}]),
+        ),
+        (
+            "file-image",
+            json!([{"type": "image", "source": {"type": "file", "file_id": "file_123"}}]),
+        ),
+        ("missing-source", json!([{"type": "image"}])),
+        (
+            "missing-media-type",
+            json!([{"type": "image", "source": {"type": "base64", "data": "AA=="}}]),
+        ),
+        (
+            "empty-media-type",
+            json!([{"type": "image", "source": {"type": "base64", "media_type": "", "data": "AA=="}}]),
+        ),
+        (
+            "unsupported-media-type",
+            json!([{"type": "image", "source": {"type": "base64", "media_type": "image/bmp", "data": "AA=="}}]),
+        ),
+        (
+            "missing-data",
+            json!([{"type": "image", "source": {"type": "base64", "media_type": "image/png"}}]),
+        ),
+        (
+            "empty-data",
+            json!([{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": ""}}]),
+        ),
+        (
+            "malformed-base64",
+            json!([{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "not base64!"}}]),
+        ),
+        (
+            "tool-use",
+            json!([{"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {}}]),
+        ),
+        (
+            "tool-result",
+            json!([{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]),
+        ),
+    ] {
+        let message: ClaudeMessage = serde_json::from_value(json!({
             "role": "user",
-            "content": [{"type": "image", "source": {"type": "url", "url": "https://example.com/image.png"}}]
+            "content": content
         }))
-        .expect("message");
+        .expect(label);
 
-    let error = message.into_cloud().expect_err("url image unsupported");
+        let error = message.into_cloud().expect_err(label);
 
-    assert_eq!(error.status, StatusCode::BAD_REQUEST);
-    assert_eq!(error.code, "unsupported_provider_content");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_content");
+    }
+}
+
+#[test]
+fn claude_response_keeps_message_shape_for_direct_cloud() {
+    let body = claude_messages_response_value(
+        "claude-sonnet-4-5",
+        "A small chart is shown.".to_string(),
+        "end_turn".to_string(),
+    );
+
+    assert_eq!(body["type"], "message");
+    assert_eq!(body["role"], "assistant");
+    assert_eq!(body["model"], "claude-sonnet-4-5");
+    assert_eq!(body["content"][0]["type"], "text");
+    assert_eq!(body["content"][0]["text"], "A small chart is shown.");
+    assert_eq!(body["stop_reason"], "end_turn");
+    assert!(body["stop_sequence"].is_null());
+    assert!(body["usage"].is_null());
 }
 
 #[test]

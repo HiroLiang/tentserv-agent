@@ -3,6 +3,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tentgent_kernel::features::cloud::{
@@ -45,17 +46,29 @@ pub(super) async fn claude_messages(
     };
     let client = ReqwestCloudModelClient::new()?;
     let response = client.complete_chat(cloud_request, &state.secret).await?;
-    Ok(Json(json!({
+    Ok(Json(claude_messages_response_value(
+        &state.config.provider_model,
+        response.text,
+        response.finish_reason,
+    ))
+    .into_response())
+}
+
+pub(super) fn claude_messages_response_value(
+    model: &str,
+    text: String,
+    stop_reason: String,
+) -> Value {
+    json!({
         "id": format!("msg-{}", unix_timestamp_seconds()),
         "type": "message",
         "role": "assistant",
-        "content": [{"type": "text", "text": response.text}],
-        "model": state.config.provider_model,
-        "stop_reason": response.finish_reason,
+        "content": [{"type": "text", "text": text}],
+        "model": model,
+        "stop_reason": stop_reason,
         "stop_sequence": null,
         "usage": null
-    }))
-    .into_response())
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,9 +123,9 @@ impl ClaudeMessage {
                         CloudChatContentPart::Text(block.text.unwrap_or_default()),
                     ),
                     "image" => {
-                        let source = block.source.ok_or_else(|| {
-                            CloudServerError::bad_request("Claude image source is missing")
-                        })?;
+                        let source = block
+                            .source
+                            .ok_or_else(|| claude_image_error("Claude image source is missing"))?;
                         if source.kind != "base64" {
                             return Err(CloudServerError::from(
                                 ProviderCompatRejection::unsupported_content(format!(
@@ -121,14 +134,9 @@ impl ClaudeMessage {
                                 )),
                             ));
                         }
-                        Ok(CloudChatContentPart::ImageBase64 {
-                            media_type: source.media_type.ok_or_else(|| {
-                                CloudServerError::bad_request("Claude image media_type is missing")
-                            })?,
-                            data: source.data.ok_or_else(|| {
-                                CloudServerError::bad_request("Claude image data is missing")
-                            })?,
-                        })
+                        let media_type = claude_image_media_type(source.media_type)?;
+                        let data = claude_image_data(source.data)?;
+                        Ok(CloudChatContentPart::ImageBase64 { media_type, data })
                     }
                     other => Err(CloudServerError::from(
                         ProviderCompatRejection::unsupported_content(format!(
@@ -140,6 +148,36 @@ impl ClaudeMessage {
         };
         Ok(CloudChatMessage { role, content })
     }
+}
+
+fn claude_image_media_type(media_type: Option<String>) -> Result<String, CloudServerError> {
+    let media_type = media_type
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| claude_image_error("Claude image media_type is required"))?;
+    if matches!(
+        media_type.as_str(),
+        "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+    ) {
+        Ok(media_type)
+    } else {
+        Err(claude_image_error(format!(
+            "unsupported Claude image media_type `{media_type}`"
+        )))
+    }
+}
+
+fn claude_image_data(data: Option<String>) -> Result<String, CloudServerError> {
+    let data = data
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| claude_image_error("Claude image data is required"))?;
+    STANDARD
+        .decode(data.as_bytes())
+        .map_err(|_| claude_image_error("Claude image data must be valid base64"))?;
+    Ok(data)
+}
+
+fn claude_image_error(message: impl Into<String>) -> CloudServerError {
+    ProviderCompatRejection::unsupported_content(message).into()
 }
 
 impl ClaudeMessagesRequest {
