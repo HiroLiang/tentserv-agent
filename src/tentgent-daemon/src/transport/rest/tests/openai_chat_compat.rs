@@ -116,24 +116,6 @@ async fn openai_chat_completions_rejects_response_format() {
 }
 
 #[tokio::test]
-async fn openai_chat_completions_rejects_audio_and_non_text_modalities() {
-    for (label, field) in [
-        ("audio", r#""audio":{"voice":"alloy","format":"wav"}"#),
-        ("modalities", r#""modalities":["text","audio"]"#),
-    ] {
-        let body = format!(
-            r#"{{"model":"{MODEL_REF}","messages":[{{"role":"user","content":"hi"}}],{field}}}"#
-        );
-        assert_chat_error(
-            &format!("openai-chat-{label}"),
-            &body,
-            "unsupported_provider_field",
-        )
-        .await;
-    }
-}
-
-#[tokio::test]
 async fn openai_chat_completions_rejects_message_tool_calls() {
     assert_chat_error(
         "openai-chat-message-tool-calls",
@@ -159,10 +141,6 @@ async fn openai_chat_completions_rejects_non_text_content_parts_on_daemon_route(
         (
             "image-url",
             r#"[{"type":"image_url","image_url":{"url":"data:image/png;base64,AA=="}}]"#,
-        ),
-        (
-            "input-audio",
-            r#"[{"type":"input_audio","input_audio":{"data":"AA==","format":"wav"}}]"#,
         ),
         ("file", r#"[{"type":"file","file":{"file_id":"file_123"}}]"#),
         (

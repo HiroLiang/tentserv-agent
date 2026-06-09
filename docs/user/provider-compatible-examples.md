@@ -377,6 +377,79 @@ Expected stable error code:
 }
 ```
 
+Direct OpenAI cloud servers support OpenAI audio chat input and output through
+`/v1/chat/completions` when the bound OpenAI model supports audio:
+
+```bash
+tentgent server run openai:gpt-audio \
+  --host 127.0.0.1 \
+  --port 8791
+```
+
+```bash
+curl -sS http://127.0.0.1:8791/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "What is in this recording?"},
+        {"type": "input_audio", "input_audio": {"data": "AA==", "format": "wav"}}
+      ]
+    }],
+    "modalities": ["text", "audio"],
+    "audio": {"voice": "alloy", "format": "wav"}
+  }'
+```
+
+Daemon and local model-bound OpenAI chat routes do not implement OpenAI audio
+input yet:
+
+```bash
+curl -sS "$TENTGENT_BASE_URL/v1/chat/completions" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "gpt-audio",
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Transcribe this."},
+        {"type": "input_audio", "input_audio": {"data": "AA==", "format": "wav"}}
+      ]
+    }]
+  }'
+```
+
+Expected stable error code:
+
+```json
+{
+  "error": "unsupported_provider_content"
+}
+```
+
+Daemon and local model-bound OpenAI chat routes do not implement OpenAI audio
+output yet:
+
+```bash
+curl -sS "$TENTGENT_BASE_URL/v1/chat/completions" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "gpt-audio",
+    "messages": [{"role": "user", "content": "Say hello."}],
+    "modalities": ["text", "audio"],
+    "audio": {"voice": "alloy", "format": "wav"}
+  }'
+```
+
+Expected stable error code:
+
+```json
+{
+  "error": "unsupported_provider_field"
+}
+```
+
 Provider-compatible rerank is not implemented. Native `/v1/rerank` uses
 `model_ref`, not provider `model` selectors:
 

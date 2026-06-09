@@ -144,6 +144,7 @@ impl ReqwestCloudModelClient {
         Ok(CloudChatResponse {
             text: collected,
             finish_reason,
+            audio: None,
         })
     }
 
@@ -409,6 +410,12 @@ fn openai_chat_body(request: &CloudChatRequest, stream: bool) -> Value {
     if let Some(temperature) = request.temperature {
         body["temperature"] = json!(temperature);
     }
+    if let Some(modalities) = request.response_modalities.as_ref() {
+        body["modalities"] = json!(modalities);
+    }
+    if let Some(audio) = request.audio.as_ref() {
+        body["audio"] = audio.clone();
+    }
     body
 }
 
@@ -431,6 +438,9 @@ fn openai_chat_message(message: &CloudChatMessage) -> Value {
             }
             CloudChatContentPart::ImageBase64 { media_type, data } => {
                 json!({"type": "image_url", "image_url": {"url": format!("data:{media_type};base64,{data}")}})
+            }
+            CloudChatContentPart::InputAudio { data, format } => {
+                json!({"type": "input_audio", "input_audio": {"data": data, "format": format}})
             }
         })
         .collect::<Vec<_>>();
@@ -491,6 +501,10 @@ fn anthropic_content(parts: &[CloudChatContentPart]) -> Value {
                     "type": "text",
                     "text": format!("[image_url: {url}]")
                 }),
+                CloudChatContentPart::InputAudio { format, .. } => json!({
+                    "type": "text",
+                    "text": format!("[input_audio: {format}]")
+                }),
             })
             .collect(),
     )
@@ -538,12 +552,15 @@ fn gemini_parts(parts: &[CloudChatContentPart]) -> Vec<Value> {
             CloudChatContentPart::ImageUrl { url } => {
                 json!({"text": format!("[image_url: {url}]")})
             }
+            CloudChatContentPart::InputAudio { format, .. } => {
+                json!({"text": format!("[input_audio: {format}]")})
+            }
         })
         .collect()
 }
 
 fn decode_chat_response(provider: Provider, value: Value) -> KernelResult<CloudChatResponse> {
-    let (text, finish_reason) = match provider {
+    let (text, finish_reason, audio) = match provider {
         Provider::OpenAI => {
             let choice = value
                 .get("choices")
@@ -561,7 +578,11 @@ fn decode_chat_response(provider: Provider, value: Value) -> KernelResult<CloudC
                 .and_then(Value::as_str)
                 .unwrap_or("stop")
                 .to_string();
-            (text, finish)
+            let audio = choice
+                .get("message")
+                .and_then(|message| message.get("audio"))
+                .cloned();
+            (text, finish, audio)
         }
         Provider::Anthropic => {
             let text = value
@@ -580,9 +601,12 @@ fn decode_chat_response(provider: Provider, value: Value) -> KernelResult<CloudC
                 .and_then(Value::as_str)
                 .unwrap_or("end_turn")
                 .to_string();
-            (text, finish)
+            (text, finish, None)
         }
-        Provider::Gemini => decode_gemini_text_response(&value),
+        Provider::Gemini => {
+            let (text, finish) = decode_gemini_text_response(&value);
+            (text, finish, None)
+        }
         Provider::HuggingFace => {
             return Err(unsupported_provider_error(
                 provider,
@@ -593,6 +617,7 @@ fn decode_chat_response(provider: Provider, value: Value) -> KernelResult<CloudC
     Ok(CloudChatResponse {
         text,
         finish_reason,
+        audio,
     })
 }
 
@@ -980,6 +1005,8 @@ mod tests {
             max_tokens: Some(12),
             temperature: Some(0.0),
             stream: false,
+            response_modalities: None,
+            audio: None,
         };
         let http = client().chat_request(&request, "sk-test", false).unwrap();
         let body = http.body().and_then(|body| body.as_bytes()).unwrap();
@@ -988,6 +1015,74 @@ mod tests {
         assert_eq!(value["model"], "gpt-test");
         assert_eq!(value["messages"][0]["content"][0]["type"], "text");
         assert_eq!(value["messages"][0]["content"][1]["type"], "image_url");
+    }
+
+    #[test]
+    fn openai_chat_template_keeps_audio_input_and_output_options() {
+        let request = CloudChatRequest {
+            provider: Provider::OpenAI,
+            model: "gpt-audio".to_string(),
+            messages: vec![CloudChatMessage {
+                role: "user".to_string(),
+                content: vec![
+                    CloudChatContentPart::Text("what is in this recording?".to_string()),
+                    CloudChatContentPart::InputAudio {
+                        data: "AA==".to_string(),
+                        format: "wav".to_string(),
+                    },
+                ],
+            }],
+            max_tokens: Some(12),
+            temperature: Some(0.0),
+            stream: false,
+            response_modalities: Some(vec!["text".to_string(), "audio".to_string()]),
+            audio: Some(json!({"voice": "alloy", "format": "wav"})),
+        };
+        let http = client().chat_request(&request, "sk-test", false).unwrap();
+        let body = http.body().and_then(|body| body.as_bytes()).unwrap();
+        let value: Value = serde_json::from_slice(body).unwrap();
+
+        assert_eq!(value["model"], "gpt-audio");
+        assert_eq!(value["modalities"], json!(["text", "audio"]));
+        assert_eq!(value["audio"], json!({"voice": "alloy", "format": "wav"}));
+        assert_eq!(value["messages"][0]["content"][0]["type"], "text");
+        assert_eq!(value["messages"][0]["content"][1]["type"], "input_audio");
+        assert_eq!(
+            value["messages"][0]["content"][1]["input_audio"],
+            json!({"data": "AA==", "format": "wav"})
+        );
+    }
+
+    #[test]
+    fn openai_chat_response_preserves_audio_output() {
+        let response = decode_chat_response(
+            Provider::OpenAI,
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": "hello",
+                        "audio": {
+                            "id": "audio_123",
+                            "data": "AA==",
+                            "transcript": "hello"
+                        }
+                    },
+                    "finish_reason": "stop"
+                }]
+            }),
+        )
+        .expect("response");
+
+        assert_eq!(response.text, "hello");
+        assert_eq!(response.finish_reason, "stop");
+        assert_eq!(
+            response.audio,
+            Some(json!({
+                "id": "audio_123",
+                "data": "AA==",
+                "transcript": "hello"
+            }))
+        );
     }
 
     #[test]
@@ -1014,6 +1109,8 @@ mod tests {
             max_tokens: Some(12),
             temperature: Some(0.2),
             stream: false,
+            response_modalities: None,
+            audio: None,
         };
         let http = client().chat_request(&request, "sk-ant", false).unwrap();
         let body = http.body().and_then(|body| body.as_bytes()).unwrap();
@@ -1050,6 +1147,8 @@ mod tests {
             max_tokens: Some(12),
             temperature: None,
             stream: false,
+            response_modalities: None,
+            audio: None,
         };
         let http = client()
             .chat_request(&request, "gemini-key", false)

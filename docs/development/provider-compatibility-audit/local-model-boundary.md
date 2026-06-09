@@ -121,7 +121,9 @@ Current local ingress coverage:
 
 OpenAI audio route paths collide with native local media routes. Add their
 local provider-compatible adapters only with request-shape disambiguation, so
-native local media workflows keep their native contracts.
+native local media workflows keep their native contracts. In the current
+contract slice, local OpenAI chat rejects `input_audio`, `audio`, and non-text
+`modalities` before the Python runtime is called.
 
 OpenAI local chat accepts text-only chat fields that can map to native local
 chat: `messages`, `max_tokens`, `max_completion_tokens`, `temperature`,
@@ -130,9 +132,10 @@ chat: `messages`, `max_tokens`, `max_completion_tokens`, `temperature`,
 `n: 1`, and `store: false`.
 
 Known unsupported OpenAI fields fail before the Python runtime is called:
-tools/function calling, structured response formats, audio output, non-text
-content parts including OpenAI `image_url`, multiple choices, logprobs, web
-search, provider-side metadata, cache, safety, and service-tier fields.
+tools/function calling, structured response formats, audio output,
+`input_audio`, non-text content parts including OpenAI `image_url`, multiple
+choices, logprobs, web search, provider-side metadata, cache, safety, and
+service-tier fields.
 
 Claude local messages accept text-only Claude message fields that can map to
 native local chat: `model`, `messages`, `system`, `max_tokens`, `temperature`,

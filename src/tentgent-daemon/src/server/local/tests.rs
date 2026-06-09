@@ -305,6 +305,56 @@ async fn openai_chat_completions_rejects_vision_input_before_local_proxy() {
 }
 
 #[tokio::test]
+async fn openai_chat_completions_rejects_audio_input_before_local_proxy() {
+    let request: LocalOpenAiChatCompletionRequest = serde_json::from_value(json!({
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Transcribe this."},
+                {"type": "input_audio", "input_audio": {"data": "AA==", "format": "wav"}}
+            ]
+        }]
+    }))
+    .expect("request");
+
+    let error = openai_chat_completions_to_upstream(
+        &reqwest::Client::new(),
+        request,
+        "http://127.0.0.1:1",
+        "local-model-ref",
+        ServerCapability::Chat,
+    )
+    .await
+    .expect_err("audio input unsupported");
+
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.code, "unsupported_provider_content");
+}
+
+#[tokio::test]
+async fn openai_chat_completions_rejects_audio_output_before_local_proxy() {
+    let request: LocalOpenAiChatCompletionRequest = serde_json::from_value(json!({
+        "messages": [{"role": "user", "content": "hi"}],
+        "modalities": ["text", "audio"],
+        "audio": {"voice": "alloy", "format": "wav"}
+    }))
+    .expect("request");
+
+    let error = openai_chat_completions_to_upstream(
+        &reqwest::Client::new(),
+        request,
+        "http://127.0.0.1:1",
+        "local-model-ref",
+        ServerCapability::Chat,
+    )
+    .await
+    .expect_err("audio output unsupported");
+
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.code, "unsupported_provider_field");
+}
+
+#[tokio::test]
 async fn claude_messages_maps_local_request_and_response() {
     async fn chat(
         AxumState(captured): AxumState<Arc<Mutex<Option<String>>>>,

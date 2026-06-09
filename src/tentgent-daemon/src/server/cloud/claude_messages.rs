@@ -40,6 +40,8 @@ pub(super) async fn claude_messages(
         max_tokens: Some(request.max_tokens),
         temperature: request.temperature,
         stream: false,
+        response_modalities: None,
+        audio: None,
     };
     let client = ReqwestCloudModelClient::new()?;
     let response = client.complete_chat(cloud_request, &state.secret).await?;

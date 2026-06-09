@@ -349,6 +349,8 @@ fn cloud_chat_request(
         max_tokens: request.request.options.max_tokens,
         temperature: request.request.options.temperature,
         stream,
+        response_modalities: None,
+        audio: None,
     }
 }
 

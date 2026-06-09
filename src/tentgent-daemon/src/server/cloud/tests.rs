@@ -125,22 +125,55 @@ fn openai_message_rejects_malformed_image_url_parts_for_direct_cloud() {
 }
 
 #[test]
-fn openai_message_rejects_unsupported_vision_part_shapes_for_direct_cloud() {
+fn openai_message_accepts_audio_input_for_direct_cloud() {
+    let message: OpenAiMessage = serde_json::from_value(json!({
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Transcribe this."},
+            {"type": "input_audio", "input_audio": {"data": "AA==", "format": "wav"}},
+            {"type": "input_audio", "input_audio": {"data": "AQ==", "format": "mp3"}}
+        ]
+    }))
+    .expect("message");
+
+    let message = message.into_cloud().expect("cloud message");
+
+    assert_eq!(message.role, "user");
+    assert_eq!(
+        message.content,
+        vec![
+            CloudChatContentPart::Text("Transcribe this.".to_string()),
+            CloudChatContentPart::InputAudio {
+                data: "AA==".to_string(),
+                format: "wav".to_string()
+            },
+            CloudChatContentPart::InputAudio {
+                data: "AQ==".to_string(),
+                format: "mp3".to_string()
+            }
+        ]
+    );
+}
+
+#[test]
+fn openai_message_rejects_malformed_audio_input_for_direct_cloud() {
     for (label, part) in [
+        ("missing-payload", json!({"type": "input_audio"})),
         (
-            "input-audio",
-            json!({"type": "input_audio", "input_audio": {"data": "AA==", "format": "wav"}}),
+            "missing-data",
+            json!({"type": "input_audio", "input_audio": {"format": "wav"}}),
         ),
         (
-            "file",
-            json!({"type": "file", "file": {"file_id": "file_123"}}),
+            "empty-data",
+            json!({"type": "input_audio", "input_audio": {"data": " ", "format": "wav"}}),
+        ),
+        (
+            "invalid-format",
+            json!({"type": "input_audio", "input_audio": {"data": "AA==", "format": "flac"}}),
         ),
     ] {
-        let message: OpenAiMessage = serde_json::from_value(json!({
-            "role": "user",
-            "content": [part]
-        }))
-        .expect(label);
+        let message: OpenAiMessage =
+            serde_json::from_value(json!({"role": "user", "content": [part]})).expect(label);
 
         let error = message.into_cloud().expect_err(label);
 
@@ -150,11 +183,85 @@ fn openai_message_rejects_unsupported_vision_part_shapes_for_direct_cloud() {
 }
 
 #[test]
+fn openai_request_accepts_audio_output_options_for_direct_cloud() {
+    let request: OpenAiChatRequest = serde_json::from_value(json!({
+        "messages": [{"role": "user", "content": "hi"}],
+        "modalities": ["text", "audio"],
+        "audio": {"voice": "alloy", "format": "wav"}
+    }))
+    .expect("request");
+
+    request
+        .compat
+        .reject_unsupported_for_direct_cloud_openai(false)
+        .expect("direct cloud audio output supported");
+    assert_eq!(
+        request.compat.response_modalities(),
+        Some(vec!["text".to_string(), "audio".to_string()])
+    );
+    assert_eq!(
+        request.compat.audio(),
+        Some(json!({"voice": "alloy", "format": "wav"}))
+    );
+}
+
+#[test]
+fn openai_request_rejects_unknown_direct_cloud_modalities() {
+    let request: OpenAiChatRequest = serde_json::from_value(json!({
+        "messages": [{"role": "user", "content": "hi"}],
+        "modalities": ["text", "video"]
+    }))
+    .expect("request");
+
+    let error = request
+        .compat
+        .reject_unsupported_for_direct_cloud_openai(false)
+        .expect_err("unknown modality unsupported");
+
+    let (code, _) = error.into_parts();
+    assert_eq!(code, "unsupported_provider_field");
+}
+
+#[test]
+fn openai_request_rejects_direct_cloud_audio_output_streaming() {
+    let request: OpenAiChatRequest = serde_json::from_value(json!({
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": true,
+        "modalities": ["text", "audio"],
+        "audio": {"voice": "alloy", "format": "wav"}
+    }))
+    .expect("request");
+
+    let error = request
+        .compat
+        .reject_unsupported_for_direct_cloud_openai(true)
+        .expect_err("audio output streaming unsupported");
+
+    let (code, _) = error.into_parts();
+    assert_eq!(code, "unsupported_provider_field");
+}
+
+#[test]
+fn openai_message_rejects_file_parts_for_direct_cloud() {
+    let message: OpenAiMessage = serde_json::from_value(json!({
+        "role": "user",
+        "content": [{"type": "file", "file": {"file_id": "file_123"}}]
+    }))
+    .expect("message");
+
+    let error = message.into_cloud().expect_err("file unsupported");
+
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.code, "unsupported_provider_content");
+}
+
+#[test]
 fn openai_response_keeps_chat_completion_shape_for_direct_cloud() {
     let body = openai_chat_response_value(
         "gpt-4o-mini",
         "A cat sitting on a chair.".to_string(),
         "stop".to_string(),
+        None,
     );
 
     assert_eq!(body["object"], "chat.completion");
@@ -166,6 +273,28 @@ fn openai_response_keeps_chat_completion_shape_for_direct_cloud() {
     );
     assert_eq!(body["choices"][0]["finish_reason"], "stop");
     assert!(body["usage"].is_null());
+}
+
+#[test]
+fn openai_response_preserves_audio_output_for_direct_cloud() {
+    let body = openai_chat_response_value(
+        "gpt-audio",
+        "hello".to_string(),
+        "stop".to_string(),
+        Some(json!({
+            "id": "audio_123",
+            "data": "AA==",
+            "transcript": "hello"
+        })),
+    );
+
+    assert_eq!(body["choices"][0]["message"]["content"], "hello");
+    assert_eq!(body["choices"][0]["message"]["audio"]["id"], "audio_123");
+    assert_eq!(body["choices"][0]["message"]["audio"]["data"], "AA==");
+    assert_eq!(
+        body["choices"][0]["message"]["audio"]["transcript"],
+        "hello"
+    );
 }
 
 #[test]

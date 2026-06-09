@@ -134,6 +134,8 @@ pub(super) fn gemini_request_into_cloud(
             .as_ref()
             .and_then(|config| config.temperature),
         stream,
+        response_modalities: None,
+        audio: None,
     })
 }
 

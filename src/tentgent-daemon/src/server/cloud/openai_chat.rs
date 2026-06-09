@@ -5,9 +5,12 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tentgent_kernel::features::cloud::{
-    domain::{CloudChatContentPart, CloudChatMessage, CloudChatRequest},
-    infra::ReqwestCloudModelClient,
+use tentgent_kernel::features::{
+    auth::domain::Provider,
+    cloud::{
+        domain::{CloudChatContentPart, CloudChatMessage, CloudChatRequest},
+        infra::ReqwestCloudModelClient,
+    },
 };
 
 use crate::{
@@ -21,11 +24,22 @@ pub(super) async fn openai_chat(
     State(state): State<CloudServerState>,
     Json(request): Json<OpenAiChatRequest>,
 ) -> Result<Response, CloudServerError> {
-    request.compat.reject_unsupported()?;
     let stream = request.stream.unwrap_or(false);
+    if request.has_openai_audio() && state.config.provider != Provider::OpenAI {
+        return Err(ProviderCompatRejection::unsupported_capability(format!(
+            "{} direct cloud chat does not support OpenAI-compatible audio requests",
+            state.config.provider.display_name()
+        ))
+        .into());
+    }
+    request
+        .compat
+        .reject_unsupported_for_direct_cloud_openai(stream)?;
     let max_tokens = request
         .max_tokens
         .or(request.compat.max_completion_tokens());
+    let response_modalities = request.compat.response_modalities();
+    let audio = request.compat.audio();
     let cloud_request = CloudChatRequest {
         provider: state.config.provider,
         model: state.config.provider_model.clone(),
@@ -37,6 +51,8 @@ pub(super) async fn openai_chat(
         max_tokens,
         temperature: request.temperature,
         stream,
+        response_modalities,
+        audio,
     };
     if stream {
         return stream_response(state, cloud_request).await;
@@ -47,6 +63,7 @@ pub(super) async fn openai_chat(
         &state.config.provider_model,
         response.text,
         response.finish_reason,
+        response.audio,
     ))
     .into_response())
 }
@@ -82,12 +99,38 @@ pub(super) struct OpenAiPart {
     pub(super) kind: String,
     pub(super) text: Option<String>,
     pub(super) image_url: Option<OpenAiImageUrl>,
+    pub(super) input_audio: Option<OpenAiInputAudio>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(super) struct OpenAiImageUrl {
     pub(super) url: Option<String>,
     pub(super) detail: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct OpenAiInputAudio {
+    pub(super) data: Option<String>,
+    pub(super) format: Option<String>,
+}
+
+impl OpenAiChatRequest {
+    fn has_openai_audio(&self) -> bool {
+        self.compat.requests_audio_output()
+            || self
+                .messages
+                .iter()
+                .any(|message| message.content.has_openai_audio())
+    }
+}
+
+impl OpenAiContent {
+    fn has_openai_audio(&self) -> bool {
+        match self {
+            Self::Text(_) => false,
+            Self::Parts(parts) => parts.iter().any(|part| part.kind == "input_audio"),
+        }
+    }
 }
 
 impl OpenAiMessage {
@@ -108,6 +151,13 @@ impl OpenAiMessage {
                         Ok(CloudChatContentPart::ImageUrl {
                             url: openai_image_url(image_url)?,
                         })
+                    }
+                    "input_audio" => {
+                        let input_audio = part.input_audio.ok_or_else(|| {
+                            openai_input_audio_error("input_audio payload is missing")
+                        })?;
+                        let (data, format) = openai_input_audio(input_audio)?;
+                        Ok(CloudChatContentPart::InputAudio { data, format })
                     }
                     other => Err(CloudServerError::from(
                         ProviderCompatRejection::unsupported_content(format!(
@@ -143,11 +193,32 @@ fn openai_image_url_error(message: impl Into<String>) -> CloudServerError {
     ProviderCompatRejection::unsupported_content(message).into()
 }
 
+fn openai_input_audio(input_audio: OpenAiInputAudio) -> Result<(String, String), CloudServerError> {
+    let data = input_audio
+        .data
+        .filter(|data| !data.trim().is_empty())
+        .ok_or_else(|| openai_input_audio_error("input_audio.data is required"))?;
+    let format = input_audio
+        .format
+        .filter(|format| matches!(format.as_str(), "wav" | "mp3"))
+        .ok_or_else(|| openai_input_audio_error("input_audio.format must be wav or mp3"))?;
+    Ok((data, format))
+}
+
+fn openai_input_audio_error(message: impl Into<String>) -> CloudServerError {
+    ProviderCompatRejection::unsupported_content(message).into()
+}
+
 pub(super) fn openai_chat_response_value(
     model: &str,
     text: String,
     finish_reason: String,
+    audio: Option<Value>,
 ) -> Value {
+    let mut message = json!({"role": "assistant", "content": text});
+    if let Some(audio) = audio {
+        message["audio"] = audio;
+    }
     json!({
         "id": format!("chatcmpl-{}", unix_timestamp_seconds()),
         "object": "chat.completion",
@@ -155,7 +226,7 @@ pub(super) fn openai_chat_response_value(
         "model": model,
         "choices": [{
             "index": 0,
-            "message": {"role": "assistant", "content": text},
+            "message": message,
             "finish_reason": finish_reason
         }],
         "usage": null

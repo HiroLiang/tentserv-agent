@@ -132,6 +132,36 @@ impl OpenAiChatCompatFields {
     }
 
     pub(crate) fn reject_unsupported(&self) -> Result<(), ProviderCompatRejection> {
+        self.reject_unsupported_with_audio_mode(OpenAiAudioCompatMode::Reject)
+    }
+
+    pub(crate) fn reject_unsupported_for_direct_cloud_openai(
+        &self,
+        stream: bool,
+    ) -> Result<(), ProviderCompatRejection> {
+        self.reject_unsupported_with_audio_mode(OpenAiAudioCompatMode::AllowDirectCloud { stream })
+    }
+
+    pub(crate) fn requests_audio_output(&self) -> bool {
+        self.audio.is_some()
+            || self
+                .modalities
+                .as_ref()
+                .is_some_and(|modalities| modalities.iter().any(|value| value == "audio"))
+    }
+
+    pub(crate) fn response_modalities(&self) -> Option<Vec<String>> {
+        self.modalities.clone()
+    }
+
+    pub(crate) fn audio(&self) -> Option<Value> {
+        self.audio.clone()
+    }
+
+    fn reject_unsupported_with_audio_mode(
+        &self,
+        audio_mode: OpenAiAudioCompatMode,
+    ) -> Result<(), ProviderCompatRejection> {
         if self.tools.is_some()
             || self.functions.is_some()
             || self
@@ -171,15 +201,35 @@ impl OpenAiChatCompatFields {
                 "OpenAI-compatible stream_options usage and obfuscation output are not supported yet",
             ));
         }
-        if self.audio.is_some()
-            || self
-                .modalities
-                .as_ref()
-                .is_some_and(|modalities| modalities.iter().any(|value| value != "text"))
-        {
-            return Err(ProviderCompatRejection::unsupported_field(
-                "OpenAI-compatible audio output requires kernel multimodal support",
-            ));
+        match audio_mode {
+            OpenAiAudioCompatMode::Reject => {
+                if self.audio.is_some()
+                    || self
+                        .modalities
+                        .as_ref()
+                        .is_some_and(|modalities| modalities.iter().any(|value| value != "text"))
+                {
+                    return Err(ProviderCompatRejection::unsupported_field(
+                        "OpenAI-compatible audio output requires kernel multimodal support",
+                    ));
+                }
+            }
+            OpenAiAudioCompatMode::AllowDirectCloud { stream } => {
+                if self.modalities.as_ref().is_some_and(|modalities| {
+                    modalities
+                        .iter()
+                        .any(|value| !matches!(value.as_str(), "text" | "audio"))
+                }) {
+                    return Err(ProviderCompatRejection::unsupported_field(
+                        "OpenAI-compatible modalities must be text or audio",
+                    ));
+                }
+                if stream && self.requests_audio_output() {
+                    return Err(ProviderCompatRejection::unsupported_field(
+                        "OpenAI-compatible audio output streaming is not supported by Tentgent direct cloud chat yet",
+                    ));
+                }
+            }
         }
         if self.stop.is_some()
             || self.top_p.is_some()
@@ -216,6 +266,12 @@ impl OpenAiChatCompatFields {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum OpenAiAudioCompatMode {
+    Reject,
+    AllowDirectCloud { stream: bool },
 }
 
 impl OpenAiMessageCompatFields {

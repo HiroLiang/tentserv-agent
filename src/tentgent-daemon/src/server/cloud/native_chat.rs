@@ -28,6 +28,8 @@ pub(super) async fn chat(
         max_tokens: request.max_tokens,
         temperature: request.temperature,
         stream,
+        response_modalities: None,
+        audio: None,
     };
     if stream {
         return stream_response(state, cloud_request).await;

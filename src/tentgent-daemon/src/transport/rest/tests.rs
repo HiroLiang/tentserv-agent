@@ -29,6 +29,7 @@ use crate::{
 
 mod claude_messages_compat;
 mod gemini_compat;
+mod openai_audio_compat;
 mod openai_chat_compat;
 mod openai_embeddings_compat;
 mod openai_image_generation_compat;
