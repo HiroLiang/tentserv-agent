@@ -4,7 +4,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tentgent_kernel::features::{auth::domain::Provider, chat::domain::ChatFinishReason};
 
 use crate::{
@@ -51,14 +51,19 @@ pub(crate) struct ClaudeMessagesRequest {
     max_tokens: u32,
     temperature: Option<f32>,
     stream: Option<bool>,
-    tools: Option<serde_json::Value>,
-    tool_choice: Option<serde_json::Value>,
+    tools: Option<Value>,
+    tool_choice: Option<Value>,
+    audio: Option<Value>,
+    modalities: Option<Value>,
+    input_audio: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ClaudeMessage {
     role: String,
     content: ClaudeContent,
+    audio: Option<Value>,
+    input_audio: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -116,12 +121,24 @@ impl ClaudeMessagesRequest {
             )
             .into());
         }
+        if self.audio.is_some() || self.modalities.is_some() || self.input_audio.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "Claude-compatible audio input and output are not supported by Tentgent compatibility yet",
+            )
+            .into());
+        }
         Ok(())
     }
 }
 
 impl ClaudeMessage {
     fn into_transport(self) -> Result<ChatTransportMessage, RestError> {
+        if self.audio.is_some() || self.input_audio.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "Claude-compatible message audio fields are not supported by Tentgent compatibility yet",
+            )
+            .into());
+        }
         Ok(ChatTransportMessage {
             role: claude_role(&self.role)?,
             content: claude_content(self.content)?,

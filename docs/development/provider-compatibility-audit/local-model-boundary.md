@@ -141,8 +141,8 @@ Claude local messages accept text-only Claude message fields that can map to
 native local chat: `model`, `messages`, `system`, `max_tokens`, `temperature`,
 and `stream`. The adapter translates the request into native local chat and
 wraps native local responses into Claude-shaped message or SSE events. Claude
-image blocks, `tool_use`, `tool_result`, `tools`, and `tool_choice` fail before
-the Python runtime is called.
+image blocks, audio blocks, audio-shaped fields, `tool_use`, `tool_result`,
+`tools`, and `tool_choice` fail before the Python runtime is called.
 
 Gemini local generateContent accepts text-only Gemini message fields that can
 map to native local chat: `contents`, `systemInstruction`,

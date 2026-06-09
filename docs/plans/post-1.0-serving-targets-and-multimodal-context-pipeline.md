@@ -22,21 +22,81 @@ closing the door on them.
 
 ## Future Capability
 
-A future serving target might be configured like this:
+A future serving target, also called a cluster target, should represent one
+server-startable routing rule set. Callers use one base URL or target name, and
+Tentgent routes each request to the configured model or provider for that
+capability.
+
+A draft cluster YAML might look like this:
 
 ```yaml
+version: 1
 target: local-assistant
-chat: llama-3.1-8b
-embedding: bge-m3
-rerank: bge-reranker
-vision: qwen2.5-vl
-audio_transcription: whisper
-video_understanding: video-llava
-image_generation: flux
+server:
+  host: 127.0.0.1
+  port: 8790
+auth:
+  mode: auto
+  dotenv: .env
+  allow_openshell_broker: true
+routes:
+  chat:
+    model: llama-3.1-8b
+  embedding:
+    model: bge-m3
+  rerank:
+    model: bge-reranker
+  vision:
+    model: qwen2.5-vl
+    output: context
+  audio_transcription:
+    model: whisper
+    output: context
+  audio_speech:
+    model: kokoro
+  video_understanding:
+    model: video-llava
+    output: context
+  image_generation:
+    model: flux
+provider_compat:
+  openai: true
+  anthropic: true
+  gemini: true
 ```
 
-Callers would use one base URL or target name, while Tentgent chooses the
-configured model for each requested capability.
+The initial schema should stay declarative. It should not store provider
+secrets or runtime proof blobs inline. A cluster is valid only when every
+configured route can be resolved to a known model/provider capability and a
+compatible runtime profile.
+
+The `output: context` marker means the route is intended for pre-processing
+incoming attachments before chat dispatch. For example, image, audio, video, or
+file inputs can be routed to the matching capability model, converted into a
+bounded context artifact, and then appended to the chat model input.
+
+## Auth Source Strategy
+
+Cluster targets should support multiple auth source modes because they may run
+inside normal local shells, restricted shells, and future OpenShell-managed
+agent environments:
+
+- `keychain`: read provider secrets only through Tentgent-managed Keychain or
+  equivalent OS secret storage.
+- `env`: read process environment variables only.
+- `dotenv`: load an explicitly configured `.env` file before resolving provider
+  secrets.
+- `openshell`: do not materialize provider secrets in Tentgent config; call
+  through an OpenShell-managed provider or gateway so OpenShell supplies the
+  credential boundary.
+- `auto`: resolve in order from provided request secret, process env, optional
+  dotenv, Keychain if available, then OpenShell broker/gateway if configured.
+
+OpenShell integration should be modeled as an auth boundary, not as a hidden
+provider key fallback. If Tentgent is launched inside an OpenShell environment,
+it should be able to use environment or provider metadata supplied by
+OpenShell, or send provider-routed requests through the OpenShell boundary
+without requiring Tentgent to persist the raw provider key.
 
 ## Multimodal Context Pipeline
 

@@ -419,8 +419,70 @@ fn claude_request_rejects_tool_fields_for_direct_cloud() {
 }
 
 #[test]
+fn claude_request_rejects_audio_fields_for_direct_cloud() {
+    for (label, field) in [
+        (
+            "audio",
+            json!({"audio": {"voice": "alloy", "format": "wav"}}),
+        ),
+        ("modalities", json!({"modalities": ["text", "audio"]})),
+        (
+            "input-audio",
+            json!({"input_audio": {"data": "AA==", "format": "wav"}}),
+        ),
+    ] {
+        let mut body = json!({
+            "max_tokens": 16,
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        body.as_object_mut()
+            .expect("object")
+            .extend(field.as_object().expect("field").clone());
+        let request: ClaudeMessagesRequest = serde_json::from_value(body).expect(label);
+
+        let error = request.reject_unsupported().expect_err("audio unsupported");
+
+        let (code, _) = error.into_parts();
+        assert_eq!(code, "unsupported_provider_field");
+    }
+}
+
+#[test]
+fn claude_message_rejects_audio_fields_for_direct_cloud() {
+    for (label, field) in [
+        ("audio", json!({"audio": {"id": "audio_1", "data": "AA=="}})),
+        (
+            "input-audio",
+            json!({"input_audio": {"data": "AA==", "format": "wav"}}),
+        ),
+    ] {
+        let mut body = json!({
+            "role": "user",
+            "content": "hi"
+        });
+        body.as_object_mut()
+            .expect("object")
+            .extend(field.as_object().expect("field").clone());
+        let message: ClaudeMessage = serde_json::from_value(body).expect(label);
+
+        let error = message.into_cloud().expect_err("audio unsupported");
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_field");
+    }
+}
+
+#[test]
 fn claude_message_rejects_unsupported_content_for_direct_cloud() {
     for (label, content) in [
+        (
+            "audio",
+            json!([{"type": "audio", "source": {"type": "base64", "media_type": "audio/wav", "data": "AA=="}}]),
+        ),
+        (
+            "input-audio",
+            json!([{"type": "input_audio", "input_audio": {"data": "AA==", "format": "wav"}}]),
+        ),
         (
             "url-image",
             json!([{"type": "image", "source": {"type": "url", "url": "https://example.com/image.png"}}]),

@@ -546,7 +546,69 @@ fn claude_messages_rejects_unsupported_local_tools_and_blocks() {
     assert_eq!(error.status, StatusCode::BAD_REQUEST);
     assert_eq!(error.code, "unsupported_provider_field");
 
+    for (label, field) in [
+        (
+            "audio",
+            json!({"audio": {"voice": "alloy", "format": "wav"}}),
+        ),
+        ("modalities", json!({"modalities": ["text", "audio"]})),
+        (
+            "input-audio",
+            json!({"input_audio": {"data": "AA==", "format": "wav"}}),
+        ),
+    ] {
+        let mut body = json!({
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 8,
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        body.as_object_mut()
+            .expect("object")
+            .extend(field.as_object().expect("field").clone());
+        let request: LocalClaudeMessagesRequest = serde_json::from_value(body).expect(label);
+
+        let error = request
+            .into_native_chat_request()
+            .expect_err("audio field unsupported");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_field");
+    }
+
+    for (label, field) in [
+        ("audio", json!({"audio": {"id": "audio_1", "data": "AA=="}})),
+        (
+            "input-audio",
+            json!({"input_audio": {"data": "AA==", "format": "wav"}}),
+        ),
+    ] {
+        let mut message = json!({"role": "user", "content": "hi"});
+        message
+            .as_object_mut()
+            .expect("message")
+            .extend(field.as_object().expect("field").clone());
+        let request: LocalClaudeMessagesRequest = serde_json::from_value(json!({
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 8,
+            "messages": [message]
+        }))
+        .expect(label);
+
+        let error = request
+            .into_native_chat_request()
+            .expect_err("message audio field unsupported");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_field");
+    }
+
     for (label, content) in [
+        (
+            "audio",
+            json!([{"type": "audio", "source": {"type": "base64", "media_type": "audio/wav", "data": "AA=="}}]),
+        ),
+        (
+            "input-audio",
+            json!([{"type": "input_audio", "input_audio": {"data": "AA==", "format": "wav"}}]),
+        ),
         (
             "image",
             json!([{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AA=="}}]),

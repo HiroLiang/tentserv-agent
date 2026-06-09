@@ -150,12 +150,17 @@ Defaults:
 Explicitly rejected:
 
 - `tools`, `tool_choice`
-- non-text content blocks such as `image`, `tool_use`, and `tool_result`
+- audio-shaped top-level fields such as `audio`, `modalities`, and
+  `input_audio`
+- message-level `audio` and `input_audio`
+- non-text content blocks such as `image`, `audio`, `input_audio`, `tool_use`,
+  and `tool_result`
 - roles outside `system`, `user`, and `assistant`
 
 Currently ignored:
 
-- Unknown top-level fields.
+- Unknown top-level fields except known unsupported compatibility fields listed
+  above.
 - Unknown fields inside known nested structs, unless later validation reads
   them.
 
@@ -190,6 +195,7 @@ Model-specific notes:
 
 - No route-level model profile exists yet.
 - Claude image blocks are rejected on the daemon route.
+- Claude audio blocks and audio-shaped fields are rejected on the daemon route.
 - Claude tool use is intentionally deferred until kernel tool-call support and
   provider-shaped tool result mapping exist.
 - Direct cloud server `/v1/messages` accepts base64 image blocks, but it is

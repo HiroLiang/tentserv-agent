@@ -80,12 +80,17 @@ pub(super) struct ClaudeMessagesRequest {
     pub(super) stream: Option<bool>,
     pub(super) tools: Option<Value>,
     pub(super) tool_choice: Option<Value>,
+    pub(super) audio: Option<Value>,
+    pub(super) modalities: Option<Value>,
+    pub(super) input_audio: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(super) struct ClaudeMessage {
     pub(super) role: String,
     pub(super) content: ClaudeContent,
+    pub(super) audio: Option<Value>,
+    pub(super) input_audio: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +118,12 @@ pub(super) struct ClaudeImageSource {
 
 impl ClaudeMessage {
     pub(super) fn into_cloud(self) -> Result<CloudChatMessage, CloudServerError> {
+        if self.audio.is_some() || self.input_audio.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "Claude-compatible message audio fields are not supported by Tentgent direct cloud compatibility yet",
+            )
+            .into());
+        }
         let role = claude_role(&self.role)?;
         let content = match self.content {
             ClaudeContent::Text(text) => vec![CloudChatContentPart::Text(text)],
@@ -190,6 +201,11 @@ impl ClaudeMessagesRequest {
         if self.stream.unwrap_or(false) {
             return Err(ProviderCompatRejection::unsupported_field(
                 "direct cloud Claude messages do not support stream=true yet",
+            ));
+        }
+        if self.audio.is_some() || self.modalities.is_some() || self.input_audio.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "Claude-compatible audio input and output are not supported by Tentgent direct cloud compatibility yet",
             ));
         }
         Ok(())

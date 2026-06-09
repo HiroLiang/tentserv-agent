@@ -210,6 +210,10 @@ Accepted content:
 Explicitly rejected:
 
 - unsupported Claude content block types
+- audio content blocks such as `audio` and `input_audio`
+- audio-shaped top-level fields such as `audio`, `modalities`, and
+  `input_audio`
+- message-level `audio` and `input_audio`
 - missing image source
 - non-base64 image sources, including URL and Files API sources
 - missing, empty, or unsupported image `media_type`
@@ -220,7 +224,8 @@ Explicitly rejected:
 
 Currently ignored:
 
-- Unknown top-level fields.
+- Unknown top-level fields except known unsupported compatibility fields listed
+  above.
 - caller-supplied `model`.
 
 Example request:
@@ -268,6 +273,9 @@ Model-specific notes:
 
 - Direct cloud Claude messages do not expose a streaming response path today,
   so `stream: true` is rejected.
+- Direct cloud Claude messages do not expose audio input or output today, so
+  audio-shaped fields and content blocks are rejected before Anthropic upstream
+  dispatch.
 - `system` accepts a string or Claude text blocks. Non-text system blocks are
   rejected before cloud dispatch.
 

@@ -137,12 +137,17 @@ pub(super) struct LocalClaudeMessagesRequest {
     stream: Option<bool>,
     tools: Option<Value>,
     tool_choice: Option<Value>,
+    audio: Option<Value>,
+    modalities: Option<Value>,
+    input_audio: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(super) struct LocalClaudeMessage {
     role: String,
     content: LocalClaudeContent,
+    audio: Option<Value>,
+    input_audio: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -198,12 +203,24 @@ impl LocalClaudeMessagesRequest {
             )
             .into());
         }
+        if self.audio.is_some() || self.modalities.is_some() || self.input_audio.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "Claude-compatible audio input and output are not supported by Tentgent local compatibility yet",
+            )
+            .into());
+        }
         Ok(())
     }
 }
 
 impl LocalClaudeMessage {
     fn into_native(self) -> Result<NativeLocalChatMessage, LocalServerError> {
+        if self.audio.is_some() || self.input_audio.is_some() {
+            return Err(ProviderCompatRejection::unsupported_field(
+                "Claude-compatible message audio fields are not supported by Tentgent local compatibility yet",
+            )
+            .into());
+        }
         Ok(NativeLocalChatMessage {
             role: claude_text_role(&self.role)?,
             content: claude_text_content(self.content)?,
