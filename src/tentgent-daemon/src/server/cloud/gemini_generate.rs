@@ -191,11 +191,15 @@ pub(super) fn gemini_parts_into_cloud(
                 return Ok(CloudChatContentPart::Text(text));
             }
             if let Some(data) = part.inline_data {
-                let media_type = gemini_image_media_type(data.mime_type)?;
-                let data = gemini_image_data(data.data)?;
-                return Ok(CloudChatContentPart::ImageBase64 {
-                    media_type,
-                    data,
+                let media_type = gemini_inline_media_type(data.mime_type)?;
+                let data = gemini_inline_data(data.data)?;
+                return Ok(match gemini_inline_media_kind(&media_type)? {
+                    GeminiInlineMediaKind::Image => {
+                        CloudChatContentPart::ImageBase64 { media_type, data }
+                    }
+                    GeminiInlineMediaKind::Audio => {
+                        CloudChatContentPart::AudioBase64 { media_type, data }
+                    }
                 });
             }
             if part.file_data.is_some() {
@@ -209,33 +213,42 @@ pub(super) fn gemini_parts_into_cloud(
         .collect()
 }
 
-fn gemini_image_media_type(media_type: Option<String>) -> Result<String, CloudServerError> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GeminiInlineMediaKind {
+    Image,
+    Audio,
+}
+
+fn gemini_inline_media_type(media_type: Option<String>) -> Result<String, CloudServerError> {
     let media_type = media_type
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| gemini_image_error("Gemini inlineData mimeType is required"))?;
-    if matches!(
-        media_type.as_str(),
-        "image/jpeg" | "image/png" | "image/gif" | "image/webp"
-    ) {
-        Ok(media_type)
-    } else {
-        Err(gemini_image_error(format!(
+        .ok_or_else(|| gemini_inline_error("Gemini inlineData mimeType is required"))?;
+    gemini_inline_media_kind(&media_type)?;
+    Ok(media_type)
+}
+
+fn gemini_inline_media_kind(media_type: &str) -> Result<GeminiInlineMediaKind, CloudServerError> {
+    match media_type {
+        "image/jpeg" | "image/png" | "image/gif" | "image/webp" => Ok(GeminiInlineMediaKind::Image),
+        "audio/wav" | "audio/mp3" | "audio/mpeg" | "audio/aiff" | "audio/aac" | "audio/ogg"
+        | "audio/flac" => Ok(GeminiInlineMediaKind::Audio),
+        _ => Err(gemini_inline_error(format!(
             "unsupported Gemini inlineData mimeType `{media_type}`"
-        )))
+        ))),
     }
 }
 
-fn gemini_image_data(data: Option<String>) -> Result<String, CloudServerError> {
+fn gemini_inline_data(data: Option<String>) -> Result<String, CloudServerError> {
     let data = data
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| gemini_image_error("Gemini inlineData data is required"))?;
+        .ok_or_else(|| gemini_inline_error("Gemini inlineData data is required"))?;
     STANDARD
         .decode(data.as_bytes())
-        .map_err(|_| gemini_image_error("Gemini inlineData data must be valid base64"))?;
+        .map_err(|_| gemini_inline_error("Gemini inlineData data must be valid base64"))?;
     Ok(data)
 }
 
-fn gemini_image_error(message: impl Into<String>) -> CloudServerError {
+fn gemini_inline_error(message: impl Into<String>) -> CloudServerError {
     ProviderCompatRejection::unsupported_content(message).into()
 }
 

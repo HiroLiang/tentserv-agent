@@ -835,6 +835,14 @@ fn gemini_generate_content_rejects_unsupported_local_tools_and_parts() {
             json!({"inline_data": {"mime_type": "image/jpeg", "data": "AA=="}}),
         ),
         (
+            "audio-inline-data-camel-case",
+            json!({"inlineData": {"mimeType": "audio/mp3", "data": "AA=="}}),
+        ),
+        (
+            "audio-inline-data-snake-case",
+            json!({"inline_data": {"mime_type": "audio/wav", "data": "AA=="}}),
+        ),
+        (
             "file-data",
             json!({"fileData": {"mimeType": "image/png", "fileUri": "gs://bucket/image.png"}}),
         ),
