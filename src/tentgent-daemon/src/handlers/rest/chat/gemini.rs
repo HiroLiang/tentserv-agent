@@ -4,7 +4,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tentgent_kernel::features::{auth::domain::Provider, chat::domain::ChatFinishReason};
 
 use crate::{
@@ -82,6 +82,10 @@ struct GeminiContent {
 #[derive(Debug, Deserialize)]
 struct GeminiPart {
     text: Option<String>,
+    #[serde(alias = "inlineData")]
+    inline_data: Option<Value>,
+    #[serde(alias = "fileData")]
+    file_data: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -248,15 +252,20 @@ fn gemini_role(role: Option<&str>) -> Result<String, RestError> {
 fn gemini_content_text(content: GeminiContent) -> Result<String, RestError> {
     let mut text = String::new();
     for part in content.parts {
-        match part.text {
-            Some(value) => text.push_str(&value),
-            None => {
-                return Err(ProviderCompatRejection::unsupported_content(
-                    "only Gemini text parts are supported",
-                )
-                .into());
-            }
+        if let Some(value) = part.text {
+            text.push_str(&value);
+            continue;
         }
+        if part.inline_data.is_some() || part.file_data.is_some() {
+            return Err(ProviderCompatRejection::unsupported_content(
+                "Gemini-compatible inline media parts are not supported by daemon chat compatibility yet",
+            )
+            .into());
+        }
+        return Err(ProviderCompatRejection::unsupported_content(
+            "only Gemini text parts are supported",
+        )
+        .into());
     }
     Ok(text)
 }

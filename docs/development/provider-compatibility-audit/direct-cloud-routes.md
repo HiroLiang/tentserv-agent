@@ -300,10 +300,14 @@ Accepted content:
 
 - text parts
 - Gemini `inlineData` image parts
+- Gemini `inline_data` image parts
 
 Explicitly rejected:
 
 - `tools` and `toolConfig`
+- missing, empty, or unsupported `inlineData.mimeType`
+- missing, empty, or malformed base64 `inlineData.data`
+- Gemini `fileData` and `file_data` parts
 - unsupported Gemini part shapes
 - unsupported operation suffixes
 
@@ -317,7 +321,18 @@ Example request:
 ```json
 {
   "contents": [
-    {"role": "user", "parts": [{"text": "Hello"}]}
+    {
+      "role": "user",
+      "parts": [
+        {"text": "Caption this image."},
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "AA=="
+          }
+        }
+      ]
+    }
   ],
   "generationConfig": {
     "maxOutputTokens": 64,
