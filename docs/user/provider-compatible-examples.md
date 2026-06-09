@@ -196,6 +196,63 @@ Tentgent direct cloud compatibility yet. Daemon and local model-bound Claude
 routes reject image blocks, tool use, and tool results until local tool-call
 and multimodal adapters are implemented.
 
+Claude-compatible audio input and output are not implemented on daemon, local
+model-bound, or direct cloud Claude routes. Audio-shaped message blocks and
+fields fail before local runtime or Anthropic upstream dispatch:
+
+```bash
+curl -sS "$TENTGENT_BASE_URL/v1/messages" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "claude-sonnet-4-5",
+    "max_tokens": 64,
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Transcribe this."},
+        {
+          "type": "audio",
+          "source": {
+            "type": "base64",
+            "media_type": "audio/wav",
+            "data": "AA=="
+          }
+        }
+      ]
+    }]
+  }'
+```
+
+Expected stable error code:
+
+```json
+{
+  "error": "unsupported_provider_content"
+}
+```
+
+Claude-compatible audio output fields are also unsupported:
+
+```bash
+curl -sS "$TENTGENT_BASE_URL/v1/messages" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "claude-sonnet-4-5",
+    "max_tokens": 64,
+    "messages": [{"role": "user", "content": "Say hello."}],
+    "modalities": ["text", "audio"],
+    "audio": {"voice": "alloy", "format": "wav"}
+  }'
+```
+
+Expected stable error code:
+
+```json
+{
+  "error": "unsupported_provider_field"
+}
+```
+
 ## Gemini-Compatible Curl
 
 ### Generate Content

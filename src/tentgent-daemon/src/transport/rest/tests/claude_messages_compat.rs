@@ -95,8 +95,59 @@ async fn claude_messages_rejects_tool_fields() {
 }
 
 #[tokio::test]
+async fn claude_messages_rejects_audio_fields() {
+    for (label, field) in [
+        ("audio", r#""audio":{"voice":"alloy","format":"wav"}"#),
+        ("modalities", r#""modalities":["text","audio"]"#),
+        (
+            "input-audio",
+            r#""input_audio":{"data":"AA==","format":"wav"}"#,
+        ),
+    ] {
+        let body = format!(
+            r#"{{"model":"{MODEL_REF}","max_tokens":12,"messages":[{{"role":"user","content":"hi"}}],{field}}}"#
+        );
+        assert_messages_error(
+            &format!("claude-messages-audio-field-{label}"),
+            &body,
+            "unsupported_provider_field",
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
+async fn claude_messages_rejects_message_audio_fields() {
+    for (label, field) in [
+        ("audio", r#""audio":{"id":"audio_1","data":"AA=="}"#),
+        (
+            "input-audio",
+            r#""input_audio":{"data":"AA==","format":"wav"}"#,
+        ),
+    ] {
+        let body = format!(
+            r#"{{"model":"{MODEL_REF}","max_tokens":12,"messages":[{{"role":"user","content":"hi",{field}}}]}}"#
+        );
+        assert_messages_error(
+            &format!("claude-messages-message-audio-field-{label}"),
+            &body,
+            "unsupported_provider_field",
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
 async fn claude_messages_rejects_unsupported_content_blocks() {
     for (label, content) in [
+        (
+            "audio",
+            r#"[{"type":"audio","source":{"type":"base64","media_type":"audio/wav","data":"AA=="}}]"#,
+        ),
+        (
+            "input-audio",
+            r#"[{"type":"input_audio","input_audio":{"data":"AA==","format":"wav"}}]"#,
+        ),
         (
             "image",
             r#"[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA=="}}]"#,
@@ -122,6 +173,23 @@ async fn claude_messages_rejects_unsupported_content_blocks() {
     }
 }
 
+#[tokio::test]
+async fn claude_audio_transcription_and_speech_routes_are_not_provider_compatible() {
+    for (label, route) in [
+        ("transcription", "/v1/audio/transcriptions"),
+        ("speech", "/v1/audio/speech"),
+    ] {
+        let response = post_json(
+            &format!("claude-audio-{label}-route"),
+            route,
+            r#"{"model":"claude-audio","input":"AA=="}"#,
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}
+
 async fn assert_messages_error(label: &str, body: &str, expected_code: &str) {
     let response = post_messages(label, body).await;
 
@@ -131,12 +199,16 @@ async fn assert_messages_error(label: &str, body: &str, expected_code: &str) {
 }
 
 async fn post_messages(label: &str, body: &str) -> axum::response::Response {
+    post_json(label, MESSAGES, body).await
+}
+
+async fn post_json(label: &str, route: &str, body: &str) -> axum::response::Response {
     let state = rest_state(label);
     build_router(state)
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(MESSAGES)
+                .uri(route)
                 .header("content-type", "application/json")
                 .body(Body::from(body.to_string()))
                 .expect("request"),
