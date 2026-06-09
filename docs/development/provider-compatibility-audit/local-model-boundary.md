@@ -151,6 +151,8 @@ map to native local chat: `contents`, `systemInstruction`,
 native local chat and wraps native local responses into Gemini-shaped JSON or
 SSE data frames. Gemini `inlineData`, `tools`, `toolConfig`, and unsupported
 operation suffixes fail before the Python runtime is called.
+Gemini `fileData` / `file_data` also fail before the Python runtime is called;
+local Files API and local Gemini multimodal ingress are future pipeline work.
 
 OpenAI local embeddings accept `input` as a string or string array and accept
 `encoding_format: "float"`. The local adapter rejects `dimensions`,

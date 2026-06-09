@@ -151,6 +151,10 @@ pub(super) struct LocalGeminiContent {
 #[derive(Debug, Deserialize)]
 pub(super) struct LocalGeminiPart {
     text: Option<String>,
+    #[serde(alias = "inlineData")]
+    inline_data: Option<Value>,
+    #[serde(alias = "fileData")]
+    file_data: Option<Value>,
 }
 
 struct GeminiLocalOperation {
@@ -252,15 +256,20 @@ fn gemini_role(role: Option<&str>) -> Result<String, LocalServerError> {
 fn gemini_content_text(content: LocalGeminiContent) -> Result<String, LocalServerError> {
     let mut text = String::new();
     for part in content.parts {
-        match part.text {
-            Some(value) => text.push_str(&value),
-            None => {
-                return Err(ProviderCompatRejection::unsupported_content(
-                    "only Gemini text parts are supported by local model-bound servers",
-                )
-                .into());
-            }
+        if let Some(value) = part.text {
+            text.push_str(&value);
+            continue;
         }
+        if part.inline_data.is_some() || part.file_data.is_some() {
+            return Err(ProviderCompatRejection::unsupported_content(
+                "Gemini-compatible inline media parts are not supported by local model-bound servers yet",
+            )
+            .into());
+        }
+        return Err(ProviderCompatRejection::unsupported_content(
+            "only Gemini text parts are supported by local model-bound servers",
+        )
+        .into());
     }
     Ok(text)
 }

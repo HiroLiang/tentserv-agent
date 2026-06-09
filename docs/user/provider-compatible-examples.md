@@ -284,6 +284,63 @@ the server is bound to the provider model from launch. Direct cloud Gemini can
 translate text and `inlineData` image parts for compatible models. Daemon and
 local model-bound Gemini routes are text-only today.
 
+Direct cloud Gemini image understanding uses `inlineData`:
+
+```bash
+tentgent server run gemini:gemini-2.5-flash \
+  --host 127.0.0.1 \
+  --port 8793
+```
+
+```bash
+curl -sS http://127.0.0.1:8793/v1beta/models/ignored:generateContent \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "contents": [{
+      "role": "user",
+      "parts": [
+        {"text": "Caption this image."},
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "AA=="
+          }
+        }
+      ]
+    }]
+  }'
+```
+
+Daemon and local model-bound Gemini routes reject inline image parts until the
+local multimodal context pipeline exists:
+
+```bash
+curl -sS "$TENTGENT_BASE_URL/v1beta/models/gemini-2.5-flash:generateContent" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "contents": [{
+      "role": "user",
+      "parts": [
+        {"text": "Caption this image."},
+        {
+          "inlineData": {
+            "mimeType": "image/png",
+            "data": "AA=="
+          }
+        }
+      ]
+    }]
+  }'
+```
+
+Expected stable error code:
+
+```json
+{
+  "error": "unsupported_provider_content"
+}
+```
+
 ### Stream Generate Content
 
 ```bash

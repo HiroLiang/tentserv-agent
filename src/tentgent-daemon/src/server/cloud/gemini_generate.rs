@@ -8,6 +8,7 @@ use axum::{
     },
     Json,
 };
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use futures_util::stream;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -169,13 +170,15 @@ pub(super) struct GeminiPart {
     text: Option<String>,
     #[serde(alias = "inlineData")]
     inline_data: Option<GeminiInlineData>,
+    #[serde(alias = "fileData")]
+    file_data: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(super) struct GeminiInlineData {
     #[serde(alias = "mimeType")]
-    mime_type: String,
-    data: String,
+    mime_type: Option<String>,
+    data: Option<String>,
 }
 
 pub(super) fn gemini_parts_into_cloud(
@@ -188,14 +191,52 @@ pub(super) fn gemini_parts_into_cloud(
                 return Ok(CloudChatContentPart::Text(text));
             }
             if let Some(data) = part.inline_data {
+                let media_type = gemini_image_media_type(data.mime_type)?;
+                let data = gemini_image_data(data.data)?;
                 return Ok(CloudChatContentPart::ImageBase64 {
-                    media_type: data.mime_type,
-                    data: data.data,
+                    media_type,
+                    data,
                 });
+            }
+            if part.file_data.is_some() {
+                return Err(ProviderCompatRejection::unsupported_content(
+                    "Gemini-compatible fileData parts are not supported by Tentgent direct cloud compatibility yet",
+                )
+                .into());
             }
             Err(ProviderCompatRejection::unsupported_content("unsupported Gemini part").into())
         })
         .collect()
+}
+
+fn gemini_image_media_type(media_type: Option<String>) -> Result<String, CloudServerError> {
+    let media_type = media_type
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| gemini_image_error("Gemini inlineData mimeType is required"))?;
+    if matches!(
+        media_type.as_str(),
+        "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+    ) {
+        Ok(media_type)
+    } else {
+        Err(gemini_image_error(format!(
+            "unsupported Gemini inlineData mimeType `{media_type}`"
+        )))
+    }
+}
+
+fn gemini_image_data(data: Option<String>) -> Result<String, CloudServerError> {
+    let data = data
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| gemini_image_error("Gemini inlineData data is required"))?;
+    STANDARD
+        .decode(data.as_bytes())
+        .map_err(|_| gemini_image_error("Gemini inlineData data must be valid base64"))?;
+    Ok(data)
+}
+
+fn gemini_image_error(message: impl Into<String>) -> CloudServerError {
+    ProviderCompatRejection::unsupported_content(message).into()
 }
 
 impl GeminiGenerateContentRequest {

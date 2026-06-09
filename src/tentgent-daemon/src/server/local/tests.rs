@@ -825,19 +825,37 @@ fn gemini_generate_content_rejects_unsupported_local_tools_and_parts() {
     assert_eq!(error.status, StatusCode::BAD_REQUEST);
     assert_eq!(error.code, "unsupported_provider_field");
 
-    let part: LocalGeminiGenerateContentRequest = serde_json::from_value(json!({
-        "contents": [{
-            "role": "user",
-            "parts": [{"inlineData": {"mimeType": "image/png", "data": "AA=="}}]
-        }]
-    }))
-    .expect("request");
+    for (label, part) in [
+        (
+            "inline-data-camel-case",
+            json!({"inlineData": {"mimeType": "image/png", "data": "AA=="}}),
+        ),
+        (
+            "inline-data-snake-case",
+            json!({"inline_data": {"mime_type": "image/jpeg", "data": "AA=="}}),
+        ),
+        (
+            "file-data",
+            json!({"fileData": {"mimeType": "image/png", "fileUri": "gs://bucket/image.png"}}),
+        ),
+    ] {
+        let request: LocalGeminiGenerateContentRequest = serde_json::from_value(json!({
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"text": "Describe this image."},
+                    part
+                ]
+            }]
+        }))
+        .expect(label);
 
-    let error = part
-        .into_native_chat_request()
-        .expect_err("inlineData unsupported locally");
-    assert_eq!(error.status, StatusCode::BAD_REQUEST);
-    assert_eq!(error.code, "unsupported_provider_content");
+        let error = request
+            .into_native_chat_request()
+            .expect_err("inline media unsupported locally");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_content");
+    }
 }
 
 #[tokio::test]

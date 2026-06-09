@@ -608,6 +608,110 @@ fn gemini_request_uses_bound_model_and_generation_config_for_direct_cloud() {
 }
 
 #[test]
+fn gemini_request_maps_inline_images_for_direct_cloud() {
+    for (label, part) in [
+        (
+            "camel-case",
+            json!({"inlineData": {"mimeType": "image/png", "data": "AA=="}}),
+        ),
+        (
+            "snake-case",
+            json!({"inline_data": {"mime_type": "image/jpeg", "data": "AQ=="}}),
+        ),
+    ] {
+        let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"text": "Describe this image."},
+                    part
+                ]
+            }]
+        }))
+        .expect(label);
+
+        let cloud_request = gemini_request_into_cloud(
+            request,
+            "caller-path-model:generateContent",
+            Provider::Gemini,
+            "bound-gemini-model".to_string(),
+        )
+        .expect("cloud request");
+
+        assert_eq!(cloud_request.provider, Provider::Gemini);
+        assert_eq!(cloud_request.model, "bound-gemini-model");
+        assert_eq!(cloud_request.messages[0].role, "user");
+        assert_eq!(
+            cloud_request.messages[0].content[0],
+            CloudChatContentPart::Text("Describe this image.".to_string())
+        );
+        match &cloud_request.messages[0].content[1] {
+            CloudChatContentPart::ImageBase64 { media_type, data } => {
+                if label == "camel-case" {
+                    assert_eq!(media_type, "image/png");
+                    assert_eq!(data, "AA==");
+                } else {
+                    assert_eq!(media_type, "image/jpeg");
+                    assert_eq!(data, "AQ==");
+                }
+            }
+            other => panic!("expected image part, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn gemini_request_rejects_malformed_inline_images_for_direct_cloud() {
+    for (label, part) in [
+        ("missing-inline-data", json!({"inlineData": {}})),
+        ("missing-mime-type", json!({"inlineData": {"data": "AA=="}})),
+        (
+            "empty-mime-type",
+            json!({"inlineData": {"mimeType": "", "data": "AA=="}}),
+        ),
+        (
+            "unsupported-mime-type",
+            json!({"inlineData": {"mimeType": "application/pdf", "data": "AA=="}}),
+        ),
+        (
+            "missing-data",
+            json!({"inlineData": {"mimeType": "image/png"}}),
+        ),
+        (
+            "empty-data",
+            json!({"inlineData": {"mimeType": "image/png", "data": ""}}),
+        ),
+        (
+            "malformed-base64",
+            json!({"inlineData": {"mimeType": "image/png", "data": "not base64!"}}),
+        ),
+        (
+            "file-data",
+            json!({"fileData": {"mimeType": "image/png", "fileUri": "gs://bucket/image.png"}}),
+        ),
+    ] {
+        let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+            "contents": [{
+                "role": "user",
+                "parts": [part]
+            }]
+        }))
+        .expect(label);
+
+        let error = gemini_request_into_cloud(
+            request,
+            "caller-path-model:generateContent",
+            Provider::Gemini,
+            "bound-gemini-model".to_string(),
+        )
+        .expect_err(label);
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "unsupported_provider_content");
+    }
+}
+
+#[test]
 fn gemini_request_marks_streaming_operation_for_direct_cloud() {
     let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
         "contents": [{"parts": [{"text": "hi"}]}]

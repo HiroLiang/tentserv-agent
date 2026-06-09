@@ -41,13 +41,39 @@ async fn gemini_generate_content_rejects_missing_contents() {
 
 #[tokio::test]
 async fn gemini_generate_content_rejects_non_text_parts_on_daemon_route() {
-    assert_gemini_error(
-        "gemini-generate-inline-data",
-        &format!("/v1beta/models/{MODEL_REF}:generateContent"),
-        r#"{"contents":[{"role":"user","parts":[{"inlineData":{"mimeType":"image/png","data":"AA=="}}]}]}"#,
-        "unsupported_provider_content",
-    )
-    .await;
+    for (label, part) in [
+        (
+            "inline-data-camel-case",
+            r#"{"inlineData":{"mimeType":"image/png","data":"AA=="}}"#,
+        ),
+        (
+            "inline-data-snake-case",
+            r#"{"inline_data":{"mime_type":"image/jpeg","data":"AA=="}}"#,
+        ),
+        (
+            "file-data-camel-case",
+            r#"{"fileData":{"mimeType":"image/png","fileUri":"gs://bucket/image.png"}}"#,
+        ),
+        (
+            "file-data-snake-case",
+            r#"{"file_data":{"mime_type":"image/png","file_uri":"gs://bucket/image.png"}}"#,
+        ),
+        (
+            "unknown-part",
+            r#"{"functionCall":{"name":"lookup","args":{}}}"#,
+        ),
+    ] {
+        let body = format!(
+            r#"{{"contents":[{{"role":"user","parts":[{{"text":"Describe this."}},{part}]}}]}}"#
+        );
+        assert_gemini_error(
+            &format!("gemini-generate-{label}"),
+            &format!("/v1beta/models/{MODEL_REF}:generateContent"),
+            &body,
+            "unsupported_provider_content",
+        )
+        .await;
+    }
 }
 
 #[tokio::test]
