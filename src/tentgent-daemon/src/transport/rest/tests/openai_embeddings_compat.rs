@@ -67,9 +67,23 @@ async fn openai_embeddings_rejects_unsupported_fields() {
 
 #[tokio::test]
 async fn openai_embeddings_rejects_anthropic_provider_capability() {
+    for (label, provider) in [("anthropic", "anthropic"), ("claude", "claude")] {
+        assert_embedding_error(
+            &format!("openai-embeddings-{label}-provider"),
+            &format!(
+                r#"{{"model":"claude-3-5-sonnet-latest","provider":"{provider}","input":"hello"}}"#
+            ),
+            "unsupported_provider_capability",
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
+async fn openai_embeddings_rejects_voyage_as_unsupported_provider_family() {
     assert_embedding_error(
-        "openai-embeddings-anthropic-provider",
-        r#"{"model":"claude-3-5-sonnet-latest","provider":"anthropic","input":"hello"}"#,
+        "openai-embeddings-voyage-provider",
+        r#"{"model":"voyage-3.5","provider":"voyage","input":"hello"}"#,
         "unsupported_provider_capability",
     )
     .await;

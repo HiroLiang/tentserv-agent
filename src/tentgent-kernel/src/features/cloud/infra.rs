@@ -1222,6 +1222,10 @@ mod tests {
         )
         .expect_err("unsupported");
 
-        assert!(matches!(err, KernelError::UnsupportedTarget(_)));
+        let KernelError::UnsupportedTarget(message) = err else {
+            panic!("expected UnsupportedTarget");
+        };
+        assert!(message.contains("Anthropic"));
+        assert!(message.contains("embedding"));
     }
 }

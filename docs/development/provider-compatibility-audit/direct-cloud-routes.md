@@ -406,6 +406,9 @@ Model-specific notes:
 - OpenAI-bound cloud servers return OpenAI-style embedding responses.
 - Gemini-bound cloud servers currently return Tentgent-shaped embedding
   responses.
+- Anthropic-bound cloud servers reject `/v1/embeddings` with
+  `unsupported_provider_capability`; Anthropic does not provide native
+  embeddings through Tentgent today.
 - `dimensions` is rejected and not forwarded.
 
 ## POST `/v1/images/generations`
