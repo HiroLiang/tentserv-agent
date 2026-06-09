@@ -85,6 +85,8 @@ impl DatasetSynthRuntimeClient for CloudDatasetSynthRuntimeClient {
                                 .or(Some(DEFAULT_SYNTH_MAX_TOKENS)),
                             temperature: Some(request.request.temperature),
                             stream: false,
+                            response_modalities: None,
+                            audio: None,
                         },
                         request.auth.secret.secret(),
                     )
@@ -156,6 +158,8 @@ impl DatasetEvalRuntimeClient for CloudDatasetEvalRuntimeClient {
                         max_tokens: request.request.max_tokens.or(Some(DEFAULT_EVAL_MAX_TOKENS)),
                         temperature: Some(request.request.temperature),
                         stream: false,
+                        response_modalities: None,
+                        audio: None,
                     },
                     request.auth.secret.secret(),
                 )

@@ -88,7 +88,9 @@ Optional:
 - `stream`
 - `stream_options`, only when `include_usage` and `include_obfuscation` are
   unset or `false`
-- `modalities`, only when every value is `text`
+- `modalities`, only when every value is `text` or `audio` on OpenAI-bound
+  servers
+- `audio` on OpenAI-bound servers, only for non-streaming direct cloud chat
 - `response_format`, only when set to `{ "type": "text" }`
 - `tool_choice` and deprecated `function_call`, only when set to `none`
 - `parallel_tool_calls`, only when set to `false`
@@ -104,18 +106,22 @@ Accepted content:
 
 - text content
 - OpenAI `image_url` parts
+- OpenAI `input_audio` parts on OpenAI-bound servers, with `wav` or `mp3`
+  input format
 
 Explicitly rejected:
 
 - `tools`, deprecated `functions`, non-`none` `tool_choice`, non-`none`
   deprecated `function_call`, and `parallel_tool_calls: true`
 - structured `response_format` values such as `json_object` and `json_schema`
-- `audio`
-- `modalities` containing anything other than `text`
-- unsupported OpenAI content part types such as `input_audio`, `file`, and
-  `refusal`
+- `audio` or `input_audio` when the direct cloud server is not OpenAI-bound
+- `audio` output with `stream: true`
+- `modalities` containing anything other than `text` or `audio`
+- unsupported OpenAI content part types such as `file` and `refusal`
 - missing `image_url` payload, missing `image_url.url`, blank `image_url.url`,
   or unsupported `image_url.detail` for an `image_url` content part
+- missing `input_audio` payload, missing `input_audio.data`, blank
+  `input_audio.data`, or unsupported `input_audio.format`
 - message `tool_calls`, deprecated message `function_call`, assistant `audio`,
   and assistant `refusal`
 - `n` values greater than `1`

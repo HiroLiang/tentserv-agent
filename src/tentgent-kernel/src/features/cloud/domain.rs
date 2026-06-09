@@ -1,6 +1,7 @@
 //! Cloud provider request and response domain types.
 
 use crate::features::auth::domain::Provider;
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CloudEndpointCapability {
@@ -55,6 +56,8 @@ pub struct CloudChatRequest {
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
     pub stream: bool,
+    pub response_modalities: Option<Vec<String>>,
+    pub audio: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,7 +80,8 @@ impl CloudChatMessage {
             .filter_map(|part| match part {
                 CloudChatContentPart::Text(text) => Some(text.as_str()),
                 CloudChatContentPart::ImageUrl { .. }
-                | CloudChatContentPart::ImageBase64 { .. } => None,
+                | CloudChatContentPart::ImageBase64 { .. }
+                | CloudChatContentPart::InputAudio { .. } => None,
             })
             .collect::<Vec<_>>()
             .join("")
@@ -98,12 +102,14 @@ pub enum CloudChatContentPart {
     Text(String),
     ImageUrl { url: String },
     ImageBase64 { media_type: String, data: String },
+    InputAudio { data: String, format: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CloudChatResponse {
     pub text: String,
     pub finish_reason: String,
+    pub audio: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
