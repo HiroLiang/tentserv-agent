@@ -11,12 +11,22 @@ use super::{
     images::ImageRequest,
     openai_chat::{openai_chat_response_value, OpenAiChatRequest, OpenAiMessage},
 };
-use axum::http::StatusCode;
+use crate::provider_compat::ensure_provider_capability;
+use axum::{
+    body::{to_bytes, Body},
+    http::{Request, StatusCode},
+    routing::post,
+    Router,
+};
 use serde_json::{json, Value};
 use tentgent_kernel::{
-    features::{auth::domain::Provider, cloud::domain::CloudChatContentPart},
+    features::{
+        auth::domain::Provider,
+        cloud::domain::{CloudChatContentPart, CloudEndpointCapability},
+    },
     foundation::error::KernelError,
 };
+use tower::ServiceExt;
 
 #[test]
 fn openai_request_rejects_tools_with_provider_field_code() {
@@ -782,6 +792,63 @@ fn gemini_embedding_response_keeps_native_shape() {
     assert_eq!(value["data"][0]["index"], 0);
     assert_eq!(value["data"][0]["embedding"], json!([0.1f32, 0.2f32]));
     assert!(value.get("object").is_none());
+}
+
+#[test]
+fn anthropic_embedding_capability_is_rejected_for_direct_cloud() {
+    let error = ensure_provider_capability(Provider::Anthropic, CloudEndpointCapability::Embedding)
+        .expect_err("Anthropic embedding unsupported");
+
+    let cloud_error = CloudServerError::from(error);
+
+    assert_eq!(cloud_error.status, axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(cloud_error.code, "unsupported_provider_capability");
+    assert!(cloud_error.message.contains("Anthropic"));
+    assert!(cloud_error.message.contains("embedding"));
+}
+
+#[tokio::test]
+async fn anthropic_bound_cloud_embeddings_route_rejects_capability_before_upstream() {
+    let router = Router::new()
+        .route("/v1/embeddings", post(super::embeddings::embeddings))
+        .with_state(super::CloudServerState {
+            config: super::CloudServerRuntimeConfig {
+                server_ref: "test-server".to_string(),
+                provider: Provider::Anthropic,
+                provider_model: "claude-3-5-sonnet-latest".to_string(),
+                host: "127.0.0.1".to_string(),
+                port: 0,
+                runtime_home: None,
+            },
+            secret: "sk-ant".to_string(),
+        });
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/embeddings")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"input":"hello"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
+    let body: Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(body["error"], "unsupported_provider_capability");
+    assert!(body["message"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("Anthropic"));
+    assert!(body["message"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("embedding"));
 }
 
 #[test]

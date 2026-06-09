@@ -390,7 +390,9 @@ Expected stable error code:
 }
 ```
 
-Anthropic embeddings are not implemented:
+Anthropic embeddings are not implemented. Anthropic's own docs recommend
+Voyage AI for embeddings, but Voyage is not treated as a Claude-compatible
+provider in Tentgent until it is added as a separate provider family.
 
 ```bash
 curl -sS "$TENTGENT_BASE_URL/v1/embeddings" \
