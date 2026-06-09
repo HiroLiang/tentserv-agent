@@ -661,7 +661,60 @@ fn gemini_request_maps_inline_images_for_direct_cloud() {
 }
 
 #[test]
-fn gemini_request_rejects_malformed_inline_images_for_direct_cloud() {
+fn gemini_request_maps_inline_audio_for_direct_cloud() {
+    for (label, part) in [
+        (
+            "camel-case",
+            json!({"inlineData": {"mimeType": "audio/mp3", "data": "AA=="}}),
+        ),
+        (
+            "snake-case",
+            json!({"inline_data": {"mime_type": "audio/wav", "data": "AQ=="}}),
+        ),
+    ] {
+        let request: GeminiGenerateContentRequest = serde_json::from_value(json!({
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"text": "Transcribe this audio."},
+                    part
+                ]
+            }]
+        }))
+        .expect(label);
+
+        let cloud_request = gemini_request_into_cloud(
+            request,
+            "caller-path-model:generateContent",
+            Provider::Gemini,
+            "bound-gemini-model".to_string(),
+        )
+        .expect("cloud request");
+
+        assert_eq!(cloud_request.provider, Provider::Gemini);
+        assert_eq!(cloud_request.model, "bound-gemini-model");
+        assert_eq!(cloud_request.messages[0].role, "user");
+        assert_eq!(
+            cloud_request.messages[0].content[0],
+            CloudChatContentPart::Text("Transcribe this audio.".to_string())
+        );
+        match &cloud_request.messages[0].content[1] {
+            CloudChatContentPart::AudioBase64 { media_type, data } => {
+                if label == "camel-case" {
+                    assert_eq!(media_type, "audio/mp3");
+                    assert_eq!(data, "AA==");
+                } else {
+                    assert_eq!(media_type, "audio/wav");
+                    assert_eq!(data, "AQ==");
+                }
+            }
+            other => panic!("expected audio part, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn gemini_request_rejects_malformed_inline_media_for_direct_cloud() {
     for (label, part) in [
         ("missing-inline-data", json!({"inlineData": {}})),
         ("missing-mime-type", json!({"inlineData": {"data": "AA=="}})),
@@ -684,6 +737,10 @@ fn gemini_request_rejects_malformed_inline_images_for_direct_cloud() {
         (
             "malformed-base64",
             json!({"inlineData": {"mimeType": "image/png", "data": "not base64!"}}),
+        ),
+        (
+            "malformed-audio-base64",
+            json!({"inlineData": {"mimeType": "audio/mp3", "data": "not base64!"}}),
         ),
         (
             "file-data",
@@ -755,8 +812,9 @@ fn gemini_parts_accept_text_and_inline_data_for_direct_cloud() {
         "contents": [{
             "role": "user",
             "parts": [
-                {"text": "Describe this image."},
-                {"inlineData": {"mimeType": "image/png", "data": "AA=="}}
+                {"text": "Describe these inputs."},
+                {"inlineData": {"mimeType": "image/png", "data": "AA=="}},
+                {"inlineData": {"mimeType": "audio/mp3", "data": "AQ=="}}
             ]
         }]
     }))
@@ -773,10 +831,14 @@ fn gemini_parts_accept_text_and_inline_data_for_direct_cloud() {
     assert_eq!(
         cloud_request.messages[0].content,
         vec![
-            CloudChatContentPart::Text("Describe this image.".to_string()),
+            CloudChatContentPart::Text("Describe these inputs.".to_string()),
             CloudChatContentPart::ImageBase64 {
                 media_type: "image/png".to_string(),
                 data: "AA==".to_string()
+            },
+            CloudChatContentPart::AudioBase64 {
+                media_type: "audio/mp3".to_string(),
+                data: "AQ==".to_string()
             }
         ]
     );

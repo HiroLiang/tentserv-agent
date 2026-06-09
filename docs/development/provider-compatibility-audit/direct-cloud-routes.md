@@ -16,7 +16,7 @@ model-bound servers are native Tentgent servers and are covered in
 | `POST /v1/chat` | `server/cloud/native_chat.rs` | Tentgent native chat shape over a cloud provider | Bound model; returns native `text` response. |
 | `POST /v1/chat/completions` | `server/cloud/openai_chat.rs` | OpenAI chat completions | Supports text and `image_url` content parts. |
 | `POST /v1/messages` | `server/cloud/claude_messages.rs` | Claude/Anthropic messages | Supports text blocks and base64 image blocks; non-streaming only. |
-| `POST /v1beta/models/{operation}` | `server/cloud/gemini_generate.rs` | Gemini generateContent/streamGenerateContent | Supports text and inline image data. |
+| `POST /v1beta/models/{operation}` | `server/cloud/gemini_generate.rs` | Gemini generateContent/streamGenerateContent | Supports text, inline image data, and inline audio data. |
 | `POST /v1/embeddings` | `server/cloud/embeddings.rs` | Embedding request shape over bound provider model | OpenAI-bound servers return OpenAI-style embedding lists; other providers currently return Tentgent embedding shape. |
 | `POST /v1/images/generations` | `server/cloud/images.rs` | Image generation over bound provider model | Request omits `model`; server uses bound provider model. |
 
@@ -301,6 +301,8 @@ Accepted content:
 - text parts
 - Gemini `inlineData` image parts
 - Gemini `inline_data` image parts
+- Gemini `inlineData` audio parts
+- Gemini `inline_data` audio parts
 
 Explicitly rejected:
 

@@ -149,8 +149,9 @@ map to native local chat: `contents`, `systemInstruction`,
 `generationConfig.maxOutputTokens`, `generationConfig.temperature`, and the
 `:streamGenerateContent` operation. The adapter translates the request into
 native local chat and wraps native local responses into Gemini-shaped JSON or
-SSE data frames. Gemini `inlineData`, `tools`, `toolConfig`, and unsupported
-operation suffixes fail before the Python runtime is called.
+SSE data frames. Gemini `inlineData` image/audio parts, `tools`,
+`toolConfig`, and unsupported operation suffixes fail before the Python runtime
+is called.
 Gemini `fileData` / `file_data` also fail before the Python runtime is called;
 local Files API and local Gemini multimodal ingress are future pipeline work.
 

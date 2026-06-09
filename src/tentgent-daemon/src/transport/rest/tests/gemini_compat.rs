@@ -51,6 +51,14 @@ async fn gemini_generate_content_rejects_non_text_parts_on_daemon_route() {
             r#"{"inline_data":{"mime_type":"image/jpeg","data":"AA=="}}"#,
         ),
         (
+            "audio-inline-data-camel-case",
+            r#"{"inlineData":{"mimeType":"audio/mp3","data":"AA=="}}"#,
+        ),
+        (
+            "audio-inline-data-snake-case",
+            r#"{"inline_data":{"mime_type":"audio/wav","data":"AA=="}}"#,
+        ),
+        (
             "file-data-camel-case",
             r#"{"fileData":{"mimeType":"image/png","fileUri":"gs://bucket/image.png"}}"#,
         ),

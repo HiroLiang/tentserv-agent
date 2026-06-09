@@ -81,6 +81,7 @@ impl CloudChatMessage {
                 CloudChatContentPart::Text(text) => Some(text.as_str()),
                 CloudChatContentPart::ImageUrl { .. }
                 | CloudChatContentPart::ImageBase64 { .. }
+                | CloudChatContentPart::AudioBase64 { .. }
                 | CloudChatContentPart::InputAudio { .. } => None,
             })
             .collect::<Vec<_>>()
@@ -102,6 +103,7 @@ pub enum CloudChatContentPart {
     Text(String),
     ImageUrl { url: String },
     ImageBase64 { media_type: String, data: String },
+    AudioBase64 { media_type: String, data: String },
     InputAudio { data: String, format: String },
 }
 

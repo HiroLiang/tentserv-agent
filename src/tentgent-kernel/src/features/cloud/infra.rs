@@ -439,6 +439,9 @@ fn openai_chat_message(message: &CloudChatMessage) -> Value {
             CloudChatContentPart::ImageBase64 { media_type, data } => {
                 json!({"type": "image_url", "image_url": {"url": format!("data:{media_type};base64,{data}")}})
             }
+            CloudChatContentPart::AudioBase64 { media_type, .. } => {
+                json!({"type": "text", "text": format!("[audio: {media_type}]")})
+            }
             CloudChatContentPart::InputAudio { data, format } => {
                 json!({"type": "input_audio", "input_audio": {"data": data, "format": format}})
             }
@@ -501,6 +504,10 @@ fn anthropic_content(parts: &[CloudChatContentPart]) -> Value {
                     "type": "text",
                     "text": format!("[image_url: {url}]")
                 }),
+                CloudChatContentPart::AudioBase64 { media_type, .. } => json!({
+                    "type": "text",
+                    "text": format!("[audio: {media_type}]")
+                }),
                 CloudChatContentPart::InputAudio { format, .. } => json!({
                     "type": "text",
                     "text": format!("[input_audio: {format}]")
@@ -547,6 +554,9 @@ fn gemini_parts(parts: &[CloudChatContentPart]) -> Vec<Value> {
         .map(|part| match part {
             CloudChatContentPart::Text(text) => json!({"text": text}),
             CloudChatContentPart::ImageBase64 { media_type, data } => {
+                json!({"inlineData": {"mimeType": media_type, "data": data}})
+            }
+            CloudChatContentPart::AudioBase64 { media_type, data } => {
                 json!({"inlineData": {"mimeType": media_type, "data": data}})
             }
             CloudChatContentPart::ImageUrl { url } => {
@@ -1165,6 +1175,47 @@ mod tests {
             "image/png"
         );
         assert_eq!(value["generationConfig"]["maxOutputTokens"], 12);
+    }
+
+    #[test]
+    fn gemini_chat_template_keeps_audio_inline_data() {
+        let request = CloudChatRequest {
+            provider: Provider::Gemini,
+            model: "gemini-test".to_string(),
+            messages: vec![CloudChatMessage {
+                role: "user".to_string(),
+                content: vec![
+                    CloudChatContentPart::Text("Transcribe this audio.".to_string()),
+                    CloudChatContentPart::AudioBase64 {
+                        media_type: "audio/mp3".to_string(),
+                        data: "AA==".to_string(),
+                    },
+                ],
+            }],
+            max_tokens: None,
+            temperature: None,
+            stream: false,
+            response_modalities: None,
+            audio: None,
+        };
+        let http = client()
+            .chat_request(&request, "gemini-key", false)
+            .unwrap();
+        let body = http.body().and_then(|body| body.as_bytes()).unwrap();
+        let value: Value = serde_json::from_slice(body).unwrap();
+
+        assert_eq!(
+            value["contents"][0]["parts"][0]["text"],
+            "Transcribe this audio."
+        );
+        assert_eq!(
+            value["contents"][0]["parts"][1]["inlineData"]["mimeType"],
+            "audio/mp3"
+        );
+        assert_eq!(
+            value["contents"][0]["parts"][1]["inlineData"]["data"],
+            "AA=="
+        );
     }
 
     #[test]
