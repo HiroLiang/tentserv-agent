@@ -120,6 +120,20 @@ curl -sS "$TENTGENT_BASE_URL/v1/images/generations" \
   }'
 ```
 
+Daemon Gemini image generation uses the same OpenAI-shaped Tentgent route with
+an explicit `provider` selector:
+
+```bash
+curl -sS "$TENTGENT_BASE_URL/v1/images/generations" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "provider": "gemini",
+    "model": "gemini-2.5-flash-image",
+    "prompt": "A small watercolor house",
+    "size": "1024x1024"
+  }'
+```
+
 Direct cloud image-generation servers and local image-generation model-bound
 servers also expose `/v1/images/generations`. In direct cloud mode, send
 `prompt` and optional `size`; the bound provider model from
@@ -127,9 +141,32 @@ servers also expose `/v1/images/generations`. In direct cloud mode, send
 the bound local image-generation model is used and caller provider selection is
 rejected.
 
+Direct cloud Gemini image-generation servers should be launched with a Gemini
+image model such as `gemini-2.5-flash-image`, `gemini-3.1-flash-image`, or
+`gemini-3-pro-image`:
+
+```bash
+tentgent server run gemini:gemini-2.5-flash-image \
+  --host 127.0.0.1 \
+  --port 8793
+
+curl -sS http://127.0.0.1:8793/v1/images/generations \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "prompt": "A small watercolor house",
+    "size": "1024x1024"
+  }'
+```
+
 Provider-compatible image generation is intentionally narrower than OpenAI:
 `n` and `response_format` are rejected, and responses are always
-OpenAI-shaped `b64_json` envelopes.
+OpenAI-shaped `b64_json` envelopes. For Gemini image models, Tentgent maps the
+request to Gemini `generateContent` and extracts the returned `inlineData`
+image. Imagen model names keep using Gemini `predict`. Other Gemini model names
+are rejected as unsupported image-generation targets before upstream dispatch.
+The OpenAI-shaped `size` field is accepted for route parity on Gemini image
+models but is not forwarded today; Imagen model fallback forwards `size` as
+`sampleImageSize`.
 
 ## Claude-Compatible Curl
 

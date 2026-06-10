@@ -410,4 +410,5 @@ Model-specific notes:
 - `gpt-image-*` requests intentionally omit the legacy OpenAI
   `response_format` field.
 - Non-`gpt-image-*` OpenAI image requests send `response_format = "b64_json"`.
-- Gemini maps `size` to `sampleImageSize`; provider/model support may vary.
+- Gemini image models accept `size` for route parity but do not forward it
+  today; Imagen fallback forwards `size` as `sampleImageSize`.

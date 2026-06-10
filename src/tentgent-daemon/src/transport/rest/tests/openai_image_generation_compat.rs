@@ -52,6 +52,26 @@ async fn openai_image_generation_rejects_n() {
 }
 
 #[tokio::test]
+async fn gemini_image_generation_rejects_response_format() {
+    assert_image_error(
+        "gemini-image-generation-response-format",
+        r#"{"provider":"gemini","model":"gemini-2.5-flash-image","prompt":"A small red cube","response_format":"b64_json"}"#,
+        "unsupported_provider_field",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn gemini_image_generation_rejects_n() {
+    assert_image_error(
+        "gemini-image-generation-n",
+        r#"{"provider":"gemini","model":"gemini-2.5-flash-image","prompt":"A small red cube","n":2}"#,
+        "unsupported_provider_field",
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn openai_image_generation_rejects_anthropic_provider_capability() {
     assert_image_error(
         "openai-image-generation-anthropic-provider",

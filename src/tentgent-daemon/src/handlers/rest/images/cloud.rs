@@ -162,4 +162,36 @@ mod tests {
 
         assert_eq!(request.provider, Some(Provider::OpenAI));
     }
+
+    #[test]
+    fn image_generation_body_accepts_explicit_gemini_provider() {
+        let request: CloudImageGenerationBody = serde_json::from_value(serde_json::json!({
+            "provider": "gemini",
+            "model": "gemini-2.5-flash-image",
+            "prompt": "A small red cube",
+            "size": "1024x1024"
+        }))
+        .expect("request");
+
+        request
+            .reject_unsupported()
+            .expect("Gemini image generation request supported");
+
+        assert_eq!(request.model, "gemini-2.5-flash-image");
+        assert_eq!(request.prompt, "A small red cube");
+        assert_eq!(request.size.as_deref(), Some("1024x1024"));
+        assert_eq!(request.provider, Some(Provider::Gemini));
+    }
+
+    #[test]
+    fn image_generation_body_accepts_google_provider_alias() {
+        let request: CloudImageGenerationBody = serde_json::from_value(serde_json::json!({
+            "provider": "google",
+            "model": "gemini-2.5-flash-image",
+            "prompt": "A small red cube"
+        }))
+        .expect("request");
+
+        assert_eq!(request.provider, Some(Provider::Gemini));
+    }
 }

@@ -484,6 +484,15 @@ Model-specific notes:
 
 - The server always uses the bound provider model.
 - OpenAI and Gemini provider mapping is handled by the cloud client.
+- Gemini image model names such as `gemini-2.5-flash-image`,
+  `gemini-3.1-flash-image`, and `gemini-3-pro-image` map to Gemini
+  `generateContent` and decode generated image `inlineData`.
+- Imagen model names such as `imagen-4.0-generate-001` keep using Gemini
+  `predict`.
+- Other Gemini model names are rejected as unsupported image-generation targets
+  before upstream dispatch.
+- Gemini image model `size` is accepted for route parity but is not forwarded
+  today; Imagen fallback forwards `size` as `sampleImageSize`.
 - `gpt-image-*` requests intentionally omit the legacy OpenAI
   `response_format` field; older OpenAI image models request base64 JSON inside
   the cloud client.

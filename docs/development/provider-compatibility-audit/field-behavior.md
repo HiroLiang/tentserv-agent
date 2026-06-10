@@ -22,7 +22,7 @@ profile work.
 | `n` | OpenAI chat accepts `1` and rejects values greater than `1`; provider-compatible image generation rejects caller-supplied `n`. | Image generation is fixed to one generated image per request today. |
 | `dimensions` | Rejected by daemon, direct cloud, and local OpenAI-compatible embeddings. | No dimension override is forwarded today. |
 | `encoding_format` | OpenAI-compatible embeddings accept `float`; `base64` is rejected. | Embedding responses return float arrays today. |
-| `size` | Accepted by cloud and local OpenAI image generation routes. | OpenAI cloud receives `size`; Gemini cloud receives `sampleImageSize`; local OpenAI ingress maps `size` to native `width` and `height`. |
+| `size` | Accepted by cloud and local OpenAI image generation routes. | OpenAI cloud receives `size`; Gemini image models accept it for route parity but do not forward it today; Imagen fallback forwards `size` as `sampleImageSize`; local OpenAI ingress maps `size` to native `width` and `height`. |
 | `voice`, `language`, `output_format` | Not accepted by provider-compatible audio routes because those routes do not exist yet. | Native audio job routes have separate contracts. |
 
 ## Required, Optional, Default
@@ -50,7 +50,9 @@ the `v0.6.0` compatibility-contract slice.
 Current behavior:
 
 - Chat token and temperature fields are forwarded when accepted by the route.
-- Image `size` is forwarded or translated when accepted by the route.
+- Image `size` is forwarded or translated when accepted by the route. Gemini
+  image models accept it for route parity but do not forward it today; Imagen
+  fallback forwards `sampleImageSize`.
 - Embedding `dimensions` is rejected and not forwarded.
 - Provider or backend errors are the current source of truth when a model does
   not support a forwarded parameter.
