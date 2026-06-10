@@ -2,6 +2,40 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.6.0
+
+`v0.6.0` is the compatibility contract release. It keeps the CLI plus daemon
+REST product surface and makes the documented provider-shaped API subset
+explicit for OpenAI, Claude/Anthropic, and Gemini compatibility.
+
+What changed:
+
+- Added a user-facing provider compatibility matrix for daemon compatibility
+  adapters, direct cloud provider servers, and local model-bound servers.
+- Added copy-paste curl and SDK examples for currently supported
+  provider-shaped routes.
+- Stabilized unsupported provider API error codes for unsupported fields,
+  content parts, operations, and provider/capability combinations.
+- Added compatibility fixtures for OpenAI chat, embeddings, image generation,
+  vision input, and audio chat behavior currently supported by Tentgent.
+- Added compatibility fixtures for Claude messages, vision messages, and known
+  unsupported Claude embedding/audio behavior.
+- Added compatibility fixtures for Gemini generateContent, streaming,
+  embeddings, image/audio understanding, and image generation.
+- Added Gemini image generation routing through Gemini image models and Imagen
+  fallback routing while keeping unsupported image fields on stable errors.
+- Clarified which provider-compatible media and tool-use behavior remains
+  intentionally unsupported or deferred to later roadmap work.
+
+Known limits:
+
+- This is partial provider compatibility, not full OpenAI, Claude, or Gemini API
+  parity.
+- Tools/function calling, broader multimodal local routing, provider-compatible
+  rerank, and cluster-style serving targets remain future work.
+- Model support status and local proof semantics are not part of this release;
+  they begin in the `v0.7.0` support status track.
+
 ## v0.5.2
 
 `v0.5.2` is a patch release for readable runtime diagnostics.
@@ -294,7 +328,7 @@ Known limits:
 
 `v0.3.0` was the stable 0.3.x baseline for the former terminal UI alpha line
 and the first release candidate for Homebrew tap distribution. The current
-`v0.5.2` surface is CLI plus daemon REST only.
+`v0.6.0` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -325,7 +359,7 @@ Known limits:
 ## v0.3.0-alpha.2
 
 `v0.3.0-alpha.2` was a bugfix preview release for the former terminal UI alpha
-line. The current `v0.5.2` surface is CLI plus daemon REST only.
+line. The current `v0.6.0` surface is CLI plus daemon REST only.
 
 Added:
 
@@ -352,7 +386,7 @@ Known limits:
 ## v0.3.0-alpha.1
 
 `v0.3.0-alpha.1` was a terminal UI preview release. It is kept here for
-historical context; the current `v0.5.2` surface is CLI plus daemon REST
+historical context; the current `v0.6.0` surface is CLI plus daemon REST
 only.
 
 Added:

@@ -309,6 +309,10 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.6.0`: compatibility contract release; documents OpenAI, Claude/Anthropic,
+  and Gemini-compatible endpoint support, stabilizes unsupported provider API
+  errors, and adds compatibility fixtures for current daemon, direct cloud, and
+  local model-bound provider-shaped routes.
 - `v0.5.2`: patch release for readable runtime diagnostics; `runtime status` now renders wrapped field/value rows, and `runtime bootstrap --profile all` aliases `full`.
 - `v0.5.1`: patch release for packaged Python workspace layout; includes the workspace `uv.lock` so managed runtime bootstrap works with `uv --frozen`.
 - `v0.5.0`: mature model-runtime server release; adds Rust local server proxying through the shared Python model runtime daemon, cloud provider server runtimes, direct local/cloud OpenAI-compatible endpoints, local model capability mutation and proof commands, and the OpenAI `gpt-image-1` request fix.
