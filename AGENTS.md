@@ -70,6 +70,9 @@ Key current documents:
 - `docs/contracts/model-support-status.md`
   Support status vocabulary, evidence precedence, stale-proof rules, and
   transition rules for model/capability/backend tuples.
+- `docs/contracts/model-support-proof-schema.md`
+  Local proof and support hint record schema for explaining model support
+  status.
 - `docs/contracts/adapter-store.md`
   Adapter-store identity, compatibility metadata, layout, and source-index draft.
 - `docs/contracts/dataset-store.md`

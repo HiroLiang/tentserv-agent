@@ -219,13 +219,19 @@ effective `failed`, and either proof can become effectively `stale` when its
 model, capability, backend, runtime, platform, or resolver assumptions no
 longer match the current tuple.
 
+The proof and support hint schema is defined in
+[model-support-proof-schema.md](./model-support-proof-schema.md). The schema
+separates local proof from built-in or shared support hints. Local proof records
+may explain `verified` or `failed`; support hints may explain `supported` or
+`unsupported`.
+
 Proofs live under the canonical model directory:
 
 ```text
 models/store/<model_ref>/capability-proofs/<capability>.toml
 ```
 
-Each proof records:
+Current proof records store a legacy subset:
 
 - `model_ref`
 - `capability`
@@ -238,6 +244,9 @@ Each proof records:
 - optional `server_ref`
 - `checked_at`
 - optional `error`
+
+The `v0.7.0` support-status implementation should expand records toward the
+versioned schema without breaking reads of the legacy subset.
 
 The current manual probe is metadata-level: it verifies that the stored model
 advertises the requested capability and records the inferred backend label. A
