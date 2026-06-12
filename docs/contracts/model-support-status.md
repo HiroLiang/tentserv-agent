@@ -7,6 +7,9 @@ Support status is derived from evidence. It is not the same thing as stored
 `model_capabilities` and it is not the same thing as raw capability proof
 records.
 
+The local proof and support hint record schema is defined in
+[model-support-proof-schema.md](./model-support-proof-schema.md).
+
 ## Purpose
 
 Tentgent needs one stable answer for whether a model can serve a capability on
@@ -105,12 +108,16 @@ changes enough that the old conclusion may no longer be true.
 
 Proof should become stale when any of these change:
 
+- proof or hint `schema_version`
 - `model_ref`
 - capability
 - primary model format
+- quantization
 - backend or runtime family
 - runtime package or adapter version, when recorded or required by the route
 - platform or device class
+- input or output shape
+- selected adapter
 - relevant runtime profile version
 - support-status resolver schema version
 - support record version that supplied the previous conclusion

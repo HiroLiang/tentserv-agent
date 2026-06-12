@@ -135,6 +135,9 @@ post-1.0 direction remains possible.
 
 - Use [model-support-status.md](../contracts/model-support-status.md) as the
   vocabulary and precedence contract for support status resolution.
+- Use
+  [model-support-proof-schema.md](../contracts/model-support-proof-schema.md)
+  as the local proof and support hint record schema.
 - Add a local support registry that can answer whether a model/backend/platform
   tuple is supported, unsupported, verified, failed, unknown, or stale.
 - Store records keyed by model identity, source repo, source revision,
@@ -252,6 +255,8 @@ post-1.0 direction remains possible.
   `unsupported`, and `stale`.
 - Define proof keys for model, capability, backend, runtime version, platform,
   input/output shape, and selected adapter.
+- Define the local proof and support hint record schema before implementing the
+  resolver.
 - Decide which records stay in existing filesystem metadata and which need the
   broader durable proof store from the post-M7 roadmap.
 - Surface support state in inspect/list/doctor paths before enforcing stricter

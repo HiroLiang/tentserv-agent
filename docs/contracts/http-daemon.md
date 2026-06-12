@@ -1147,6 +1147,12 @@ single value.
 `GET /v1/models/{model_ref}/capabilities/proofs` returns latest local proof
 records for the model:
 
+The current response returns the legacy proof subset stored by
+`ModelCapabilityProof`. The expanded proof and support hint schema is defined
+in [model-support-proof-schema.md](./model-support-proof-schema.md); future
+responses may add schema fields without changing the meaning of the existing
+keys.
+
 ```json
 {
   "model": {
