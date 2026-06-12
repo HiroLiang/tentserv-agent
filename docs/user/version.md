@@ -99,9 +99,10 @@ What changed:
 
 Known limits:
 
-- Compatibility proof storage is still metadata-file based and scoped to model
-  capability proof records. The broader post-M7 durable proof store, stale-proof
-  semantics, and dynamic runtime routing remain future roadmap work.
+- Compatibility proof storage is still local metadata-file based. It now keeps
+  tuple-aware support proofs plus a legacy latest-proof file, but broader shared
+  support registries, strict stale-proof gating, and dynamic runtime routing
+  remain future roadmap work.
 - Media upload workflows still use daemon job/workspace routes for bounded
   upload, cleanup, and result-file serving. Direct local server media routes are
   model-bound and path-based, not generic upload tunnels.

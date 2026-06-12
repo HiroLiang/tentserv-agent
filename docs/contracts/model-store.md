@@ -225,7 +225,13 @@ separates local proof from built-in or shared support hints. Local proof records
 may explain `verified` or `failed`; support hints may explain `supported` or
 `unsupported`.
 
-Proofs live under the canonical model directory:
+Tuple-aware proofs live under the canonical model directory:
+
+```text
+models/store/<model_ref>/support-proofs/<capability>/<proof_key>.toml
+```
+
+The legacy latest-proof path remains readable and writable for compatibility:
 
 ```text
 models/store/<model_ref>/capability-proofs/<capability>.toml

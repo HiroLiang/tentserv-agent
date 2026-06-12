@@ -130,23 +130,37 @@ pub trait ModelClock {
     fn now_rfc3339(&self) -> KernelResult<String>;
 }
 
-/// Reads and writes latest model capability proof records.
+/// Reads and writes model capability proof records.
 pub trait ModelCapabilityProofStore {
-    /// Lists latest capability proofs for one model.
+    /// Lists all current capability proofs for one model, including legacy latest records.
     fn list_capability_proofs(
         &self,
         layout: &ModelStoreLayout,
         model_ref: &ModelRef,
     ) -> KernelResult<Vec<ModelCapabilityProof>>;
 
-    /// Saves or replaces the latest proof for one model capability.
+    /// Saves or replaces the tuple-specific support proof for one model capability.
+    fn save_support_proof(
+        &self,
+        layout: &ModelStoreLayout,
+        proof: &ModelCapabilityProof,
+    ) -> KernelResult<()>;
+
+    /// Lists tuple-specific support proofs for one model.
+    fn list_support_proofs(
+        &self,
+        layout: &ModelStoreLayout,
+        model_ref: &ModelRef,
+    ) -> KernelResult<Vec<ModelCapabilityProof>>;
+
+    /// Saves or replaces the latest legacy proof for one model capability and the tuple proof.
     fn save_capability_proof(
         &self,
         layout: &ModelStoreLayout,
         proof: &ModelCapabilityProof,
     ) -> KernelResult<()>;
 
-    /// Removes all latest capability proofs for one capability.
+    /// Removes all capability proof records for one capability.
     fn remove_capability_proof(
         &self,
         layout: &ModelStoreLayout,
