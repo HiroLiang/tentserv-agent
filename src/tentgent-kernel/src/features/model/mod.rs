@@ -4,6 +4,7 @@ pub mod classification;
 pub mod domain;
 pub mod infra;
 pub mod ports;
+pub mod support_status;
 pub mod usecases;
 
 #[cfg(test)]
