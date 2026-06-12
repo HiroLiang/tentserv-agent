@@ -211,6 +211,14 @@ Capability proofs record the latest observed result for a
 endpoint family, while proof records whether a local probe or runtime event has
 confirmed or failed that path.
 
+Proof records are raw evidence. The effective model support status vocabulary
+and precedence rules are defined in
+[model-support-status.md](./model-support-status.md). A `verified` proof can
+contribute to effective `verified`, a `failed` proof can contribute to
+effective `failed`, and either proof can become effectively `stale` when its
+model, capability, backend, runtime, platform, or resolver assumptions no
+longer match the current tuple.
+
 Proofs live under the canonical model directory:
 
 ```text

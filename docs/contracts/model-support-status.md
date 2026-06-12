@@ -1,0 +1,172 @@
+# Model Support Status
+
+This document defines the support status vocabulary used by model and runtime
+workflows. It is a design contract for the `v0.7.0` support-status track.
+
+Support status is derived from evidence. It is not the same thing as stored
+`model_capabilities` and it is not the same thing as raw capability proof
+records.
+
+## Purpose
+
+Tentgent needs one stable answer for whether a model can serve a capability on
+this machine. Later code should be able to map every
+`model + capability + backend/runtime + platform` tuple to exactly one status
+before starting a server or dispatching a job.
+
+The status should explain:
+
+- whether Tentgent knows the tuple is supported;
+- whether this machine has verified the tuple;
+- whether a recent attempt failed;
+- whether older evidence is stale;
+- whether the tuple is unknown and needs an explicit policy decision.
+
+## Tuple Scope
+
+A support status applies to one resolved tuple. It must not be keyed by model
+name alone.
+
+The tuple should include at least:
+
+- `model_ref`
+- capability, such as `chat`, `embedding`, or `vision-chat`
+- primary model format, such as `mlx`, `safetensors`, `gguf`, or `diffusers`
+- backend or runtime family, such as `mlx-lm`, `mlx-vlm`, `mlx-audio`,
+  `mlx-diffusion`, `transformers`, or `llama-cpp`
+- runtime package or adapter version when known
+- platform and device class, such as macOS Apple Silicon, Linux CUDA, or CPU
+- source identity and revision when a built-in or shared support record depends
+  on source metadata
+
+If any tuple dimension changes in a way that can affect execution, previous
+proof for the old tuple must not be treated as proof for the new tuple.
+
+## Status Vocabulary
+
+| Status | Meaning | Typical routing behavior |
+| --- | --- | --- |
+| `verified` | Local proof confirms this tuple worked on this machine. | Prefer this route. Allow server start or job dispatch unless another gate fails. |
+| `failed` | The latest applicable local proof for this tuple failed. | Block by default and show the recorded failure. |
+| `supported` | Built-in, curated, or shared support evidence says this tuple should work, but this machine has not verified it yet. | Allow when policy accepts hinted support, and encourage or run verification. |
+| `unknown` | No applicable positive proof, negative proof, or support record exists. | Require explicit allow-unknown policy before trying. |
+| `unsupported` | Built-in rules, support records, or hard compatibility checks say this tuple cannot work. | Block before runtime dispatch. |
+| `stale` | Earlier evidence exists, but it no longer applies to the current tuple or policy version. | Require re-verification or re-resolution before treating it as supported. |
+
+`verified` and `failed` can be persisted as proof statuses. The other support
+statuses are effective statuses derived by a resolver from proof, support
+records, metadata, policy, and environment state.
+
+## Evidence Sources
+
+Support status may use these evidence sources:
+
+- Declared model capability metadata:
+  `default-chat`, `explicit-user`, `huggingface-metadata`, or
+  `manual-update`.
+- Local proof records:
+  `manual-probe`, `server-start`, or `endpoint-smoke`.
+- Built-in support records shipped with Tentgent.
+- Future shared or downloaded support records.
+- Runtime profile availability and backend compatibility rules.
+- Platform readiness, such as required Python package, backend, device, or
+  system dependency availability.
+- User policy, such as allowing unknown tuples or overriding local routing.
+
+Declared capability metadata says which endpoint family a model is intended to
+serve. It is necessary routing input, but it does not prove runtime support.
+
+## Precedence
+
+When multiple evidence sources apply, resolve status in this order:
+
+1. Hard incompatibility returns `unsupported`.
+   Examples include a missing required model capability, a backend that cannot
+   serve the requested capability, or a platform/device class that the runtime
+   family cannot use.
+2. Staleness checks run before trusting proof or support records.
+   If the best applicable evidence is stale and no newer applicable evidence
+   exists, return `stale`.
+3. The latest applicable local proof wins over support hints.
+   A successful proof returns `verified`; a failed proof returns `failed`.
+4. Built-in or shared negative support records return `unsupported`.
+5. Built-in or shared positive support records return `supported`.
+6. User capability metadata and user allow-unknown policy can permit an
+   attempt, but they do not create `verified` or `supported` by themselves.
+7. If no evidence applies, return `unknown`.
+
+A local `failed` proof must not be hidden by a `supported` hint. The operator
+should see that the tuple was expected to work but failed locally.
+
+## Stale Evidence
+
+Evidence becomes stale when one of the tuple dimensions or resolver assumptions
+changes enough that the old conclusion may no longer be true.
+
+Proof should become stale when any of these change:
+
+- `model_ref`
+- capability
+- primary model format
+- backend or runtime family
+- runtime package or adapter version, when recorded or required by the route
+- platform or device class
+- relevant runtime profile version
+- support-status resolver schema version
+- support record version that supplied the previous conclusion
+
+Proof may also become stale when required runtime files, adapters, or model
+variants are removed.
+
+`stale` is an effective status. The proof record may remain stored for audit
+history, but a resolver must not use stale proof as current `verified` or
+`failed` evidence.
+
+## Transition Rules
+
+| From | Event | To |
+| --- | --- | --- |
+| `unknown` | Positive built-in or shared support record is added. | `supported` |
+| `unknown` | Negative built-in or shared support record is added. | `unsupported` |
+| `unknown` | Explicit allow-unknown attempt succeeds and records proof. | `verified` |
+| `unknown` | Explicit allow-unknown attempt fails and records proof. | `failed` |
+| `supported` | Local verification succeeds. | `verified` |
+| `supported` | Local verification or runtime attempt fails. | `failed` |
+| `verified` | Newer applicable local attempt fails. | `failed` |
+| `failed` | Newer applicable local attempt succeeds. | `verified` |
+| `verified` or `failed` | Tuple, runtime profile, platform, or resolver schema changes. | `stale` |
+| `stale` | Re-verification succeeds. | `verified` |
+| `stale` | Re-verification fails. | `failed` |
+| `supported` | Support record changes and no current local proof applies. | `stale` or `unsupported` |
+| any status | Hard incompatibility is discovered for the current tuple. | `unsupported` |
+
+## Output Requirements
+
+Any user-facing or API-facing support status should include enough context to
+explain the decision:
+
+- effective status;
+- model reference and short reference;
+- requested capability;
+- selected backend/runtime family;
+- evidence source that produced the status;
+- whether local proof was used;
+- stale reason when status is `stale`;
+- failure message when status is `failed`;
+- next action when status is `unknown`, `unsupported`, `failed`, or `stale`.
+
+The initial implementation may expose a compact view first, but the underlying
+resolver should preserve these fields so CLI, daemon, doctor, and server-start
+errors can present the same decision.
+
+## Non-Goals
+
+This contract does not define:
+
+- the file format for a future support registry;
+- the exact CLI or HTTP response shape for support status;
+- live verification behavior for every capability;
+- dynamic routing across multiple candidate backends.
+
+Those are later `v0.7.0` and `v0.8.0` implementation slices. This contract only
+fixes the vocabulary and resolver rules they should follow.
