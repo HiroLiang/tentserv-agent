@@ -133,6 +133,8 @@ post-1.0 direction remains possible.
 
 ### P3: Model Support Registry
 
+- Use [model-support-status.md](../contracts/model-support-status.md) as the
+  vocabulary and precedence contract for support status resolution.
 - Add a local support registry that can answer whether a model/backend/platform
   tuple is supported, unsupported, verified, failed, unknown, or stale.
 - Store records keyed by model identity, source repo, source revision,
@@ -166,6 +168,9 @@ post-1.0 direction remains possible.
   to discover failures during production traffic.
 - Gate server starts and daemon jobs using declared capability, support status,
   platform readiness, runtime profile availability, and stale proof state.
+- Treat support status as a derived result from the
+  [model-support-status.md](../contracts/model-support-status.md) resolver
+  rules, not as a direct replacement for declared `model_capabilities`.
 - Provide clear override policy for unknown models, such as an explicit
   `allow_unknown` or future CLI flag, and record the outcome.
 - Make failures actionable: missing files, unsupported quantization, missing

@@ -67,6 +67,9 @@ Key current documents:
   Provider-secret resolution order and keychain usage rules.
 - `docs/contracts/model-store.md`
   Model-store identity, deduplication, layout, and Hugging Face pull boundaries.
+- `docs/contracts/model-support-status.md`
+  Support status vocabulary, evidence precedence, stale-proof rules, and
+  transition rules for model/capability/backend tuples.
 - `docs/contracts/adapter-store.md`
   Adapter-store identity, compatibility metadata, layout, and source-index draft.
 - `docs/contracts/dataset-store.md`
