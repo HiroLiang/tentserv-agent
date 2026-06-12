@@ -15,6 +15,7 @@ pub const STAGING_DIRNAME: &str = "staging";
 pub const VARIANTS_DIRNAME: &str = "variants";
 pub const SOURCE_DIRNAME: &str = "source";
 pub const CAPABILITY_PROOFS_DIRNAME: &str = "capability-proofs";
+pub const SUPPORT_PROOFS_DIRNAME: &str = "support-proofs";
 
 pub const MODEL_METADATA_FILENAME: &str = "model.toml";
 pub const MODEL_MANIFEST_FILENAME: &str = "manifest.json";
@@ -691,6 +692,68 @@ pub struct ModelCapabilityProof {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelCapabilityProofKey {
+    pub model_ref: ModelRef,
+    pub capability: ModelCapability,
+    pub primary_format: ModelFormat,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mlx_runtime_family: Option<MlxRuntimeFamily>,
+    pub backend: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_version: Option<String>,
+}
+
+impl ModelCapabilityProofKey {
+    pub fn from_proof(proof: &ModelCapabilityProof) -> Self {
+        Self {
+            model_ref: proof.model_ref.clone(),
+            capability: proof.capability,
+            primary_format: proof.primary_format,
+            mlx_runtime_family: proof.mlx_runtime_family,
+            backend: proof.backend.clone(),
+            runtime_version: proof.runtime_version.clone(),
+        }
+    }
+
+    pub fn filename(&self) -> String {
+        format!(
+            "format-{}__runtime-{}__backend-{}__version-{}.toml",
+            proof_key_component(self.primary_format.as_str()),
+            optional_proof_key_component(self.mlx_runtime_family.map(|family| family.as_str())),
+            proof_key_component(&self.backend),
+            optional_proof_key_component(self.runtime_version.as_deref())
+        )
+    }
+}
+
+fn optional_proof_key_component(value: Option<&str>) -> String {
+    match value {
+        Some(value) => format!("some-{}", proof_key_component(value)),
+        None => "none".to_string(),
+    }
+}
+
+fn proof_key_component(value: &str) -> String {
+    if value.is_empty() {
+        return "empty".to_string();
+    }
+
+    let mut escaped = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' => {
+                escaped.push(byte as char);
+            }
+            _ => {
+                escaped.push('_');
+                escaped.push_str(&format!("{byte:02x}"));
+            }
+        }
+    }
+    escaped
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HfModelPullProgress {
     pub description: String,
@@ -754,6 +817,23 @@ impl ModelStoreLayout {
 
     pub fn capability_proofs_dir(&self, model_ref: &ModelRef) -> PathBuf {
         self.model_dir(model_ref).join(CAPABILITY_PROOFS_DIRNAME)
+    }
+
+    pub fn support_proofs_dir(&self, model_ref: &ModelRef) -> PathBuf {
+        self.model_dir(model_ref).join(SUPPORT_PROOFS_DIRNAME)
+    }
+
+    pub fn support_proofs_capability_dir(
+        &self,
+        model_ref: &ModelRef,
+        capability: ModelCapability,
+    ) -> PathBuf {
+        self.support_proofs_dir(model_ref).join(capability.as_str())
+    }
+
+    pub fn support_proof_path(&self, key: &ModelCapabilityProofKey) -> PathBuf {
+        self.support_proofs_capability_dir(&key.model_ref, key.capability)
+            .join(key.filename())
     }
 
     pub fn capability_proof_path(

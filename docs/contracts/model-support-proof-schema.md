@@ -27,16 +27,33 @@ runtime dispatch.
 ## Local Proof Record
 
 Local proof records are currently stored as TOML under the canonical model
-directory:
+directory in two compatible locations.
+
+Tuple-aware support proofs are stored under:
+
+```text
+models/store/<model_ref>/support-proofs/<capability>/<proof_key>.toml
+```
+
+The current proof key is derived from:
+
+- `primary_format`
+- `runtime_family` when present
+- `backend`
+- `runtime_version` when present
+
+This allows multiple backend or runtime proofs for the same model capability to
+coexist. Saving another proof for the same tuple replaces that tuple proof.
+
+The legacy latest-proof location is still written and read for compatibility:
 
 ```text
 models/store/<model_ref>/capability-proofs/<capability>.toml
 ```
 
-That path is the legacy latest-proof location for one capability. It remains
-readable, but it is not enough to retain multiple backend, runtime, adapter, or
-shape proofs for the same capability. A later durable proof store should index
-records by the tuple key defined below.
+That path stores only one latest proof per capability. It must not be treated
+as the durable tuple index when multiple backend, runtime, adapter, or shape
+proofs exist for the same capability.
 
 The `v0.7.0` schema should be versioned:
 
@@ -146,10 +163,11 @@ applies to the current route:
 - `input_shape`
 - `output_shape`
 
-The first implementation may derive this key in memory instead of storing a
-separate `proof_key` field. If a durable proof store adds a `proof_key`, it
-must be derived from these fields and must not ignore adapter or shape
-differences.
+The current tuple-aware local proof store derives its path key in memory from
+the fields it records today: primary format, runtime family, backend, and
+runtime version. A later expanded proof key must continue to derive from these
+fields and must not ignore adapter or shape differences once those fields are
+recorded.
 
 ## Runtime Tuple Fields
 

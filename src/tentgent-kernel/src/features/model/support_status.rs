@@ -293,10 +293,19 @@ fn latest_matching_proof<'a>(
     query: &ModelSupportQuery,
     proofs: &'a [ModelCapabilityProof],
 ) -> Option<&'a ModelCapabilityProof> {
-    proofs
+    let matching = proofs
         .iter()
         .rev()
-        .find(|proof| proof.model_ref == metadata.model_ref && proof.capability == query.capability)
+        .filter(|proof| {
+            proof.model_ref == metadata.model_ref && proof.capability == query.capability
+        })
+        .collect::<Vec<_>>();
+
+    matching
+        .iter()
+        .copied()
+        .find(|proof| proof_stale_reason(proof, query).is_none())
+        .or_else(|| matching.first().copied())
 }
 
 fn proof_stale_reason(proof: &ModelCapabilityProof, query: &ModelSupportQuery) -> Option<String> {
@@ -592,6 +601,34 @@ mod tests {
         let resolution = resolver().resolve(&metadata, &query, &proofs, &[]);
 
         assert_eq!(resolution.status, ModelSupportStatus::Verified);
+    }
+
+    #[test]
+    fn matching_tuple_proof_wins_over_stale_same_capability_proof() {
+        let metadata = metadata_with_capabilities(vec![ModelCapability::Chat]);
+        let query = query_for(ModelCapability::Chat);
+        let proofs = vec![
+            proof_for(
+                &metadata,
+                ModelCapability::Chat,
+                ModelCapabilityProofStatus::Verified,
+                "gguf",
+                None,
+            ),
+            proof_for(
+                &metadata,
+                ModelCapability::Chat,
+                ModelCapabilityProofStatus::Failed,
+                "llama-cpp",
+                Some("stale tuple failure".to_string()),
+            ),
+        ];
+
+        let resolution = resolver().resolve(&metadata, &query, &proofs, &[]);
+
+        assert_eq!(resolution.status, ModelSupportStatus::Verified);
+        assert_eq!(resolution.failure_reason, None);
+        assert_eq!(resolution.stale_reason, None);
     }
 
     fn resolver() -> ModelSupportStatusResolver {

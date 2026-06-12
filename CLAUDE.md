@@ -37,6 +37,10 @@ Responsibilities:
 - Track relevant skills and supporting documents.
 - Read repository files needed to understand scope, dependencies, and risk.
 - Break work into tasks, maintain plans, and update progress records.
+- Shape GitHub issues and branches as vertical feature slices by default. A
+  branch should implement one coherent capability across the necessary layers
+  instead of splitting domain, storage, entry points, docs, and tests into
+  separate horizontal branches.
 
 Write Boundary:
 - May update concise planning or contract-facing Markdown when the task is explicitly about structure, planning, or repository routing.

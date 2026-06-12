@@ -19,9 +19,15 @@ one pass without a staged breakdown.
 - Keep each plan focused on one execution track.
 - If a plan grows large, split it into subfolders with a local `README.md`.
 - Update the plan when the approved execution order changes materially.
-- Prefer review-sized implementation slices over one large execution step.
-- When a track is being developed interactively, document the next small slice
-  explicitly.
+- Prefer vertical feature slices over horizontal layer slices. A GitHub issue
+  and branch should usually carry one user-visible or operator-visible
+  capability through the needed contract, domain, persistence, entry point,
+  documentation, and tests when that scope is manageable.
+- Avoid opening separate issues only for implementation layers such as domain,
+  store, CLI, daemon, docs, or tests unless the layer is a standalone design
+  risk or the vertical feature branch would become too large to review safely.
+- When a track is being developed interactively, document the next vertical
+  capability slice explicitly.
 - Move completed or superseded plans into `archive/` so this directory stays
   focused on current work.
 

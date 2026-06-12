@@ -4,21 +4,22 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::model::domain::{
     default_model_capabilities, default_model_capability_source, HfModelSourceIndex,
-    LocalModelSourceIndex, ModelFormat, ModelImportMethod, ModelManifest, ModelManifestEntry,
+    LocalModelSourceIndex, ModelCapability, ModelCapabilityProof, ModelCapabilityProofSource,
+    ModelCapabilityProofStatus, ModelFormat, ModelImportMethod, ModelManifest, ModelManifestEntry,
     ModelMetadata, ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
     ModelVariantMetadata, ModelVariantStatus, SOURCE_DIRNAME,
 };
 use crate::features::model::ports::{
-    ModelCatalogStore, ModelContentStore, ModelIdentityGenerator, ModelManifestBuilder,
-    ModelServerReferenceProbe, ModelSourceIndexStore, ModelSourceStager,
+    ModelCapabilityProofStore, ModelCatalogStore, ModelContentStore, ModelIdentityGenerator,
+    ModelManifestBuilder, ModelServerReferenceProbe, ModelSourceIndexStore, ModelSourceStager,
     ModelStoreLayoutInitializer,
 };
 use crate::foundation::layout::RuntimeLayout;
 
 use super::{
-    FileModelCatalogStore, FileModelContentStore, FileModelServerReferenceProbe,
-    FileModelSourceIndexStore, StdModelIdentityGenerator, StdModelManifestBuilder,
-    StdModelSourceStager, StdModelStoreLayoutInitializer,
+    FileModelCapabilityProofStore, FileModelCatalogStore, FileModelContentStore,
+    FileModelServerReferenceProbe, FileModelSourceIndexStore, StdModelIdentityGenerator,
+    StdModelManifestBuilder, StdModelSourceStager, StdModelStoreLayoutInitializer,
 };
 
 #[test]
@@ -205,6 +206,72 @@ model_ref = "{}"
     assert_eq!(refs, vec!["server-a".to_string()]);
 }
 
+#[test]
+fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
+    let root = unique_path("model-support-proof");
+    let layout = ModelStoreLayout::from_models_dir(root.join("models"));
+    let model_ref = ModelRef::parse("d".repeat(64)).expect("model ref");
+    let store = FileModelCapabilityProofStore;
+
+    let gguf = proof_fixture(
+        model_ref.clone(),
+        ModelCapability::Chat,
+        "gguf",
+        ModelCapabilityProofStatus::Verified,
+        None,
+    );
+    let llama = proof_fixture(
+        model_ref.clone(),
+        ModelCapability::Chat,
+        "llama-cpp",
+        ModelCapabilityProofStatus::Failed,
+        Some("runtime failed".to_string()),
+    );
+
+    store
+        .save_capability_proof(&layout, &gguf)
+        .expect("save gguf proof");
+    store
+        .save_capability_proof(&layout, &llama)
+        .expect("save llama proof");
+
+    let proofs = store
+        .list_capability_proofs(&layout, &model_ref)
+        .expect("list proofs");
+    assert_eq!(proofs.len(), 2);
+    assert!(proofs.iter().any(
+        |proof| proof.backend == "gguf" && proof.status == ModelCapabilityProofStatus::Verified
+    ));
+    assert!(proofs.iter().any(|proof| proof.backend == "llama-cpp"
+        && proof.status == ModelCapabilityProofStatus::Failed
+        && proof.error.as_deref() == Some("runtime failed")));
+    assert!(layout.support_proofs_dir(&model_ref).is_dir());
+    assert!(layout
+        .capability_proof_path(&model_ref, ModelCapability::Chat)
+        .is_file());
+
+    let overwritten = proof_fixture(
+        model_ref.clone(),
+        ModelCapability::Chat,
+        "gguf",
+        ModelCapabilityProofStatus::Failed,
+        Some("new failure".to_string()),
+    );
+    store
+        .save_capability_proof(&layout, &overwritten)
+        .expect("overwrite gguf proof");
+
+    let proofs = store
+        .list_capability_proofs(&layout, &model_ref)
+        .expect("list overwritten proofs");
+    assert_eq!(proofs.len(), 2);
+    assert!(proofs.iter().any(|proof| proof.backend == "gguf"
+        && proof.status == ModelCapabilityProofStatus::Failed
+        && proof.error.as_deref() == Some("new failure")));
+
+    let _ = fs::remove_dir_all(root);
+}
+
 fn metadata_fixture(model_ref: ModelRef) -> ModelMetadata {
     ModelMetadata {
         short_ref: model_ref.short_ref().to_string(),
@@ -230,6 +297,28 @@ fn variant_fixture() -> ModelVariantMetadata {
         status: ModelVariantStatus::Imported,
         import_method: ModelImportMethod::Add,
         relative_source_path: SOURCE_DIRNAME.to_string(),
+    }
+}
+
+fn proof_fixture(
+    model_ref: ModelRef,
+    capability: ModelCapability,
+    backend: impl Into<String>,
+    status: ModelCapabilityProofStatus,
+    error: Option<String>,
+) -> ModelCapabilityProof {
+    ModelCapabilityProof {
+        model_ref,
+        capability,
+        status,
+        source: ModelCapabilityProofSource::ServerStart,
+        primary_format: ModelFormat::Gguf,
+        mlx_runtime_family: None,
+        backend: backend.into(),
+        runtime_version: None,
+        server_ref: Some("server-ref".to_string()),
+        checked_at: imported_at(),
+        error,
     }
 }
 

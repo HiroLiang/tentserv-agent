@@ -163,6 +163,12 @@ tentgent model capability verify <model-ref> vision-chat
 tentgent model capability proofs <model-ref>
 ```
 
+`model ls` keeps the table compact and includes a copy-paste
+`tentgent model inspect <short-ref>` command in each row. The list omits long
+source revision hashes; full source revision and detailed capability support
+status are shown by `model inspect` inside the Field/Value table as compact
+multi-line rows instead of a wide capability table.
+
 When no explicit capability or confident Hugging Face metadata is available,
 Tentgent keeps the backward-compatible `chat` default and prints a warning.
 Use `model capability set`, `add`, or `remove` to correct stored metadata later
@@ -173,9 +179,10 @@ the whole capability set with one value.
 For MLX models, inspect output also shows `mlx_runtime_family` when the stored
 capability maps to a specific MLX runtime family such as `mlx-lm`,
 `mlx-vlm`, `mlx-audio`, or `mlx-diffusion`.
-Capability proof commands read and write local latest proof records. Manual
-`verify` checks stored metadata and backend labeling; local model-bound server
-starts record `server-start` proofs after launch success or failure.
+Capability proof commands read and write local tuple-aware support proof
+records while preserving the legacy latest proof file for compatibility.
+Manual `verify` checks stored metadata and backend labeling; local model-bound
+server starts record `server-start` proofs after launch success or failure.
 
 For recommended small Hugging Face fixtures, gated-access reminders, and
 copy-paste smoke commands, see [model-fixtures.md](./model-fixtures.md).

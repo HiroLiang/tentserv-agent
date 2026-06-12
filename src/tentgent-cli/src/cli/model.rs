@@ -13,13 +13,16 @@ use tentgent_kernel::features::auth::usecases::{
 use tentgent_kernel::features::model::domain::{
     HfModelPullProgress, MlxRuntimeFamily, ModelCapability, ModelCapabilityProof, ModelFormat,
     ModelImportOutcome, ModelInspection, ModelMetadata, ModelRefSelector, ModelRemovalOutcome,
-    ModelSummary,
+    ModelSummary, MODEL_CAPABILITY_CANONICAL_ORDER,
 };
 use tentgent_kernel::features::model::infra::{
     FileModelCapabilityProofStore, FileModelCatalogStore, FileModelContentStore,
     FileModelServerReferenceProbe, FileModelSourceIndexStore, StdHfModelSnapshotFetcher,
     StdModelIdentityGenerator, StdModelManifestBuilder, StdModelSourceStager,
     StdModelStoreLayoutInitializer, SystemModelClock,
+};
+use tentgent_kernel::features::model::support_status::{
+    ModelSupportQuery, ModelSupportStatusResolver,
 };
 use tentgent_kernel::features::model::usecases::{
     ModelCapabilityMutation, ModelCapabilityProofListRequest, ModelCapabilityProofUseCase,
@@ -118,12 +121,21 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
             let selector = parse_model_selector("inspect", "REF", &reference)?;
             let inspection = match model.catalog_usecase().inspect_model(ModelInspectRequest {
                 layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
-                selector,
+                selector: selector.clone(),
             }) {
                 Ok(result) => result.model,
                 Err(err) => return Err(explain_model_lookup_error("inspect", "REF", err)),
             };
-            render_model_inspection(&inspection);
+            let proofs = match model
+                .capability_proof_usecase()
+                .list_model_capability_proofs(ModelCapabilityProofListRequest {
+                    layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
+                    selector,
+                }) {
+                Ok(result) => result.proofs,
+                Err(err) => return Err(explain_model_lookup_error("inspect", "REF", err)),
+            };
+            render_model_inspection(&inspection, &proofs);
         }
         ModelCommands::Capability { action } => {
             handle_model_capability_command(&model, action)?;
@@ -510,22 +522,25 @@ fn render_model_list(models: &[ModelSummary]) {
         .set_header(vec![
             "short_ref",
             "format",
-            "capabilities",
             "source_kind",
             "source",
             "files",
             "size",
+            "inspect",
         ]);
 
     for model in models {
         table.add_row(vec![
             Cell::new(&model.metadata.short_ref),
             Cell::new(model.metadata.primary_format.as_str()),
-            Cell::new(model_capabilities_label(&model.metadata.model_capabilities)),
             Cell::new(model.metadata.source_kind.as_str()),
-            Cell::new(model.metadata.source_summary()),
+            Cell::new(model_list_source_label(&model.metadata)),
             Cell::new(model.metadata.file_count),
             Cell::new(format_bytes(model.metadata.total_bytes)),
+            Cell::new(format!(
+                "tentgent model inspect {}",
+                model.metadata.short_ref
+            )),
         ]);
     }
 
@@ -533,7 +548,20 @@ fn render_model_list(models: &[ModelSummary]) {
     println!();
 }
 
-fn render_model_inspection(inspection: &ModelInspection) {
+fn model_list_source_label(metadata: &ModelMetadata) -> String {
+    match metadata.source_kind {
+        tentgent_kernel::features::model::domain::ModelSourceKind::HuggingFace => metadata
+            .source_repo
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string()),
+        tentgent_kernel::features::model::domain::ModelSourceKind::Local => metadata
+            .source_path
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string()),
+    }
+}
+
+fn render_model_inspection(inspection: &ModelInspection, proofs: &[ModelCapabilityProof]) {
     println!(
         "{} {} {}",
         style("==>").cyan().bold(),
@@ -555,9 +583,79 @@ fn render_model_inspection(inspection: &ModelInspection) {
         Cell::new("variant source"),
         Cell::new(inspection.variant_source_path.display().to_string()),
     ]);
+    add_model_support_status_rows(&mut table, &inspection.metadata, proofs);
 
     println!("{table}");
     println!();
+}
+
+fn add_model_support_status_rows(
+    table: &mut Table,
+    metadata: &ModelMetadata,
+    proofs: &[ModelCapabilityProof],
+) {
+    let capabilities = inspect_capabilities(metadata, proofs);
+    if capabilities.is_empty() {
+        table.add_row(vec![Cell::new("capability support"), Cell::new("none")]);
+        return;
+    }
+
+    for (index, capability) in capabilities.into_iter().enumerate() {
+        let query = ModelSupportQuery::from_metadata(metadata, capability);
+        let resolution = ModelSupportStatusResolver.resolve(metadata, &query, proofs, &[]);
+        let mut lines = Vec::new();
+        if index > 0 {
+            lines.push(String::new());
+        }
+        lines.extend([
+            capability.as_str().to_string(),
+            format!(
+                "declared: {}",
+                if metadata.supports_capability(capability) {
+                    "yes"
+                } else {
+                    "no"
+                }
+            ),
+            format!("status: {}", resolution.status.as_str()),
+            format!("evidence: {}", resolution.evidence.as_str()),
+            format!("backend: {}", query.backend),
+        ]);
+
+        if let Some(family) = query.mlx_runtime_family {
+            lines.push(format!("mlx_runtime_family: {}", family.as_str()));
+        }
+        if let Some(version) = query.runtime_version.as_deref() {
+            lines.push(format!("runtime_version: {version}"));
+        }
+        if let Some(stale_reason) = resolution.stale_reason.as_deref() {
+            lines.push(format!("stale: {stale_reason}"));
+        }
+        if let Some(failure_reason) = resolution.failure_reason.as_deref() {
+            lines.push(format!("failure: {failure_reason}"));
+        }
+        if !resolution.reason.is_empty() {
+            lines.push(format!("reason: {}", resolution.reason));
+        }
+
+        table.add_row(vec![
+            Cell::new(if index == 0 { "capability support" } else { "" }),
+            Cell::new(lines.join("\n")),
+        ]);
+    }
+}
+
+fn inspect_capabilities(
+    metadata: &ModelMetadata,
+    proofs: &[ModelCapabilityProof],
+) -> Vec<ModelCapability> {
+    MODEL_CAPABILITY_CANONICAL_ORDER
+        .into_iter()
+        .filter(|capability| {
+            metadata.supports_capability(*capability)
+                || proofs.iter().any(|proof| proof.capability == *capability)
+        })
+        .collect()
 }
 
 fn render_model_capability_show(inspection: &ModelInspection) {
