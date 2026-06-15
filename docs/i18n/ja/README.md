@@ -6,12 +6,16 @@ daemon REST API で、model runtime、adapter、dataset、LoRA training、
 
 現在の product surface は CLI と daemon REST です。terminal UI command はありません。
 
-## 言語
+## 言語と Docs
 
 - 英語 source of truth: [README.md](../../../README.md)
 - 繁體中文: [docs/i18n/zh-TW/README.md](../zh-TW/README.md)
 - 日本語: [docs/i18n/ja/README.md](./README.md)
 - 完整な英語 user docs: [docs/user/README.md](../../../docs/user/README.md)
+- HTTP API reference: [docs/user/api.md](../../../docs/user/api.md)
+- small model fixtures と smoke tests: [docs/user/model-fixtures.md](../../../docs/user/model-fixtures.md)
+- model support catalog と support status: [docs/user/model-support-catalog.md](../../../docs/user/model-support-catalog.md)
+- developer docs: [docs/development/README.md](../../../docs/development/README.md)
 
 ## Quick Start
 
@@ -26,6 +30,7 @@ tentgent doctor
 
 ```bash
 tentgent auth hf set
+tentgent model catalog --capability chat --publisher Qwen
 tentgent model pull google/gemma-3-1b-it
 tentgent model ls
 tentgent chat <model-ref> --message "user:Hello"
@@ -50,16 +55,16 @@ Windows PowerShell ユーザー向けの推奨インストール:
 irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
 ```
 
-Linux x86_64 preview install は検証済み prerelease を使います:
+Linux x86_64 は latest GitHub Release から install できます:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.4-alpha.2/install.sh | bash
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | bash
 tentgent doctor
 ```
 
 Linux preview は GitHub Release tarball とデフォルトの `base` runtime
-bootstrap profile を使います。現時点では明示的な prerelease URL を使って
-ください。stable `latest` release はまだ Linux support を advertise していません。
+bootstrap profile を使います。Linux では full managed runtime と local model
+backend parity はまだ claim していません。
 runtime data を default direct-installer support directory の外に置きたい場合は、
 bootstrap 前に `TENTGENT_HOME` を設定して永続化してください。
 
@@ -122,12 +127,17 @@ provider secret resolution と Keychain boundaries は [docs/contracts/auth-secr
 managed model を管理:
 
 ```bash
+tentgent model catalog --capability chat --publisher Qwen
 tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
 tentgent model ls
-tentgent model inspect <model-ref>
+tentgent model inspect <model-ref-or-prefix>
 tentgent model add /absolute/path/to/model
 tentgent model rm <model-ref>
 ```
+
+`model catalog` は built-in model family と support hints を先に確認するための入口です。
+`model ls` は compact な support status を表示し、`model inspect` は capability
+ごとの proof、hint、backend、reason の詳細を表示します。
 
 model、adapter、dataset、chat の完整な examples は [docs/user/commands.md](../../../docs/user/commands.md#models-and-chat) を参照してください。
 
@@ -169,11 +179,14 @@ detached servers を管理:
 
 ```bash
 tentgent server ls
+tentgent server inspect <server-ref>
 tentgent server ps
 tentgent server stop <server-ref>
 ```
 
 Direct model-server chat は stateless です。model-ref based native / compatible chat routes には daemon を使ってください。server chat request と adapter rules は [docs/contracts/server-chat.md](../../../docs/contracts/server-chat.md) を参照してください。
+local model-bound server は `server ls` で compact な model short ref を表示します。
+full model_ref と selected-capability support status は `server inspect` で確認します。
 
 ## Daemon を起動・停止
 
@@ -234,6 +247,16 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 models、adapters、datasets、sessions、servers、train records、その他 local runtime data を消したい場合以外、`TENTGENT_HOME` は削除しないでください。uninstall と runtime-home の詳細は [docs/user/install.md](../../../docs/user/install.md) と [docs/user/runtime.md](../../../docs/user/runtime.md) を参照してください。
 
 ## Version Notes
+
+`v0.7.0` は support status release です。model support status を
+`model ls`、`model inspect`、`server inspect`、`doctor` から確認できます。
+`verified`、`supported`、`failed`、`unsupported`、`unknown`、`stale` の
+status と next action を表示しますが、この release ではまだ hard runtime
+gate にはしていません。
+
+`v0.6.0` は compatibility contract release です。OpenAI、Claude /
+Anthropic、Gemini-compatible API subset と unsupported request の stable
+error behavior を明示します。
 
 `v0.3.5-alpha.0` は CLI plus daemon REST consolidation release です。旧
 terminal UI、legacy core、legacy HTTP crates を削除し、broad diagnostics
@@ -297,13 +320,14 @@ runtime home、Python runtime、Keychain prompt の詳細は [docs/user/runtime.
 
 ## 現在の機能
 
-- Hugging Face、OpenAI、Anthropic の provider auth key 管理
+- Hugging Face、OpenAI、Anthropic、Gemini の provider auth key 管理
 - content-addressed model、adapter、dataset stores
-- OpenAI と Anthropic の local server proxy runtimes
+- OpenAI、Anthropic、Gemini cloud provider server runtimes
+- local model-bound server runtimes for chat、embedding、rerank、audio、vision、video、image endpoint families
+- built-in model support catalog、support status、local proof、`doctor` diagnostics
 - dataset validation、prompt templates、multi-split provider synthesis、provider evaluation
 - MLX、PEFT safetensors、llama-cpp GGUF path の one-shot local chat
 - store、dataset、server、chat、training、diagnostics、bounded session workflow を扱う local HTTP daemon API
-- daemon discovery、chat、jobs、resources、store/server/training actions、session cleanup、guarded local setup のための terminal UI operator console
 - managed LoRA train plans、durable run records、metrics/log inspection、実行可能な MLX / PEFT training loops
 - bounded transcript compaction を備えた local sessions
 - 通常 installer install 用の Python runtime bootstrap と、package-manager install 用の `tentgent runtime bootstrap`

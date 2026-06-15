@@ -2,6 +2,35 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.7.0
+
+`v0.7.0` is the support status release. It makes model support explicit and
+inspectable without turning support status into a hard runtime gate yet.
+
+What changed:
+
+- Added a built-in model support catalog for curated fixture models and major
+  public model families.
+- Added support status vocabulary and local proof semantics for model,
+  capability, backend, and runtime tuples.
+- Added compact support summaries to `tentgent model ls`.
+- Added detailed per-capability support rows to `tentgent model inspect`.
+- Added local bound-model support details to `tentgent server inspect`.
+- Added model support warnings to `tentgent doctor`.
+- Added coarse interactive `doctor` progress messages on stderr while keeping
+  redirected stdout clean.
+- Documented operator next actions for `verified`, `supported`, `failed`,
+  `unsupported`, `unknown`, and `stale`.
+
+Known limits:
+
+- Support status is visible but does not hard-block existing runtime commands
+  in this release.
+- Automatic proof updates from every successful or failed model request remain
+  future work.
+- Runtime profile selection and stricter support-status gates are deferred to
+  the `v0.8.0` runtime profile and gating track.
+
 ## v0.6.0
 
 `v0.6.0` is the compatibility contract release. It keeps the CLI plus daemon
@@ -33,8 +62,7 @@ Known limits:
   parity.
 - Tools/function calling, broader multimodal local routing, provider-compatible
   rerank, and cluster-style serving targets remain future work.
-- Model support status and local proof semantics are not part of this release;
-  they begin in the `v0.7.0` support status track.
+- Runtime profile selection and hard support-status gates remain future work.
 
 ## v0.5.2
 

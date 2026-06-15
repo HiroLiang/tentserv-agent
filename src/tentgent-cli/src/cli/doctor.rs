@@ -1,3 +1,5 @@
+use std::io::IsTerminal;
+
 use console::style;
 use miette::{miette, IntoDiagnostic, Result};
 use tentgent_kernel::{
@@ -48,26 +50,58 @@ use tentgent_kernel::{
 
 use super::{
     commands::DoctorCommand,
-    model_support::{model_support_summaries, support_status_is_healthy},
+    model_support::{model_support_summaries, support_status_is_healthy, ModelSupportSummary},
     runtime_footprint::{collect_runtime_footprint_best_effort, FootprintEntry},
 };
 
 pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
     let kernel = CliDoctorKernel::new();
+    let progress = DoctorProgress::auto();
+    if command.fix {
+        progress.step("checking and repairing runtime setup");
+    } else {
+        progress.step("checking runtime, dependencies, and capabilities");
+    }
     let report = if command.fix {
         handle_repair(&kernel)?
     } else {
         handle_report(&kernel)?
     };
+    progress.step("checking local model support");
     let report = append_model_support_checks(&kernel, report);
 
-    render_checks(&report.checks);
+    progress.step("rendering doctor report");
+    render_checks(&report.checks, &progress);
 
     if report.summary.fail > 0 {
         return Err(miette!("doctor found {} failure(s)", report.summary.fail));
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DoctorProgress {
+    enabled: bool,
+}
+
+impl DoctorProgress {
+    fn auto() -> Self {
+        Self {
+            enabled: std::io::stderr().is_terminal(),
+        }
+    }
+
+    #[cfg(test)]
+    fn disabled() -> Self {
+        Self { enabled: false }
+    }
+
+    fn step(self, message: &str) {
+        if self.enabled {
+            eprintln!("doctor: {message}...");
+        }
+    }
 }
 
 struct CliDoctorKernel {
@@ -259,22 +293,10 @@ fn model_support_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
             tuple_count += 1;
             if support_status_is_healthy(summary.status) {
                 supported_count += 1;
-            } else {
-                checks.push(DoctorCheck::with_status(
-                    DoctorCheckCategory::Capability,
-                    format!(
-                        "model support: {} {}",
-                        model.metadata.short_ref,
-                        summary.capability.as_str()
-                    ),
-                    DoctorCheckStatus::Warn,
-                    format!(
-                        "{} via {}: {}",
-                        summary.status.as_str(),
-                        summary.evidence.as_str(),
-                        summary.short_reason()
-                    ),
-                ));
+            } else if let Some(check) =
+                model_support_warning_check(&model.metadata.short_ref, &summary)
+            {
+                checks.push(check);
             }
         }
     }
@@ -295,6 +317,35 @@ fn model_support_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
     checks
 }
 
+fn model_support_warning_check(
+    short_ref: &str,
+    summary: &ModelSupportSummary,
+) -> Option<DoctorCheck> {
+    if support_status_is_healthy(summary.status) {
+        return None;
+    }
+
+    Some(DoctorCheck::with_status(
+        DoctorCheckCategory::Capability,
+        format!(
+            "model support: {} {}",
+            short_ref,
+            summary.capability.as_str()
+        ),
+        DoctorCheckStatus::Warn,
+        model_support_warning_detail(summary),
+    ))
+}
+
+fn model_support_warning_detail(summary: &ModelSupportSummary) -> String {
+    format!(
+        "{} via {}: {}",
+        summary.status.as_str(),
+        summary.evidence.as_str(),
+        summary.short_reason()
+    )
+}
+
 fn render_repair_summary(
     steps: &[tentgent_kernel::features::doctor::domain::DoctorRepairStep],
     bootstrap: Option<&RuntimeBootstrapResult>,
@@ -312,7 +363,7 @@ fn render_repair_summary(
     println!();
 }
 
-fn render_checks(checks: &[DoctorCheck]) {
+fn render_checks(checks: &[DoctorCheck], progress: &DoctorProgress) {
     println!(
         "{} {}",
         style("==>").cyan().bold(),
@@ -328,6 +379,7 @@ fn render_checks(checks: &[DoctorCheck]) {
         );
     }
     render_details(checks);
+    progress.step("checking runtime footprint");
     render_runtime_footprint(&collect_runtime_footprint_best_effort());
 
     let failures = checks
@@ -437,5 +489,59 @@ fn status_marker(status: DoctorCheckStatus) -> console::StyledObject<&'static st
         DoctorCheckStatus::Warn => style("warn").yellow().bold(),
         DoctorCheckStatus::Fail => style("fail").red().bold(),
         DoctorCheckStatus::Skipped => style("skip").dim(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tentgent_kernel::features::model::{
+        domain::ModelCapability,
+        support_status::{ModelSupportEvidenceKind, ModelSupportStatus},
+    };
+
+    #[test]
+    fn model_support_warning_check_skips_healthy_statuses() {
+        let summary = support_summary(ModelSupportStatus::Verified, None);
+
+        assert!(model_support_warning_check("abc123abc123", &summary).is_none());
+    }
+
+    #[test]
+    fn model_support_warning_check_reports_failed_status_with_reason() {
+        let summary = support_summary(
+            ModelSupportStatus::Failed,
+            Some("runtime failed".to_string()),
+        );
+        let check = model_support_warning_check("abc123abc123", &summary)
+            .expect("failed support status should warn");
+
+        assert_eq!(check.status, DoctorCheckStatus::Warn);
+        assert_eq!(check.category, DoctorCheckCategory::Capability);
+        assert_eq!(check.name, "model support: abc123abc123 chat");
+        assert_eq!(check.detail, "failed via local-proof: runtime failed");
+    }
+
+    #[test]
+    fn disabled_progress_is_noop() {
+        DoctorProgress::disabled().step("checking test progress");
+    }
+
+    fn support_summary(
+        status: ModelSupportStatus,
+        failure_reason: Option<String>,
+    ) -> ModelSupportSummary {
+        ModelSupportSummary {
+            capability: ModelCapability::Chat,
+            declared: true,
+            status,
+            evidence: ModelSupportEvidenceKind::LocalProof,
+            backend: "mlx-lm".to_string(),
+            mlx_runtime_family: None,
+            runtime_version: None,
+            reason: "latest local proof failed chat".to_string(),
+            stale_reason: None,
+            failure_reason,
+        }
     }
 }

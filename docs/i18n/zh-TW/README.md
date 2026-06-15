@@ -6,12 +6,16 @@ server，以及短期工作 session。
 
 目前產品介面是 CLI 加 daemon REST；沒有 terminal UI 指令。
 
-## 語言
+## 語言與文件
 
 - 英文 source of truth: [README.md](../../../README.md)
 - 繁體中文: [docs/i18n/zh-TW/README.md](./README.md)
 - 日文: [docs/i18n/ja/README.md](../ja/README.md)
 - 完整英文使用文件: [docs/user/README.md](../../../docs/user/README.md)
+- HTTP API reference: [docs/user/api.md](../../../docs/user/api.md)
+- 小型模型 fixture 與 smoke test: [docs/user/model-fixtures.md](../../../docs/user/model-fixtures.md)
+- 模型支援目錄與 support status: [docs/user/model-support-catalog.md](../../../docs/user/model-support-catalog.md)
+- 開發者文件: [docs/development/README.md](../../../docs/development/README.md)
 
 ## 快速開始
 
@@ -26,6 +30,7 @@ tentgent doctor
 
 ```bash
 tentgent auth hf set
+tentgent model catalog --capability chat --publisher Qwen
 tentgent model pull google/gemma-3-1b-it
 tentgent model ls
 tentgent chat <model-ref> --message "user:Hello"
@@ -50,16 +55,15 @@ tentgent --version
 irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
 ```
 
-Linux x86_64 preview 可使用已驗證的 prerelease：
+Linux x86_64 可從最新 GitHub Release 安裝：
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.4-alpha.2/install.sh | bash
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | bash
 tentgent doctor
 ```
 
 Linux preview 使用 GitHub Release tarball 與預設 `base` runtime bootstrap
-profile。請先使用明確的 prerelease URL；stable `latest` release 尚未宣告
-Linux 支援。
+profile。Linux 上尚未宣告完整 managed runtime 與 local model backend parity。
 如果你希望 runtime data 不放在預設 direct-installer support directory 裡，
 請在 bootstrap 前設定並持久化 `TENTGENT_HOME`。
 
@@ -122,12 +126,17 @@ provider secret resolution 與 Keychain boundaries 請看 [docs/contracts/auth-s
 管理模型：
 
 ```bash
+tentgent model catalog --capability chat --publisher Qwen
 tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
 tentgent model ls
-tentgent model inspect <model-ref>
+tentgent model inspect <model-ref-or-prefix>
 tentgent model add /absolute/path/to/model
 tentgent model rm <model-ref>
 ```
+
+`model catalog` 可先瀏覽內建模型家族與 support hints。`model ls` 顯示精簡
+support status，`model inspect` 顯示每個 capability 的 proof、hint、backend
+與 reason 細節。
 
 完整模型、adapter、dataset 與 chat 範例請看 [docs/user/commands.md](../../../docs/user/commands.md#models-and-chat)。
 
@@ -169,11 +178,14 @@ curl -sS http://127.0.0.1:8780/v1/chat \
 
 ```bash
 tentgent server ls
+tentgent server inspect <server-ref>
 tentgent server ps
 tentgent server stop <server-ref>
 ```
 
 Direct model-server chat 是 stateless。若要 model-ref based native 或 compatible chat routes，請走 daemon。server chat request 與 adapter rules 請看 [docs/contracts/server-chat.md](../../../docs/contracts/server-chat.md)。
+Local model-bound server 在 `server ls` 會顯示精簡 model short ref，完整
+model_ref 與 selected-capability support status 請看 `server inspect`。
 
 ## 起停 Daemon
 
@@ -232,6 +244,14 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 除非你確定要刪掉 models、adapters、datasets、sessions、servers、train records 與其他本地 runtime data，否則不要刪 `TENTGENT_HOME`。移除與 runtime-home 細節請看 [docs/user/install.md](../../../docs/user/install.md) 與 [docs/user/runtime.md](../../../docs/user/runtime.md)。
 
 ## 版本說明
+
+`v0.7.0` 是 support status release，讓模型支援狀態可以被 `model ls`、
+`model inspect`、`server inspect` 與 `doctor` 檢視。這版會顯示
+`verified`、`supported`、`failed`、`unsupported`、`unknown`、`stale`
+等狀態與下一步方向，但尚未把 support status 變成硬性 runtime gate。
+
+`v0.6.0` 是 compatibility contract release，明確記錄 OpenAI、Claude /
+Anthropic、Gemini-compatible API 子集合與 unsupported request 的穩定錯誤。
 
 `v0.3.5-alpha.0` 是 CLI plus daemon REST consolidation release，移除舊
 terminal UI、legacy core 與 legacy HTTP crates，並把 broad diagnostics
@@ -295,13 +315,14 @@ Tentgent 會先讀 `.env` / env，再 fallback 到系統 Keychain。若要讓 `.
 
 ## 目前能力
 
-- Hugging Face、OpenAI、Anthropic 的 provider auth key 管理
+- Hugging Face、OpenAI、Anthropic、Gemini 的 provider auth key 管理
 - content-addressed model、adapter、dataset stores
-- OpenAI 與 Anthropic local server proxy runtimes
+- OpenAI、Anthropic 與 Gemini cloud provider server runtimes
+- local model-bound server runtimes for chat、embedding、rerank、audio、vision、video 與 image endpoint families
+- 內建 model support catalog、support status、local proof 與 `doctor` diagnostics
 - dataset validation、prompt templates、multi-split provider synthesis、provider evaluation
 - MLX、PEFT safetensors、llama-cpp GGUF 路徑的單次本地 chat
 - 本地 HTTP daemon API，涵蓋 store、dataset、server、chat、training、diagnostics 與 bounded session workflows
-- terminal UI operator console，可做 daemon discovery、chat、jobs、resources、store/server/training actions、session cleanup，以及受保護的本機 setup
 - managed LoRA train plans、durable run records、metrics/log inspection，以及可執行的 MLX / PEFT training loops
 - bounded transcript compaction 的本地 session，作為短期 working context
 - 一般 installer 安裝用的 Python runtime bootstrap，以及 package-manager 安裝用的 `tentgent runtime bootstrap`

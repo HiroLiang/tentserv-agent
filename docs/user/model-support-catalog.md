@@ -93,6 +93,16 @@ shows `failed` with `evidence: local-proof`.
 statuses for visibility. In this release, warnings for unknown, stale,
 unsupported, or failed tuples do not automatically block existing commands.
 
+Use the status as the next-action hint:
+
+- `verified`: prefer this local tuple.
+- `supported`: try it or run a local smoke verification when needed.
+- `failed`: inspect the proof, fix the runtime/backend/input issue, then retry
+  verification.
+- `unsupported`: choose another model, capability, backend, or route.
+- `unknown`: add support evidence or explicitly allow and verify the tuple.
+- `stale`: rerun verification under the current runtime/profile/platform.
+
 ## Scope
 
 The first built-in catalog covers representative models from:
