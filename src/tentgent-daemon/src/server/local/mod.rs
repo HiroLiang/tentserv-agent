@@ -55,6 +55,7 @@ pub struct LocalServerRuntimeConfig {
     pub server_ref: String,
     pub capability: ServerCapability,
     pub model_ref: String,
+    pub runtime_profile: Option<String>,
     pub host: String,
     pub port: u16,
     pub runtime_home: Option<PathBuf>,
@@ -123,6 +124,7 @@ async fn healthz(State(state): State<LocalServerState>) -> Json<serde_json::Valu
         "runtime_home": state.config.runtime_home.as_ref().map(|path| path.display().to_string()),
         "capability": state.config.capability.as_str(),
         "model_ref": state.config.model_ref,
+        "runtime_profile": state.config.runtime_profile,
         "idle_seconds": state.config.idle_seconds,
         "backend": "model-runtime-daemon"
     }))

@@ -217,6 +217,12 @@ fn local_model_runtime_command_args(
         "--model-ref".to_string(),
         model_ref.to_string(),
     ];
+    if let Some(runtime_profile) = spec.runtime_profile.as_ref() {
+        args.extend([
+            "--runtime-profile".to_string(),
+            runtime_profile.label().to_string(),
+        ]);
+    }
     if spec.lazy_load {
         args.push("--lazy-load".to_string());
     }

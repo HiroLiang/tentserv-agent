@@ -5,10 +5,10 @@ use crate::features::model::domain::{ModelCapability, ModelRef, ModelRefSelector
 use super::domain::{
     infer_server_capability_from_model_capabilities, parse_server_runtime_selection, CloudProvider,
     LaunchMode, ServerCapability, ServerProcessMetadata, ServerRef, ServerRefParseError,
-    ServerRefSelector, ServerRuntimeKind, ServerRuntimeSelection, ServerSpec, ServerStoreLayout,
-    DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, SERVER_PROCESS_FILENAME, SERVER_REF_HEX_LENGTH,
-    SERVER_SPEC_FILENAME, SERVER_STDERR_LOG_FILENAME, SERVER_STDOUT_LOG_FILENAME,
-    SHORT_SERVER_REF_LENGTH,
+    ServerRefSelector, ServerRuntimeKind, ServerRuntimeProfileSelection, ServerRuntimeSelection,
+    ServerSpec, ServerStoreLayout, DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT,
+    SERVER_PROCESS_FILENAME, SERVER_REF_HEX_LENGTH, SERVER_SPEC_FILENAME,
+    SERVER_STDERR_LOG_FILENAME, SERVER_STDOUT_LOG_FILENAME, SHORT_SERVER_REF_LENGTH,
 };
 
 #[test]
@@ -136,6 +136,10 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        runtime_profile: Some(ServerRuntimeProfileSelection::new(
+            "local-chat-transformers-peft",
+            1,
+        )),
         host: DEFAULT_SERVER_HOST.to_string(),
         port: DEFAULT_SERVER_PORT,
         port_auto: true,
@@ -153,16 +157,23 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
     let spec_body = toml::to_string_pretty(&spec).expect("serialize spec");
     assert!(spec_body.contains("runtime_kind = \"local\""));
     assert!(spec_body.contains("capability = \"chat\""));
+    assert!(spec_body.contains("[runtime_profile]"));
+    assert!(spec_body.contains("profile_id = \"local-chat-transformers-peft\""));
+    assert!(spec_body.contains("profile_version = 1"));
     assert!(spec_body.contains("lazy_load = true"));
     let parsed_spec: ServerSpec = toml::from_str(&spec_body).expect("parse spec");
     assert_eq!(parsed_spec, spec);
     let legacy_body = spec_body
         .lines()
         .filter(|line| !line.starts_with("capability = ") && !line.starts_with("port_auto = "))
+        .filter(|line| !line.starts_with("[runtime_profile]"))
+        .filter(|line| !line.starts_with("profile_id = "))
+        .filter(|line| !line.starts_with("profile_version = "))
         .collect::<Vec<_>>()
         .join("\n");
     let parsed_legacy_spec: ServerSpec = toml::from_str(&legacy_body).expect("parse legacy spec");
     assert_eq!(parsed_legacy_spec.capability, ServerCapability::Chat);
+    assert!(parsed_legacy_spec.runtime_profile.is_none());
     assert!(!parsed_legacy_spec.port_auto);
 
     let process_body = toml::to_string_pretty(&process).expect("serialize process");

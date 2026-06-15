@@ -91,6 +91,9 @@ Key current documents:
   Direct local model-server embedding request shape and capability routing.
 - `docs/contracts/server-rerank.md`
   Direct local model-server rerank request shape and capability routing.
+- `docs/contracts/server-runtime-profile.md`
+  Runtime profile selection, storage, identity, launch, and inspect visibility
+  for model-bound server starts.
 - `docs/contracts/http-daemon.md`
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
 - `docs/contracts/provider-api-errors.md`

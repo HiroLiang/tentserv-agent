@@ -423,6 +423,25 @@ impl fmt::Display for ServerRuntimeBackend {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerRuntimeProfileSelection {
+    pub profile_id: String,
+    pub profile_version: u32,
+}
+
+impl ServerRuntimeProfileSelection {
+    pub fn new(profile_id: impl Into<String>, profile_version: u32) -> Self {
+        Self {
+            profile_id: profile_id.into(),
+            profile_version,
+        }
+    }
+
+    pub fn label(&self) -> String {
+        format!("{}-v{}", self.profile_id, self.profile_version)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerRuntimeSelection {
     LocalModel {
@@ -493,6 +512,7 @@ pub enum ServerRuntimeTarget {
         model_ref: ModelRef,
         backend: ServerRuntimeBackend,
         capability: ServerCapability,
+        runtime_profile: Option<ServerRuntimeProfileSelection>,
     },
     CloudProvider {
         provider: CloudProvider,
@@ -515,6 +535,8 @@ pub struct ServerSpec {
     pub provider: Option<CloudProvider>,
     #[serde(default)]
     pub provider_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_profile: Option<ServerRuntimeProfileSelection>,
     pub host: String,
     pub port: u16,
     #[serde(default)]

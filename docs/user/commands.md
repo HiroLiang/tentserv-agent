@@ -778,6 +778,11 @@ for the server capability selected at creation time. This row reports the
 current local proof or catalog-derived support status for the bound model. Cloud
 provider servers do not show local model support because they are bound to
 provider-hosted models rather than records in the local model store.
+Local chat servers also show `runtime_profile` and
+`runtime_profile_version` when the server spec records the selected backend
+profile, such as `local-chat-mlx-v1`. Runtime profiles are server execution
+metadata, not dependency bootstrap profiles; see
+[server-runtime-profile.md](../contracts/server-runtime-profile.md).
 
 Call the server:
 
