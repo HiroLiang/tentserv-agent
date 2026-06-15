@@ -68,6 +68,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         first.outcome.inspection.spec.capability,
         ServerCapability::Chat
     );
+    assert!(first.outcome.inspection.spec.runtime_profile.is_none());
 
     let reused = servers
         .prepare_server(ServerPrepareRequest {
@@ -200,6 +201,17 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
     assert_eq!(
         prepared.outcome.inspection.spec.model_ref.as_ref(),
         Some(&fixture.model_ref)
+    );
+    assert_eq!(
+        prepared
+            .outcome
+            .inspection
+            .spec
+            .runtime_profile
+            .as_ref()
+            .map(|profile| profile.label())
+            .as_deref(),
+        Some("local-chat-transformers-peft-v1")
     );
 
     let selector = ServerRefSelector::parse(prepared.outcome.inspection.spec.short_ref.clone())
@@ -424,6 +436,7 @@ fn standard_server_usecase_allows_embedding_stored_specs_before_start() {
                 model_ref: Some(fixture.model_ref.clone()),
                 provider: None,
                 provider_model: None,
+                runtime_profile: None,
                 host: "127.0.0.1".to_string(),
                 port: 8781,
                 port_auto: false,

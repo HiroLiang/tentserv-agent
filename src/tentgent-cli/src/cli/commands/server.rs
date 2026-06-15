@@ -31,6 +31,8 @@ pub struct LocalServerRuntimeCommand {
     pub capability: String,
     #[arg(long, value_name = "MODEL_REF")]
     pub model_ref: String,
+    #[arg(long = "runtime-profile", value_name = "PROFILE")]
+    pub runtime_profile: Option<String>,
     #[arg(long, value_name = "HOST")]
     pub host: String,
     #[arg(long, value_name = "PORT")]

@@ -3,8 +3,9 @@ use std::{net::TcpListener, path::PathBuf};
 use crate::features::auth::domain::{AuthSecretMaterial, AuthSecretSource, Provider};
 use crate::features::model::domain::ModelRef;
 use crate::features::server::domain::{
-    CloudProvider, LaunchMode, ServerCapability, ServerRef, ServerRefSelector, ServerRuntimeKind,
-    ServerRuntimeTarget, ServerSpec, ServerStoreLayout, SERVER_REF_HEX_LENGTH,
+    CloudProvider, LaunchMode, ServerCapability, ServerRef, ServerRefSelector,
+    ServerRuntimeBackend, ServerRuntimeKind, ServerRuntimeProfileSelection, ServerRuntimeTarget,
+    ServerSpec, ServerStoreLayout, SERVER_REF_HEX_LENGTH,
 };
 use crate::features::server::ports::{
     ServerCatalogStore, ServerIdentityGenerator, ServerProcessProbe, ServerStoreLayoutInitializer,
@@ -56,6 +57,50 @@ fn embedding_identity_json_includes_capability_without_changing_chat_shape() {
         body,
         r#"{"model_ref":"abc123","capability":"embedding","host":"127.0.0.1","port":8780,"lazy_load":false,"idle_seconds":null}"#
     );
+}
+
+#[test]
+fn local_chat_identity_includes_runtime_profile_when_selected() {
+    let identity = StdServerIdentityGenerator;
+    let model_ref = ModelRef::parse("a".repeat(64)).expect("model ref");
+    let first = identity
+        .server_ref_for_target(
+            &ServerRuntimeTarget::LocalModel {
+                model_ref: model_ref.clone(),
+                backend: ServerRuntimeBackend::TransformersPeft,
+                capability: ServerCapability::Chat,
+                runtime_profile: Some(ServerRuntimeProfileSelection::new(
+                    "local-chat-transformers-peft",
+                    1,
+                )),
+            },
+            "127.0.0.1",
+            8780,
+            false,
+            false,
+            None,
+        )
+        .expect("first ref");
+    let second = identity
+        .server_ref_for_target(
+            &ServerRuntimeTarget::LocalModel {
+                model_ref,
+                backend: ServerRuntimeBackend::TransformersPeft,
+                capability: ServerCapability::Chat,
+                runtime_profile: Some(ServerRuntimeProfileSelection::new(
+                    "local-chat-transformers-peft",
+                    2,
+                )),
+            },
+            "127.0.0.1",
+            8780,
+            false,
+            false,
+            None,
+        )
+        .expect("second ref");
+
+    assert_ne!(first, second);
 }
 
 #[test]
@@ -147,6 +192,7 @@ fn file_catalog_stores_specs_and_process_metadata() {
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        runtime_profile: None,
         host: "127.0.0.1".to_string(),
         port: 8780,
         port_auto: false,
@@ -199,6 +245,10 @@ fn local_runtime_args_use_rust_proxy_shape() {
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        runtime_profile: Some(ServerRuntimeProfileSelection::new(
+            "local-chat-transformers-peft",
+            1,
+        )),
         host: "127.0.0.1".to_string(),
         port: 8780,
         port_auto: false,
@@ -227,6 +277,8 @@ fn local_runtime_args_use_rust_proxy_shape() {
             "/tmp/tentgent-home",
             "--model-ref",
             spec.model_ref.as_ref().expect("model ref").as_str(),
+            "--runtime-profile",
+            "local-chat-transformers-peft-v1",
             "--lazy-load",
             "--idle-seconds",
             "30"
@@ -248,6 +300,7 @@ fn local_rerank_runtime_args_are_supported() {
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        runtime_profile: None,
         host: "127.0.0.1".to_string(),
         port: 8782,
         port_auto: false,
@@ -277,6 +330,7 @@ fn cloud_runtime_args_include_provider_auth_env() {
         model_ref: None,
         provider: Some(CloudProvider::OpenAI),
         provider_model: Some("gpt-4.1-mini".to_string()),
+        runtime_profile: None,
         host: "127.0.0.1".to_string(),
         port: 8781,
         port_auto: false,
@@ -361,6 +415,10 @@ fn local_chat_spec_for_port(port: u16, port_auto: bool) -> ServerSpec {
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        runtime_profile: Some(ServerRuntimeProfileSelection::new(
+            "local-chat-transformers-peft",
+            1,
+        )),
         host: "127.0.0.1".to_string(),
         port,
         port_auto,

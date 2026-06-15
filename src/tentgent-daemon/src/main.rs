@@ -66,6 +66,8 @@ struct LocalServerArgs {
     capability: String,
     #[arg(long)]
     model_ref: String,
+    #[arg(long = "runtime-profile")]
+    runtime_profile: Option<String>,
     #[arg(long)]
     host: String,
     #[arg(long)]
@@ -116,6 +118,7 @@ async fn main() -> miette::Result<()> {
             server_ref: args.server_ref,
             capability,
             model_ref: args.model_ref,
+            runtime_profile: args.runtime_profile,
             host: args.host,
             port: args.port,
             runtime_home: args.home,

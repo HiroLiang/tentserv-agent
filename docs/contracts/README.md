@@ -42,6 +42,9 @@ Use this directory for concise interface documents that define stable boundaries
   Direct local model-server embedding request shape and capability routing.
 - [server-rerank.md](./server-rerank.md)
   Direct local model-server rerank request shape and capability routing.
+- [server-runtime-profile.md](./server-runtime-profile.md)
+  Runtime profile selection, storage, identity, launch, and inspect visibility
+  for model-bound server starts.
 - [job-workspace.md](./job-workspace.md)
   Kernel-owned job workspace, chunk IO, result file, and cleanup port boundary.
 - [http-daemon.md](./http-daemon.md)

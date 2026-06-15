@@ -2,7 +2,8 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::features::server::domain::{
-    ServerCapability, ServerRef, ServerRuntimeKind, ServerRuntimeTarget,
+    ServerCapability, ServerRef, ServerRuntimeKind, ServerRuntimeProfileSelection,
+    ServerRuntimeTarget,
 };
 use crate::features::server::ports::ServerIdentityGenerator;
 use crate::foundation::error::KernelResult;
@@ -27,10 +28,12 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
             ServerRuntimeTarget::LocalModel {
                 model_ref,
                 capability,
+                runtime_profile,
                 ..
             } if port_auto && *capability == ServerCapability::Chat => {
                 compute_server_ref(LocalAutoPortServerIdentity {
                     model_ref: model_ref.as_str(),
+                    runtime_profile: runtime_profile.as_ref(),
                     host,
                     port,
                     port_auto,
@@ -41,10 +44,12 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
             ServerRuntimeTarget::LocalModel {
                 model_ref,
                 capability,
+                runtime_profile,
                 ..
             } if *capability == ServerCapability::Chat => {
                 compute_server_ref(LocalServerIdentity {
                     model_ref: model_ref.as_str(),
+                    runtime_profile: runtime_profile.as_ref(),
                     host,
                     port,
                     lazy_load,
@@ -54,10 +59,12 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
             ServerRuntimeTarget::LocalModel {
                 model_ref,
                 capability,
+                runtime_profile,
                 ..
             } if port_auto => compute_server_ref(LocalCapabilityAutoPortServerIdentity {
                 model_ref: model_ref.as_str(),
                 capability: capability.as_str(),
+                runtime_profile: runtime_profile.as_ref(),
                 host,
                 port,
                 port_auto,
@@ -67,10 +74,12 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
             ServerRuntimeTarget::LocalModel {
                 model_ref,
                 capability,
+                runtime_profile,
                 ..
             } => compute_server_ref(LocalCapabilityServerIdentity {
                 model_ref: model_ref.as_str(),
                 capability: capability.as_str(),
+                runtime_profile: runtime_profile.as_ref(),
                 host,
                 port,
                 lazy_load,
@@ -145,6 +154,8 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
 #[derive(Debug, Serialize)]
 struct LocalServerIdentity<'a> {
     model_ref: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_profile: Option<&'a ServerRuntimeProfileSelection>,
     host: &'a str,
     port: u16,
     lazy_load: bool,
@@ -154,6 +165,8 @@ struct LocalServerIdentity<'a> {
 #[derive(Debug, Serialize)]
 struct LocalAutoPortServerIdentity<'a> {
     model_ref: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_profile: Option<&'a ServerRuntimeProfileSelection>,
     host: &'a str,
     port: u16,
     port_auto: bool,
@@ -165,6 +178,8 @@ struct LocalAutoPortServerIdentity<'a> {
 struct LocalCapabilityServerIdentity<'a> {
     model_ref: &'a str,
     capability: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_profile: Option<&'a ServerRuntimeProfileSelection>,
     host: &'a str,
     port: u16,
     lazy_load: bool,
@@ -175,6 +190,8 @@ struct LocalCapabilityServerIdentity<'a> {
 struct LocalCapabilityAutoPortServerIdentity<'a> {
     model_ref: &'a str,
     capability: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_profile: Option<&'a ServerRuntimeProfileSelection>,
     host: &'a str,
     port: u16,
     port_auto: bool,
@@ -246,6 +263,7 @@ pub(crate) fn local_identity_json_for_test(
 ) -> String {
     serde_json::to_string(&LocalServerIdentity {
         model_ref,
+        runtime_profile: None,
         host,
         port,
         lazy_load,
@@ -266,6 +284,7 @@ pub(crate) fn local_capability_identity_json_for_test(
     serde_json::to_string(&LocalCapabilityServerIdentity {
         model_ref,
         capability,
+        runtime_profile: None,
         host,
         port,
         lazy_load,

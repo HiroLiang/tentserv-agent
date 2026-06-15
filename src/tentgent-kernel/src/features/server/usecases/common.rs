@@ -9,10 +9,12 @@ use crate::features::model::ports::ModelCatalogStore;
 use crate::features::server::domain::{
     ensure_server_model_capability, infer_server_capability_from_model_capabilities,
     normalize_server_host, parse_server_runtime_selection, CloudProvider, ServerCapability,
-    ServerRef, ServerRuntimeKind, ServerRuntimeSelection, ServerRuntimeTarget, ServerSpec,
-    ServerStoreLayout, DEFAULT_SERVER_PORT,
+    ServerRef, ServerRuntimeBackend, ServerRuntimeKind, ServerRuntimeProfileSelection,
+    ServerRuntimeSelection, ServerRuntimeTarget, ServerSpec, ServerStoreLayout,
+    DEFAULT_SERVER_PORT,
 };
 use crate::features::server::ports::ServerIdentityGenerator;
+use crate::features::server::profile::local_server_runtime_profile_for;
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayout;
 
@@ -52,11 +54,13 @@ pub(super) fn resolve_server_runtime_target(
             )?;
             ensure_server_capability_implemented(capability)?;
             let backend = server_runtime_backend_for_format(capability, metadata.primary_format)?;
+            let runtime_profile = resolve_local_server_runtime_profile(capability, backend)?;
 
             Ok(ServerRuntimeTarget::LocalModel {
                 model_ref: metadata.model_ref.clone(),
                 backend,
                 capability,
+                runtime_profile,
             })
         }
         ServerRuntimeSelection::CloudProvider {
@@ -122,7 +126,13 @@ pub(super) fn ensure_server_spec_launchable(
                 &model.metadata.model_capabilities,
             )?;
             ensure_server_capability_implemented(spec.capability)?;
-            server_runtime_backend_for_format(spec.capability, model.metadata.primary_format)?;
+            let backend =
+                server_runtime_backend_for_format(spec.capability, model.metadata.primary_format)?;
+            ensure_local_server_runtime_profile_matches(
+                spec.capability,
+                backend,
+                spec.runtime_profile.as_ref(),
+            )?;
             Ok(())
         }
     }
@@ -170,6 +180,7 @@ fn spec_for_ref(
         ServerRuntimeTarget::LocalModel {
             model_ref,
             capability,
+            runtime_profile,
             ..
         } => ServerSpec {
             server_ref,
@@ -179,6 +190,7 @@ fn spec_for_ref(
             model_ref: Some(model_ref),
             provider: None,
             provider_model: None,
+            runtime_profile,
             host,
             port,
             port_auto,
@@ -198,6 +210,7 @@ fn spec_for_ref(
             model_ref: None,
             provider: Some(provider),
             provider_model: Some(provider_model),
+            runtime_profile: None,
             host,
             port,
             port_auto,
@@ -206,6 +219,49 @@ fn spec_for_ref(
             created_at,
         },
     }
+}
+
+fn resolve_local_server_runtime_profile(
+    capability: ServerCapability,
+    backend: ServerRuntimeBackend,
+) -> KernelResult<Option<ServerRuntimeProfileSelection>> {
+    if capability != ServerCapability::Chat {
+        return Ok(None);
+    }
+
+    local_server_runtime_profile_for(capability, backend)
+        .map(|profile| profile.selection)
+        .ok_or_else(|| {
+            KernelError::UnsupportedTarget(format!(
+                "local server capability `{capability}` does not have a runtime profile for backend `{backend}`"
+            ))
+        })
+        .map(Some)
+}
+
+fn ensure_local_server_runtime_profile_matches(
+    capability: ServerCapability,
+    backend: ServerRuntimeBackend,
+    selected: Option<&ServerRuntimeProfileSelection>,
+) -> KernelResult<()> {
+    let Some(selected) = selected else {
+        return Ok(());
+    };
+    let Some(expected) = local_server_runtime_profile_for(capability, backend) else {
+        return Err(KernelError::UnsupportedTarget(format!(
+            "local server capability `{capability}` does not support runtime profile `{}` for backend `{backend}`",
+            selected.label()
+        )));
+    };
+    if &expected.selection == selected {
+        return Ok(());
+    }
+
+    Err(KernelError::UnsupportedTarget(format!(
+        "local server capability `{capability}` expected runtime profile `{}`, got `{}`",
+        expected.selection.label(),
+        selected.label()
+    )))
 }
 
 fn ensure_cloud_server_capability_supported(

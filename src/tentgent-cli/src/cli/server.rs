@@ -216,6 +216,7 @@ pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> 
             server_ref: command.server_ref,
             capability,
             model_ref: command.model_ref,
+            runtime_profile: command.runtime_profile,
             host: command.host,
             port: command.port,
             runtime_home: command.home,
@@ -885,7 +886,7 @@ fn render_server_spec_outcome(
         );
     } else {
         println!(
-            "{} launching the local server proxy in {} mode.",
+            "{} the local server proxy in {} mode.",
             style("starting").green().bold(),
             if detached { "background" } else { "foreground" }
         );
@@ -1095,6 +1096,16 @@ fn render_server_table_with_model_support(
             Cell::new("model_ref"),
             Cell::new(inspection.spec.runtime_model_label()),
         ]);
+        if let Some(runtime_profile) = inspection.spec.runtime_profile.as_ref() {
+            table.add_row(vec![
+                Cell::new("runtime_profile"),
+                Cell::new(runtime_profile.label()),
+            ]);
+            table.add_row(vec![
+                Cell::new("runtime_profile_version"),
+                Cell::new(runtime_profile.profile_version.to_string()),
+            ]);
+        }
         if let Some(model_support) = model_support {
             table.add_row(vec![Cell::new("model_support"), Cell::new(model_support)]);
         }
@@ -1294,6 +1305,7 @@ mod tests {
             model_ref: Some(model_ref),
             provider: None,
             provider_model: None,
+            runtime_profile: None,
             host: "127.0.0.1".to_string(),
             port: 8780,
             port_auto: false,
@@ -1312,6 +1324,7 @@ mod tests {
             model_ref: None,
             provider: Some(CloudProvider::OpenAI),
             provider_model: Some("gpt-4o-mini".to_string()),
+            runtime_profile: None,
             host: "127.0.0.1".to_string(),
             port: 8780,
             port_auto: false,

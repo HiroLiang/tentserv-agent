@@ -234,7 +234,8 @@ model-ref based native and compatibility chat routes. For server chat request
 and adapter rules, see [docs/contracts/server-chat.md](./docs/contracts/server-chat.md).
 For local model-bound servers, `server ls` shows compact model short refs and
 `server inspect` shows the full bound model plus selected-capability support
-status.
+status. Local chat server specs also show the selected runtime profile, such as
+`local-chat-mlx-v1`, when profile metadata is recorded.
 
 ## Start And Stop The Daemon
 
