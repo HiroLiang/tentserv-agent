@@ -126,6 +126,25 @@ When multiple evidence sources apply, resolve status in this order:
 A local `failed` proof must not be hidden by a `supported` hint. The operator
 should see that the tuple was expected to work but failed locally.
 
+## User-Facing Surfaces
+
+Support status is surfaced for visibility before it becomes a hard routing
+gate. Current CLI surfaces should keep output compact and preserve existing
+command behavior:
+
+- `tentgent model ls` may show the most actionable support summary for each
+  model, with `model inspect` as the detailed view.
+- `tentgent model inspect` should show per-capability status, evidence,
+  backend tuple, and short reason.
+- `tentgent server inspect` should show local bound-model support for the
+  selected server capability. Cloud provider servers are outside local model
+  proof scope.
+- `tentgent doctor` may warn about missing proof, stale proof, failed proof,
+  unsupported, or unknown tuples.
+
+These warnings do not by themselves block existing commands. Runtime gating,
+policy overrides, and automatic verification remain separate decisions.
+
 ## Stale Evidence
 
 Evidence becomes stale when one of the tuple dimensions or resolver assumptions

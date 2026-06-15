@@ -13,6 +13,7 @@ mod doctor;
 mod embed;
 mod image;
 mod model;
+mod model_support;
 mod rerank;
 mod runtime;
 mod runtime_footprint;

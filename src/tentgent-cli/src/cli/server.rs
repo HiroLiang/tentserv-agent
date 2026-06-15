@@ -30,7 +30,9 @@ use tentgent_kernel::features::model::infra::{
     FileModelCapabilityProofStore, FileModelCatalogStore, SystemModelClock,
 };
 use tentgent_kernel::features::model::usecases::{
-    ModelCapabilityProofRecordRequest, ModelCapabilityProofUseCase, StdModelCapabilityProofUseCase,
+    ModelCapabilityProofListRequest, ModelCapabilityProofRecordRequest,
+    ModelCapabilityProofUseCase, ModelCatalogReadUseCase, ModelInspectRequest,
+    StdModelCapabilityProofUseCase, StdModelCatalogReadUseCase,
 };
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
@@ -61,6 +63,7 @@ use super::app::Cli;
 use super::commands::{
     CloudServerRuntimeCommand, LocalServerRuntimeCommand, ServerCommands, ServerRunCommand,
 };
+use super::model_support::{model_support_detail_lines, model_support_summaries};
 
 const BACKGROUND_HEALTH_STABLE: Duration = Duration::from_secs(2);
 const BACKGROUND_START_OBSERVATION: Duration = Duration::from_secs(10);
@@ -105,7 +108,13 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
                     selector,
                 })
                 .into_diagnostic()?;
-            render_server_inspection("Server inspection", &result.inspection);
+            let model_support =
+                server_model_support_lines(&kernel, &result.layout, &result.inspection);
+            render_server_inspection(
+                "Server inspection",
+                &result.inspection,
+                model_support.as_deref(),
+            );
         }
         ServerCommands::Start {
             reference,
@@ -255,7 +264,7 @@ async fn run_server(
             auth,
         )
         .await?;
-        render_server_inspection("Server started", &inspection);
+        render_server_inspection("Server started", &inspection, None);
     } else {
         launch_foreground_server(
             kernel,
@@ -759,6 +768,72 @@ impl CliServerKernel {
     }
 }
 
+fn server_model_support_lines(
+    kernel: &CliServerKernel,
+    layout: &RuntimeLayout,
+    inspection: &ServerInspection,
+) -> Option<String> {
+    let model_ref = inspection.spec.local_model_ref()?;
+    let selector = match ModelRefSelector::parse(model_ref.as_str()) {
+        Ok(selector) => selector,
+        Err(err) => {
+            return Some(format!(
+                "status: unavailable\nreason: invalid bound model_ref: {err}"
+            ));
+        }
+    };
+
+    let catalog = StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
+    let model = match catalog.inspect_model(ModelInspectRequest {
+        layout: runtime_layout_input_from_layout(layout, LayoutResolveMode::ReadOnly),
+        selector: selector.clone(),
+    }) {
+        Ok(result) => result.model,
+        Err(err) => {
+            return Some(format!(
+                "capability: {}\nstatus: unavailable\nreason: model lookup failed: {err}",
+                inspection
+                    .spec
+                    .capability
+                    .required_model_capability()
+                    .as_str()
+            ));
+        }
+    };
+
+    let proofs = match kernel
+        .model_capability_proof_usecase()
+        .list_model_capability_proofs(ModelCapabilityProofListRequest {
+            layout: runtime_layout_input_from_layout(layout, LayoutResolveMode::ReadOnly),
+            selector,
+        }) {
+        Ok(result) => result.proofs,
+        Err(err) => {
+            return Some(format!(
+                "capability: {}\nstatus: unavailable\nreason: proof lookup failed: {err}",
+                inspection
+                    .spec
+                    .capability
+                    .required_model_capability()
+                    .as_str()
+            ));
+        }
+    };
+
+    let required_capability = inspection.spec.capability.required_model_capability();
+    let summaries = model_support_summaries(&model.metadata, &proofs);
+    summaries
+        .into_iter()
+        .find(|summary| summary.capability == required_capability)
+        .map(|summary| model_support_detail_lines(&summary).join("\n"))
+        .or_else(|| {
+            Some(format!(
+                "capability: {}\nstatus: unknown\nreason: no support summary is available for the bound model",
+                required_capability.as_str()
+            ))
+        })
+}
+
 fn runtime_layout_input(mode: LayoutResolveMode, home: Option<&Path>) -> RuntimeLayoutInput {
     RuntimeLayoutInput {
         mode,
@@ -876,7 +951,7 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
             Cell::new(server.spec.runtime_kind.as_str()),
             Cell::new(server.spec.capability.as_str()),
             Cell::new(server.spec.provider_label()),
-            Cell::new(server.spec.runtime_model_label()),
+            Cell::new(server_list_model_label(&server.spec)),
             Cell::new(&server.spec.host),
             Cell::new(server.effective_port()),
             Cell::new(server_requested_port_label(&server.spec)),
@@ -888,14 +963,31 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
     println!();
 }
 
-fn render_server_inspection(title: &str, inspection: &ServerInspection) {
+fn server_list_model_label(spec: &ServerSpec) -> String {
+    match spec.runtime_kind {
+        ServerRuntimeKind::Local => spec
+            .local_model_ref()
+            .map(|model_ref| model_ref.short_ref().to_string())
+            .unwrap_or_else(|| "(missing)".to_string()),
+        ServerRuntimeKind::Cloud => spec.runtime_model_label(),
+    }
+}
+
+fn render_server_inspection(
+    title: &str,
+    inspection: &ServerInspection,
+    model_support: Option<&str>,
+) {
     println!(
         "{} {} {}",
         style("==>").cyan().bold(),
         style(title).bold(),
         style(&inspection.spec.short_ref).bold()
     );
-    println!("{}", render_server_table(inspection));
+    println!(
+        "{}",
+        render_server_table_with_model_support(inspection, model_support)
+    );
     println!();
 }
 
@@ -960,6 +1052,13 @@ fn render_server_removed(inspection: &ServerInspection, details: bool) {
 }
 
 fn render_server_table(inspection: &ServerInspection) -> Table {
+    render_server_table_with_model_support(inspection, None)
+}
+
+fn render_server_table_with_model_support(
+    inspection: &ServerInspection,
+    model_support: Option<&str>,
+) -> Table {
     let mut table = Table::new();
     table
         .load_preset(UTF8_FULL_CONDENSED)
@@ -996,6 +1095,9 @@ fn render_server_table(inspection: &ServerInspection) -> Table {
             Cell::new("model_ref"),
             Cell::new(inspection.spec.runtime_model_label()),
         ]);
+        if let Some(model_support) = model_support {
+            table.add_row(vec![Cell::new("model_support"), Cell::new(model_support)]);
+        }
     }
     table.add_row(vec![
         Cell::new("status"),
