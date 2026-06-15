@@ -1260,3 +1260,69 @@ fn print_server_subcommand_help(name: &str) -> miette::Result<()> {
     println!();
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tentgent_kernel::features::model::domain::ModelRef;
+    use tentgent_kernel::features::server::domain::ServerRef;
+
+    #[test]
+    fn server_list_model_label_shortens_local_model_refs() {
+        let spec = local_server_spec();
+
+        assert_eq!(server_list_model_label(&spec), "abcdefabcdef");
+    }
+
+    #[test]
+    fn server_list_model_label_keeps_cloud_provider_model_names() {
+        let spec = cloud_server_spec();
+
+        assert_eq!(server_list_model_label(&spec), "gpt-4o-mini");
+    }
+
+    fn local_server_spec() -> ServerSpec {
+        let model_ref =
+            ModelRef::parse("abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd")
+                .expect("model ref");
+
+        ServerSpec {
+            server_ref: server_ref(),
+            short_ref: "0123456789ab".to_string(),
+            runtime_kind: ServerRuntimeKind::Local,
+            capability: ServerCapability::Chat,
+            model_ref: Some(model_ref),
+            provider: None,
+            provider_model: None,
+            host: "127.0.0.1".to_string(),
+            port: 8780,
+            port_auto: false,
+            lazy_load: false,
+            idle_seconds: None,
+            created_at: "2026-06-15T00:00:00Z".to_string(),
+        }
+    }
+
+    fn cloud_server_spec() -> ServerSpec {
+        ServerSpec {
+            server_ref: server_ref(),
+            short_ref: "0123456789ab".to_string(),
+            runtime_kind: ServerRuntimeKind::Cloud,
+            capability: ServerCapability::Chat,
+            model_ref: None,
+            provider: Some(CloudProvider::OpenAI),
+            provider_model: Some("gpt-4o-mini".to_string()),
+            host: "127.0.0.1".to_string(),
+            port: 8780,
+            port_auto: false,
+            lazy_load: false,
+            idle_seconds: None,
+            created_at: "2026-06-15T00:00:00Z".to_string(),
+        }
+    }
+
+    fn server_ref() -> ServerRef {
+        ServerRef::parse("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+            .expect("server ref")
+    }
+}

@@ -22,6 +22,12 @@ Use this directory for concise interface documents that define stable boundaries
   Provider-secret resolution and keychain usage rules.
 - [model-store.md](./model-store.md)
   Model identity, deduplication, managed layout, and Hugging Face pull boundaries.
+- [model-support-status.md](./model-support-status.md)
+  Support status vocabulary, evidence precedence, stale-proof rules, and
+  transition rules for model/capability/backend tuples.
+- [model-support-proof-schema.md](./model-support-proof-schema.md)
+  Local proof and support hint record schema for explaining model support
+  status.
 - [adapter-store.md](./adapter-store.md)
   Adapter identity, compatibility metadata, managed layout, and source-index draft.
 - [dataset-store.md](./dataset-store.md)

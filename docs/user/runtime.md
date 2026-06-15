@@ -70,7 +70,7 @@ Daemon media upload limits:
 
 MLX model metadata:
 
-- `tentgent model inspect <model-ref>` shows `mlx_runtime_family` when an MLX
+- `tentgent model inspect <model-ref-or-prefix>` shows `mlx_runtime_family` when an MLX
   model maps to a specific runtime family.
 - `mlx-lm` is the current runnable MLX chat path.
 - `mlx-vlm` is the Apple Silicon MLX VLM path for native `vision-chat`.
@@ -181,6 +181,9 @@ adapter, or dataset content under `store/<ref>`; use the specific `model rm`,
   Python environment. A successful `full` bootstrap should make GGUF,
   safetensors/PEFT, MLX on Apple Silicon macOS, and training dependencies
   report ready.
+- In an interactive terminal, `tentgent doctor` prints coarse progress messages
+  to stderr while checks are running. Redirected or piped stdout remains the
+  structured final report output.
 - `safetensors` models run through the `transformers-peft` backend when Python dependencies are installed.
 - `embedding` safetensors models run through the same local-model Python
   dependency set with `transformers` feature extraction and mean pooling.

@@ -251,16 +251,15 @@ post-1.0 direction remains possible.
 
 ### v0.7.0: Support Status Release
 
-- Define support states: `supported`, `verified`, `failed`, `unknown`,
+- Defined support states: `supported`, `verified`, `failed`, `unknown`,
   `unsupported`, and `stale`.
-- Define proof keys for model, capability, backend, runtime version, platform,
-  input/output shape, and selected adapter.
-- Define the local proof and support hint record schema before implementing the
-  resolver.
-- Decide which records stay in existing filesystem metadata and which need the
-  broader durable proof store from the post-M7 roadmap.
-- Surface support state in inspect/list/doctor paths before enforcing stricter
-  gates.
+- Defined tuple-aware proof keys and support hint records for model capability,
+  backend, runtime, platform, and evidence provenance.
+- Added a built-in model support catalog for fixtures and major model families.
+- Surfaced support state in `model ls`, `model inspect`, `server inspect`, and
+  `doctor` before enforcing stricter gates.
+- Kept hard support-status gating, automatic request-time proof updates, and
+  runtime profile selection for the `v0.8.0` runtime profile and gating track.
 
 ### v0.8.0: Runtime Profile And Gating Release
 

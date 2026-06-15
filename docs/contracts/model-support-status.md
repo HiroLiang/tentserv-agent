@@ -60,6 +60,17 @@ proof for the old tuple must not be treated as proof for the new tuple.
 statuses are effective statuses derived by a resolver from proof, support
 records, metadata, policy, and environment state.
 
+## Operator Next Actions
+
+| Status | Next action |
+| --- | --- |
+| `verified` | Prefer the tuple. No support-specific action is required. |
+| `supported` | Try the route or run a local smoke verification when confidence matters. |
+| `failed` | Inspect the local proof, fix the runtime/backend/input issue, then rerun the smoke verification. |
+| `unsupported` | Pick a different model, capability, backend, or route. Do not retry the same tuple without changing evidence. |
+| `unknown` | Add an explicit capability/support record, choose an allow-unknown policy, or verify the tuple before relying on it. |
+| `stale` | Refresh the proof by rerunning verification under the current runtime/profile/platform tuple. |
+
 ## Evidence Sources
 
 Support status may use these evidence sources:
@@ -219,5 +230,6 @@ This contract does not define:
 - live verification behavior for every capability;
 - dynamic routing across multiple candidate backends.
 
-Those are later `v0.7.0` and `v0.8.0` implementation slices. This contract only
-fixes the vocabulary and resolver rules they should follow.
+Those are later implementation slices, especially the `v0.8.0` runtime profile
+and gating track. This contract only fixes the vocabulary and resolver rules
+they should follow.

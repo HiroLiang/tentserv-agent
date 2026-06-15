@@ -168,7 +168,8 @@ fn capability_order_rank(capability: ModelCapability) -> usize {
 mod tests {
     use super::*;
     use tentgent_kernel::features::model::domain::{
-        default_model_capability_source, ModelFormat, ModelRef, ModelSourceKind,
+        default_model_capability_source, ModelCapabilityProofSource, ModelCapabilityProofStatus,
+        ModelFormat, ModelRef, ModelSourceKind,
     };
 
     #[test]
@@ -209,6 +210,72 @@ mod tests {
         assert!(lines.iter().any(|line| line == "status: unknown"));
         assert!(lines.iter().any(|line| line == "backend: safetensors"));
         assert!(lines.iter().any(|line| line.starts_with("reason: ")));
+    }
+
+    #[test]
+    fn list_label_returns_none_when_model_has_no_support_tuples() {
+        let metadata = metadata_with_capabilities([]);
+
+        assert_eq!(model_support_list_label(&metadata, &[]), "none");
+    }
+
+    #[test]
+    fn list_label_omits_extra_suffix_for_single_tuple() {
+        let metadata = metadata_with_capabilities([ModelCapability::Chat]);
+
+        assert_eq!(model_support_list_label(&metadata, &[]), "unknown chat");
+    }
+
+    #[test]
+    fn detail_lines_include_failure_reason_from_failed_proof() {
+        let metadata = metadata_with_capabilities([ModelCapability::Chat]);
+        let proofs = vec![proof_for(
+            &metadata,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Failed,
+            Some("runtime failed".to_string()),
+        )];
+        let summary = model_support_summaries(&metadata, &proofs)
+            .into_iter()
+            .next()
+            .expect("support summary");
+        let lines = model_support_detail_lines(&summary);
+
+        assert!(lines.iter().any(|line| line == "status: failed"));
+        assert!(lines.iter().any(|line| line == "evidence: local-proof"));
+        assert!(lines.iter().any(|line| line == "failure: runtime failed"));
+        assert_eq!(summary.short_reason(), "runtime failed");
+    }
+
+    #[test]
+    fn healthy_statuses_are_verified_and_supported_only() {
+        assert!(support_status_is_healthy(ModelSupportStatus::Verified));
+        assert!(support_status_is_healthy(ModelSupportStatus::Supported));
+        assert!(!support_status_is_healthy(ModelSupportStatus::Failed));
+        assert!(!support_status_is_healthy(ModelSupportStatus::Stale));
+        assert!(!support_status_is_healthy(ModelSupportStatus::Unsupported));
+        assert!(!support_status_is_healthy(ModelSupportStatus::Unknown));
+    }
+
+    fn proof_for(
+        metadata: &ModelMetadata,
+        capability: ModelCapability,
+        status: ModelCapabilityProofStatus,
+        error: Option<String>,
+    ) -> ModelCapabilityProof {
+        ModelCapabilityProof {
+            model_ref: metadata.model_ref.clone(),
+            capability,
+            status,
+            source: ModelCapabilityProofSource::ManualProbe,
+            primary_format: metadata.primary_format,
+            mlx_runtime_family: metadata.mlx_runtime_family,
+            backend: metadata.primary_format.as_str().to_string(),
+            runtime_version: None,
+            server_ref: None,
+            checked_at: "2026-06-15T00:00:00Z".to_string(),
+            error,
+        }
     }
 
     fn metadata_with_capabilities(
