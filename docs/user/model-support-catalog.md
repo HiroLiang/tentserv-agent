@@ -89,6 +89,10 @@ Local proof always wins over catalog hints. For example, if a curated fixture
 has a built-in `supported` hint but the latest local smoke test failed, inspect
 shows `failed` with `evidence: local-proof`.
 
+`model ls`, `model inspect`, `server inspect`, and `doctor` surface these
+statuses for visibility. In this release, warnings for unknown, stale,
+unsupported, or failed tuples do not automatically block existing commands.
+
 ## Scope
 
 The first built-in catalog covers representative models from:

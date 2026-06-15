@@ -163,7 +163,7 @@ Pull, inspect, import, and remove managed models:
 tentgent model catalog --capability chat --publisher Qwen
 tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
 tentgent model ls
-tentgent model inspect <model-ref>
+tentgent model inspect <model-ref-or-prefix>
 tentgent model add /absolute/path/to/model
 tentgent model rm <model-ref>
 ```
@@ -172,6 +172,8 @@ Use `model catalog` to browse built-in model-family support hints before
 pulling a model. See
 [docs/user/commands.md](./docs/user/commands.md#models-and-chat) for full
 model, adapter, dataset, and chat command examples.
+`model ls` keeps support status compact, while `model inspect` shows the full
+per-capability proof, hint, backend, and reason details.
 
 ## One-Shot Chat
 
@@ -222,6 +224,7 @@ Manage detached servers:
 
 ```bash
 tentgent server ls
+tentgent server inspect <server-ref>
 tentgent server ps
 tentgent server stop <server-ref>
 ```
@@ -229,6 +232,9 @@ tentgent server stop <server-ref>
 Direct model-server chat is stateless. Use the daemon in the next section for
 model-ref based native and compatibility chat routes. For server chat request
 and adapter rules, see [docs/contracts/server-chat.md](./docs/contracts/server-chat.md).
+For local model-bound servers, `server ls` shows compact model short refs and
+`server inspect` shows the full bound model plus selected-capability support
+status.
 
 ## Start And Stop The Daemon
 

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use clap::CommandFactory;
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
@@ -12,8 +14,8 @@ use tentgent_kernel::features::auth::usecases::{
 };
 use tentgent_kernel::features::model::domain::{
     HfModelPullProgress, MlxRuntimeFamily, ModelCapability, ModelCapabilityProof, ModelFormat,
-    ModelImportOutcome, ModelInspection, ModelMetadata, ModelRefSelector, ModelRemovalOutcome,
-    ModelSummary, MODEL_CAPABILITY_CANONICAL_ORDER,
+    ModelImportOutcome, ModelInspection, ModelMetadata, ModelRef, ModelRefSelector,
+    ModelRemovalOutcome, ModelStoreLayout, ModelSummary, MODEL_CAPABILITY_CANONICAL_ORDER,
 };
 use tentgent_kernel::features::model::infra::{
     FileModelCapabilityProofStore, FileModelCatalogStore, FileModelContentStore,
@@ -21,12 +23,10 @@ use tentgent_kernel::features::model::infra::{
     StdModelIdentityGenerator, StdModelManifestBuilder, StdModelSourceStager,
     StdModelStoreLayoutInitializer, SystemModelClock,
 };
+use tentgent_kernel::features::model::ports::ModelCapabilityProofStore;
 use tentgent_kernel::features::model::support_catalog::{
-    built_in_catalog_entries_for_model, built_in_model_support_catalog,
-    built_in_support_hints_for_model, ModelSupportCatalogEntry, ModelSupportCatalogLevel,
-};
-use tentgent_kernel::features::model::support_status::{
-    ModelSupportQuery, ModelSupportStatusResolver,
+    built_in_catalog_entries_for_model, built_in_model_support_catalog, ModelSupportCatalogEntry,
+    ModelSupportCatalogLevel,
 };
 use tentgent_kernel::features::model::usecases::{
     ModelCapabilityMutation, ModelCapabilityProofListRequest, ModelCapabilityProofUseCase,
@@ -47,6 +47,9 @@ use tentgent_kernel::foundation::layout::{
 use super::app::Cli;
 use super::commands::{ModelCapabilityCommands, ModelCommands};
 use super::display::format_bytes;
+use super::model_support::{
+    model_support_detail_lines, model_support_list_label, model_support_summaries,
+};
 
 pub fn handle_model_command(action: ModelCommands) -> Result<()> {
     let model = CliModelKernel::new();
@@ -120,7 +123,9 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
                     layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
                 })
                 .into_diagnostic()?;
-            render_model_list(&result.models);
+            let proofs = model_proofs_for_summaries(&model.proofs, &result.store, &result.models)
+                .into_diagnostic()?;
+            render_model_list(&result.models, &proofs);
         }
         ModelCommands::Rm { hash } => {
             if is_help_token(&hash) {
@@ -446,6 +451,20 @@ fn runtime_layout_input(mode: LayoutResolveMode) -> RuntimeLayoutInput {
     }
 }
 
+fn model_proofs_for_summaries(
+    proof_store: &dyn ModelCapabilityProofStore,
+    store: &ModelStoreLayout,
+    models: &[ModelSummary],
+) -> tentgent_kernel::foundation::error::KernelResult<HashMap<ModelRef, Vec<ModelCapabilityProof>>>
+{
+    let mut proofs = HashMap::new();
+    for model in models {
+        let model_proofs = proof_store.list_capability_proofs(store, &model.metadata.model_ref)?;
+        proofs.insert(model.metadata.model_ref.clone(), model_proofs);
+    }
+    Ok(proofs)
+}
+
 fn render_import_outcome(title: &str, outcome: &ModelImportOutcome) {
     let status = if outcome.deduplicated {
         style("reused").yellow().bold()
@@ -526,7 +545,10 @@ fn render_model_removal(outcome: &ModelRemovalOutcome) {
     println!();
 }
 
-fn render_model_list(models: &[ModelSummary]) {
+fn render_model_list(
+    models: &[ModelSummary],
+    proofs_by_model_ref: &HashMap<ModelRef, Vec<ModelCapabilityProof>>,
+) {
     println!(
         "{} {}",
         style("==>").cyan().bold(),
@@ -552,10 +574,14 @@ fn render_model_list(models: &[ModelSummary]) {
             "source",
             "files",
             "size",
-            "inspect",
+            "support",
         ]);
 
     for model in models {
+        let proofs = proofs_by_model_ref
+            .get(&model.metadata.model_ref)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
         table.add_row(vec![
             Cell::new(&model.metadata.short_ref),
             Cell::new(model.metadata.primary_format.as_str()),
@@ -563,14 +589,14 @@ fn render_model_list(models: &[ModelSummary]) {
             Cell::new(model_list_source_label(&model.metadata)),
             Cell::new(model.metadata.file_count),
             Cell::new(format_bytes(model.metadata.total_bytes)),
-            Cell::new(format!(
-                "tentgent model inspect {}",
-                model.metadata.short_ref
-            )),
+            Cell::new(model_support_list_label(&model.metadata, proofs)),
         ]);
     }
 
     println!("{table}");
+    println!();
+    println!("{}", style("Inspect:").bold());
+    println!("tentgent model inspect <short_ref>");
     println!();
 }
 
@@ -825,49 +851,16 @@ fn add_model_support_status_rows(
     metadata: &ModelMetadata,
     proofs: &[ModelCapabilityProof],
 ) {
-    let capabilities = inspect_capabilities(metadata, proofs);
-    let hints = built_in_support_hints_for_model(metadata);
-    if capabilities.is_empty() {
+    let summaries = model_support_summaries(metadata, proofs);
+    if summaries.is_empty() {
         table.add_row(vec![Cell::new("capability support"), Cell::new("none")]);
         return;
     }
 
-    for (index, capability) in capabilities.into_iter().enumerate() {
-        let query = ModelSupportQuery::from_metadata(metadata, capability);
-        let resolution = ModelSupportStatusResolver.resolve(metadata, &query, proofs, &hints);
-        let mut lines = Vec::new();
+    for (index, summary) in summaries.into_iter().enumerate() {
+        let mut lines = model_support_detail_lines(&summary);
         if index > 0 {
-            lines.push(String::new());
-        }
-        lines.extend([
-            capability.as_str().to_string(),
-            format!(
-                "declared: {}",
-                if metadata.supports_capability(capability) {
-                    "yes"
-                } else {
-                    "no"
-                }
-            ),
-            format!("status: {}", resolution.status.as_str()),
-            format!("evidence: {}", resolution.evidence.as_str()),
-            format!("backend: {}", query.backend),
-        ]);
-
-        if let Some(family) = query.mlx_runtime_family {
-            lines.push(format!("mlx_runtime_family: {}", family.as_str()));
-        }
-        if let Some(version) = query.runtime_version.as_deref() {
-            lines.push(format!("runtime_version: {version}"));
-        }
-        if let Some(stale_reason) = resolution.stale_reason.as_deref() {
-            lines.push(format!("stale: {stale_reason}"));
-        }
-        if let Some(failure_reason) = resolution.failure_reason.as_deref() {
-            lines.push(format!("failure: {failure_reason}"));
-        }
-        if !resolution.reason.is_empty() {
-            lines.push(format!("reason: {}", resolution.reason));
+            lines.insert(0, String::new());
         }
 
         table.add_row(vec![
@@ -922,19 +915,6 @@ fn model_catalog_entry_lines(index: usize, entry: &ModelSupportCatalogEntry) -> 
         lines.push(format!("reason: {reason}"));
     }
     lines
-}
-
-fn inspect_capabilities(
-    metadata: &ModelMetadata,
-    proofs: &[ModelCapabilityProof],
-) -> Vec<ModelCapability> {
-    MODEL_CAPABILITY_CANONICAL_ORDER
-        .into_iter()
-        .filter(|capability| {
-            metadata.supports_capability(*capability)
-                || proofs.iter().any(|proof| proof.capability == *capability)
-        })
-        .collect()
 }
 
 fn render_model_capability_show(inspection: &ModelInspection) {

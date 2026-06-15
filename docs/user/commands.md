@@ -158,7 +158,7 @@ tentgent model catalog --capability chat --publisher Qwen
 tentgent model catalog --support-level fixture-supported
 tentgent model catalog --local --capability embedding
 tentgent model ls
-tentgent model inspect <model-ref>
+tentgent model inspect <model-ref-or-prefix>
 tentgent model capability show <model-ref>
 tentgent model capability set <model-ref> embedding
 tentgent model capability add <model-ref> vision-chat
@@ -172,11 +172,13 @@ are pulled into the local store. Use `--capability`, `--publisher`,
 `--support-level`, `--local`, and `--query` filters to narrow the list. Rows
 are followed by a pull command template and descriptions for the capabilities
 present in the filtered results.
-`model ls` keeps the table compact and includes a copy-paste
-`tentgent model inspect <short-ref>` command in each row. The list omits long
-source revision hashes; full source revision and detailed capability support
-status are shown by `model inspect` inside the Field/Value table as compact
-multi-line rows instead of a wide capability table.
+`model ls` keeps the table compact and prints an `Inspect:` command template
+below the table. The list also shows a compact support summary such as
+`supported chat`, `unknown embedding`, or `failed chat (+1)` when a model has
+multiple capability rows. The list omits long source revision hashes; full
+source revision and detailed capability support status are shown by
+`model inspect` inside the Field/Value table as compact multi-line rows instead
+of a wide capability table.
 `model inspect` also shows a `catalog` row when built-in model-family records
 match the stored source metadata. Catalog matches identify curated fixtures and
 major model families, but `verified` and `failed` support statuses still come
@@ -196,6 +198,10 @@ Capability proof commands read and write local tuple-aware support proof
 records while preserving the legacy latest proof file for compatibility.
 Manual `verify` checks stored metadata and backend labeling; local model-bound
 server starts record `server-start` proofs after launch success or failure.
+`tentgent doctor` also reports local model support summaries as capability
+checks. Missing proof, stale proof, failed proof, unsupported, and unknown
+tuples are warnings in this release; they are surfaced for operator visibility
+and do not change runtime gating behavior.
 
 For recommended small Hugging Face fixtures, gated-access reminders, and
 copy-paste smoke commands, see [model-fixtures.md](./model-fixtures.md).
@@ -740,6 +746,7 @@ Launch a stable local server proxy:
 
 ```bash
 tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
+tentgent server inspect <server-ref>
 ```
 
 `--port` is optional. When omitted, Tentgent creates an auto-port server spec
@@ -747,6 +754,9 @@ that starts scanning at `8780` each time the server is launched. The first free
 port is recorded as the running process `bound_port`; `server ls`, `server ps`,
 and daemon health calls use that actual port. When `--port` is provided, that
 port is fixed and startup fails if it is unavailable.
+`server ls` keeps local model rows compact by showing the model `short_ref` in
+the `model` column. Use `server inspect <server-ref>` when the full bound
+`model_ref` is needed.
 
 When `--capability` is omitted for a local model, Tentgent chooses the server
 endpoint family from the model's stored capabilities. The priority is
@@ -762,6 +772,12 @@ runtime may idle-shutdown and be started again on a later request. When set,
 proxy is the process that starts it. Direct Python runtime callers that do not
 start a model-bound server may still send explicit `model` and `model_kind`
 fields.
+
+For local model-bound servers, `server inspect` includes a `model_support` row
+for the server capability selected at creation time. This row reports the
+current local proof or catalog-derived support status for the bound model. Cloud
+provider servers do not show local model support because they are bound to
+provider-hosted models rather than records in the local model store.
 
 Call the server:
 

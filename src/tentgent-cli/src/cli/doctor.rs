@@ -8,8 +8,8 @@ use tentgent_kernel::{
     features::{
         doctor::{
             domain::{
-                DoctorCheck, DoctorCheckStatus, DoctorRepairIntent, DoctorReport,
-                DoctorReportRequest,
+                DoctorCheck, DoctorCheckCategory, DoctorCheckStatus, DoctorRepairIntent,
+                DoctorReport, DoctorReportRequest,
             },
             infra::{
                 StdDoctorCapabilityCheckMapper, StdDoctorCommandProbe, StdDoctorPathProbe,
@@ -20,6 +20,11 @@ use tentgent_kernel::{
                 DoctorRepairUseCaseRequest, DoctorReportUseCase, DoctorReportUseCaseRequest,
                 StdDoctorRepairUseCase, StdDoctorReportUseCase,
             },
+        },
+        model::{
+            infra::{FileModelCapabilityProofStore, FileModelCatalogStore},
+            ports::ModelCapabilityProofStore,
+            usecases::{ModelCatalogReadUseCase, ModelListRequest, StdModelCatalogReadUseCase},
         },
         runtime::{
             domain::{
@@ -35,11 +40,15 @@ use tentgent_kernel::{
             },
         },
     },
-    foundation::{layout::StdRuntimeLayoutResolver, platform::StdPlatformProbe},
+    foundation::{
+        layout::{LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver},
+        platform::StdPlatformProbe,
+    },
 };
 
 use super::{
     commands::DoctorCommand,
+    model_support::{model_support_summaries, support_status_is_healthy},
     runtime_footprint::{collect_runtime_footprint_best_effort, FootprintEntry},
 };
 
@@ -50,6 +59,7 @@ pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
     } else {
         handle_report(&kernel)?
     };
+    let report = append_model_support_checks(&kernel, report);
 
     render_checks(&report.checks);
 
@@ -69,6 +79,8 @@ struct CliDoctorKernel {
     bootstrap_executor: StdRuntimeBootstrapExecutor,
     capability_state_store: FileCapabilityStateStore,
     capability_probe: StdMachineCapabilitiesProbe,
+    model_catalog: FileModelCatalogStore,
+    model_proofs: FileModelCapabilityProofStore,
     path_probe: StdDoctorPathProbe,
     command_probe: StdDoctorCommandProbe,
     runtime_mapper: StdDoctorRuntimeCheckMapper,
@@ -87,6 +99,8 @@ impl CliDoctorKernel {
             bootstrap_executor: StdRuntimeBootstrapExecutor,
             capability_state_store: FileCapabilityStateStore,
             capability_probe: StdMachineCapabilitiesProbe,
+            model_catalog: FileModelCatalogStore,
+            model_proofs: FileModelCapabilityProofStore,
             path_probe: StdDoctorPathProbe,
             command_probe: StdDoctorCommandProbe,
             runtime_mapper: StdDoctorRuntimeCheckMapper,
@@ -195,6 +209,90 @@ fn report_request(repair: DoctorRepairIntent) -> DoctorReportUseCaseRequest {
         capabilities: DoctorCapabilityReadPolicy::Current,
         commands: DoctorCommandCheckPolicy::IncludeDeveloperTools,
     }
+}
+
+fn append_model_support_checks(kernel: &CliDoctorKernel, report: DoctorReport) -> DoctorReport {
+    let mut checks = report.checks;
+    checks.extend(model_support_checks(kernel));
+    DoctorReport::from_checks(checks)
+}
+
+fn model_support_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
+    let catalog = StdModelCatalogReadUseCase::new(&kernel.layout_resolver, &kernel.model_catalog);
+    let result = match catalog.list_models(ModelListRequest {
+        layout: RuntimeLayoutInput {
+            mode: LayoutResolveMode::ReadOnly,
+            home_dir: None,
+            data_root_dir: None,
+        },
+    }) {
+        Ok(result) => result,
+        Err(err) => {
+            return vec![DoctorCheck::warn(
+                DoctorCheckCategory::Capability,
+                "model support",
+                format!("model support checks unavailable: {err}"),
+            )];
+        }
+    };
+
+    let mut checks = Vec::new();
+    let mut supported_count = 0usize;
+    let mut tuple_count = 0usize;
+    for model in result.models {
+        let proofs = match kernel
+            .model_proofs
+            .list_capability_proofs(&result.store, &model.metadata.model_ref)
+        {
+            Ok(proofs) => proofs,
+            Err(err) => {
+                checks.push(DoctorCheck::warn(
+                    DoctorCheckCategory::Capability,
+                    format!("model support: {}", model.metadata.short_ref),
+                    format!("proof lookup unavailable: {err}"),
+                ));
+                continue;
+            }
+        };
+
+        for summary in model_support_summaries(&model.metadata, &proofs) {
+            tuple_count += 1;
+            if support_status_is_healthy(summary.status) {
+                supported_count += 1;
+            } else {
+                checks.push(DoctorCheck::with_status(
+                    DoctorCheckCategory::Capability,
+                    format!(
+                        "model support: {} {}",
+                        model.metadata.short_ref,
+                        summary.capability.as_str()
+                    ),
+                    DoctorCheckStatus::Warn,
+                    format!(
+                        "{} via {}: {}",
+                        summary.status.as_str(),
+                        summary.evidence.as_str(),
+                        summary.short_reason()
+                    ),
+                ));
+            }
+        }
+    }
+
+    if tuple_count > 0 {
+        checks.insert(
+            0,
+            DoctorCheck::pass(
+                DoctorCheckCategory::Capability,
+                "model support",
+                format!(
+                    "{supported_count}/{tuple_count} local model capability tuple(s) are verified or supported"
+                ),
+            ),
+        );
+    }
+
+    checks
 }
 
 fn render_repair_summary(
