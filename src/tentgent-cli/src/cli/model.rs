@@ -21,6 +21,10 @@ use tentgent_kernel::features::model::infra::{
     StdModelIdentityGenerator, StdModelManifestBuilder, StdModelSourceStager,
     StdModelStoreLayoutInitializer, SystemModelClock,
 };
+use tentgent_kernel::features::model::support_catalog::{
+    built_in_catalog_entries_for_model, built_in_model_support_catalog,
+    built_in_support_hints_for_model, ModelSupportCatalogEntry, ModelSupportCatalogLevel,
+};
 use tentgent_kernel::features::model::support_status::{
     ModelSupportQuery, ModelSupportStatusResolver,
 };
@@ -86,6 +90,28 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
             let outcome = outcome.into_diagnostic()?;
             render_import_outcome("Model pulled", &outcome.outcome);
             render_capability_warning(&outcome.outcome.metadata);
+        }
+        ModelCommands::Catalog {
+            capability,
+            publisher,
+            support_level,
+            local,
+            query,
+        } => {
+            let support_level = support_level
+                .as_deref()
+                .map(parse_catalog_support_level)
+                .transpose()?;
+            let catalog = built_in_model_support_catalog().into_diagnostic()?;
+            let entries = filter_model_catalog_entries(
+                catalog.models,
+                capability,
+                publisher.as_deref(),
+                support_level,
+                local,
+                query.as_deref(),
+            );
+            render_model_catalog(&entries);
         }
         ModelCommands::Ls => {
             let result = model
@@ -548,6 +574,154 @@ fn render_model_list(models: &[ModelSummary]) {
     println!();
 }
 
+fn render_model_catalog(entries: &[ModelSupportCatalogEntry]) {
+    println!(
+        "{} {}",
+        style("==>").cyan().bold(),
+        style("Built-in model support catalog").bold()
+    );
+
+    if entries.is_empty() {
+        println!(
+            "{} No built-in catalog entries matched the filters.\n",
+            style("empty").yellow().bold()
+        );
+        return;
+    }
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL_CONDENSED)
+        .apply_modifier(UTF8_ROUND_CORNERS)
+        .set_header(vec![
+            "publisher",
+            "family",
+            "scale",
+            "capabilities",
+            "support",
+            "source",
+        ]);
+
+    for (index, entry) in entries.iter().enumerate() {
+        if index > 0 {
+            table.add_row(vec![
+                Cell::new(""),
+                Cell::new(""),
+                Cell::new(""),
+                Cell::new(""),
+                Cell::new(""),
+                Cell::new(""),
+            ]);
+        }
+        for row in model_catalog_table_rows(entry) {
+            table.add_row(row);
+        }
+    }
+
+    println!("{table}");
+    render_model_catalog_pull_suggestions(entries);
+    println!();
+}
+
+fn model_catalog_table_rows(entry: &ModelSupportCatalogEntry) -> Vec<Vec<Cell>> {
+    let capabilities = entry
+        .capabilities
+        .iter()
+        .map(|capability| capability.as_str().to_string())
+        .collect::<Vec<_>>();
+    let sources = catalog_source_rows(entry);
+
+    let first_capability = capabilities.first().map(String::as_str).unwrap_or("");
+    let first_source = sources.first().map(String::as_str).unwrap_or("");
+    let mut rows = vec![vec![
+        Cell::new(&entry.publisher),
+        Cell::new(&entry.family),
+        Cell::new(entry.parameter_scale.as_deref().unwrap_or("-")),
+        Cell::new(first_capability),
+        Cell::new(entry.support_level.as_str()),
+        Cell::new(first_source),
+    ]];
+
+    for capability in capabilities.iter().skip(1) {
+        rows.push(vec![
+            Cell::new(""),
+            Cell::new(""),
+            Cell::new(""),
+            Cell::new(capability),
+            Cell::new(""),
+            Cell::new(""),
+        ]);
+    }
+
+    for source in sources.iter().skip(1) {
+        rows.push(vec![
+            Cell::new(""),
+            Cell::new(""),
+            Cell::new(""),
+            Cell::new(""),
+            Cell::new(""),
+            Cell::new(source),
+        ]);
+    }
+
+    rows
+}
+
+fn catalog_source_rows(entry: &ModelSupportCatalogEntry) -> Vec<String> {
+    if !entry.source_repos.is_empty() {
+        return entry.source_repos.clone();
+    }
+
+    if !entry.source_repo_patterns.is_empty() {
+        return entry.source_repo_patterns.clone();
+    }
+
+    vec!["unknown".to_string()]
+}
+
+fn render_model_catalog_pull_suggestions(entries: &[ModelSupportCatalogEntry]) {
+    println!();
+    println!("{}", style("Pull command template").bold());
+    println!("tentgent model pull <publisher>/<source> --capability <capability>");
+
+    let capabilities = catalog_result_capabilities(entries);
+    if !capabilities.is_empty() {
+        println!();
+        println!("{}", style("capabilities:").bold());
+        for capability in capabilities {
+            println!(
+                "{}: {}",
+                capability.as_str(),
+                catalog_capability_description(capability)
+            );
+        }
+    }
+}
+
+fn catalog_result_capabilities(entries: &[ModelSupportCatalogEntry]) -> Vec<ModelCapability> {
+    MODEL_CAPABILITY_CANONICAL_ORDER
+        .into_iter()
+        .filter(|capability| {
+            entries
+                .iter()
+                .any(|entry| entry.capabilities.contains(capability))
+        })
+        .collect()
+}
+
+fn catalog_capability_description(capability: ModelCapability) -> &'static str {
+    match capability {
+        ModelCapability::Chat => "text chat and instruction-following model endpoints",
+        ModelCapability::Embedding => "text embedding endpoints for retrieval and similarity",
+        ModelCapability::Rerank => "query/document reranking endpoints",
+        ModelCapability::AudioTranscription => "audio-to-text transcription workflows",
+        ModelCapability::AudioSpeech => "text-to-speech generation workflows",
+        ModelCapability::VisionChat => "image-plus-text chat and visual understanding",
+        ModelCapability::VideoUnderstanding => "video understanding workflows",
+        ModelCapability::ImageGeneration => "text-to-image and image workflow generation",
+    }
+}
+
 fn model_list_source_label(metadata: &ModelMetadata) -> String {
     match metadata.source_kind {
         tentgent_kernel::features::model::domain::ModelSourceKind::HuggingFace => metadata
@@ -561,6 +735,62 @@ fn model_list_source_label(metadata: &ModelMetadata) -> String {
     }
 }
 
+fn filter_model_catalog_entries(
+    entries: Vec<ModelSupportCatalogEntry>,
+    capability: Option<ModelCapability>,
+    publisher: Option<&str>,
+    support_level: Option<ModelSupportCatalogLevel>,
+    local: bool,
+    query: Option<&str>,
+) -> Vec<ModelSupportCatalogEntry> {
+    entries
+        .into_iter()
+        .filter(|entry| {
+            capability.is_none_or(|capability| entry.capabilities.contains(&capability))
+        })
+        .filter(|entry| {
+            publisher.is_none_or(|publisher| contains_case_insensitive(&entry.publisher, publisher))
+        })
+        .filter(|entry| support_level.is_none_or(|level| entry.support_level == level))
+        .filter(|entry| {
+            !local
+                || matches!(
+                    entry.support_level,
+                    ModelSupportCatalogLevel::FixtureSupported
+                        | ModelSupportCatalogLevel::LocalRuntimeSupported
+                )
+        })
+        .filter(|entry| query.is_none_or(|query| catalog_entry_matches_query(entry, query)))
+        .collect()
+}
+
+fn catalog_entry_matches_query(entry: &ModelSupportCatalogEntry, query: &str) -> bool {
+    [
+        entry.publisher.as_str(),
+        entry.family.as_str(),
+        entry.parameter_scale.as_deref().unwrap_or(""),
+        entry.support_level.as_str(),
+        entry.evidence.as_str(),
+        entry.reason.as_deref().unwrap_or(""),
+    ]
+    .into_iter()
+    .any(|value| contains_case_insensitive(value, query))
+        || entry
+            .source_repos
+            .iter()
+            .chain(entry.source_repo_patterns.iter())
+            .chain(entry.tags.iter())
+            .chain(entry.recommended_for.iter())
+            .chain(entry.runtime_notes.iter())
+            .any(|value| contains_case_insensitive(value, query))
+}
+
+fn contains_case_insensitive(value: &str, needle: &str) -> bool {
+    value
+        .to_ascii_lowercase()
+        .contains(&needle.to_ascii_lowercase())
+}
+
 fn render_model_inspection(inspection: &ModelInspection, proofs: &[ModelCapabilityProof]) {
     println!(
         "{} {} {}",
@@ -571,6 +801,7 @@ fn render_model_inspection(inspection: &ModelInspection, proofs: &[ModelCapabili
 
     let mut table = base_table();
     add_model_metadata_rows(&mut table, &inspection.metadata);
+    add_model_catalog_rows(&mut table, &inspection.metadata);
     table.add_row(vec![
         Cell::new("store path"),
         Cell::new(inspection.store_path.display().to_string()),
@@ -595,6 +826,7 @@ fn add_model_support_status_rows(
     proofs: &[ModelCapabilityProof],
 ) {
     let capabilities = inspect_capabilities(metadata, proofs);
+    let hints = built_in_support_hints_for_model(metadata);
     if capabilities.is_empty() {
         table.add_row(vec![Cell::new("capability support"), Cell::new("none")]);
         return;
@@ -602,7 +834,7 @@ fn add_model_support_status_rows(
 
     for (index, capability) in capabilities.into_iter().enumerate() {
         let query = ModelSupportQuery::from_metadata(metadata, capability);
-        let resolution = ModelSupportStatusResolver.resolve(metadata, &query, proofs, &[]);
+        let resolution = ModelSupportStatusResolver.resolve(metadata, &query, proofs, &hints);
         let mut lines = Vec::new();
         if index > 0 {
             lines.push(String::new());
@@ -643,6 +875,53 @@ fn add_model_support_status_rows(
             Cell::new(lines.join("\n")),
         ]);
     }
+}
+
+fn add_model_catalog_rows(table: &mut Table, metadata: &ModelMetadata) {
+    let entries = built_in_catalog_entries_for_model(metadata);
+    if entries.is_empty() {
+        table.add_row(vec![Cell::new("catalog"), Cell::new("not found")]);
+        return;
+    }
+
+    let lines = entries
+        .iter()
+        .enumerate()
+        .flat_map(|(index, entry)| model_catalog_entry_lines(index, entry))
+        .collect::<Vec<_>>();
+
+    table.add_row(vec![Cell::new("catalog"), Cell::new(lines.join("\n"))]);
+}
+
+fn model_catalog_entry_lines(index: usize, entry: &ModelSupportCatalogEntry) -> Vec<String> {
+    let mut lines = Vec::new();
+    if index > 0 {
+        lines.push(String::new());
+    }
+    lines.extend([
+        format!("known: yes ({})", entry.source_label()),
+        format!("publisher: {}", entry.publisher),
+        format!("family: {}", entry.family),
+    ]);
+    if let Some(parameter_scale) = entry.parameter_scale.as_deref() {
+        lines.push(format!("parameter_scale: {parameter_scale}"));
+    }
+    lines.push(format!(
+        "capabilities: {}",
+        model_capabilities_label(&entry.capabilities)
+    ));
+    if !entry.tags.is_empty() {
+        lines.push(format!("tags: {}", entry.tags.join(", ")));
+    }
+    lines.push(format!("support_level: {}", entry.support_level.as_str()));
+    lines.push(format!("evidence: {}", entry.evidence.as_str()));
+    if !entry.runtime_notes.is_empty() {
+        lines.push(format!("runtime_notes: {}", entry.runtime_notes.join(", ")));
+    }
+    if let Some(reason) = entry.reason.as_deref() {
+        lines.push(format!("reason: {reason}"));
+    }
+    lines
 }
 
 fn inspect_capabilities(
@@ -1022,6 +1301,20 @@ fn parse_model_selector(command: &str, value_name: &str, value: &str) -> Result<
     ModelRefSelector::parse(value).map_err(|err| usage_error(command, value_name, err))
 }
 
+fn parse_catalog_support_level(value: &str) -> Result<ModelSupportCatalogLevel> {
+    match value.trim() {
+        "fixture-supported" => Ok(ModelSupportCatalogLevel::FixtureSupported),
+        "local-runtime-supported" => Ok(ModelSupportCatalogLevel::LocalRuntimeSupported),
+        "catalog-known" => Ok(ModelSupportCatalogLevel::CatalogKnown),
+        "requires-external-runtime" => Ok(ModelSupportCatalogLevel::RequiresExternalRuntime),
+        "known-unsupported" => Ok(ModelSupportCatalogLevel::KnownUnsupported),
+        "deprecated" => Ok(ModelSupportCatalogLevel::Deprecated),
+        other => Err(miette!(
+            "unsupported model catalog support level `{other}`\n\nExpected one of: fixture-supported, local-runtime-supported, catalog-known, requires-external-runtime, known-unsupported, deprecated\nHint: use `tentgent model catalog --help` for filters."
+        )),
+    }
+}
+
 fn print_model_subcommand_help(name: &str) -> miette::Result<()> {
     let mut root = Cli::command();
     let model = root
@@ -1216,6 +1509,65 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_model_catalog_filter_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "model",
+            "catalog",
+            "--capability",
+            "chat",
+            "--publisher",
+            "Qwen",
+            "--support-level",
+            "catalog-known",
+            "--local",
+            "--query",
+            "qwen3",
+        ])
+        .expect("parse model catalog");
+
+        match cli.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Catalog {
+                        capability,
+                        publisher,
+                        support_level,
+                        local,
+                        query,
+                    },
+            } => {
+                assert_eq!(capability, Some(ModelCapability::Chat));
+                assert_eq!(publisher.as_deref(), Some("Qwen"));
+                assert_eq!(support_level.as_deref(), Some("catalog-known"));
+                assert!(local);
+                assert_eq!(query.as_deref(), Some("qwen3"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn model_catalog_help_mentions_filters() {
+        let mut root = Cli::command();
+        let model = root.find_subcommand_mut("model").expect("model command");
+        let catalog = model
+            .find_subcommand_mut("catalog")
+            .expect("catalog command");
+        let mut help = Vec::new();
+        catalog
+            .write_long_help(&mut help)
+            .expect("write catalog help");
+        let help = String::from_utf8(help).expect("utf8 help");
+
+        assert!(help.contains("--capability"));
+        assert!(help.contains("--publisher"));
+        assert!(help.contains("--support-level"));
+        assert!(help.contains("--local"));
+        assert!(help.contains("--query"));
     }
 
     #[test]

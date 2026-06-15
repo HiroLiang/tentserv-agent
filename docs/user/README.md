@@ -39,6 +39,9 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
 - [model-fixtures.md](./model-fixtures.md)
   Recommended small Hugging Face models and smoke-test commands for chat,
   embedding, rerank, audio transcription, and media workflows.
+- [model-support-catalog.md](./model-support-catalog.md)
+  Built-in model-family catalog, support hint levels, and how catalog evidence
+  differs from local verification proof.
 - [runtime.md](./runtime.md)
   Runtime home layout, environment overrides, daemon media upload limits,
   backend support, and macOS Keychain prompts.

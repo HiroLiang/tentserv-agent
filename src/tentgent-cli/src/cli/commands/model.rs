@@ -36,6 +36,34 @@ pub enum ModelCommands {
         #[arg(long, value_name = "CAPABILITY")]
         capability: Option<ModelCapability>,
     },
+    /// List built-in model support catalog entries.
+    #[command(
+        name = "catalog",
+        visible_alias = "recommend",
+        about = "List built-in model support catalog entries.",
+        long_about = "List built-in model support catalog entries. The catalog includes curated local fixtures, known model families, large external-runtime candidates, and MLX conversion patterns. Use filters such as `--capability chat`, `--publisher Qwen`, `--support-level fixture-supported`, `--local`, or `--query nemotron` to narrow the list. The output includes a pull command template and descriptions for the capabilities present in the filtered results."
+    )]
+    Catalog {
+        /// Filter by Tentgent endpoint capability.
+        #[arg(long, value_name = "CAPABILITY")]
+        capability: Option<ModelCapability>,
+        /// Filter by publisher text, case-insensitive.
+        #[arg(long, value_name = "PUBLISHER")]
+        publisher: Option<String>,
+        /// Filter by catalog support level.
+        #[arg(
+            long,
+            value_name = "LEVEL",
+            help = "Filter by support level: fixture-supported, local-runtime-supported, catalog-known, requires-external-runtime, known-unsupported, deprecated"
+        )]
+        support_level: Option<String>,
+        /// Show only entries that can become local support hints.
+        #[arg(long)]
+        local: bool,
+        /// Search publisher, family, source, tags, and recommendation text.
+        #[arg(short = 'q', long, value_name = "TEXT")]
+        query: Option<String>,
+    },
     /// List managed models in the local Tentgent model store.
     #[command(
         name = "ls",

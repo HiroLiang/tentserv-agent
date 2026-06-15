@@ -28,6 +28,8 @@ keychain.
 - HTTP API reference: [docs/user/api.md](./docs/user/api.md)
 - Model fixture and smoke-test guide:
   [docs/user/model-fixtures.md](./docs/user/model-fixtures.md)
+- Model support catalog:
+  [docs/user/model-support-catalog.md](./docs/user/model-support-catalog.md)
 - Developer guide: [docs/development/README.md](./docs/development/README.md)
 
 ## Quick Start
@@ -158,6 +160,7 @@ See [docs/contracts/auth-secrets.md](./docs/contracts/auth-secrets.md) for provi
 Pull, inspect, import, and remove managed models:
 
 ```bash
+tentgent model catalog --capability chat --publisher Qwen
 tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
 tentgent model ls
 tentgent model inspect <model-ref>
@@ -165,7 +168,10 @@ tentgent model add /absolute/path/to/model
 tentgent model rm <model-ref>
 ```
 
-See [docs/user/commands.md](./docs/user/commands.md#models-and-chat) for full model, adapter, dataset, and chat command examples.
+Use `model catalog` to browse built-in model-family support hints before
+pulling a model. See
+[docs/user/commands.md](./docs/user/commands.md#models-and-chat) for full
+model, adapter, dataset, and chat command examples.
 
 ## One-Shot Chat
 

@@ -413,6 +413,11 @@ jobs, which can be too heavy for small plumbing fixtures on PyTorch MPS.
 ## Current Fixture Models
 
 These rows are for local smoke tests, not product defaults.
+They are also seeded into the built-in
+[model support catalog](./model-support-catalog.md) as `fixture-supported`
+records. Broader Qwen, Llama, Gemma, Nemotron, MLX, embedding, rerank, and
+image model families live in the catalog as recognition hints, but local proof
+is still required before treating a specific tuple as verified.
 
 | Capability | Candidate | Access | Pull command | Notes |
 | --- | --- | --- | --- | --- |
