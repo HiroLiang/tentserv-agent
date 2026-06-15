@@ -321,6 +321,10 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.7.0`: support status release; surfaces model capability support in
+  `model ls`, `model inspect`, `server ls`, and `doctor`, adds local proof and
+  catalog evidence records, and documents how support moves between unknown,
+  supported, verified, failed, and unsupported states.
 - `v0.6.0`: compatibility contract release; documents OpenAI, Claude/Anthropic,
   and Gemini-compatible endpoint support, stabilizes unsupported provider API
   errors, and adds compatibility fixtures for current daemon, direct cloud, and
