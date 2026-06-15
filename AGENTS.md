@@ -111,6 +111,9 @@ Key current documents:
 - `docs/user/model-fixtures.md`
   Recommended small model fixtures and smoke-test commands for chat, embedding,
   rerank, and metadata-only M6 media workflows.
+- `docs/user/model-support-catalog.md`
+  Built-in model-family catalog, support hint levels, and how catalog evidence
+  differs from local verification proof.
 - `docs/user/runtime.md`
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`

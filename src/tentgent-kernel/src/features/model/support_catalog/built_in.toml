@@ -1,0 +1,836 @@
+schema_version = 1
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["HuggingFaceTB/SmolLM-135M-Instruct"]
+publisher = "HuggingFaceTB"
+family = "SmolLM"
+parameter_scale = "135M"
+capabilities = ["chat"]
+tags = ["small", "instruction-tuned"]
+recommended_for = ["local-smoke-test", "chat"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated small chat fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["Qwen/Qwen2.5-0.5B-Instruct"]
+publisher = "Qwen"
+family = "Qwen2.5"
+parameter_scale = "0.5B"
+capabilities = ["chat"]
+tags = ["small", "instruction-tuned"]
+recommended_for = ["local-smoke-test", "chat"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated Qwen chat fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["google/gemma-3-1b-it"]
+publisher = "Google"
+family = "Gemma 3"
+parameter_scale = "1B"
+capabilities = ["chat"]
+tags = ["small", "instruction-tuned", "terms"]
+recommended_for = ["local-smoke-test", "chat"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated Gemma chat fixture; Hugging Face terms must be accepted before pull"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["meta-llama/Llama-3.2-1B-Instruct"]
+publisher = "Meta"
+family = "Llama 3.2"
+parameter_scale = "1B"
+capabilities = ["chat"]
+tags = ["small", "instruction-tuned", "terms"]
+recommended_for = ["local-smoke-test", "chat"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated Llama chat fixture; Hugging Face terms must be accepted before pull"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "sentence-transformers/paraphrase-MiniLM-L3-v2",
+  "BAAI/bge-small-en-v1.5",
+]
+publisher = "Sentence Transformers"
+family = "Small embedding fixtures"
+parameter_scale = "small"
+capabilities = ["embedding"]
+tags = ["retrieval", "embedding", "small"]
+recommended_for = ["local-smoke-test", "embedding"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated embedding fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "cross-encoder/ms-marco-MiniLM-L6-v2",
+  "mixedbread-ai/mxbai-rerank-xsmall-v1",
+  "BAAI/bge-reranker-base",
+]
+publisher = "Rerank fixture publishers"
+family = "Small rerank fixtures"
+parameter_scale = "small"
+capabilities = ["rerank"]
+tags = ["retrieval", "rerank"]
+recommended_for = ["local-smoke-test", "rerank"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated rerank fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "openai/whisper-tiny.en",
+  "openai/whisper-tiny",
+]
+publisher = "OpenAI"
+family = "Whisper"
+parameter_scale = "tiny"
+capabilities = ["audio-transcription"]
+tags = ["asr", "speech-to-text", "small"]
+recommended_for = ["local-smoke-test", "audio-transcription"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated Whisper transcription fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["mlx-community/whisper-tiny-asr-fp16"]
+publisher = "mlx-community"
+family = "Whisper MLX"
+parameter_scale = "tiny"
+capabilities = ["audio-transcription"]
+tags = ["asr", "mlx-audio", "apple-silicon"]
+recommended_for = ["local-smoke-test", "audio-transcription"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-audio"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated MLX audio transcription fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "mlx-community/whisper-tiny-mlx",
+  "mlx-community/whisper-tiny-fp16",
+]
+publisher = "mlx-community"
+family = "Whisper MLX legacy"
+parameter_scale = "tiny"
+capabilities = ["audio-transcription"]
+tags = ["asr", "mlx-audio", "processor-metadata-warning"]
+recommended_for = ["metadata-audit", "audio-transcription"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-audio"]
+support_level = "known-unsupported"
+evidence = "fixture-docs"
+reason = "older MLX Whisper packages may lack Hugging Face processor metadata required by the current runtime"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["facebook/mms-tts-eng"]
+publisher = "Meta"
+family = "MMS TTS"
+parameter_scale = "36M"
+capabilities = ["audio-speech"]
+tags = ["tts", "small", "license-review"]
+recommended_for = ["local-smoke-test", "audio-speech"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated text-to-speech fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["mlx-community/Kokoro-82M-bf16"]
+publisher = "mlx-community"
+family = "Kokoro"
+parameter_scale = "82M"
+capabilities = ["audio-speech"]
+tags = ["tts", "mlx-audio", "apple-silicon"]
+recommended_for = ["local-smoke-test", "audio-speech"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-audio"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated MLX text-to-speech fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["suno/bark-small"]
+publisher = "Suno"
+family = "Bark"
+parameter_scale = "small"
+capabilities = ["audio-speech"]
+tags = ["tts", "candidate"]
+recommended_for = ["audio-speech"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "fixture-docs"
+reason = "known TTS candidate, but not the primary Tentgent smoke fixture"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["HuggingFaceTB/SmolVLM-256M-Instruct"]
+publisher = "HuggingFaceTB"
+family = "SmolVLM"
+parameter_scale = "256M"
+capabilities = ["vision-chat"]
+tags = ["vision-language", "small"]
+recommended_for = ["local-smoke-test", "vision-chat"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated small vision-chat fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["mlx-community/SmolVLM-256M-Instruct-bf16"]
+publisher = "mlx-community"
+family = "SmolVLM MLX"
+parameter_scale = "256M"
+capabilities = ["vision-chat"]
+tags = ["vision-language", "mlx-vlm", "apple-silicon"]
+recommended_for = ["local-smoke-test", "vision-chat"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-vlm"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated MLX vision-chat fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["HuggingFaceTB/SmolVLM2-256M-Video-Instruct"]
+publisher = "HuggingFaceTB"
+family = "SmolVLM2"
+parameter_scale = "256M"
+capabilities = ["video-understanding"]
+tags = ["vision-language", "video", "small"]
+recommended_for = ["local-smoke-test", "video-understanding"]
+primary_formats = ["safetensors"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated small video-understanding fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "hf-internal-testing/tiny-stable-diffusion-pipe",
+  "hf-internal-testing/tiny-stable-diffusion-pipe-no-safety",
+  "segmind/tiny-sd",
+]
+publisher = "Diffusers fixture publishers"
+family = "Tiny Stable Diffusion"
+parameter_scale = "tiny"
+capabilities = ["image-generation"]
+tags = ["diffusers", "text-to-image", "small"]
+recommended_for = ["local-smoke-test", "image-generation"]
+primary_formats = ["diffusers"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated Diffusers image-generation fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = ["mlx-community/Flux-1.lite-8B-MLX-Q4"]
+publisher = "mlx-community"
+family = "Flux MLX"
+parameter_scale = "8B"
+capabilities = ["image-generation"]
+tags = ["mlx-diffusion", "text-to-image", "apple-silicon"]
+recommended_for = ["local-smoke-test", "image-generation"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-diffusion"]
+support_level = "fixture-supported"
+evidence = "fixture-docs"
+reason = "curated MLX image-generation fixture from Tentgent model fixture docs"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "meta-llama/Llama-3.1-8B-Instruct",
+  "meta-llama/Llama-3.1-70B-Instruct",
+  "meta-llama/Llama-3.1-405B-Instruct",
+  "meta-llama/Llama-3.2-3B-Instruct",
+  "meta-llama/Llama-3.3-70B-Instruct",
+]
+publisher = "Meta"
+family = "Llama 3"
+parameter_scale = "3B-405B"
+capabilities = ["chat"]
+tags = ["instruction-tuned", "general-chat", "agent", "terms"]
+recommended_for = ["chat", "agent"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Llama chat family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "meta-llama/Llama-3.2-11B-Vision-Instruct",
+  "meta-llama/Llama-3.2-90B-Vision-Instruct",
+  "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+  "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
+]
+publisher = "Meta"
+family = "Llama Vision"
+parameter_scale = "11B-128E"
+capabilities = ["vision-chat"]
+tags = ["vision-language", "multimodal", "terms"]
+recommended_for = ["vision-chat", "agent"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Llama multimodal family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "meta-llama/CodeLlama-7b-Instruct-hf",
+  "meta-llama/CodeLlama-13b-Instruct-hf",
+  "meta-llama/CodeLlama-34b-Instruct-hf",
+  "meta-llama/CodeLlama-70b-Instruct-hf",
+]
+publisher = "Meta"
+family = "Code Llama"
+parameter_scale = "7B-70B"
+capabilities = ["chat"]
+tags = ["code", "instruction-tuned", "terms"]
+recommended_for = ["code-generation", "chat"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Code Llama family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "Qwen/Qwen2.5-1.5B-Instruct",
+  "Qwen/Qwen2.5-3B-Instruct",
+  "Qwen/Qwen2.5-7B-Instruct",
+  "Qwen/Qwen2.5-14B-Instruct",
+  "Qwen/Qwen2.5-32B-Instruct",
+  "Qwen/Qwen2.5-72B-Instruct",
+]
+publisher = "Qwen"
+family = "Qwen2.5"
+parameter_scale = "1.5B-72B"
+capabilities = ["chat"]
+tags = ["instruction-tuned", "general-chat", "agent"]
+recommended_for = ["chat", "agent"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Qwen2.5 chat family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+  "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+  "Qwen/Qwen2.5-Coder-3B-Instruct",
+  "Qwen/Qwen2.5-Coder-7B-Instruct",
+  "Qwen/Qwen2.5-Coder-14B-Instruct",
+  "Qwen/Qwen2.5-Coder-32B-Instruct",
+]
+publisher = "Qwen"
+family = "Qwen2.5 Coder"
+parameter_scale = "0.5B-32B"
+capabilities = ["chat"]
+tags = ["code", "instruction-tuned", "agent"]
+recommended_for = ["code-generation", "chat"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Qwen coding family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "Qwen/Qwen2.5-VL-3B-Instruct",
+  "Qwen/Qwen2.5-VL-7B-Instruct",
+  "Qwen/Qwen2.5-VL-32B-Instruct",
+  "Qwen/Qwen2.5-VL-72B-Instruct",
+]
+publisher = "Qwen"
+family = "Qwen2.5 VL"
+parameter_scale = "3B-72B"
+capabilities = ["vision-chat"]
+tags = ["vision-language", "multimodal", "agent"]
+recommended_for = ["vision-chat", "document-understanding"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Qwen vision-language family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "Qwen/Qwen2.5-Omni-7B",
+  "Qwen/Qwen2-Audio-7B-Instruct",
+]
+publisher = "Qwen"
+family = "Qwen Audio/Omni"
+parameter_scale = "7B"
+capabilities = ["audio-transcription", "audio-speech", "vision-chat"]
+tags = ["audio", "omni", "multimodal"]
+recommended_for = ["audio-understanding", "multimodal"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "Qwen audio/omni model family known by catalog; Tentgent local endpoint proof is still required"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "Qwen/QwQ-32B",
+  "Qwen/Qwen3-0.6B",
+  "Qwen/Qwen3-1.7B",
+  "Qwen/Qwen3-4B",
+  "Qwen/Qwen3-8B",
+  "Qwen/Qwen3-14B",
+  "Qwen/Qwen3-32B",
+  "Qwen/Qwen3-30B-A3B",
+  "Qwen/Qwen3-235B-A22B",
+]
+publisher = "Qwen"
+family = "Qwen3"
+parameter_scale = "0.6B-235B-A22B"
+capabilities = ["chat"]
+tags = ["reasoning", "thinking-mode", "agent"]
+recommended_for = ["chat", "reasoning", "agent"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Qwen3 reasoning family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "Qwen/Qwen3-Embedding-0.6B",
+  "Qwen/Qwen3-Embedding-4B",
+  "Qwen/Qwen3-Embedding-8B",
+]
+publisher = "Qwen"
+family = "Qwen3 Embedding"
+parameter_scale = "0.6B-8B"
+capabilities = ["embedding"]
+tags = ["retrieval", "embedding", "multilingual"]
+recommended_for = ["embedding", "retrieval"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Qwen embedding family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "Qwen/Qwen3-Reranker-0.6B",
+  "Qwen/Qwen3-Reranker-4B",
+  "Qwen/Qwen3-Reranker-8B",
+]
+publisher = "Qwen"
+family = "Qwen3 Reranker"
+parameter_scale = "0.6B-8B"
+capabilities = ["rerank"]
+tags = ["retrieval", "rerank", "multilingual"]
+recommended_for = ["rerank", "retrieval"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Qwen rerank family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "Qwen/Qwen-Image",
+  "Qwen/Qwen-Image-Edit",
+]
+publisher = "Qwen"
+family = "Qwen Image"
+parameter_scale = "image"
+capabilities = ["image-generation"]
+tags = ["text-to-image", "image-editing", "multilingual"]
+recommended_for = ["image-generation", "image-editing"]
+primary_formats = ["safetensors", "diffusers"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "Qwen image model family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "google/gemma-2-2b-it",
+  "google/gemma-2-9b-it",
+  "google/gemma-2-27b-it",
+  "google/gemma-3-4b-it",
+  "google/gemma-3-12b-it",
+  "google/gemma-3-27b-it",
+  "google/gemma-3n-E2B-it",
+  "google/gemma-3n-E4B-it",
+  "google/gemma-4-31b-it",
+]
+publisher = "Google"
+family = "Gemma"
+parameter_scale = "2B-31B"
+capabilities = ["chat"]
+tags = ["instruction-tuned", "terms", "agent"]
+recommended_for = ["chat", "agent"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Gemma chat family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "google/paligemma-3b-pt-224",
+  "google/paligemma-3b-mix-224",
+  "google/paligemma2-3b-pt-224",
+  "google/paligemma2-10b-pt-224",
+  "google/paligemma2-28b-pt-224",
+]
+publisher = "Google"
+family = "PaliGemma"
+parameter_scale = "3B-28B"
+capabilities = ["vision-chat"]
+tags = ["vision-language", "terms"]
+recommended_for = ["vision-chat", "image-understanding"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "major Google vision-language family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "google/medgemma-4b-it",
+  "google/shieldgemma-2b",
+  "google/shieldgemma-9b",
+  "google/shieldgemma-27b",
+]
+publisher = "Google"
+family = "Specialized Gemma"
+parameter_scale = "2B-27B"
+capabilities = ["chat"]
+tags = ["safety", "medical", "domain-specialized", "terms"]
+recommended_for = ["domain-specialized-chat", "safety"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "publisher-model-card"
+reason = "specialized Gemma family known by catalog; local proof and policy review are still required"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF",
+  "nvidia/Llama-3.1-Nemotron-Nano-8B-v1",
+  "nvidia/Llama-3.1-Nemotron-Super-49B-v1",
+  "nvidia/Llama-3.1-Nemotron-Ultra-253B-v1",
+  "nvidia/Llama-3_1-Nemotron-Nano-8B-v1",
+  "nvidia/Llama-3_1-Nemotron-Super-49B-v1",
+  "nvidia/Llama-3_1-Nemotron-Ultra-253B-v1",
+]
+publisher = "NVIDIA"
+family = "Llama Nemotron"
+parameter_scale = "8B-253B"
+capabilities = ["chat"]
+tags = ["reasoning", "agent", "tool-use"]
+recommended_for = ["reasoning", "agent", "chat"]
+primary_formats = ["safetensors"]
+support_level = "requires-external-runtime"
+runtime_notes = ["large-memory-required", "nvidia-nim-recommended"]
+evidence = "nvidia-catalog"
+reason = "NVIDIA Llama Nemotron family is catalog-known; large variants usually require external GPU/NIM serving before local proof"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "nvidia/nemotron-3-nano-30b-a3b",
+  "nvidia/nemotron-3-nano-30b-a3b-reasoning",
+  "nvidia/nemotron-3-super-120b-a12b",
+  "nvidia/nemotron-3-super-120b-a12b-reasoning",
+  "nvidia/nemotron-3-ultra-550b-a55b",
+]
+publisher = "NVIDIA"
+family = "Nemotron 3"
+parameter_scale = "30B-A3B to 550B-A55B"
+capabilities = ["chat"]
+tags = ["reasoning", "agent", "moe", "tool-use"]
+recommended_for = ["reasoning", "agent", "chat"]
+primary_formats = ["safetensors"]
+support_level = "requires-external-runtime"
+runtime_notes = ["large-memory-required", "nvidia-nim-recommended"]
+evidence = "nvidia-catalog"
+reason = "NVIDIA Nemotron 3 family is catalog-known; these large models generally require external GPU/NIM serving before local proof"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+  "nvidia/nemotron-3-content-safety",
+  "nvidia/nemotron-3.5-content-safety",
+  "nvidia/cosmos3-nano-reasoner",
+]
+publisher = "NVIDIA"
+family = "Nemotron multimodal and safety"
+parameter_scale = "various"
+capabilities = ["vision-chat"]
+tags = ["multimodal", "safety", "reasoning"]
+recommended_for = ["vision-chat", "safety", "agent"]
+primary_formats = ["safetensors"]
+support_level = "requires-external-runtime"
+runtime_notes = ["nvidia-nim-recommended"]
+evidence = "nvidia-catalog"
+reason = "NVIDIA multimodal catalog entry; local proof still required and NIM may be the intended serving path"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "nvidia/NV-Embed-v2",
+  "nvidia/NV-Retriever-v1",
+]
+publisher = "NVIDIA"
+family = "NVIDIA retrieval embeddings"
+parameter_scale = "various"
+capabilities = ["embedding"]
+tags = ["retrieval", "embedding"]
+recommended_for = ["embedding", "retrieval"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "nvidia-catalog"
+reason = "NVIDIA retrieval embedding family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "nvidia/NV-RerankQA-Mistral-4B-v3",
+  "nvidia/llama-nemotron-rerank-vl-1b-v2",
+]
+publisher = "NVIDIA"
+family = "NVIDIA rerank"
+parameter_scale = "1B-4B"
+capabilities = ["rerank"]
+tags = ["retrieval", "rerank", "vision-language"]
+recommended_for = ["rerank", "retrieval"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "nvidia-catalog"
+reason = "NVIDIA rerank family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repo_patterns = ["mlx-community/Qwen*"]
+publisher = "mlx-community"
+family = "Qwen MLX conversions"
+parameter_scale = "various"
+capabilities = ["chat"]
+tags = ["mlx-lm", "apple-silicon", "conversion"]
+recommended_for = ["chat", "apple-silicon"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-lm"]
+support_level = "local-runtime-supported"
+evidence = "mlx-community-conversion"
+reason = "MLX Qwen conversion family can be attempted through mlx-lm; local proof remains authoritative"
+
+[[models]]
+source_kind = "huggingface"
+source_repo_patterns = ["mlx-community/Llama*", "mlx-community/Meta-Llama*"]
+publisher = "mlx-community"
+family = "Llama MLX conversions"
+parameter_scale = "various"
+capabilities = ["chat"]
+tags = ["mlx-lm", "apple-silicon", "conversion"]
+recommended_for = ["chat", "apple-silicon"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-lm"]
+support_level = "local-runtime-supported"
+evidence = "mlx-community-conversion"
+reason = "MLX Llama conversion family can be attempted through mlx-lm; local proof remains authoritative"
+
+[[models]]
+source_kind = "huggingface"
+source_repo_patterns = ["mlx-community/gemma*", "mlx-community/Gemma*"]
+publisher = "mlx-community"
+family = "Gemma MLX conversions"
+parameter_scale = "various"
+capabilities = ["chat"]
+tags = ["mlx-lm", "apple-silicon", "conversion"]
+recommended_for = ["chat", "apple-silicon"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-lm"]
+support_level = "local-runtime-supported"
+evidence = "mlx-community-conversion"
+reason = "MLX Gemma conversion family can be attempted through mlx-lm; local proof remains authoritative"
+
+[[models]]
+source_kind = "huggingface"
+source_repo_patterns = ["mlx-community/Mistral*", "mlx-community/Mixtral*"]
+publisher = "mlx-community"
+family = "Mistral MLX conversions"
+parameter_scale = "various"
+capabilities = ["chat"]
+tags = ["mlx-lm", "apple-silicon", "conversion"]
+recommended_for = ["chat", "apple-silicon"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-lm"]
+support_level = "local-runtime-supported"
+evidence = "mlx-community-conversion"
+reason = "MLX Mistral conversion family can be attempted through mlx-lm; local proof remains authoritative"
+
+[[models]]
+source_kind = "huggingface"
+source_repo_patterns = ["mlx-community/SmolVLM*", "mlx-community/Qwen*-VL*"]
+publisher = "mlx-community"
+family = "MLX VLM conversions"
+parameter_scale = "various"
+capabilities = ["vision-chat"]
+tags = ["mlx-vlm", "apple-silicon", "vision-language", "conversion"]
+recommended_for = ["vision-chat", "apple-silicon"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-vlm"]
+support_level = "local-runtime-supported"
+evidence = "mlx-community-conversion"
+reason = "MLX vision-language conversion family can be attempted through mlx-vlm; local proof remains authoritative"
+
+[[models]]
+source_kind = "huggingface"
+source_repo_patterns = ["mlx-community/whisper*", "mlx-community/Whisper*"]
+publisher = "mlx-community"
+family = "Whisper MLX conversions"
+parameter_scale = "various"
+capabilities = ["audio-transcription"]
+tags = ["mlx-audio", "apple-silicon", "asr", "conversion"]
+recommended_for = ["audio-transcription", "apple-silicon"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-audio"]
+support_level = "catalog-known"
+evidence = "mlx-community-conversion"
+reason = "MLX Whisper conversion family is catalog-known; exact fixture records decide whether the current package is supported"
+
+[[models]]
+source_kind = "huggingface"
+source_repo_patterns = ["mlx-community/Kokoro*", "mlx-community/*TTS*", "mlx-community/*tts*"]
+publisher = "mlx-community"
+family = "MLX TTS conversions"
+parameter_scale = "various"
+capabilities = ["audio-speech"]
+tags = ["mlx-audio", "apple-silicon", "tts", "conversion"]
+recommended_for = ["audio-speech", "apple-silicon"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-audio"]
+support_level = "catalog-known"
+evidence = "mlx-community-conversion"
+reason = "MLX TTS conversion family is catalog-known; exact fixture records decide whether the current package is supported"
+
+[[models]]
+source_kind = "huggingface"
+source_repo_patterns = ["mlx-community/Flux*", "mlx-community/*FLUX*", "mlx-community/*stable-diffusion*"]
+publisher = "mlx-community"
+family = "MLX diffusion conversions"
+parameter_scale = "various"
+capabilities = ["image-generation"]
+tags = ["mlx-diffusion", "apple-silicon", "text-to-image", "conversion"]
+recommended_for = ["image-generation", "apple-silicon"]
+primary_formats = ["mlx"]
+mlx_runtime_families = ["mlx-diffusion"]
+support_level = "catalog-known"
+evidence = "mlx-community-conversion"
+reason = "MLX diffusion conversion family is catalog-known; exact fixture records decide whether the current package is supported"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "sentence-transformers/all-MiniLM-L6-v2",
+  "sentence-transformers/all-mpnet-base-v2",
+  "intfloat/e5-small-v2",
+  "intfloat/e5-base-v2",
+  "intfloat/e5-large-v2",
+  "intfloat/multilingual-e5-large",
+  "Alibaba-NLP/gte-modernbert-base",
+  "Alibaba-NLP/gte-large-en-v1.5",
+  "jinaai/jina-embeddings-v3",
+]
+publisher = "Embedding model publishers"
+family = "Mainstream embedding models"
+parameter_scale = "small-large"
+capabilities = ["embedding"]
+tags = ["retrieval", "embedding"]
+recommended_for = ["embedding", "retrieval"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "huggingface-model-card"
+reason = "mainstream embedding family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "BAAI/bge-base-en-v1.5",
+  "BAAI/bge-large-en-v1.5",
+  "BAAI/bge-m3",
+]
+publisher = "BAAI"
+family = "BGE embeddings"
+parameter_scale = "base-large"
+capabilities = ["embedding"]
+tags = ["retrieval", "embedding"]
+recommended_for = ["embedding", "retrieval"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "huggingface-model-card"
+reason = "mainstream BGE embedding family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "BAAI/bge-reranker-large",
+  "BAAI/bge-reranker-v2-m3",
+  "jinaai/jina-reranker-v2-base-multilingual",
+]
+publisher = "Retrieval model publishers"
+family = "BGE and Jina rerankers"
+parameter_scale = "base-large"
+capabilities = ["rerank"]
+tags = ["retrieval", "rerank"]
+recommended_for = ["rerank", "retrieval"]
+primary_formats = ["safetensors"]
+support_level = "catalog-known"
+evidence = "huggingface-model-card"
+reason = "mainstream reranker family known by catalog; local proof still required for this machine"
+
+[[models]]
+source_kind = "huggingface"
+source_repos = [
+  "stabilityai/stable-diffusion-xl-base-1.0",
+  "stabilityai/stable-diffusion-3.5-large",
+  "black-forest-labs/FLUX.1-dev",
+  "black-forest-labs/FLUX.1-schnell",
+  "ByteDance/SDXL-Lightning",
+  "runwayml/stable-diffusion-v1-5",
+]
+publisher = "Image generation model publishers"
+family = "Stable Diffusion and Flux"
+parameter_scale = "various"
+capabilities = ["image-generation"]
+tags = ["diffusers", "text-to-image", "image-generation"]
+recommended_for = ["image-generation"]
+primary_formats = ["diffusers"]
+support_level = "catalog-known"
+evidence = "huggingface-model-card"
+reason = "mainstream image-generation family known by catalog; local proof still required for this machine"

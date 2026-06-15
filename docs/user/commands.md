@@ -153,6 +153,10 @@ models.
 List and inspect models:
 
 ```bash
+tentgent model catalog
+tentgent model catalog --capability chat --publisher Qwen
+tentgent model catalog --support-level fixture-supported
+tentgent model catalog --local --capability embedding
 tentgent model ls
 tentgent model inspect <model-ref>
 tentgent model capability show <model-ref>
@@ -163,11 +167,20 @@ tentgent model capability verify <model-ref> vision-chat
 tentgent model capability proofs <model-ref>
 ```
 
+`model catalog` lists the built-in model-family support catalog before models
+are pulled into the local store. Use `--capability`, `--publisher`,
+`--support-level`, `--local`, and `--query` filters to narrow the list. Rows
+are followed by a pull command template and descriptions for the capabilities
+present in the filtered results.
 `model ls` keeps the table compact and includes a copy-paste
 `tentgent model inspect <short-ref>` command in each row. The list omits long
 source revision hashes; full source revision and detailed capability support
 status are shown by `model inspect` inside the Field/Value table as compact
 multi-line rows instead of a wide capability table.
+`model inspect` also shows a `catalog` row when built-in model-family records
+match the stored source metadata. Catalog matches identify curated fixtures and
+major model families, but `verified` and `failed` support statuses still come
+only from local proof records.
 
 When no explicit capability or confident Hugging Face metadata is available,
 Tentgent keeps the backward-compatible `chat` default and prints a warning.

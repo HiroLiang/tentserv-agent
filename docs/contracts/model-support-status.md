@@ -79,6 +79,31 @@ Support status may use these evidence sources:
 Declared capability metadata says which endpoint family a model is intended to
 serve. It is necessary routing input, but it does not prove runtime support.
 
+## Built-In Model Catalog
+
+Tentgent ships a built-in model support catalog for curated fixture models and
+major public model families. The catalog records source identity, publisher,
+family, approximate scale, endpoint capabilities, descriptive tags, support
+level, evidence source, and runtime notes.
+
+The catalog is source-aware. Exact Hugging Face repository matches take
+precedence over family patterns such as `mlx-community/Qwen*`. This prevents a
+fixture record from accidentally proving every model in the same family.
+
+Catalog levels map to resolver evidence conservatively:
+
+- `fixture-supported` and `local-runtime-supported` can produce `supported`
+  hints.
+- `known-unsupported` can produce `unsupported` hints.
+- `catalog-known`, `requires-external-runtime`, and `deprecated` are displayed
+  as catalog context but do not prove local support.
+
+Large model records such as 70B, 120B, 235B, or larger MoE families should
+usually be marked `catalog-known` or `requires-external-runtime` unless a
+local runtime tuple is explicitly known to work. These records help users
+recognize model families without implying that the current machine can serve
+them.
+
 ## Precedence
 
 When multiple evidence sources apply, resolve status in this order:
