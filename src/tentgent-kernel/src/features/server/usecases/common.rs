@@ -225,7 +225,7 @@ fn resolve_local_server_runtime_profile(
     capability: ServerCapability,
     backend: ServerRuntimeBackend,
 ) -> KernelResult<Option<ServerRuntimeProfileSelection>> {
-    if capability != ServerCapability::Chat {
+    if !requires_local_server_runtime_profile(capability) {
         return Ok(None);
     }
 
@@ -244,6 +244,11 @@ fn ensure_local_server_runtime_profile_matches(
     backend: ServerRuntimeBackend,
     selected: Option<&ServerRuntimeProfileSelection>,
 ) -> KernelResult<()> {
+    if requires_local_server_runtime_profile(capability) && selected.is_none() {
+        return Err(KernelError::UnsupportedTarget(format!(
+            "local server capability `{capability}` requires a runtime profile for backend `{backend}`"
+        )));
+    }
     let Some(selected) = selected else {
         return Ok(());
     };
@@ -262,6 +267,13 @@ fn ensure_local_server_runtime_profile_matches(
         expected.selection.label(),
         selected.label()
     )))
+}
+
+fn requires_local_server_runtime_profile(capability: ServerCapability) -> bool {
+    matches!(
+        capability,
+        ServerCapability::Chat | ServerCapability::Embedding
+    )
 }
 
 fn ensure_cloud_server_capability_supported(

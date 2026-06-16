@@ -107,6 +107,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         embedding.outcome.inspection.spec.capability,
         ServerCapability::Embedding
     );
+    assert!(embedding.outcome.inspection.spec.runtime_profile.is_none());
 
     let listed = servers
         .list_servers(ServerListRequest {
@@ -392,7 +393,7 @@ fn standard_server_usecase_infers_capability_from_local_model_metadata() {
 }
 
 #[test]
-fn standard_server_usecase_allows_embedding_stored_specs_before_start() {
+fn standard_server_usecase_rejects_embedding_stored_specs_without_runtime_profile() {
     let fixture = Fixture::new("stored-embedding");
     fixture.write_model_capabilities(vec![ModelCapability::Embedding]);
     let layout_resolver = StdRuntimeLayoutResolver;
@@ -447,17 +448,16 @@ fn standard_server_usecase_allows_embedding_stored_specs_before_start() {
         )
         .expect("save server spec");
 
-    let result = servers
+    let err = servers
         .resolve_for_start(ServerResolveForStartRequest {
             layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
             selector: ServerRefSelector::parse(server_ref.short_ref()).expect("selector"),
         })
-        .expect("embedding server runtime is implemented");
+        .expect_err("embedding server without profile should fail");
 
-    assert_eq!(
-        result.inspection.spec.capability,
-        ServerCapability::Embedding
-    );
+    let message = err.to_string();
+    assert!(message.contains("requires a runtime profile"));
+    assert!(message.contains("embedding"));
 }
 
 #[test]
@@ -502,6 +502,56 @@ fn standard_server_usecase_prepares_embedding_specs() {
         prepared.outcome.inspection.spec.model_ref.as_ref(),
         Some(&fixture.model_ref)
     );
+    assert_eq!(
+        prepared
+            .outcome
+            .inspection
+            .spec
+            .runtime_profile
+            .as_ref()
+            .map(|profile| profile.label())
+            .as_deref(),
+        Some("local-embedding-transformers-peft-v1")
+    );
+}
+
+#[test]
+fn standard_server_usecase_rejects_mlx_embedding_specs_without_profile() {
+    let fixture = Fixture::new("embedding-mlx");
+    fixture.write_model_format_capabilities(ModelFormat::Mlx, vec![ModelCapability::Embedding]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let err = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            runtime_ref: fixture.model_ref.short_ref().to_string(),
+            capability: Some(ServerCapability::Embedding),
+            host: None,
+            port: Some(8781),
+            lazy_load: false,
+            idle_seconds: None,
+        })
+        .expect_err("mlx embedding server has no runtime profile yet");
+
+    let message = err.to_string();
+    assert!(message.contains("embedding"));
+    assert!(message.contains("backend `mlx`"));
+    assert!(message.contains("does not have a runtime profile"));
 }
 
 #[test]
@@ -637,6 +687,19 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
             prepared.outcome.inspection.spec.capability,
             server_capability
         );
+        if server_capability == ServerCapability::Embedding {
+            assert_eq!(
+                prepared
+                    .outcome
+                    .inspection
+                    .spec
+                    .runtime_profile
+                    .as_ref()
+                    .map(|profile| profile.label())
+                    .as_deref(),
+                Some("local-embedding-llama-cpp-v1")
+            );
+        }
 
         let selector = ServerRefSelector::parse(prepared.outcome.inspection.spec.short_ref.clone())
             .expect("selector");

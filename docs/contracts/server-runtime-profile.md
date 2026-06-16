@@ -15,16 +15,21 @@ packages. Server runtime profiles describe the selected server execution path.
 
 ## Current Selection
 
-The first slice covers local chat servers only.
+The current local runtime profile slices cover local chat and local embedding
+servers.
 
 | Capability | Backend | Profile |
 | --- | --- | --- |
 | `chat` | `transformers-peft` | `local-chat-transformers-peft-v1` |
 | `chat` | `mlx` | `local-chat-mlx-v1` |
 | `chat` | `llama-cpp` | `local-chat-llama-cpp-v1` |
+| `embedding` | `transformers-peft` | `local-embedding-transformers-peft-v1` |
+| `embedding` | `llama-cpp` | `local-embedding-llama-cpp-v1` |
 
-`embedding`, `rerank`, media, and cloud provider server profiles are later
-runtime-profile slices.
+`embedding` on the `mlx` backend currently has no local runtime profile because
+the bundled Apache-licensed runtime recognizes the path but returns
+`501 not_implemented`. `rerank`, media, and cloud provider server profiles are
+later runtime-profile slices.
 
 ## Stored Metadata
 
@@ -40,7 +45,9 @@ The display label is `<profile_id>-v<profile_version>`, such as
 `local-chat-mlx-v1`.
 
 Existing server specs without `runtime_profile` remain readable. New local chat
-server specs should include the selected runtime profile.
+and embedding server specs should include the selected runtime profile. Local
+chat and embedding specs missing a required runtime profile should fail before
+runtime launch instead of silently dispatching to an ambiguous backend path.
 
 ## Identity And Launch
 
@@ -52,7 +59,7 @@ old one.
 The launcher passes the selected profile to the hidden local server runtime:
 
 ```bash
-__local-server-runtime ... --runtime-profile local-chat-mlx-v1
+__local-server-runtime ... --runtime-profile local-embedding-transformers-peft-v1
 ```
 
 The local server runtime exposes the value in `/healthz` as
@@ -61,9 +68,21 @@ The local server runtime exposes the value in `/healthz` as
 ## Parameter Metadata
 
 Runtime profile records may list accepted and rejected request parameters and
-safe default limits. In this slice, local chat profiles record the recognized
-chat parameter boundary but do not enforce new limits beyond existing request
-validation.
+safe default limits.
+
+Local chat profiles currently record `messages`, `temperature`, `max_tokens`,
+and `stream` as recognized request parameters. Unsupported provider-style chat
+fields such as `tools`, `tool_choice`, `response_format`, `audio`, and
+`modalities` remain rejected by existing request validation.
+
+Local embedding profiles currently record `input`, `model`, and
+`encoding_format=float` as recognized OpenAI-compatible ingress parameters.
+`dimensions`, `encoding_format=base64`, `user`, and unknown provider fields are
+rejected. Output vector dimensions are selected by the bound model/runtime; a
+caller-supplied dimension override is not supported.
+
+Embedding batching accepts one string or a non-empty string array. The response
+preserves input order.
 
 Future slices may use runtime profiles to decide backend-specific defaults,
 hard limits, verification stale rules, and server-start gating.

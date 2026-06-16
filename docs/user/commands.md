@@ -876,6 +876,11 @@ curl -s http://127.0.0.1:8781/v1/embeddings \
 The same local embedding server also accepts OpenAI-compatible embedding
 requests through an ingress adapter. The request `model` is accepted for client
 compatibility but the server still uses the bound local model.
+Supported local embedding server starts show the selected runtime profile in
+`server inspect`, such as `local-embedding-transformers-peft-v1` or
+`local-embedding-llama-cpp-v1`. MLX embedding is recognized by the runtime but
+does not have a bundled local runtime profile yet, so `server run --capability
+embedding` fails before launch for MLX embedding models.
 
 ```bash
 curl -s http://127.0.0.1:8781/v1/embeddings \

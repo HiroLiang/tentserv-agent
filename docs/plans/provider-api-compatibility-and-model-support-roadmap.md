@@ -263,7 +263,7 @@ post-1.0 direction remains possible.
 
 ### v0.8.0: Runtime Profile And Gating Release
 
-- Add a profile planner for one local chat backend and one embedding backend.
+- Add profile planning for the first local chat and embedding backend families.
 - Record accepted parameters, rejected parameters, default context/output
   limits, and backend-specific knobs.
 - Surface the selected profile in inspect output or runtime diagnostics.

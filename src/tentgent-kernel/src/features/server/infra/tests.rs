@@ -104,6 +104,50 @@ fn local_chat_identity_includes_runtime_profile_when_selected() {
 }
 
 #[test]
+fn local_embedding_identity_includes_runtime_profile_when_selected() {
+    let identity = StdServerIdentityGenerator;
+    let model_ref = ModelRef::parse("a".repeat(64)).expect("model ref");
+    let first = identity
+        .server_ref_for_target(
+            &ServerRuntimeTarget::LocalModel {
+                model_ref: model_ref.clone(),
+                backend: ServerRuntimeBackend::TransformersPeft,
+                capability: ServerCapability::Embedding,
+                runtime_profile: Some(ServerRuntimeProfileSelection::new(
+                    "local-embedding-transformers-peft",
+                    1,
+                )),
+            },
+            "127.0.0.1",
+            8781,
+            false,
+            false,
+            None,
+        )
+        .expect("first ref");
+    let second = identity
+        .server_ref_for_target(
+            &ServerRuntimeTarget::LocalModel {
+                model_ref,
+                backend: ServerRuntimeBackend::TransformersPeft,
+                capability: ServerCapability::Embedding,
+                runtime_profile: Some(ServerRuntimeProfileSelection::new(
+                    "local-embedding-transformers-peft",
+                    2,
+                )),
+            },
+            "127.0.0.1",
+            8781,
+            false,
+            false,
+            None,
+        )
+        .expect("second ref");
+
+    assert_ne!(first, second);
+}
+
+#[test]
 fn identity_generator_normalizes_anthropic_alias_inputs() {
     let identity = StdServerIdentityGenerator;
     let first = identity
@@ -286,6 +330,40 @@ fn local_runtime_args_use_rust_proxy_shape() {
     );
     assert!(parts.env.is_empty());
     assert_eq!(parts.env_remove, vec!["TENTGENT_DAEMON_TOKEN".to_string()]);
+}
+
+#[test]
+fn local_embedding_runtime_args_include_runtime_profile() {
+    let server_ref = ServerRef::parse("e".repeat(SERVER_REF_HEX_LENGTH)).expect("server ref");
+    let model_ref = ModelRef::parse("f".repeat(64)).expect("model ref");
+    let spec = ServerSpec {
+        short_ref: server_ref.short_ref().to_string(),
+        server_ref,
+        runtime_kind: ServerRuntimeKind::Local,
+        capability: ServerCapability::Embedding,
+        model_ref: Some(model_ref),
+        provider: None,
+        provider_model: None,
+        runtime_profile: Some(ServerRuntimeProfileSelection::new(
+            "local-embedding-transformers-peft",
+            1,
+        )),
+        host: "127.0.0.1".to_string(),
+        port: 8781,
+        port_auto: false,
+        lazy_load: false,
+        idle_seconds: None,
+        created_at: "2026-05-17T00:00:00Z".to_string(),
+    };
+
+    let parts =
+        server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), None, 8781)
+            .expect("parts");
+
+    assert!(parts
+        .args
+        .windows(2)
+        .any(|pair| pair == ["--runtime-profile", "local-embedding-transformers-peft-v1"]));
 }
 
 #[test]
