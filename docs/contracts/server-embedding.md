@@ -36,6 +36,34 @@ Responses are JSON encoded as UTF-8:
 
 The response preserves input order. Embeddings are JSON numbers, not strings.
 
+## OpenAI-Compatible Ingress
+
+The same local model-bound endpoint accepts the documented OpenAI-compatible
+embedding shape when a provider-style field is present:
+
+```json
+{
+  "model": "text-embedding-3-small",
+  "input": ["first", "second"],
+  "encoding_format": "float"
+}
+```
+
+`model` is accepted for client compatibility and ignored as a route selector;
+the server uses the local model bound by `tentgent server run`.
+`encoding_format` may be omitted or set to `float`.
+
+Unsupported OpenAI-compatible embedding fields return stable provider
+compatibility errors:
+
+- `dimensions`
+- `encoding_format = "base64"`
+- `user`
+- unknown fields
+
+Output vector dimensions are selected by the bound model/runtime. Local
+model-bound servers do not expose a caller-supplied dimensions override.
+
 ## Capability Routing
 
 Direct model-server embedding is stateless. The shared Python model runtime does
@@ -48,7 +76,9 @@ capability reject `POST /v1/embeddings` with `400 unsupported_target`. See
 [server-chat.md](./server-chat.md) and [server-rerank.md](./server-rerank.md)
 for sibling endpoint examples.
 
-Cloud provider direct servers currently support only `chat`.
+Cloud provider embedding servers are outside this local runtime profile and
+local proof scope. They use provider-hosted models and provider auth, not a
+local model-store record.
 
 ## Backend Status
 
@@ -66,7 +96,15 @@ Supported embedding model kinds:
   Loads a single GGUF file with `llama-cpp-python` using `embedding=True` and
   returns the backend embedding vectors.
 
-Cloud provider and rerank embedding paths are not implemented in this contract.
+Local embedding server starts require a selected runtime profile for supported
+local backend families:
+
+- `local-embedding-transformers-peft-v1`
+- `local-embedding-llama-cpp-v1`
+
+The `mlx-embedding` path currently has no local runtime profile and should fail
+before runtime launch when selected by `tentgent server run --capability
+embedding`.
 
 ## Error Mapping
 
