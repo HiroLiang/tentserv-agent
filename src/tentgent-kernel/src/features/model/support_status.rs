@@ -149,6 +149,10 @@ pub struct ModelSupportQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_profile_version: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub platform: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_class: Option<String>,
@@ -162,9 +166,21 @@ impl ModelSupportQuery {
             mlx_runtime_family: metadata.mlx_runtime_family,
             backend: backend_label(metadata.mlx_runtime_family, metadata.primary_format),
             runtime_version: None,
+            runtime_profile: None,
+            runtime_profile_version: None,
             platform: None,
             device_class: None,
         }
+    }
+
+    pub fn with_runtime_profile(
+        mut self,
+        runtime_profile: impl Into<String>,
+        runtime_profile_version: u32,
+    ) -> Self {
+        self.runtime_profile = Some(runtime_profile.into());
+        self.runtime_profile_version = Some(runtime_profile_version);
+        self
     }
 }
 
@@ -342,12 +358,40 @@ fn proof_stale_reason(proof: &ModelCapabilityProof, query: &ModelSupportQuery) -
         ));
     }
 
+    if query.runtime_profile.is_some() && proof.runtime_profile != query.runtime_profile {
+        return Some(format!(
+            "runtime profile changed from {} to {}",
+            optional_text(proof.runtime_profile.as_deref()),
+            optional_text(query.runtime_profile.as_deref())
+        ));
+    }
+
+    if query.runtime_profile_version.is_some()
+        && proof.runtime_profile_version != query.runtime_profile_version
+    {
+        return Some(format!(
+            "runtime profile version changed from {} to {}",
+            optional_u32(proof.runtime_profile_version),
+            optional_u32(query.runtime_profile_version)
+        ));
+    }
+
     None
 }
 
 fn optional_runtime_family(runtime_family: Option<MlxRuntimeFamily>) -> String {
     runtime_family
         .map(|family| family.as_str().to_string())
+        .unwrap_or_else(|| "none".to_string())
+}
+
+fn optional_text(value: Option<&str>) -> String {
+    value.unwrap_or("none").to_string()
+}
+
+fn optional_u32(value: Option<u32>) -> String {
+    value
+        .map(|value| value.to_string())
         .unwrap_or_else(|| "none".to_string())
 }
 
@@ -631,6 +675,30 @@ mod tests {
         assert_eq!(resolution.stale_reason, None);
     }
 
+    #[test]
+    fn resolver_returns_stale_when_runtime_profile_version_changes() {
+        let metadata = metadata_with_capabilities(vec![ModelCapability::Chat]);
+        let query =
+            query_for(ModelCapability::Chat).with_runtime_profile("local-chat-llama-cpp", 2);
+        let mut proof = proof_for(
+            &metadata,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Verified,
+            "gguf",
+            None,
+        );
+        proof.runtime_profile = Some("local-chat-llama-cpp".to_string());
+        proof.runtime_profile_version = Some(1);
+
+        let resolution = resolver().resolve(&metadata, &query, &[proof], &[]);
+
+        assert_eq!(resolution.status, ModelSupportStatus::Stale);
+        assert_eq!(
+            resolution.stale_reason.as_deref(),
+            Some("runtime profile version changed from 1 to 2")
+        );
+    }
+
     fn resolver() -> ModelSupportStatusResolver {
         ModelSupportStatusResolver
     }
@@ -642,6 +710,8 @@ mod tests {
             mlx_runtime_family: None,
             backend: "gguf".to_string(),
             runtime_version: None,
+            runtime_profile: None,
+            runtime_profile_version: None,
             platform: Some("macos".to_string()),
             device_class: Some("apple-silicon".to_string()),
         }
@@ -683,6 +753,8 @@ mod tests {
             mlx_runtime_family: metadata.mlx_runtime_family,
             backend: backend.into(),
             runtime_version: None,
+            runtime_profile: None,
+            runtime_profile_version: None,
             server_ref: Some("server-ref".to_string()),
             checked_at: "2026-06-12T00:00:00Z".to_string(),
             error,

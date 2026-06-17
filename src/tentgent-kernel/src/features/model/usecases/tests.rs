@@ -31,11 +31,11 @@ use crate::foundation::layout::{
 };
 
 use super::port::{
-    ModelCapabilityMutation, ModelCapabilityProofListRequest, ModelCapabilityProofRecordRequest,
-    ModelCapabilityProofUseCase, ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase,
-    ModelCapabilityVerifyRequest, ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase,
-    ModelInspectRequest, ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase,
-    ModelRemoveRequest, ModelRemoveUseCase,
+    ModelCapabilityMutation, ModelCapabilityProofClearRequest, ModelCapabilityProofListRequest,
+    ModelCapabilityProofRecordRequest, ModelCapabilityProofUseCase, ModelCapabilityUpdateRequest,
+    ModelCapabilityUpdateUseCase, ModelCapabilityVerifyRequest, ModelCatalogReadUseCase,
+    ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest, ModelListRequest,
+    ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest, ModelRemoveUseCase,
 };
 use super::{
     StdModelCapabilityProofUseCase, StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase,
@@ -138,6 +138,8 @@ fn model_usecase_ports_cover_catalog_import_pull_and_remove_workflows() {
             status: ModelCapabilityProofStatus::Failed,
             source: ModelCapabilityProofSource::ServerStart,
             server_ref: Some("server-ref".to_string()),
+            runtime_profile: Some("local-chat-mlx".to_string()),
+            runtime_profile_version: Some(1),
             error: Some("boom".to_string()),
         })
         .expect("record proof");
@@ -145,6 +147,21 @@ fn model_usecase_ports_cover_catalog_import_pull_and_remove_workflows() {
         recorded.proof.source,
         ModelCapabilityProofSource::ServerStart
     );
+    assert_eq!(
+        recorded.proof.runtime_profile.as_deref(),
+        Some("local-chat-mlx")
+    );
+    assert_eq!(recorded.proof.runtime_profile_version, Some(1));
+
+    let cleared = usecases
+        .clear_model_capability_proofs(ModelCapabilityProofClearRequest {
+            layout: layout_input("/tmp/tentgent-model-usecases"),
+            selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+            capability: ModelCapability::Chat,
+        })
+        .expect("clear proofs");
+    assert_eq!(cleared.capability, ModelCapability::Chat);
+    assert_eq!(cleared.removed_proof_count, 1);
 }
 
 #[test]
@@ -709,11 +726,18 @@ fn standard_model_capability_proof_usecase_writes_and_lists_latest_proofs() {
             status: ModelCapabilityProofStatus::Failed,
             source: ModelCapabilityProofSource::ServerStart,
             server_ref: Some("server-ref".to_string()),
+            runtime_profile: Some("local-chat-mlx".to_string()),
+            runtime_profile_version: Some(1),
             error: Some("runtime failed".to_string()),
         })
         .expect("record proof");
     assert_eq!(recorded.proof.status, ModelCapabilityProofStatus::Failed);
     assert_eq!(recorded.proof.server_ref.as_deref(), Some("server-ref"));
+    assert_eq!(
+        recorded.proof.runtime_profile.as_deref(),
+        Some("local-chat-mlx")
+    );
+    assert_eq!(recorded.proof.runtime_profile_version, Some(1));
 
     let listed = usecase
         .list_model_capability_proofs(ModelCapabilityProofListRequest {
@@ -721,9 +745,105 @@ fn standard_model_capability_proof_usecase_writes_and_lists_latest_proofs() {
             selector,
         })
         .expect("list proofs");
-    assert_eq!(listed.proofs.len(), 1);
-    assert_eq!(listed.proofs[0].status, ModelCapabilityProofStatus::Failed);
-    assert_eq!(listed.proofs[0].error.as_deref(), Some("runtime failed"));
+    assert_eq!(listed.proofs.len(), 2);
+    assert!(listed
+        .proofs
+        .iter()
+        .any(|proof| proof.status == ModelCapabilityProofStatus::Verified
+            && proof.source == ModelCapabilityProofSource::ManualProbe));
+    assert!(listed
+        .proofs
+        .iter()
+        .any(|proof| proof.status == ModelCapabilityProofStatus::Failed
+            && proof.source == ModelCapabilityProofSource::ServerStart
+            && proof.runtime_profile.as_deref() == Some("local-chat-mlx")
+            && proof.runtime_profile_version == Some(1)
+            && proof.error.as_deref() == Some("runtime failed")));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn standard_model_capability_proof_usecase_sanitizes_recorded_errors() {
+    let home = unique_path("model-capability-proof-sanitized-error");
+    let imported = import_local_for_test(&home, Some(ModelCapability::Chat), b"model");
+    let layout_resolver = FakeLayoutResolver;
+    let catalog = FileModelCatalogStore;
+    let proofs = FileModelCapabilityProofStore;
+    let clock = StaticModelClock;
+    let usecase = StdModelCapabilityProofUseCase::new(&layout_resolver, &catalog, &proofs, &clock);
+    let selector =
+        ModelRefSelector::parse(imported.outcome.metadata.short_ref.as_str()).expect("selector");
+
+    let recorded = usecase
+        .record_model_capability_proof(ModelCapabilityProofRecordRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector,
+            capability: ModelCapability::Chat,
+            status: ModelCapabilityProofStatus::Failed,
+            source: ModelCapabilityProofSource::ServerStart,
+            server_ref: Some("server-ref".to_string()),
+            runtime_profile: Some("local-chat-mlx".to_string()),
+            runtime_profile_version: Some(1),
+            error: Some(format!(
+                "runtime failed\nOPENAI_API_KEY\n{}",
+                "x".repeat(600)
+            )),
+        })
+        .expect("record proof");
+
+    let error = recorded.proof.error.as_deref().expect("recorded error");
+    assert!(!error.contains("OPENAI_API_KEY"));
+    assert!(error.contains("[redacted-env]"));
+    assert!(!error.contains('\n'));
+    assert!(error.chars().count() <= 503);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn standard_model_capability_proof_usecase_clears_capability_proofs() {
+    let home = unique_path("model-capability-proof-clear");
+    let imported = import_local_for_test(&home, Some(ModelCapability::Chat), b"model");
+    let layout_resolver = FakeLayoutResolver;
+    let catalog = FileModelCatalogStore;
+    let proofs = FileModelCapabilityProofStore;
+    let clock = StaticModelClock;
+    let usecase = StdModelCapabilityProofUseCase::new(&layout_resolver, &catalog, &proofs, &clock);
+    let selector =
+        ModelRefSelector::parse(imported.outcome.metadata.short_ref.as_str()).expect("selector");
+
+    usecase
+        .record_model_capability_proof(ModelCapabilityProofRecordRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector: selector.clone(),
+            capability: ModelCapability::Chat,
+            status: ModelCapabilityProofStatus::Failed,
+            source: ModelCapabilityProofSource::ServerStart,
+            server_ref: Some("server-ref".to_string()),
+            runtime_profile: Some("local-chat-mlx".to_string()),
+            runtime_profile_version: Some(1),
+            error: Some("runtime failed".to_string()),
+        })
+        .expect("record failed proof");
+
+    let cleared = usecase
+        .clear_model_capability_proofs(ModelCapabilityProofClearRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector: selector.clone(),
+            capability: ModelCapability::Chat,
+        })
+        .expect("clear proofs");
+    assert_eq!(cleared.capability, ModelCapability::Chat);
+    assert_eq!(cleared.removed_proof_count, 1);
+
+    let listed = usecase
+        .list_model_capability_proofs(ModelCapabilityProofListRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector,
+        })
+        .expect("list proofs");
+    assert!(listed.proofs.is_empty());
 
     let _ = fs::remove_dir_all(home);
 }
@@ -1053,12 +1173,29 @@ impl ModelCapabilityProofUseCase for FakeModelUseCases {
         proof.status = request.status;
         proof.source = request.source;
         proof.server_ref = request.server_ref;
+        proof.runtime_profile = request.runtime_profile;
+        proof.runtime_profile_version = request.runtime_profile_version;
         proof.error = request.error;
         Ok(super::port::ModelCapabilityProofRecordResult {
             layout,
             store: store.clone(),
             model: inspection(&store),
             proof,
+        })
+    }
+
+    fn clear_model_capability_proofs(
+        &self,
+        request: ModelCapabilityProofClearRequest,
+    ) -> KernelResult<super::port::ModelCapabilityProofClearResult> {
+        let layout = runtime_layout(request.layout);
+        let store = ModelStoreLayout::from_models_dir(layout.models_dir.clone());
+        Ok(super::port::ModelCapabilityProofClearResult {
+            layout,
+            store: store.clone(),
+            model: inspection(&store),
+            capability: request.capability,
+            removed_proof_count: 1,
         })
     }
 }
@@ -1092,6 +1229,8 @@ fn proof_fixture() -> ModelCapabilityProof {
         mlx_runtime_family: None,
         backend: "gguf".to_string(),
         runtime_version: None,
+        runtime_profile: None,
+        runtime_profile_version: None,
         server_ref: None,
         checked_at: STATIC_TIME.to_string(),
         error: None,

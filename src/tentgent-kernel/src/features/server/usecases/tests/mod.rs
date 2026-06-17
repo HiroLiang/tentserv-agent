@@ -916,6 +916,12 @@ impl Fixture {
         backend: &str,
         error: Option<&str>,
     ) {
+        let (runtime_profile, runtime_profile_version) =
+            if capability == ModelCapability::Chat && backend == "safetensors" {
+                (Some("local-chat-transformers-peft".to_string()), Some(1))
+            } else {
+                (None, None)
+            };
         let layout = StdRuntimeLayoutResolver
             .resolve(self.layout_input(LayoutResolveMode::Create))
             .expect("layout");
@@ -932,6 +938,8 @@ impl Fixture {
                     mlx_runtime_family: None,
                     backend: backend.to_string(),
                     runtime_version: None,
+                    runtime_profile,
+                    runtime_profile_version,
                     server_ref: Some("server-ref".to_string()),
                     checked_at: "2026-05-17T00:00:00Z".to_string(),
                     error: error.map(str::to_string),

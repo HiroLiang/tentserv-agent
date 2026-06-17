@@ -164,6 +164,8 @@ tentgent model catalog --capability chat --publisher Qwen
 tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
 tentgent model ls
 tentgent model inspect <model-ref-or-prefix>
+tentgent model capability proofs <model-ref-or-prefix>
+tentgent model capability proof clear <model-ref-or-prefix> chat
 tentgent model add /absolute/path/to/model
 tentgent model rm <model-ref>
 ```
@@ -174,6 +176,9 @@ pulling a model. See
 model, adapter, dataset, and chat command examples.
 `model ls` keeps support status compact, while `model inspect` shows the full
 per-capability proof, hint, backend, and reason details.
+`model capability proofs` lists local verification and launch evidence. Use
+`model capability proof clear <model-ref> <capability>` after fixing a runtime
+problem to remove failed proof evidence before retrying a local server start.
 
 ## One-Shot Chat
 
@@ -210,7 +215,9 @@ and runtime profile before launch. `verified` and `supported` are allowed by
 default; `failed` and `unsupported` are blocked; `unknown` and `stale` require
 an explicit `--allow-unverified` retry. Server launch still records latest
 capability proof metadata so `tentgent model capability proofs <model-ref>` can
-show which capability paths have launched or failed locally.
+show which capability paths have launched or failed locally. If a failed proof
+blocks retry after you fix the runtime environment, clear it with
+`tentgent model capability proof clear <model-ref> <capability>`.
 
 Cloud provider servers are paused until they are ported to the model runtime
 HTTP boundary.

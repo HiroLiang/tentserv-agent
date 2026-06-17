@@ -29,13 +29,14 @@ use tentgent_kernel::features::model::support_catalog::{
     ModelSupportCatalogLevel,
 };
 use tentgent_kernel::features::model::usecases::{
-    ModelCapabilityMutation, ModelCapabilityProofListRequest, ModelCapabilityProofUseCase,
-    ModelCapabilityUpdateRequest, ModelCapabilityUpdateResult, ModelCapabilityUpdateUseCase,
-    ModelCapabilityVerifyRequest, ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase,
-    ModelInspectRequest, ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase,
-    ModelRemoveRequest, ModelRemoveUseCase, StdModelCapabilityProofUseCase,
-    StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase, StdModelHfPullUseCase,
-    StdModelLocalImportUseCase, StdModelRemoveUseCase,
+    ModelCapabilityMutation, ModelCapabilityProofClearRequest, ModelCapabilityProofClearResult,
+    ModelCapabilityProofListRequest, ModelCapabilityProofUseCase, ModelCapabilityUpdateRequest,
+    ModelCapabilityUpdateResult, ModelCapabilityUpdateUseCase, ModelCapabilityVerifyRequest,
+    ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
+    ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
+    ModelRemoveUseCase, StdModelCapabilityProofUseCase, StdModelCapabilityUpdateUseCase,
+    StdModelCatalogReadUseCase, StdModelHfPullUseCase, StdModelLocalImportUseCase,
+    StdModelRemoveUseCase,
 };
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::StdPythonRuntimeResolver;
@@ -45,7 +46,7 @@ use tentgent_kernel::foundation::layout::{
 };
 
 use super::app::Cli;
-use super::commands::{ModelCapabilityCommands, ModelCommands};
+use super::commands::{ModelCapabilityCommands, ModelCapabilityProofCommands, ModelCommands};
 use super::display::format_bytes;
 use super::model_support::{
     model_support_detail_lines, model_support_list_label, model_support_summaries,
@@ -280,6 +281,9 @@ fn handle_model_capability_command(
             };
             render_model_capability_proofs(&result.model, &result.proofs);
         }
+        ModelCapabilityCommands::Proof { action } => {
+            handle_model_capability_proof_command(model, action)?;
+        }
         ModelCapabilityCommands::Verify {
             reference,
             capability,
@@ -303,6 +307,44 @@ fn handle_model_capability_command(
                 }
             };
             render_model_capability_verify(&result.model, &result.proof);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_model_capability_proof_command(
+    model: &CliModelKernel,
+    action: ModelCapabilityProofCommands,
+) -> Result<()> {
+    match action {
+        ModelCapabilityProofCommands::Clear {
+            reference,
+            capability,
+        } => {
+            if is_help_token(&reference) {
+                print_model_capability_proof_subcommand_help("clear")?;
+                return Ok(());
+            }
+
+            let selector = parse_model_selector("capability proof clear", "REF", &reference)?;
+            let result = match model
+                .capability_proof_usecase()
+                .clear_model_capability_proofs(ModelCapabilityProofClearRequest {
+                    layout: runtime_layout_input(LayoutResolveMode::Create),
+                    selector,
+                    capability,
+                }) {
+                Ok(result) => result,
+                Err(err) => {
+                    return Err(explain_model_lookup_error(
+                        "capability proof clear",
+                        "REF",
+                        err,
+                    ));
+                }
+            };
+            render_model_capability_proof_clear(&result);
         }
     }
 
@@ -1016,6 +1058,7 @@ fn render_model_capability_proofs(inspection: &ModelInspection, proofs: &[ModelC
             "status",
             "source",
             "backend",
+            "profile",
             "server_ref",
             "checked_at",
             "error",
@@ -1027,6 +1070,7 @@ fn render_model_capability_proofs(inspection: &ModelInspection, proofs: &[ModelC
             Cell::new(proof.status.as_str()),
             Cell::new(proof.source.as_str()),
             Cell::new(&proof.backend),
+            Cell::new(proof_profile_label(proof)),
             Cell::new(proof.server_ref.as_deref().unwrap_or("-")),
             Cell::new(&proof.checked_at),
             Cell::new(proof.error.as_deref().unwrap_or("-")),
@@ -1047,6 +1091,32 @@ fn render_model_capability_verify(inspection: &ModelInspection, proof: &ModelCap
 
     let mut table = base_table();
     add_model_proof_rows(&mut table, proof);
+
+    println!("{table}");
+    println!();
+}
+
+fn render_model_capability_proof_clear(result: &ModelCapabilityProofClearResult) {
+    println!(
+        "{} {} {}",
+        style("==>").cyan().bold(),
+        style("Model capability proofs cleared").bold(),
+        style(&result.model.metadata.short_ref).bold()
+    );
+
+    let mut table = base_table();
+    table.add_row(vec![
+        Cell::new("model_ref"),
+        Cell::new(result.model.metadata.model_ref.as_str()),
+    ]);
+    table.add_row(vec![
+        Cell::new("capability"),
+        Cell::new(result.capability.as_str()),
+    ]);
+    table.add_row(vec![
+        Cell::new("removed_proofs"),
+        Cell::new(result.removed_proof_count.to_string()),
+    ]);
 
     println!("{table}");
     println!();
@@ -1077,12 +1147,30 @@ fn add_model_proof_rows(table: &mut Table, proof: &ModelCapabilityProof) {
     if let Some(version) = &proof.runtime_version {
         table.add_row(vec![Cell::new("runtime_version"), Cell::new(version)]);
     }
+    if let Some(profile) = &proof.runtime_profile {
+        table.add_row(vec![Cell::new("runtime_profile"), Cell::new(profile)]);
+    }
+    if let Some(version) = proof.runtime_profile_version {
+        table.add_row(vec![
+            Cell::new("runtime_profile_version"),
+            Cell::new(version.to_string()),
+        ]);
+    }
     if let Some(server_ref) = &proof.server_ref {
         table.add_row(vec![Cell::new("server_ref"), Cell::new(server_ref)]);
     }
     table.add_row(vec![Cell::new("checked_at"), Cell::new(&proof.checked_at)]);
     if let Some(error) = &proof.error {
         table.add_row(vec![Cell::new("error"), Cell::new(error)]);
+    }
+}
+
+fn proof_profile_label(proof: &ModelCapabilityProof) -> String {
+    match (&proof.runtime_profile, proof.runtime_profile_version) {
+        (Some(profile), Some(version)) => format!("{profile}-v{version}"),
+        (Some(profile), None) => profile.clone(),
+        (None, Some(version)) => format!("v{version}"),
+        (None, None) => "-".to_string(),
     }
 }
 
@@ -1319,6 +1407,25 @@ fn print_model_capability_subcommand_help(name: &str) -> miette::Result<()> {
     let subcommand = capability
         .find_subcommand_mut(name)
         .ok_or_else(|| miette!("model capability subcommand `{name}` is unavailable"))?;
+    subcommand.print_help().into_diagnostic()?;
+    println!();
+    Ok(())
+}
+
+fn print_model_capability_proof_subcommand_help(name: &str) -> miette::Result<()> {
+    let mut root = Cli::command();
+    let model = root
+        .find_subcommand_mut("model")
+        .ok_or_else(|| miette!("model command metadata is unavailable"))?;
+    let capability = model
+        .find_subcommand_mut("capability")
+        .ok_or_else(|| miette!("model capability command metadata is unavailable"))?;
+    let proof = capability
+        .find_subcommand_mut("proof")
+        .ok_or_else(|| miette!("model capability proof command metadata is unavailable"))?;
+    let subcommand = proof
+        .find_subcommand_mut(name)
+        .ok_or_else(|| miette!("model capability proof subcommand `{name}` is unavailable"))?;
     subcommand.print_help().into_diagnostic()?;
     println!();
     Ok(())
@@ -1708,6 +1815,36 @@ mod tests {
             } => {
                 assert_eq!(reference, "abc123");
                 assert_eq!(capability, ModelCapability::VisionChat);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let clear = Cli::try_parse_from([
+            "tentgent",
+            "model",
+            "capability",
+            "proof",
+            "clear",
+            "abc123",
+            "chat",
+        ])
+        .expect("parse model capability proof clear");
+        match clear.command {
+            Commands::Model {
+                action:
+                    ModelCommands::Capability {
+                        action:
+                            ModelCapabilityCommands::Proof {
+                                action:
+                                    ModelCapabilityProofCommands::Clear {
+                                        reference,
+                                        capability,
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(reference, "abc123");
+                assert_eq!(capability, ModelCapability::Chat);
             }
             other => panic!("unexpected command: {other:?}"),
         }
