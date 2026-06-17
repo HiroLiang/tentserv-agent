@@ -73,6 +73,10 @@ pub struct ModelCapabilityProofItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_profile_version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub server_ref: Option<String>,
     pub checked_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -264,6 +268,8 @@ fn model_capability_proof_item(proof: ModelCapabilityProof) -> ModelCapabilityPr
         backend: proof.backend,
         mlx_runtime_family: proof.mlx_runtime_family.map(|family| family.to_string()),
         runtime_version: proof.runtime_version,
+        runtime_profile: proof.runtime_profile,
+        runtime_profile_version: proof.runtime_profile_version,
         server_ref: proof.server_ref,
         checked_at: proof.checked_at,
         error: proof.error,

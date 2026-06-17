@@ -154,6 +154,8 @@ pub struct ModelCapabilityProofRecordRequest {
     pub status: ModelCapabilityProofStatus,
     pub source: ModelCapabilityProofSource,
     pub server_ref: Option<String>,
+    pub runtime_profile: Option<String>,
+    pub runtime_profile_version: Option<u32>,
     pub error: Option<String>,
 }
 
@@ -164,6 +166,24 @@ pub struct ModelCapabilityProofRecordResult {
     pub store: ModelStoreLayout,
     pub model: ModelInspection,
     pub proof: ModelCapabilityProof,
+}
+
+/// Request for clearing stored proof records for one model capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityProofClearRequest {
+    pub layout: RuntimeLayoutInput,
+    pub selector: ModelRefSelector,
+    pub capability: ModelCapability,
+}
+
+/// Result of clearing stored proof records for one model capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCapabilityProofClearResult {
+    pub layout: RuntimeLayout,
+    pub store: ModelStoreLayout,
+    pub model: ModelInspection,
+    pub capability: ModelCapability,
+    pub removed_proof_count: usize,
 }
 
 /// Use-case boundary for read-only model catalog operations.
@@ -228,4 +248,10 @@ pub trait ModelCapabilityProofUseCase {
         &self,
         request: ModelCapabilityProofRecordRequest,
     ) -> KernelResult<ModelCapabilityProofRecordResult>;
+
+    /// Clears all proof records for one model capability.
+    fn clear_model_capability_proofs(
+        &self,
+        request: ModelCapabilityProofClearRequest,
+    ) -> KernelResult<ModelCapabilityProofClearResult>;
 }

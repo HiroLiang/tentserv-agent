@@ -165,6 +165,7 @@ tentgent model capability add <model-ref> vision-chat
 tentgent model capability remove <model-ref> chat
 tentgent model capability verify <model-ref> vision-chat
 tentgent model capability proofs <model-ref>
+tentgent model capability proof clear <model-ref> chat
 ```
 
 `model catalog` lists the built-in model-family support catalog before models
@@ -198,6 +199,13 @@ Capability proof commands read and write local tuple-aware support proof
 records while preserving the legacy latest proof file for compatibility.
 Manual `verify` checks stored metadata and backend labeling; local model-bound
 server starts record `server-start` proofs after launch success or failure.
+Launch-derived proofs include the selected runtime profile id and version when
+the server spec has one, so a later profile version is treated as new evidence
+instead of silently reusing the old proof.
+Use `model capability proof clear <model-ref> <capability>` after fixing a
+runtime problem to remove stale local `verified` or `failed` proof evidence for
+that capability. This does not remove stored capability metadata or model
+content.
 `tentgent doctor` also reports local model support summaries as capability
 checks. Local model-bound server starts now use the same support status as a
 startup gate: `verified` and `supported` are allowed by default, `failed` and

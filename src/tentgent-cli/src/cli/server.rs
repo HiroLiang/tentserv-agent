@@ -435,6 +435,16 @@ fn record_local_server_capability_proof(
             status,
             source: ModelCapabilityProofSource::ServerStart,
             server_ref: Some(inspection.spec.server_ref.to_string()),
+            runtime_profile: inspection
+                .spec
+                .runtime_profile
+                .as_ref()
+                .map(|profile| profile.profile_id.clone()),
+            runtime_profile_version: inspection
+                .spec
+                .runtime_profile
+                .as_ref()
+                .map(|profile| profile.profile_version),
             error,
         })
         .into_diagnostic()?;

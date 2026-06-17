@@ -27,7 +27,7 @@ pub use image::{
     ImageCommands, ImageControlCommand, ImageGenerateCommand, ImageInpaintCommand,
     ImageTransformCommand,
 };
-pub use model::{ModelCapabilityCommands, ModelCommands};
+pub use model::{ModelCapabilityCommands, ModelCapabilityProofCommands, ModelCommands};
 pub use rerank::RerankCommand;
 pub use runtime::RuntimeBootstrapProfile;
 pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands, RuntimeStatusCommand};

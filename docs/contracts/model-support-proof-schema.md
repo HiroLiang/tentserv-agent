@@ -41,6 +41,8 @@ The current proof key is derived from:
 - `runtime_family` when present
 - `backend`
 - `runtime_version` when present
+- `runtime_profile` when present
+- `runtime_profile_version` when present
 
 This allows multiple backend or runtime proofs for the same model capability to
 coexist. Saving another proof for the same tuple replaces that tuple proof.
@@ -164,10 +166,10 @@ applies to the current route:
 - `output_shape`
 
 The current tuple-aware local proof store derives its path key in memory from
-the fields it records today: primary format, runtime family, backend, and
-runtime version. A later expanded proof key must continue to derive from these
-fields and must not ignore adapter or shape differences once those fields are
-recorded.
+the fields it records today: primary format, runtime family, backend, runtime
+version, runtime profile, and runtime profile version. A later expanded proof
+key must continue to derive from these fields and must not ignore adapter or
+shape differences once those fields are recorded.
 
 ## Runtime Tuple Fields
 
@@ -188,6 +190,12 @@ Runtime tuple fields explain how the model was run:
 
 If any recorded tuple field changes and the old proof cannot safely apply to
 the new tuple, the effective status should become `stale`.
+
+Local model-bound server starts record `server-start` proofs after launch
+success or failure. Those records include the selected runtime profile id and
+version when the server spec has one. Runtime launch errors are normalized for
+display: multi-line output is compacted, common secret environment variable
+names are redacted, and long messages are truncated.
 
 ## Input And Output Shape
 

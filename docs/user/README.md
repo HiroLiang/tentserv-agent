@@ -26,7 +26,8 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
   Current version feature list, known limits, and release expectations.
 - [commands.md](./commands.md)
   Common commands for auth, models, adapters, datasets, chat, media workflows,
-  servers, daemon, sessions, and LoRA training.
+  servers, daemon, sessions, LoRA training, model support proofs, and proof
+  clearing after failed local server launches.
 - [api.md](./api.md)
   User-facing daemon HTTP API reference, including request shapes, result
   routes, job behavior, multipart media upload semantics, and HTTP error

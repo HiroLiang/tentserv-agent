@@ -269,6 +269,70 @@ fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
         && proof.status == ModelCapabilityProofStatus::Failed
         && proof.error.as_deref() == Some("new failure")));
 
+    let mut profiled = proof_fixture(
+        model_ref.clone(),
+        ModelCapability::Chat,
+        "gguf",
+        ModelCapabilityProofStatus::Verified,
+        None,
+    );
+    profiled.runtime_profile = Some("local-chat-llama-cpp".to_string());
+    profiled.runtime_profile_version = Some(1);
+    store
+        .save_capability_proof(&layout, &profiled)
+        .expect("save profiled proof");
+
+    let proofs = store
+        .list_capability_proofs(&layout, &model_ref)
+        .expect("list profiled proofs");
+    assert_eq!(proofs.len(), 3);
+    assert!(proofs.iter().any(|proof| proof.backend == "gguf"
+        && proof.runtime_profile.as_deref() == Some("local-chat-llama-cpp")
+        && proof.runtime_profile_version == Some(1)
+        && proof.status == ModelCapabilityProofStatus::Verified));
+
+    let mut profiled_v2 = profiled.clone();
+    profiled_v2.runtime_profile_version = Some(2);
+    store
+        .save_capability_proof(&layout, &profiled_v2)
+        .expect("save profile version proof");
+
+    let proofs = store
+        .list_capability_proofs(&layout, &model_ref)
+        .expect("list profile version proofs");
+    assert_eq!(proofs.len(), 4);
+
+    let mut profiled_overwrite = profiled_v2;
+    profiled_overwrite.status = ModelCapabilityProofStatus::Failed;
+    profiled_overwrite.error = Some("profile v2 failed".to_string());
+    store
+        .save_capability_proof(&layout, &profiled_overwrite)
+        .expect("overwrite profile version proof");
+
+    let proofs = store
+        .list_capability_proofs(&layout, &model_ref)
+        .expect("list overwritten profile version proofs");
+    assert_eq!(proofs.len(), 4);
+    assert!(proofs.iter().any(|proof| proof.backend == "gguf"
+        && proof.runtime_profile.as_deref() == Some("local-chat-llama-cpp")
+        && proof.runtime_profile_version == Some(2)
+        && proof.status == ModelCapabilityProofStatus::Failed
+        && proof.error.as_deref() == Some("profile v2 failed")));
+
+    store
+        .remove_capability_proof(&layout, &model_ref, ModelCapability::Chat)
+        .expect("remove chat proofs");
+    let proofs = store
+        .list_capability_proofs(&layout, &model_ref)
+        .expect("list after proof removal");
+    assert!(proofs.is_empty());
+    assert!(!layout
+        .capability_proof_path(&model_ref, ModelCapability::Chat)
+        .exists());
+    assert!(!layout
+        .support_proofs_capability_dir(&model_ref, ModelCapability::Chat)
+        .exists());
+
     let _ = fs::remove_dir_all(root);
 }
 
@@ -316,6 +380,8 @@ fn proof_fixture(
         mlx_runtime_family: None,
         backend: backend.into(),
         runtime_version: None,
+        runtime_profile: None,
+        runtime_profile_version: None,
         server_ref: Some("server-ref".to_string()),
         checked_at: imported_at(),
         error,

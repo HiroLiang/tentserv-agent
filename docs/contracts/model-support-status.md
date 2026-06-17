@@ -66,7 +66,7 @@ records, metadata, policy, and environment state.
 | --- | --- |
 | `verified` | Prefer the tuple. No support-specific action is required. |
 | `supported` | Try the route or run a local smoke verification when confidence matters. |
-| `failed` | Inspect the local proof, fix the runtime/backend/input issue, then rerun the smoke verification. |
+| `failed` | Inspect the local proof, fix the runtime/backend/input issue, clear the failed proof, then rerun the smoke verification. |
 | `unsupported` | Pick a different model, capability, backend, or route. Do not retry the same tuple without changing evidence. |
 | `unknown` | Add an explicit capability/support record, choose an allow-unknown policy, or verify the tuple before relying on it. |
 | `stale` | Refresh the proof by rerunning verification under the current runtime/profile/platform tuple. |
@@ -160,10 +160,12 @@ explicit allow-unverified policy, currently exposed by CLI and REST server
 start flows as `allow_unverified`. Cloud provider servers are outside local
 model proof scope and keep using provider capability checks.
 
-Endpoint smoke verification and richer proof write-back remain separate
-runtime proof work. A gate decision may allow a `supported` or explicitly
-allowed `unknown`/`stale` tuple to launch, but that decision does not by itself
-create a `verified` proof.
+Endpoint smoke verification remains separate runtime proof work. A gate
+decision may allow a `supported` or explicitly allowed `unknown`/`stale` tuple
+to launch, but that decision does not by itself create a `verified` proof. The
+actual local server launch outcome records a `server-start` proof: successful
+starts write `verified`, and launch failures after profile selection write
+`failed`.
 
 ## Stale Evidence
 

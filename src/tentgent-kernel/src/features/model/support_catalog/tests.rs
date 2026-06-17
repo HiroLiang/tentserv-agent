@@ -115,6 +115,8 @@ fn local_proof_still_beats_catalog_hint() {
         mlx_runtime_family: None,
         backend: "safetensors".to_string(),
         runtime_version: None,
+        runtime_profile: None,
+        runtime_profile_version: None,
         server_ref: None,
         checked_at: "2026-06-12T00:00:00Z".to_string(),
         error: Some("fixture failed locally".to_string()),

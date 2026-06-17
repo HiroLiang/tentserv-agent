@@ -686,6 +686,10 @@ pub struct ModelCapabilityProof {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_profile_version: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_ref: Option<String>,
     pub checked_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -702,6 +706,10 @@ pub struct ModelCapabilityProofKey {
     pub backend: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_profile_version: Option<u32>,
 }
 
 impl ModelCapabilityProofKey {
@@ -713,16 +721,33 @@ impl ModelCapabilityProofKey {
             mlx_runtime_family: proof.mlx_runtime_family,
             backend: proof.backend.clone(),
             runtime_version: proof.runtime_version.clone(),
+            runtime_profile: proof.runtime_profile.clone(),
+            runtime_profile_version: proof.runtime_profile_version,
         }
     }
 
     pub fn filename(&self) -> String {
+        if self.runtime_profile.is_none() && self.runtime_profile_version.is_none() {
+            return format!(
+                "format-{}__runtime-{}__backend-{}__version-{}.toml",
+                proof_key_component(self.primary_format.as_str()),
+                optional_proof_key_component(self.mlx_runtime_family.map(|family| family.as_str())),
+                proof_key_component(&self.backend),
+                optional_proof_key_component(self.runtime_version.as_deref())
+            );
+        }
+
+        let runtime_profile_version = self
+            .runtime_profile_version
+            .map(|version| version.to_string());
         format!(
-            "format-{}__runtime-{}__backend-{}__version-{}.toml",
+            "format-{}__runtime-{}__backend-{}__version-{}__profile-{}__profile-version-{}.toml",
             proof_key_component(self.primary_format.as_str()),
             optional_proof_key_component(self.mlx_runtime_family.map(|family| family.as_str())),
             proof_key_component(&self.backend),
-            optional_proof_key_component(self.runtime_version.as_deref())
+            optional_proof_key_component(self.runtime_version.as_deref()),
+            optional_proof_key_component(self.runtime_profile.as_deref()),
+            optional_proof_key_component(runtime_profile_version.as_deref())
         )
     }
 }

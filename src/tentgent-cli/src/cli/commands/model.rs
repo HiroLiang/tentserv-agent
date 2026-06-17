@@ -189,6 +189,16 @@ pub enum ModelCapabilityCommands {
         #[arg(value_name = "REF")]
         reference: String,
     },
+    /// Manage stored proof records for one model capability.
+    #[command(
+        name = "proof",
+        about = "Manage stored proof records for one model capability.",
+        long_about = "Manage stored proof records for one model capability. Use this when a failed local proof should be cleared after fixing the runtime environment."
+    )]
+    Proof {
+        #[command(subcommand)]
+        action: ModelCapabilityProofCommands,
+    },
     /// Run a local capability probe and write a proof record.
     #[command(
         name = "verify",
@@ -200,6 +210,25 @@ pub enum ModelCapabilityCommands {
         #[arg(value_name = "REF")]
         reference: String,
         /// Capability metadata to probe.
+        #[arg(value_name = "CAPABILITY")]
+        capability: ModelCapability,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ModelCapabilityProofCommands {
+    /// Clear stored proof records for one model capability.
+    #[command(
+        name = "clear",
+        visible_alias = "rm",
+        about = "Clear stored proof records for one model capability.",
+        long_about = "Clear stored proof records for one model capability. This removes local verified or failed proof evidence for the selected capability without changing model capability metadata or model content."
+    )]
+    Clear {
+        /// Full model_ref or unique short-ref prefix.
+        #[arg(value_name = "REF")]
+        reference: String,
+        /// Capability proof records to clear.
         #[arg(value_name = "CAPABILITY")]
         capability: ModelCapability,
     },

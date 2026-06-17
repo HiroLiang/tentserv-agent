@@ -10,6 +10,7 @@ use crate::foundation::layout::RuntimeLayoutResolver;
 
 use super::common::model_store_layout;
 use super::port::{
+    ModelCapabilityProofClearRequest, ModelCapabilityProofClearResult,
     ModelCapabilityProofListRequest, ModelCapabilityProofListResult,
     ModelCapabilityProofRecordRequest, ModelCapabilityProofRecordResult,
     ModelCapabilityProofUseCase, ModelCapabilityVerifyRequest,
@@ -85,6 +86,8 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
             status,
             ModelCapabilityProofSource::ManualProbe,
             None,
+            None,
+            None,
             error,
             self.clock.now_rfc3339()?,
         );
@@ -111,6 +114,8 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
             request.status,
             request.source,
             request.server_ref,
+            request.runtime_profile,
+            request.runtime_profile_version,
             request.error,
             self.clock.now_rfc3339()?,
         );
@@ -123,6 +128,35 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
             proof,
         })
     }
+
+    fn clear_model_capability_proofs(
+        &self,
+        request: ModelCapabilityProofClearRequest,
+    ) -> KernelResult<ModelCapabilityProofClearResult> {
+        let layout = self.layout_resolver.resolve(request.layout)?;
+        let store = model_store_layout(&layout);
+        let model = self.catalog.inspect_model(&store, &request.selector)?;
+        let removed_proof_count = self
+            .proofs
+            .list_capability_proofs(&store, &model.metadata.model_ref)?
+            .into_iter()
+            .filter(|proof| proof.capability == request.capability)
+            .count();
+
+        self.proofs.remove_capability_proof(
+            &store,
+            &model.metadata.model_ref,
+            request.capability,
+        )?;
+
+        Ok(ModelCapabilityProofClearResult {
+            layout,
+            store,
+            model,
+            capability: request.capability,
+            removed_proof_count,
+        })
+    }
 }
 
 fn build_proof(
@@ -131,6 +165,8 @@ fn build_proof(
     status: ModelCapabilityProofStatus,
     source: ModelCapabilityProofSource,
     server_ref: Option<String>,
+    runtime_profile: Option<String>,
+    runtime_profile_version: Option<u32>,
     error: Option<String>,
     checked_at: String,
 ) -> ModelCapabilityProof {
@@ -143,9 +179,43 @@ fn build_proof(
         mlx_runtime_family: metadata.mlx_runtime_family,
         backend: backend_label(metadata.mlx_runtime_family, metadata.primary_format),
         runtime_version: None,
+        runtime_profile,
+        runtime_profile_version,
         server_ref,
         checked_at,
-        error,
+        error: error.map(sanitize_proof_error),
+    }
+}
+
+fn sanitize_proof_error(error: String) -> String {
+    const MAX_PROOF_ERROR_CHARS: usize = 500;
+    let mut sanitized = error
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    for marker in [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "HF_TOKEN",
+        "HUGGING_FACE_HUB_TOKEN",
+    ] {
+        sanitized = sanitized.replace(marker, "[redacted-env]");
+    }
+
+    if sanitized.chars().count() > MAX_PROOF_ERROR_CHARS {
+        let mut truncated = sanitized
+            .chars()
+            .take(MAX_PROOF_ERROR_CHARS)
+            .collect::<String>();
+        truncated.push_str("...");
+        truncated
+    } else {
+        sanitized
     }
 }
 

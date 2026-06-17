@@ -64,6 +64,7 @@ pub(super) fn resolve_server_runtime_target(
                 capability,
                 layout,
                 model_proofs,
+                runtime_profile.as_ref(),
                 allow_unverified,
             )?;
 
@@ -151,6 +152,7 @@ pub(super) fn ensure_server_spec_launchable(
                 spec.capability,
                 layout,
                 model_proofs,
+                spec.runtime_profile.as_ref(),
                 allow_unverified,
             )?;
             Ok(())
