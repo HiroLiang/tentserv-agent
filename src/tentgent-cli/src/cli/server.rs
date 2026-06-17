@@ -120,6 +120,7 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
             reference,
             home,
             details,
+            allow_unverified,
         } => {
             if is_help_token(&reference) {
                 print_server_subcommand_help("start")?;
@@ -131,6 +132,7 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
                 .resolve_for_start(ServerResolveForStartRequest {
                     layout: runtime_layout_input(LayoutResolveMode::ReadOnly, home.as_deref()),
                     selector,
+                    allow_unverified,
                 })
                 .into_diagnostic()?;
             let auth =
@@ -245,6 +247,7 @@ async fn run_server(
             port: command.port,
             lazy_load: command.lazy_load,
             idle_seconds: command.idle_seconds,
+            allow_unverified: command.allow_unverified,
         })
         .into_diagnostic()?;
 
@@ -729,6 +732,7 @@ impl CliServerKernel {
             &self.layout_resolver,
             &self.server_initializer,
             &self.model_catalog,
+            &self.model_proofs,
             &self.server_identity,
             &self.server_catalog,
             &self.server_process_controller,

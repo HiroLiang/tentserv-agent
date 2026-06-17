@@ -17,6 +17,7 @@ pub struct ServerPrepareRequest {
     pub port: Option<u16>,
     pub lazy_load: bool,
     pub idle_seconds: Option<u64>,
+    pub allow_unverified: bool,
 }
 
 /// Result of preparing a server spec.
@@ -62,6 +63,7 @@ pub struct ServerInspectResult {
 pub struct ServerResolveForStartRequest {
     pub layout: RuntimeLayoutInput,
     pub selector: ServerRefSelector,
+    pub allow_unverified: bool,
 }
 
 /// Request for recording a spawned process.

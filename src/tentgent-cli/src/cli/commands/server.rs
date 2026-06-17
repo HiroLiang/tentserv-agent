@@ -107,6 +107,9 @@ pub enum ServerCommands {
         /// Show the full inspection table after the server starts.
         #[arg(short = 'd', long)]
         details: bool,
+        /// Allow local server start when model support status is unknown or stale.
+        #[arg(long)]
+        allow_unverified: bool,
     },
     /// Stop one live server process without deleting its stored spec.
     #[command(
@@ -168,6 +171,9 @@ pub struct ServerRunCommand {
     /// Endpoint family to serve from the selected runtime.
     #[arg(long, value_name = "CAPABILITY")]
     pub capability: Option<ServerCapability>,
+    /// Allow local server start when model support status is unknown or stale.
+    #[arg(long)]
+    pub allow_unverified: bool,
     /// Launch the initial server process in background mode and return immediately.
     #[arg(short = 'd', long)]
     pub detach: bool,

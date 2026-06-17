@@ -3,6 +3,7 @@
 mod common;
 mod lifecycle;
 mod port;
+mod support_gate;
 
 #[cfg(test)]
 mod tests;

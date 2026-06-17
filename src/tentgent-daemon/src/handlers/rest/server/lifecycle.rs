@@ -89,6 +89,7 @@ pub async fn create(
             port: request.port,
             lazy_load: request.lazy_load.unwrap_or(false),
             idle_seconds: request.idle_seconds,
+            allow_unverified: request.allow_unverified.unwrap_or(false),
         })
         .map_err(server_error)?;
 
@@ -164,6 +165,7 @@ pub async fn start(
             .resolve_for_start(ServerResolveForStartRequest {
                 layout: state.app().layout_input(LayoutResolveMode::ReadOnly),
                 selector,
+                allow_unverified: request.allow_unverified.unwrap_or(false),
             })
             .map_err(server_error)?;
         let auth = resolve_server_runtime_auth(&state, &result.inspection)?;
@@ -342,6 +344,7 @@ pub struct ServerCreateRequest {
     pub port: Option<u16>,
     pub lazy_load: Option<bool>,
     pub idle_seconds: Option<u64>,
+    pub allow_unverified: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -349,6 +352,7 @@ pub struct ServerCreateRequest {
 pub struct ServerStartRequest {
     pub wait_ready: Option<bool>,
     pub timeout_seconds: Option<u64>,
+    pub allow_unverified: Option<bool>,
 }
 
 struct ServerStartPlan {

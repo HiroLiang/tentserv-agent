@@ -159,6 +159,10 @@ impl ModelKernelComponent {
     pub(crate) fn catalog_store(&self) -> &FileModelCatalogStore {
         &self.catalog
     }
+
+    pub(crate) fn proof_store(&self) -> &FileModelCapabilityProofStore {
+        &self.proofs
+    }
 }
 
 impl Default for ModelKernelComponent {

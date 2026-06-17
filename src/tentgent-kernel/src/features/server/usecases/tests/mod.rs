@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 
 use crate::features::model::domain::{
-    default_model_capabilities, default_model_capability_source, ModelCapability, ModelFormat,
+    default_model_capabilities, default_model_capability_source, ModelCapability,
+    ModelCapabilityProof, ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelFormat,
     ModelMetadata, ModelRef, ModelSourceKind, ModelStoreLayout,
 };
-use crate::features::model::infra::FileModelCatalogStore;
-use crate::features::model::ports::ModelCatalogStore;
+use crate::features::model::infra::{FileModelCapabilityProofStore, FileModelCatalogStore};
+use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
 use crate::features::server::domain::{
     CloudProvider, LaunchMode, ServerCapability, ServerRef, ServerRefSelector, ServerRuntimeKind,
     ServerSpec,
@@ -28,12 +29,15 @@ use super::{
     ServerSpecUseCase, ServerStopRequest, StdServerUseCase,
 };
 
+mod support_gate;
+
 #[test]
 fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
     let fixture = Fixture::new("cloud");
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
     let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
     let identity = StdServerIdentityGenerator;
     let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
     let controller = StaticProcessController;
@@ -42,6 +46,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         &layout_resolver,
         &initializer,
         &model_catalog,
+        &model_proofs,
         &identity,
         &catalog,
         &controller,
@@ -57,6 +62,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
             port: Some(8780),
             lazy_load: false,
             idle_seconds: None,
+            allow_unverified: true,
         })
         .expect("prepare cloud server");
     assert!(first.outcome.created);
@@ -79,6 +85,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
             port: Some(8780),
             lazy_load: false,
             idle_seconds: None,
+            allow_unverified: true,
         })
         .expect("reuse cloud server");
     assert!(!reused.outcome.created);
@@ -96,6 +103,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
             port: Some(8781),
             lazy_load: false,
             idle_seconds: None,
+            allow_unverified: true,
         })
         .expect("prepare cloud embedding server");
     assert!(embedding.outcome.created);
@@ -134,6 +142,7 @@ fn standard_server_usecase_rejects_cloud_capabilities_not_supported_by_provider(
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
     let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
     let identity = StdServerIdentityGenerator;
     let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
     let controller = StaticProcessController;
@@ -142,6 +151,7 @@ fn standard_server_usecase_rejects_cloud_capabilities_not_supported_by_provider(
         &layout_resolver,
         &initializer,
         &model_catalog,
+        &model_proofs,
         &identity,
         &catalog,
         &controller,
@@ -157,6 +167,7 @@ fn standard_server_usecase_rejects_cloud_capabilities_not_supported_by_provider(
             port: None,
             lazy_load: false,
             idle_seconds: None,
+            allow_unverified: true,
         })
         .expect_err("anthropic embedding server should be rejected");
 
@@ -173,6 +184,7 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
     let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
     let identity = StdServerIdentityGenerator;
     let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: true });
     let controller = StaticProcessController;
@@ -181,6 +193,7 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
         &layout_resolver,
         &initializer,
         &model_catalog,
+        &model_proofs,
         &identity,
         &catalog,
         &controller,
@@ -196,6 +209,7 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
             port: Some(8781),
             lazy_load: true,
             idle_seconds: Some(30),
+            allow_unverified: true,
         })
         .expect("prepare local server");
     assert!(prepared.outcome.created);
@@ -221,6 +235,7 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
         .resolve_for_start(ServerResolveForStartRequest {
             layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
             selector: selector.clone(),
+            allow_unverified: true,
         })
         .expect("resolve for start");
     assert!(!startable.inspection.running);
@@ -270,6 +285,7 @@ fn standard_server_usecase_uses_auto_default_port_when_port_is_omitted() {
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
     let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
     let identity = StdServerIdentityGenerator;
     let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
     let controller = StaticProcessController;
@@ -278,6 +294,7 @@ fn standard_server_usecase_uses_auto_default_port_when_port_is_omitted() {
         &layout_resolver,
         &initializer,
         &model_catalog,
+        &model_proofs,
         &identity,
         &catalog,
         &controller,
@@ -293,6 +310,7 @@ fn standard_server_usecase_uses_auto_default_port_when_port_is_omitted() {
             port: None,
             lazy_load: false,
             idle_seconds: None,
+            allow_unverified: true,
         })
         .expect("prepare local server");
 
@@ -313,6 +331,7 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
         let layout_resolver = StdRuntimeLayoutResolver;
         let initializer = StdServerStoreLayoutInitializer;
         let model_catalog = FileModelCatalogStore;
+        let model_proofs = FileModelCapabilityProofStore;
         let identity = StdServerIdentityGenerator;
         let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
         let controller = StaticProcessController;
@@ -321,6 +340,7 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
             &layout_resolver,
             &initializer,
             &model_catalog,
+            &model_proofs,
             &identity,
             &catalog,
             &controller,
@@ -336,6 +356,7 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
                 port: Some(8781),
                 lazy_load: false,
                 idle_seconds: None,
+                allow_unverified: true,
             })
             .expect_err("non-chat model should not prepare a chat server");
 
@@ -360,6 +381,7 @@ fn standard_server_usecase_infers_capability_from_local_model_metadata() {
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
     let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
     let identity = StdServerIdentityGenerator;
     let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
     let controller = StaticProcessController;
@@ -368,6 +390,7 @@ fn standard_server_usecase_infers_capability_from_local_model_metadata() {
         &layout_resolver,
         &initializer,
         &model_catalog,
+        &model_proofs,
         &identity,
         &catalog,
         &controller,
@@ -383,6 +406,7 @@ fn standard_server_usecase_infers_capability_from_local_model_metadata() {
             port: Some(8781),
             lazy_load: false,
             idle_seconds: None,
+            allow_unverified: true,
         })
         .expect("prepare inferred server");
 
@@ -399,6 +423,7 @@ fn standard_server_usecase_rejects_embedding_stored_specs_without_runtime_profil
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
     let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
     let identity = StdServerIdentityGenerator;
     let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
     let controller = StaticProcessController;
@@ -407,6 +432,7 @@ fn standard_server_usecase_rejects_embedding_stored_specs_without_runtime_profil
         &layout_resolver,
         &initializer,
         &model_catalog,
+        &model_proofs,
         &identity,
         &catalog,
         &controller,
@@ -452,6 +478,7 @@ fn standard_server_usecase_rejects_embedding_stored_specs_without_runtime_profil
         .resolve_for_start(ServerResolveForStartRequest {
             layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
             selector: ServerRefSelector::parse(server_ref.short_ref()).expect("selector"),
+            allow_unverified: true,
         })
         .expect_err("embedding server without profile should fail");
 
@@ -467,6 +494,7 @@ fn standard_server_usecase_prepares_embedding_specs() {
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
     let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
     let identity = StdServerIdentityGenerator;
     let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
     let controller = StaticProcessController;
@@ -475,6 +503,7 @@ fn standard_server_usecase_prepares_embedding_specs() {
         &layout_resolver,
         &initializer,
         &model_catalog,
+        &model_proofs,
         &identity,
         &catalog,
         &controller,
@@ -490,6 +519,7 @@ fn standard_server_usecase_prepares_embedding_specs() {
             port: Some(8781),
             lazy_load: false,
             idle_seconds: None,
+            allow_unverified: true,
         })
         .expect("prepare embedding server");
 
@@ -522,6 +552,7 @@ fn standard_server_usecase_rejects_mlx_embedding_specs_without_profile() {
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
     let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
     let identity = StdServerIdentityGenerator;
     let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
     let controller = StaticProcessController;
@@ -530,6 +561,7 @@ fn standard_server_usecase_rejects_mlx_embedding_specs_without_profile() {
         &layout_resolver,
         &initializer,
         &model_catalog,
+        &model_proofs,
         &identity,
         &catalog,
         &controller,
@@ -545,6 +577,7 @@ fn standard_server_usecase_rejects_mlx_embedding_specs_without_profile() {
             port: Some(8781),
             lazy_load: false,
             idle_seconds: None,
+            allow_unverified: true,
         })
         .expect_err("mlx embedding server has no runtime profile yet");
 
@@ -561,6 +594,7 @@ fn standard_server_usecase_prepares_rerank_specs() {
     let layout_resolver = StdRuntimeLayoutResolver;
     let initializer = StdServerStoreLayoutInitializer;
     let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
     let identity = StdServerIdentityGenerator;
     let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
     let controller = StaticProcessController;
@@ -569,6 +603,7 @@ fn standard_server_usecase_prepares_rerank_specs() {
         &layout_resolver,
         &initializer,
         &model_catalog,
+        &model_proofs,
         &identity,
         &catalog,
         &controller,
@@ -584,6 +619,7 @@ fn standard_server_usecase_prepares_rerank_specs() {
             port: Some(8782),
             lazy_load: false,
             idle_seconds: None,
+            allow_unverified: true,
         })
         .expect("prepare rerank server");
 
@@ -603,6 +639,7 @@ fn standard_server_usecase_prepares_rerank_specs() {
         .resolve_for_start(ServerResolveForStartRequest {
             layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
             selector,
+            allow_unverified: true,
         })
         .expect("rerank server runtime is implemented");
     assert_eq!(
@@ -656,6 +693,7 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
         let layout_resolver = StdRuntimeLayoutResolver;
         let initializer = StdServerStoreLayoutInitializer;
         let model_catalog = FileModelCatalogStore;
+        let model_proofs = FileModelCapabilityProofStore;
         let identity = StdServerIdentityGenerator;
         let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
         let controller = StaticProcessController;
@@ -664,6 +702,7 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
             &layout_resolver,
             &initializer,
             &model_catalog,
+            &model_proofs,
             &identity,
             &catalog,
             &controller,
@@ -679,6 +718,7 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
                 port: Some(8782),
                 lazy_load: false,
                 idle_seconds: None,
+                allow_unverified: true,
             })
             .expect("prepare model runtime server");
 
@@ -707,6 +747,7 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
             .resolve_for_start(ServerResolveForStartRequest {
                 layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
                 selector,
+                allow_unverified: true,
             })
             .expect("model runtime server is implemented");
         assert_eq!(startable.inspection.spec.capability, server_capability);
@@ -737,6 +778,7 @@ fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
         let layout_resolver = StdRuntimeLayoutResolver;
         let initializer = StdServerStoreLayoutInitializer;
         let model_catalog = FileModelCatalogStore;
+        let model_proofs = FileModelCapabilityProofStore;
         let identity = StdServerIdentityGenerator;
         let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
         let controller = StaticProcessController;
@@ -745,6 +787,7 @@ fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
             &layout_resolver,
             &initializer,
             &model_catalog,
+            &model_proofs,
             &identity,
             &catalog,
             &controller,
@@ -760,6 +803,7 @@ fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
                 port: Some(8782),
                 lazy_load: false,
                 idle_seconds: None,
+                allow_unverified: true,
             })
             .expect_err("unsupported non-chat format");
 
@@ -814,6 +858,30 @@ impl Fixture {
         format: ModelFormat,
         capabilities: Vec<ModelCapability>,
     ) {
+        self.write_model_metadata(format, capabilities, ModelSourceKind::Local, None);
+    }
+
+    fn write_hf_model_format_capabilities(
+        &self,
+        format: ModelFormat,
+        capabilities: Vec<ModelCapability>,
+        source_repo: &str,
+    ) {
+        self.write_model_metadata(
+            format,
+            capabilities,
+            ModelSourceKind::HuggingFace,
+            Some(source_repo.to_string()),
+        );
+    }
+
+    fn write_model_metadata(
+        &self,
+        format: ModelFormat,
+        capabilities: Vec<ModelCapability>,
+        source_kind: ModelSourceKind,
+        source_repo: Option<String>,
+    ) {
         let layout = StdRuntimeLayoutResolver
             .resolve(self.layout_input(LayoutResolveMode::Create))
             .expect("layout");
@@ -824,8 +892,8 @@ impl Fixture {
                 &ModelMetadata {
                     model_ref: self.model_ref.clone(),
                     short_ref: self.model_ref.short_ref().to_string(),
-                    source_kind: ModelSourceKind::Local,
-                    source_repo: None,
+                    source_kind,
+                    source_repo,
                     source_revision: None,
                     source_path: Some("/tmp/model".to_string()),
                     primary_format: format,
@@ -839,6 +907,37 @@ impl Fixture {
                 },
             )
             .expect("save model");
+    }
+
+    fn write_capability_proof(
+        &self,
+        capability: ModelCapability,
+        status: ModelCapabilityProofStatus,
+        backend: &str,
+        error: Option<&str>,
+    ) {
+        let layout = StdRuntimeLayoutResolver
+            .resolve(self.layout_input(LayoutResolveMode::Create))
+            .expect("layout");
+        let model_store = ModelStoreLayout::from_models_dir(layout.models_dir);
+        FileModelCapabilityProofStore
+            .save_capability_proof(
+                &model_store,
+                &ModelCapabilityProof {
+                    model_ref: self.model_ref.clone(),
+                    capability,
+                    status,
+                    source: ModelCapabilityProofSource::ServerStart,
+                    primary_format: ModelFormat::Safetensors,
+                    mlx_runtime_family: None,
+                    backend: backend.to_string(),
+                    runtime_version: None,
+                    server_ref: Some("server-ref".to_string()),
+                    checked_at: "2026-05-17T00:00:00Z".to_string(),
+                    error: error.map(str::to_string),
+                },
+            )
+            .expect("save proof");
     }
 }
 

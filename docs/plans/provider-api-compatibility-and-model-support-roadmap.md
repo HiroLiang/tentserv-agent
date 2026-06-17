@@ -174,8 +174,8 @@ post-1.0 direction remains possible.
 - Treat support status as a derived result from the
   [model-support-status.md](../contracts/model-support-status.md) resolver
   rules, not as a direct replacement for declared `model_capabilities`.
-- Provide clear override policy for unknown models, such as an explicit
-  `allow_unknown` or future CLI flag, and record the outcome.
+- Provide clear override policy for unknown models, such as the explicit
+  server `--allow-unverified` flag, and record the outcome in proof workflows.
 - Make failures actionable: missing files, unsupported quantization, missing
   runtime package, memory pressure, unsupported parameter, adapter mismatch, or
   provider API mismatch should have distinct messages.

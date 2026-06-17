@@ -205,9 +205,12 @@ scans upward at process start until it finds a free loopback port. Explicit
 `--port` values are fixed and fail clearly when unavailable. Running server
 metadata records the actual bound port for later `server ls`, health checks, and
 direct curl calls.
-Local model-bound server starts also record latest capability proof metadata so
-`tentgent model capability proofs <model-ref>` can show which capability paths
-have launched or failed locally.
+Local model-bound server starts check the selected capability, support status,
+and runtime profile before launch. `verified` and `supported` are allowed by
+default; `failed` and `unsupported` are blocked; `unknown` and `stale` require
+an explicit `--allow-unverified` retry. Server launch still records latest
+capability proof metadata so `tentgent model capability proofs <model-ref>` can
+show which capability paths have launched or failed locally.
 
 Cloud provider servers are paused until they are ported to the model runtime
 HTTP boundary.
