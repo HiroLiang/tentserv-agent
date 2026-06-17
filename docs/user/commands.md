@@ -211,6 +211,10 @@ checks. Local model-bound server starts now use the same support status as a
 startup gate: `verified` and `supported` are allowed by default, `failed` and
 `unsupported` are blocked, and `unknown` or `stale` require an explicit
 `--allow-unverified` retry.
+Detailed support diagnostics are intentionally kept out of `model ls`.
+`model inspect <model-ref>` shows each capability as a multi-line detail row
+with `runtime_profile`, `execution_backend`, proof or hint evidence, failure or
+stale reason, and a copyable `next_action` when the tuple needs operator work.
 
 For recommended small Hugging Face fixtures, gated-access reminders, and
 copy-paste smoke commands, see [model-fixtures.md](./model-fixtures.md).
@@ -795,14 +799,19 @@ fields.
 
 For local model-bound servers, `server inspect` includes a `model_support` row
 for the server capability selected at creation time. This row reports the
-current local proof or catalog-derived support status for the bound model. Cloud
-provider servers do not show local model support because they are bound to
-provider-hosted models rather than records in the local model store.
-Local chat servers also show `runtime_profile` and
-`runtime_profile_version` when the server spec records the selected backend
-profile, such as `local-chat-mlx-v1`. Runtime profiles are server execution
-metadata, not dependency bootstrap profiles; see
-[server-runtime-profile.md](../contracts/server-runtime-profile.md).
+current local proof or catalog-derived support status for the bound model,
+selected runtime profile, runtime profile version, execution backend, and
+copyable next action for failed, stale, unknown, or unsupported tuples. Local
+chat servers also show `runtime_profile` and `runtime_profile_version` when the
+server spec records the selected backend profile, such as `local-chat-mlx-v1`.
+Runtime profiles are server execution metadata, not dependency bootstrap
+profiles; see [server-runtime-profile.md](../contracts/server-runtime-profile.md).
+Cloud provider servers do not show local model support because they are bound
+to provider-hosted models rather than records in the local model store.
+
+Use `doctor` when you want the same support diagnostics across all stored local
+models. `doctor` keeps the main check list compact and places long profile,
+backend, failure, and next-action details in the `Details` block.
 
 Call the server:
 

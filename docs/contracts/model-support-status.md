@@ -139,19 +139,39 @@ should see that the tuple was expected to work but failed locally.
 
 ## User-Facing Surfaces
 
-Support status is surfaced for visibility before it becomes a hard routing
-gate. Current CLI surfaces should keep output compact and preserve existing
-command behavior:
+Support status and runtime-profile diagnostics are surfaced for visibility
+before they become a hard routing gate. Current CLI surfaces should keep output
+compact and preserve existing command behavior:
 
 - `tentgent model ls` may show the most actionable support summary for each
   model, with `model inspect` as the detailed view.
 - `tentgent model inspect` should show per-capability status, evidence,
-  backend tuple, and short reason.
+  runtime profile, backend tuple, short reason, and next action when the tuple
+  needs operator work.
 - `tentgent server inspect` should show local bound-model support for the
-  selected server capability. Cloud provider servers are outside local model
-  proof scope.
+  selected server capability. This includes the selected runtime profile and
+  execution backend when the server is bound to a local model. Cloud provider
+  servers are outside local model proof scope.
 - `tentgent doctor` may warn about missing proof, stale proof, failed proof,
-  unsupported, or unknown tuples.
+  unsupported, or unknown tuples. The main check list should stay compact;
+  long failure, backend, profile, and next-action details belong in the detail
+  block.
+
+Runtime profiles identify selected local server execution profiles such as
+`local-chat-mlx-v1` or `local-embedding-transformers-peft-v1`. They are not the
+same as managed Python bootstrap dependency profiles such as `local-model`.
+Execution backend labels, such as `mlx-lm`, `mlx-vlm`, `mlx-audio`,
+`mlx-diffusion`, `safetensors`, or `diffusers`, identify the backend/runtime
+family used for the model tuple. These labels are diagnostics, not provider API
+route names.
+
+When a status is actionable, CLI diagnostics should provide a copyable command:
+
+- `failed` or `stale`: clear the local proof before retrying the route.
+- `unknown`: record or run a verification flow before relying on the tuple.
+- `unsupported`: add missing capability metadata only when the model does not
+  declare the requested capability; otherwise inspect the model and choose a
+  different tuple.
 
 Local model-bound server starts use this status as a hard startup gate.
 `verified` and `supported` are allowed by default. `failed` and `unsupported`

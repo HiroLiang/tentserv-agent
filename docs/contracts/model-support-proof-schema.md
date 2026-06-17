@@ -130,6 +130,12 @@ current `ModelCapabilityProof` fields. A resolver should treat missing
 dimension fields as less specific evidence and mark them `stale` when a precise
 comparison is required.
 
+Current CLI diagnostics read `runtime_profile` and `runtime_profile_version`
+from persisted proof records when a server launch recorded them. Server-bound
+inspection may also pass the selected server runtime profile into the resolver
+before comparing support evidence. `execution_backend` is derived from the
+proof tuple's backend/runtime-family fields.
+
 ## Identity Fields
 
 Identity fields explain which model the record applies to:

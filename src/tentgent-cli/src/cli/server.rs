@@ -63,7 +63,9 @@ use super::app::Cli;
 use super::commands::{
     CloudServerRuntimeCommand, LocalServerRuntimeCommand, ServerCommands, ServerRunCommand,
 };
-use super::model_support::{model_support_detail_lines, model_support_summaries};
+use super::model_support::{
+    model_support_diagnostic_lines, model_support_summaries_with_runtime_profile,
+};
 
 const BACKGROUND_HEALTH_STABLE: Duration = Duration::from_secs(2);
 const BACKGROUND_START_OBSERVATION: Duration = Duration::from_secs(10);
@@ -836,11 +838,19 @@ fn server_model_support_lines(
     };
 
     let required_capability = inspection.spec.capability.required_model_capability();
-    let summaries = model_support_summaries(&model.metadata, &proofs);
+    let runtime_profile = inspection
+        .spec
+        .runtime_profile
+        .as_ref()
+        .map(|profile| (profile.profile_id.as_str(), profile.profile_version));
+    let summaries =
+        model_support_summaries_with_runtime_profile(&model.metadata, &proofs, runtime_profile);
     summaries
         .into_iter()
         .find(|summary| summary.capability == required_capability)
-        .map(|summary| model_support_detail_lines(&summary).join("\n"))
+        .map(|summary| {
+            model_support_diagnostic_lines(&summary, Some(&model.metadata.short_ref)).join("\n")
+        })
         .or_else(|| {
             Some(format!(
                 "capability: {}\nstatus: unknown\nreason: no support summary is available for the bound model",

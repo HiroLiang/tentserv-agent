@@ -7,6 +7,11 @@ This document summarizes the current user-facing version. It is not a changelog 
 `v0.7.0` is the support status release. It makes model support explicit and
 inspectable without turning support status into a hard runtime gate yet.
 
+The active `v0.8.0` runtime-profile track extends those diagnostics with
+runtime profile, execution backend, and copyable next-action details in
+`model inspect`, `server inspect`, and `doctor`. Long details stay in inspect
+or doctor detail blocks rather than expanding compact list tables.
+
 What changed:
 
 - Added a built-in model support catalog for curated fixture models and major
