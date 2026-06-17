@@ -1,6 +1,6 @@
 use tentgent_kernel::{
     features::{
-        model::ports::ModelCatalogStore,
+        model::ports::{ModelCapabilityProofStore, ModelCatalogStore},
         server::{
             infra::{
                 FileServerCatalogStore, StdServerIdentityGenerator, StdServerProcessController,
@@ -33,11 +33,16 @@ impl ServerKernelComponent {
         }
     }
 
-    pub fn usecase<'a>(&'a self, model_catalog: &'a dyn ModelCatalogStore) -> StdServerUseCase<'a> {
+    pub fn usecase<'a>(
+        &'a self,
+        model_catalog: &'a dyn ModelCatalogStore,
+        model_proofs: &'a dyn ModelCapabilityProofStore,
+    ) -> StdServerUseCase<'a> {
         StdServerUseCase::new(
             &self.layout_resolver,
             &self.layout_initializer,
             model_catalog,
+            model_proofs,
             &self.identity,
             &self.catalog,
             &self.process_controller,

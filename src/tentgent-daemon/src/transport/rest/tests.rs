@@ -2768,7 +2768,7 @@ async fn model_remove_deletes_kernel_catalog_entry() {
     let state = rest_state_for_home(requested_home);
     let home = state.app().layout().home_dir.canonicalize().expect("home");
     let model_ref = "d".repeat(64);
-    write_model_fixture(&home, &model_ref);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["chat", "embedding"]);
 
     let response = build_router(state.clone())
         .oneshot(
@@ -3537,7 +3537,7 @@ async fn server_create_infers_capability_from_model_metadata() {
     let state = rest_state_for_home(requested_home);
     let home = state.app().layout().home_dir.canonicalize().expect("home");
     let model_ref = "b".repeat(64);
-    write_model_fixture(&home, &model_ref);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["chat", "embedding"]);
 
     let response = build_router(state)
         .oneshot(
@@ -3546,7 +3546,7 @@ async fn server_create_infers_capability_from_model_metadata() {
                 .uri("/v1/servers")
                 .header("content-type", "application/json")
                 .body(Body::from(format!(
-                    r#"{{"runtime_ref":"{model_ref}","host":"127.0.0.1","port":8998,"lazy_load":true,"idle_seconds":30}}"#
+                    r#"{{"runtime_ref":"{model_ref}","host":"127.0.0.1","port":8998,"lazy_load":true,"idle_seconds":30,"allow_unverified":true}}"#
                 )))
                 .expect("request"),
         )
@@ -3623,7 +3623,7 @@ async fn server_create_prepares_embedding_server_spec() {
                 .uri("/v1/servers")
                 .header("content-type", "application/json")
                 .body(Body::from(format!(
-                    r#"{{"runtime_ref":"{model_ref}","capability":"embedding","host":"127.0.0.1","port":8998}}"#
+                    r#"{{"runtime_ref":"{model_ref}","capability":"embedding","host":"127.0.0.1","port":8998,"allow_unverified":true}}"#
                 )))
                 .expect("request"),
         )
@@ -3656,7 +3656,7 @@ async fn server_create_prepares_rerank_server_spec() {
                 .uri("/v1/servers")
                 .header("content-type", "application/json")
                 .body(Body::from(format!(
-                    r#"{{"runtime_ref":"{model_ref}","capability":"rerank","host":"127.0.0.1","port":8999}}"#
+                    r#"{{"runtime_ref":"{model_ref}","capability":"rerank","host":"127.0.0.1","port":8999,"allow_unverified":true}}"#
                 )))
                 .expect("request"),
         )
@@ -3722,7 +3722,8 @@ async fn server_start_returns_conflict_for_running_server() {
             Request::builder()
                 .method("POST")
                 .uri(format!("/v1/servers/{}/start", &server_ref[..12]))
-                .body(Body::empty())
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"allow_unverified":true}"#))
                 .expect("request"),
         )
         .await
@@ -4503,6 +4504,10 @@ port = 8999
 lazy_load = false
 idle_seconds = 60
 created_at = "2026-05-01T00:00:00Z"
+
+[runtime_profile]
+profile_id = "local-chat-mlx"
+profile_version = 1
 "#,
             &server_ref[..12]
         ),

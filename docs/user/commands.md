@@ -199,9 +199,10 @@ records while preserving the legacy latest proof file for compatibility.
 Manual `verify` checks stored metadata and backend labeling; local model-bound
 server starts record `server-start` proofs after launch success or failure.
 `tentgent doctor` also reports local model support summaries as capability
-checks. Missing proof, stale proof, failed proof, unsupported, and unknown
-tuples are warnings in this release; they are surfaced for operator visibility
-and do not change runtime gating behavior.
+checks. Local model-bound server starts now use the same support status as a
+startup gate: `verified` and `supported` are allowed by default, `failed` and
+`unsupported` are blocked, and `unknown` or `stale` require an explicit
+`--allow-unverified` retry.
 
 For recommended small Hugging Face fixtures, gated-access reminders, and
 copy-paste smoke commands, see [model-fixtures.md](./model-fixtures.md).
@@ -757,6 +758,17 @@ port is fixed and startup fails if it is unavailable.
 `server ls` keeps local model rows compact by showing the model `short_ref` in
 the `model` column. Use `server inspect <server-ref>` when the full bound
 `model_ref` is needed.
+
+Local model-bound server creation checks the selected capability, runtime
+profile availability, and effective support status before saving or launching
+the server. `verified` local proofs and `supported` catalog hints are allowed
+by default. `failed` and `unsupported` are blocked. `unknown` and `stale` are
+blocked unless you explicitly retry with `--allow-unverified`:
+
+```bash
+tentgent server run <model-ref> --capability chat --allow-unverified
+tentgent server start <server-ref> --allow-unverified
+```
 
 When `--capability` is omitted for a local model, Tentgent chooses the server
 endpoint family from the model's stored capabilities. The priority is

@@ -217,7 +217,8 @@ impl KernelComponents {
     }
 
     pub fn server_usecase(&self) -> StdServerUseCase<'_> {
-        self.servers.usecase(self.models.catalog_store())
+        self.servers
+            .usecase(self.models.catalog_store(), self.models.proof_store())
     }
 
     pub fn session_usecase(&self) -> StdSessionUseCase<'_> {

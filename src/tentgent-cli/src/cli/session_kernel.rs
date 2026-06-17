@@ -5,7 +5,9 @@ use tentgent_kernel::features::adapter::{
     infra::FileAdapterCatalogStore,
     usecases::{AdapterCatalogReadUseCase, AdapterInspectRequest, StdAdapterCatalogReadUseCase},
 };
-use tentgent_kernel::features::model::infra::FileModelCatalogStore;
+use tentgent_kernel::features::model::infra::{
+    FileModelCapabilityProofStore, FileModelCatalogStore,
+};
 use tentgent_kernel::features::server::{
     domain::{ServerInspection, ServerRefSelector},
     infra::{
@@ -43,6 +45,7 @@ pub(super) struct CliSessionKernel {
     server_process_controller: StdServerProcessController,
     server_clock: SystemServerClock,
     model_catalog: FileModelCatalogStore,
+    model_proofs: FileModelCapabilityProofStore,
     adapter_catalog: FileAdapterCatalogStore,
 }
 
@@ -60,6 +63,7 @@ impl CliSessionKernel {
             server_process_controller: StdServerProcessController::default(),
             server_clock: SystemServerClock,
             model_catalog: FileModelCatalogStore,
+            model_proofs: FileModelCapabilityProofStore,
             adapter_catalog: FileAdapterCatalogStore,
         }
     }
@@ -102,6 +106,7 @@ impl CliSessionKernel {
             &self.layout_resolver,
             &self.server_initializer,
             &self.model_catalog,
+            &self.model_proofs,
             &self.server_identity,
             &self.server_catalog,
             &self.server_process_controller,

@@ -153,8 +153,17 @@ command behavior:
 - `tentgent doctor` may warn about missing proof, stale proof, failed proof,
   unsupported, or unknown tuples.
 
-These warnings do not by themselves block existing commands. Runtime gating,
-policy overrides, and automatic verification remain separate decisions.
+Local model-bound server starts use this status as a hard startup gate.
+`verified` and `supported` are allowed by default. `failed` and `unsupported`
+are blocked. `unknown` and `stale` are blocked unless the caller sets an
+explicit allow-unverified policy, currently exposed by CLI and REST server
+start flows as `allow_unverified`. Cloud provider servers are outside local
+model proof scope and keep using provider capability checks.
+
+Endpoint smoke verification and richer proof write-back remain separate
+runtime proof work. A gate decision may allow a `supported` or explicitly
+allowed `unknown`/`stale` tuple to launch, but that decision does not by itself
+create a `verified` proof.
 
 ## Stale Evidence
 
@@ -226,10 +235,9 @@ errors can present the same decision.
 This contract does not define:
 
 - the file format for a future support registry;
-- the exact CLI or HTTP response shape for support status;
+- every CLI or HTTP response shape for support status;
 - live verification behavior for every capability;
 - dynamic routing across multiple candidate backends.
 
-Those are later implementation slices, especially the `v0.8.0` runtime profile
-and gating track. This contract only fixes the vocabulary and resolver rules
-they should follow.
+Those are separate implementation slices. This contract fixes the vocabulary,
+resolver rules, and local server-start gate policy they should follow.

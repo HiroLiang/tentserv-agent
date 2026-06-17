@@ -85,7 +85,9 @@ Embedding batching accepts one string or a non-empty string array. The response
 preserves input order.
 
 Future slices may use runtime profiles to decide backend-specific defaults,
-hard limits, verification stale rules, and server-start gating.
+hard limits, and verification stale rules. Local server starts already require
+available runtime profiles for covered local chat and embedding backends before
+support-status gates are evaluated.
 
 ## Operator Visibility
 

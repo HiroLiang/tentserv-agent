@@ -5,7 +5,7 @@ use crate::features::cloud::domain::{
 use crate::features::model::domain::{
     ModelCapability, ModelFormat, ModelRefSelector, ModelStoreLayout,
 };
-use crate::features::model::ports::ModelCatalogStore;
+use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
 use crate::features::server::domain::{
     ensure_server_model_capability, infer_server_capability_from_model_capabilities,
     normalize_server_host, parse_server_runtime_selection, CloudProvider, ServerCapability,
@@ -17,6 +17,8 @@ use crate::features::server::ports::ServerIdentityGenerator;
 use crate::features::server::profile::local_server_runtime_profile_for;
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayout;
+
+use super::support_gate::ensure_local_server_support_status_allows_start;
 
 pub(super) fn server_store_layout(layout: &RuntimeLayout) -> ServerStoreLayout {
     ServerStoreLayout::from_home_and_servers_dir(
@@ -34,6 +36,8 @@ pub(super) fn resolve_server_runtime_target(
     capability: Option<ServerCapability>,
     layout: &RuntimeLayout,
     model_catalog: &dyn ModelCatalogStore,
+    model_proofs: &dyn ModelCapabilityProofStore,
+    allow_unverified: bool,
 ) -> KernelResult<ServerRuntimeTarget> {
     match parse_server_runtime_selection(runtime_ref)
         .map_err(|err| KernelError::UnsupportedTarget(err.to_string()))?
@@ -55,6 +59,13 @@ pub(super) fn resolve_server_runtime_target(
             ensure_server_capability_implemented(capability)?;
             let backend = server_runtime_backend_for_format(capability, metadata.primary_format)?;
             let runtime_profile = resolve_local_server_runtime_profile(capability, backend)?;
+            ensure_local_server_support_status_allows_start(
+                metadata,
+                capability,
+                layout,
+                model_proofs,
+                allow_unverified,
+            )?;
 
             Ok(ServerRuntimeTarget::LocalModel {
                 model_ref: metadata.model_ref.clone(),
@@ -97,6 +108,8 @@ pub(super) fn ensure_server_spec_launchable(
     spec: &ServerSpec,
     layout: &RuntimeLayout,
     model_catalog: &dyn ModelCatalogStore,
+    model_proofs: &dyn ModelCapabilityProofStore,
+    allow_unverified: bool,
 ) -> KernelResult<()> {
     match spec.runtime_kind {
         ServerRuntimeKind::Cloud => {
@@ -132,6 +145,13 @@ pub(super) fn ensure_server_spec_launchable(
                 spec.capability,
                 backend,
                 spec.runtime_profile.as_ref(),
+            )?;
+            ensure_local_server_support_status_allows_start(
+                &model.metadata,
+                spec.capability,
+                layout,
+                model_proofs,
+                allow_unverified,
             )?;
             Ok(())
         }

@@ -1,6 +1,6 @@
 //! Standard server spec and lifecycle orchestration.
 
-use crate::features::model::ports::ModelCatalogStore;
+use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
 use crate::features::server::domain::{ServerPrepareOutcome, ServerStopOutcome};
 use crate::features::server::ports::{
     ServerCatalogStore, ServerClock, ServerIdentityGenerator, ServerProcessController,
@@ -25,6 +25,7 @@ pub struct StdServerUseCase<'a> {
     layout_resolver: &'a dyn RuntimeLayoutResolver,
     layout_initializer: &'a dyn ServerStoreLayoutInitializer,
     model_catalog: &'a dyn ModelCatalogStore,
+    model_proofs: &'a dyn ModelCapabilityProofStore,
     identity: &'a dyn ServerIdentityGenerator,
     catalog: &'a dyn ServerCatalogStore,
     process_controller: &'a dyn ServerProcessController,
@@ -37,6 +38,7 @@ impl<'a> StdServerUseCase<'a> {
         layout_resolver: &'a dyn RuntimeLayoutResolver,
         layout_initializer: &'a dyn ServerStoreLayoutInitializer,
         model_catalog: &'a dyn ModelCatalogStore,
+        model_proofs: &'a dyn ModelCapabilityProofStore,
         identity: &'a dyn ServerIdentityGenerator,
         catalog: &'a dyn ServerCatalogStore,
         process_controller: &'a dyn ServerProcessController,
@@ -46,6 +48,7 @@ impl<'a> StdServerUseCase<'a> {
             layout_resolver,
             layout_initializer,
             model_catalog,
+            model_proofs,
             identity,
             catalog,
             process_controller,
@@ -63,6 +66,8 @@ impl ServerSpecUseCase for StdServerUseCase<'_> {
             request.capability,
             &layout,
             self.model_catalog,
+            self.model_proofs,
+            request.allow_unverified,
         )?;
         let spec = build_server_spec(
             target,
@@ -79,7 +84,13 @@ impl ServerSpecUseCase for StdServerUseCase<'_> {
 
         if store.server_spec_path(spec.server_ref.as_str()).exists() {
             let inspection = self.catalog.inspect_server(&store, &selector)?;
-            ensure_server_spec_launchable(&inspection.spec, &layout, self.model_catalog)?;
+            ensure_server_spec_launchable(
+                &inspection.spec,
+                &layout,
+                self.model_catalog,
+                self.model_proofs,
+                request.allow_unverified,
+            )?;
             return Ok(ServerPrepareResult {
                 layout,
                 store,
@@ -158,7 +169,13 @@ impl ServerLifecycleUseCase for StdServerUseCase<'_> {
             layout: request.layout,
             selector: request.selector,
         })?;
-        ensure_server_spec_launchable(&result.inspection.spec, &result.layout, self.model_catalog)?;
+        ensure_server_spec_launchable(
+            &result.inspection.spec,
+            &result.layout,
+            self.model_catalog,
+            self.model_proofs,
+            request.allow_unverified,
+        )?;
         if result.inspection.running {
             return Err(KernelError::ServerRuntimeUnavailable(format!(
                 "server `{}` is already running",
