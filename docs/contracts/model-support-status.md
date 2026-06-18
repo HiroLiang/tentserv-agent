@@ -1,7 +1,9 @@
 # Model Support Status
 
 This document defines the support status vocabulary used by model and runtime
-workflows. It is a design contract for the `v0.7.0` support-status track.
+workflows. It is the vocabulary introduced in the `v0.7.0` support-status
+track and the local server-start gate used by the `v0.8.0` runtime-profile
+track.
 
 Support status is derived from evidence. It is not the same thing as stored
 `model_capabilities` and it is not the same thing as raw capability proof
@@ -139,9 +141,9 @@ should see that the tuple was expected to work but failed locally.
 
 ## User-Facing Surfaces
 
-Support status and runtime-profile diagnostics are surfaced for visibility
-before they become a hard routing gate. Current CLI surfaces should keep output
-compact and preserve existing command behavior:
+Support status and runtime-profile diagnostics are visible in CLI output and
+are a hard gate for covered local model-bound server starts. CLI surfaces
+should keep output compact and preserve readable command behavior:
 
 - `tentgent model ls` may show the most actionable support summary for each
   model, with `model inspect` as the detailed view.

@@ -2,16 +2,46 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.8.0
+
+`v0.8.0` is the runtime profile and startup gating release. It turns the
+support-status vocabulary introduced in `v0.7.0` into a local server-start gate
+for covered model-bound server paths.
+
+What changed:
+
+- Added explicit local server runtime profiles for `chat` and `embedding`
+  backend families.
+- Stored selected runtime profile metadata in local server specs and surfaced
+  it through `server inspect`.
+- Gated local model-bound server starts by declared capability, effective
+  support status, and runtime profile availability.
+- Allowed `verified` and `supported` local tuples by default.
+- Blocked `failed` and `unsupported` local tuples by default.
+- Required `--allow-unverified` for `unknown` and `stale` local tuples.
+- Recorded local server-start outcomes as support proofs, including runtime
+  profile and runtime profile version when selected.
+- Added proof clearing so fixed runtime failures can be retried without stale
+  failed evidence blocking startup.
+- Added runtime profile, execution backend, support status, and copyable
+  next-action details to `model inspect`, `server inspect`, and `doctor`.
+- Added configurable provider auth source modes: `auto`, `keychain`, `file`,
+  `env`, and `none`.
+
+Known limits:
+
+- Runtime profiles currently cover local `chat` and `embedding` server starts.
+  Rerank, media, and cloud provider server profiles remain future slices.
+- Successful or failed local server start attempts record launch proof, but
+  arbitrary model requests do not yet automatically become endpoint-smoke
+  proofs.
+- Cloud provider servers remain outside local runtime profile and model support
+  proof gates.
+
 ## v0.7.0
 
 `v0.7.0` is the support status release. It makes model support explicit and
 inspectable without turning support status into a hard runtime gate yet.
-
-The active `v0.8.0` runtime-profile track extends those diagnostics with
-runtime profile, execution backend, copyable next-action details, startup
-gating, launch proof recording, and configurable provider auth source modes.
-Long details stay in inspect or doctor detail blocks rather than expanding
-compact list tables.
 
 What changed:
 

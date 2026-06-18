@@ -154,13 +154,16 @@ tentgent model catalog --capability chat --publisher Qwen
 tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
 tentgent model ls
 tentgent model inspect <model-ref-or-prefix>
+tentgent model capability proofs <model-ref-or-prefix>
+tentgent model capability proof clear <model-ref-or-prefix> chat
 tentgent model add /absolute/path/to/model
 tentgent model rm <model-ref>
 ```
 
 `model catalog` 可先瀏覽內建模型家族與 support hints。`model ls` 顯示精簡
 support status，`model inspect` 顯示每個 capability 的 proof、hint、backend
-與 reason 細節。
+與 reason 細節。`model capability proof clear` 可在修復 runtime 問題後清掉
+failed proof，再重試 local server start。
 
 完整模型、adapter、dataset 與 chat 範例請看 [docs/user/commands.md](../../../docs/user/commands.md#models-and-chat)。
 
@@ -268,6 +271,11 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 除非你確定要刪掉 models、adapters、datasets、sessions、servers、train records 與其他本地 runtime data，否則不要刪 `TENTGENT_HOME`。移除與 runtime-home 細節請看 [docs/user/install.md](../../../docs/user/install.md) 與 [docs/user/runtime.md](../../../docs/user/runtime.md)。
 
 ## 版本說明
+
+`v0.8.0` 是 runtime profile 與 startup gating release。Local model-bound
+server start 會根據 capability、support status 與 runtime profile gate
+啟動；`server inspect`、`model inspect` 與 `doctor` 會顯示 runtime profile、
+execution backend、proof 與 copyable next action。
 
 `v0.7.0` 是 support status release，讓模型支援狀態可以被 `model ls`、
 `model inspect`、`server inspect` 與 `doctor` 檢視。這版會顯示
