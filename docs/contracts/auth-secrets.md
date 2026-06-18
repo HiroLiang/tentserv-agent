@@ -9,17 +9,29 @@ This document defines how Tentgent should resolve, store, and validate provider 
 - Anthropic
 - Gemini
 
-## Resolution Order
+## Source Modes
 
-Resolve secrets in this order:
+Each provider has a non-secret source mode preference. The default is `auto`.
+Preferences are stored in `TENTGENT_HOME/runtime/auth.toml` and must not contain
+provider secret values.
 
-1. `.env/env`
-2. system keychain/secret store
-3. none
+- `auto`: resolve request/prompt material, `.env` / process environment,
+  process-session cache, system Keychain, then none.
+- `keychain`: resolve only through Tentgent-managed system secret storage.
+- `file`: resolve only through an explicitly configured auth env file.
+- `env`: resolve only through process environment variables.
+- `none`: disable local provider secret resolution for that provider.
+
+OpenShell, CI, containers, and other launchers that inject standard provider
+environment variables should use `env` mode. A future OpenShell-managed
+provider gateway is a separate serving boundary, not a local secret source mode.
 
 Secret-use flows may also accept an explicit one-operation secret from their
 input surface, such as a CLI prompt or a single HTTP request. That value is an
-ephemeral override for that operation, not persistent local auth state.
+ephemeral override for that operation, not persistent local auth state. Explicit
+one-operation secrets are accepted before source-mode resolution so commands
+such as `auth <provider> set` can validate the pasted key without changing the
+configured mode.
 
 Use these environment variables:
 
@@ -28,18 +40,22 @@ Use these environment variables:
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY`
 
-`.env` loading is allowed for development convenience and should override process environment variables for the current Tentgent process when present.
-The default `.env` lookup is the current process working directory and its
-parents. It is not `TENTGENT_HOME/.env`. Do not make `TENTGENT_HOME` an
-implicit plaintext secret directory; support for an explicit auth env file must
-be opt-in and represented by auth env-probe policy.
+In `auto` mode, `.env` loading is allowed for development convenience and should
+override process environment variables for the current Tentgent process when
+present. The default `.env` lookup is the current process working directory and
+its parents. It is not `TENTGENT_HOME/.env`. Do not make `TENTGENT_HOME` an
+implicit plaintext secret directory.
+
+In `file` mode, the env file path must be explicit provider auth preference.
+The file uses the same provider variable names listed above.
 
 ## Persistence Rule
 
 - Never write provider secrets to the repository.
 - Never write provider secrets to `config.toml`.
 - Persist provider secrets in the platform system secret store.
-- Use non-secret config files only for non-secret auth preferences such as provider enablement or endpoint selection.
+- Use non-secret config files only for non-secret auth preferences such as
+  source mode or endpoint selection.
 
 ## System Secret Store Rule
 
@@ -90,7 +106,8 @@ persistence.
   use its own unlock prompt, session keyring, or credential UI.
 - Commands that only inspect local model-store metadata, such as `model ls` and `model inspect`, should not trigger provider-secret reads.
 - Commands that resolve provider secrets, such as `auth <provider>` status checks, `model pull` for Hugging Face, or cloud provider server launch preflight, may trigger the prompt when no environment-variable override is present.
-- Environment-variable overrides should bypass Keychain reads because secret resolution prefers `.env/env` first and the system keychain second.
+- Environment-variable and explicit file modes should bypass Keychain reads
+  entirely. `auto` mode should prefer `.env/env` before the system Keychain.
 - Auth env-secret lookup belongs behind an auth env probe. The probe may read
   process environment only, search the current working directory for `.env`, or
   use an explicit env file depending on policy.
@@ -129,10 +146,11 @@ Auth workflows are capability-sized modules under `features/auth/usecases/`:
 
 - status: assemble provider status without reading Keychain secret material by
   default.
-- resolution: resolve the effective secret as `.env/env`, process-session
-  TTL cache, then Keychain. When a caller supplies a prompt-provided or
-  request-provided secret, that explicit one-operation secret is resolved before
-  env/cache/Keychain and carries its own non-persistent source.
+- preference: load and update non-secret provider auth source mode preferences.
+- resolution: resolve the effective secret according to provider source mode.
+  When a caller supplies a prompt-provided or request-provided secret, that
+  explicit one-operation secret is resolved before env/cache/Keychain and
+  carries its own non-persistent source.
 - mutation: set/remove local Keychain secrets and keep non-secret metadata and
   process cache consistent.
 - validation: resolve a secret, call a provider validator, and record the
@@ -142,10 +160,12 @@ Use-case ports live in `features/auth/usecases/port.rs`. Lower-level ports for
 env probing, Keychain storage, validation HTTP, metadata, and cache stay in
 `features/auth/ports.rs`.
 
-Auth metadata persistence uses `TENTGENT_HOME/runtime/auth.toml`. That file is
-auth-specific local state and must contain only non-secret metadata. It is
-separate from user `config.toml` so auth state can evolve without turning
-general config into a secret-adjacent persistence surface.
+Auth metadata and source-mode preference persistence uses
+`TENTGENT_HOME/runtime/auth.toml`. That file is auth-specific local state and
+must contain only non-secret metadata. It is separate from user `config.toml` so
+auth state can evolve without turning general config into a secret-adjacent
+persistence surface. Removing a provider key must not remove the provider's
+source-mode preference.
 
 ## Cloud Server Launch Rule
 
@@ -157,6 +177,10 @@ general config into a secret-adjacent persistence surface.
 ## CLI Surface
 
 - `tentgent auth status`
+- `tentgent auth mode`
+- `tentgent auth mode <provider>`
+- `tentgent auth mode <provider> <mode>`
+- `tentgent auth mode <provider> file --path <env-file>`
 - `tentgent auth hf`
 - `tentgent auth hf set`
 - `tentgent auth hf rm`
@@ -171,10 +195,11 @@ general config into a secret-adjacent persistence surface.
 - `tentgent auth gemini rm`
 
 The CLI auth surface composes kernel auth use cases directly. It uses
-`StdAuthStatusUseCase`, `StdAuthSecretMutationUseCase`, and
-`StdAuthSecretValidationUseCase` with the shared system secret store and
-`runtime/auth.toml` metadata store. CLI rendering must not manually persist
-provider auth metadata or secret values outside those use-case boundaries.
+`StdAuthStatusUseCase`, `StdAuthPreferenceUseCase`,
+`StdAuthSecretMutationUseCase`, and `StdAuthSecretValidationUseCase` with the
+shared system secret store and `runtime/auth.toml` metadata store. CLI rendering
+must not manually persist provider auth metadata, source-mode preferences, or
+secret values outside those use-case boundaries.
 
 ## Validation Endpoints
 
@@ -193,6 +218,7 @@ must be opt-in and require explicit provider credentials.
 - `auth status` should show every provider in one table.
 - Show whether `.env/env` is present.
 - Show whether a keychain entry is present.
+- Show the selected provider source mode.
 - Show the effective source after applying resolution order.
 - Show validation as `verified`, `invalid`, `unknown`, or `missing`.
 - Do not print the secret value.
@@ -214,6 +240,8 @@ This HTTP surface is diagnostic-only:
 - It does not call provider validation endpoints by default.
 - It reports validation as `not_checked`.
 - Environment-variable credentials bypass Keychain reads.
+- Source modes that do not permit Keychain reads should report Keychain as
+  skipped or unavailable rather than probing it.
 - If no env override exists, Keychain presence checks may trigger the platform
   Keychain prompt.
 

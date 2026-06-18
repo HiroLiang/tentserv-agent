@@ -98,6 +98,7 @@ install、upgrade、pinned version、local package smoke test、uninstall notes 
 tentgent doctor
 tentgent runtime status
 tentgent auth status
+tentgent auth mode
 ```
 
 provider key を system Keychain に保存:
@@ -118,6 +119,29 @@ OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 EOF
+```
+
+provider ごとに Tentgent が key を読む source を設定できます:
+
+```bash
+tentgent auth mode openai auto
+tentgent auth mode openai env
+tentgent auth mode gemini file --path ~/.config/tentgent/provider.env
+tentgent auth mode anthropic none
+```
+
+`auto` が default で、request/prompt、`.env` / process env、process
+cache、Keychain の順に使います。OpenShell などの launcher が標準環境変数
+だけを注入する場合は `env` を使ってください。`file` は明示した env file
+だけを読み、`none` はその provider の local secret resolution を無効にします。
+
+Auth file は dotenv-style provider 変数を使います:
+
+```dotenv
+HF_TOKEN=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
 ```
 
 provider secret resolution と Keychain boundaries は [docs/contracts/auth-secrets.md](../../../docs/contracts/auth-secrets.md) を参照してください。

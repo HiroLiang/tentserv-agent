@@ -97,6 +97,7 @@ Homebrew 升級使用 `brew upgrade hiroliang/tap/tentgent`。`TENTGENT_HOME`
 tentgent doctor
 tentgent runtime status
 tentgent auth status
+tentgent auth mode
 ```
 
 設定 provider key 到系統 Keychain：
@@ -117,6 +118,29 @@ OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 EOF
+```
+
+可以針對 provider 設定 Tentgent 要從哪裡讀 key：
+
+```bash
+tentgent auth mode openai auto
+tentgent auth mode openai env
+tentgent auth mode gemini file --path ~/.config/tentgent/provider.env
+tentgent auth mode anthropic none
+```
+
+`auto` 是預設，依序使用 request/prompt、`.env` / process env、process
+cache、Keychain。OpenShell 或其他 launcher 只注入標準環境變數時，使用
+`env`。`file` 僅讀取明確指定的 env file；`none` 會停用該 provider 的本機
+secret resolution。
+
+Auth file 使用 dotenv-style provider 變數：
+
+```dotenv
+HF_TOKEN=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
 ```
 
 provider secret resolution 與 Keychain boundaries 請看 [docs/contracts/auth-secrets.md](../../../docs/contracts/auth-secrets.md)。

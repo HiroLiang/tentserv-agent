@@ -79,7 +79,7 @@ mod tests {
 
     use super::{
         app::Cli,
-        commands::{Commands, DaemonCommands, ServerCommands, StoreCommands},
+        commands::{AuthCommands, Commands, DaemonCommands, ServerCommands, StoreCommands},
     };
 
     #[test]
@@ -209,6 +209,39 @@ mod tests {
                     );
                     assert!(command.apply);
                 }
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_auth_mode_file_command() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "auth",
+            "mode",
+            "openai",
+            "file",
+            "--path",
+            "/tmp/provider.env",
+        ])
+        .expect("parse auth mode");
+
+        match cli.command {
+            Commands::Auth { subject } => match subject {
+                AuthCommands::Mode {
+                    provider,
+                    mode,
+                    path,
+                } => {
+                    assert_eq!(provider.as_deref(), Some("openai"));
+                    assert_eq!(mode.as_deref(), Some("file"));
+                    assert_eq!(
+                        path.as_deref(),
+                        Some(std::path::Path::new("/tmp/provider.env"))
+                    );
+                }
+                other => panic!("unexpected auth command: {other:?}"),
             },
             other => panic!("unexpected command: {other:?}"),
         }

@@ -49,6 +49,38 @@ tentgent auth gemini
 tentgent auth gemini rm
 ```
 
+Inspect or set provider auth source modes:
+
+```bash
+tentgent auth mode
+tentgent auth mode openai
+tentgent auth mode openai auto
+tentgent auth mode openai env
+tentgent auth mode gemini file --path ~/.config/tentgent/provider.env
+tentgent auth mode anthropic none
+```
+
+Available modes:
+
+- `auto`: request/prompt, `.env` / process env, process cache, Keychain, then
+  none.
+- `keychain`: only Tentgent-managed system secret storage.
+- `file`: only the explicit env file configured with `--path`.
+- `env`: only process environment variables.
+- `none`: disable local provider auth resolution.
+
+Use `env` when OpenShell or another launcher injects standard variables such as
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `HF_TOKEN`.
+
+`file` mode reads the same variable names from the configured env file:
+
+```dotenv
+HF_TOKEN=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
+```
+
 The daemon exposes read-only auth status. Provider key set/remove stays
 local-only through the CLI:
 

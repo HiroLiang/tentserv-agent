@@ -131,6 +131,7 @@ Check the local runtime and provider key state:
 tentgent doctor
 tentgent runtime status
 tentgent auth status
+tentgent auth mode
 ```
 
 Configure provider keys through the system keychain:
@@ -151,6 +152,30 @@ OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 GEMINI_API_KEY=...
 EOF
+```
+
+Control which source Tentgent may use per provider:
+
+```bash
+tentgent auth mode openai auto
+tentgent auth mode openai env
+tentgent auth mode gemini file --path ~/.config/tentgent/provider.env
+tentgent auth mode anthropic none
+```
+
+`auto` is the default. It tries request/prompt material, `.env` / process env,
+process cache, then Keychain. Use `env` when an external shell or OpenShell
+injects standard provider variables such as `OPENAI_API_KEY`. Use `file` only
+with an explicit env file path. Use `none` to disable local provider secret
+resolution for a provider.
+
+Auth files use dotenv-style provider variables:
+
+```dotenv
+HF_TOKEN=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
 ```
 
 See [docs/contracts/auth-secrets.md](./docs/contracts/auth-secrets.md) for provider secret resolution and Keychain boundaries.

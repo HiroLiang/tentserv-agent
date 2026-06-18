@@ -37,7 +37,12 @@ impl AuthKernelComponent {
     }
 
     pub fn resolver_usecase(&self) -> StdAuthSecretResolverUseCase<'_> {
-        StdAuthSecretResolverUseCase::new(&self.env_probe, &self.keychain_store, &self.cache)
+        StdAuthSecretResolverUseCase::new(
+            &self.env_probe,
+            &self.keychain_store,
+            &self.metadata_store,
+            &self.cache,
+        )
     }
 
     pub fn mutation_usecase(&self) -> StdAuthSecretMutationUseCase<'_> {

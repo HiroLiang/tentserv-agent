@@ -81,6 +81,7 @@ fn auth_provider_item(status: AuthKeyStatus) -> AuthProviderItem {
     AuthProviderItem {
         provider: status.provider.cli_name().to_string(),
         display_name: status.provider.display_name().to_string(),
+        source_mode: status.preference.source_mode.as_str().to_string(),
         env_present: status.env_present,
         keychain_present: matches!(status.keychain_presence, KeychainPresence::Present),
         effective_source: status.effective_source.map(auth_secret_source_name),

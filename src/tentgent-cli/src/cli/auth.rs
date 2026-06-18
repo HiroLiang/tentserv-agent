@@ -1,19 +1,23 @@
+use std::path::PathBuf;
+
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use console::style;
 use miette::{miette, IntoDiagnostic};
 use tentgent_kernel::features::auth::domain::{
-    AuthEnvLoadPolicy, AuthKeyStatus, AuthSecretCacheScope, AuthSecretSource, AuthValidationState,
-    KeychainPresence, Provider,
+    AuthEnvLoadPolicy, AuthKeyStatus, AuthProviderPreference, AuthSecretCacheScope,
+    AuthSecretSource, AuthSourceMode, AuthValidationState, KeychainPresence, Provider,
 };
 use tentgent_kernel::features::auth::infra::{
     FileAuthMetadataStore, ProcessSessionAuthSecretCache, ReqwestAuthSecretValidator,
     StdAuthEnvSecretProbe, SystemKeychainAuthSecretStore,
 };
 use tentgent_kernel::features::auth::usecases::{
+    AuthPreferenceListRequest, AuthPreferenceRequest, AuthPreferenceUseCase,
     AuthSecretMutationUseCase, AuthSecretResolutionRequest, AuthSecretValidationRequest,
     AuthSecretValidationUseCase, AuthStatusRequest, AuthStatusUseCase, RemoveAuthSecretRequest,
-    SetAuthSecretRequest, StdAuthSecretMutationUseCase, StdAuthSecretResolverUseCase,
-    StdAuthSecretValidationUseCase, StdAuthStatusUseCase,
+    SetAuthPreferenceRequest, SetAuthSecretRequest, StdAuthPreferenceUseCase,
+    StdAuthSecretMutationUseCase, StdAuthSecretResolverUseCase, StdAuthSecretValidationUseCase,
+    StdAuthStatusUseCase,
 };
 use tentgent_kernel::foundation::layout::{
     LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
@@ -27,6 +31,11 @@ pub async fn handle_auth_command(subject: AuthCommands) -> miette::Result<()> {
 
     match subject {
         AuthCommands::Status => render_all_key_statuses(&auth).await?,
+        AuthCommands::Mode {
+            provider,
+            mode,
+            path,
+        } => handle_mode_action(&auth, provider, mode, path)?,
         AuthCommands::Hf { action } => {
             handle_provider_action(&auth, Provider::HuggingFace, action).await?
         }
@@ -76,11 +85,20 @@ impl CliAuthKernel {
     }
 
     fn resolver_usecase(&self) -> StdAuthSecretResolverUseCase<'_> {
-        StdAuthSecretResolverUseCase::new(&self.env_probe, &self.keychain_store, &self.cache)
+        StdAuthSecretResolverUseCase::new(
+            &self.env_probe,
+            &self.keychain_store,
+            &self.metadata_store,
+            &self.cache,
+        )
     }
 
     fn mutation_usecase(&self) -> StdAuthSecretMutationUseCase<'_> {
         StdAuthSecretMutationUseCase::new(&self.keychain_store, &self.metadata_store, &self.cache)
+    }
+
+    fn preference_usecase(&self) -> StdAuthPreferenceUseCase<'_> {
+        StdAuthPreferenceUseCase::new(&self.metadata_store)
     }
 
     async fn validated_status(&self, provider: Provider) -> miette::Result<AuthKeyStatus> {
@@ -101,6 +119,25 @@ impl CliAuthKernel {
             .into_diagnostic()?;
 
         self.local_status(provider)
+    }
+
+    async fn best_effort_validated_status(
+        &self,
+        provider: Provider,
+    ) -> miette::Result<AuthKeyStatus> {
+        match self.validated_status(provider).await {
+            Ok(status) => Ok(status),
+            Err(_) => {
+                let mut status = self.local_status(provider)?;
+                status.validation = AuthValidationState::Unknown {
+                    reason: format!(
+                        "validation unavailable; run `tentgent auth {}` for details",
+                        provider.cli_name()
+                    ),
+                };
+                Ok(status)
+            }
+        }
     }
 
     fn local_status(&self, provider: Provider) -> miette::Result<AuthKeyStatus> {
@@ -146,7 +183,7 @@ impl CliAuthKernel {
 async fn render_all_key_statuses(auth: &CliAuthKernel) -> miette::Result<()> {
     let mut statuses = Vec::new();
     for provider in Provider::ALL {
-        statuses.push(auth.validated_status(provider).await?);
+        statuses.push(auth.best_effort_validated_status(provider).await?);
     }
 
     println!(
@@ -161,6 +198,7 @@ async fn render_all_key_statuses(auth: &CliAuthKernel) -> miette::Result<()> {
         .apply_modifier(UTF8_ROUND_CORNERS)
         .set_header(vec![
             "Provider",
+            "Mode",
             "Env",
             "Keychain",
             "Effective",
@@ -171,8 +209,9 @@ async fn render_all_key_statuses(auth: &CliAuthKernel) -> miette::Result<()> {
     for status in statuses {
         table.add_row(vec![
             Cell::new(status.provider.display_name()),
-            Cell::new(presence(status.env_present)),
-            Cell::new(keychain_presence(status.keychain_presence)),
+            Cell::new(status.preference.source_mode.as_str()),
+            Cell::new(env_presence(&status)),
+            Cell::new(keychain_status(&status)),
             Cell::new(
                 status
                     .effective_source
@@ -187,6 +226,68 @@ async fn render_all_key_statuses(auth: &CliAuthKernel) -> miette::Result<()> {
     println!("{table}");
     println!();
     Ok(())
+}
+
+fn handle_mode_action(
+    auth: &CliAuthKernel,
+    provider: Option<String>,
+    mode: Option<String>,
+    path: Option<PathBuf>,
+) -> miette::Result<()> {
+    match (provider, mode) {
+        (None, None) => {
+            let report = auth
+                .preference_usecase()
+                .list_preferences(AuthPreferenceListRequest::all())
+                .into_diagnostic()?;
+            render_auth_preferences(&report.preferences);
+            Ok(())
+        }
+        (Some(provider), None) => {
+            let provider = parse_provider_arg("auth mode", &provider)?;
+            if path.is_some() {
+                return Err(miette!("`--path` can only be used when setting file mode"));
+            }
+            let preference = auth
+                .preference_usecase()
+                .get_preference(AuthPreferenceRequest::new(provider))
+                .into_diagnostic()?;
+            render_auth_preferences(&[preference]);
+            Ok(())
+        }
+        (Some(provider), Some(mode)) => {
+            let provider = parse_provider_arg("auth mode", &provider)?;
+            let source_mode = parse_auth_source_mode(&mode)?;
+            let request = match (source_mode, path) {
+                (AuthSourceMode::File, Some(path)) => {
+                    SetAuthPreferenceRequest::new(provider, source_mode)
+                        .with_env_file(absolutize_auth_path(path)?)
+                }
+                (AuthSourceMode::File, None) => {
+                    return Err(miette!("file auth mode requires `--path <ENV_FILE>`"));
+                }
+                (_, Some(_)) => {
+                    return Err(miette!("`--path` is only valid with file auth mode"));
+                }
+                (_, None) => SetAuthPreferenceRequest::new(provider, source_mode),
+            };
+            let preference = auth
+                .preference_usecase()
+                .set_preference(request)
+                .into_diagnostic()?;
+            println!(
+                "{} {} auth mode set to {}.",
+                style("updated").green().bold(),
+                provider.display_name(),
+                preference.source_mode
+            );
+            render_auth_preferences(&[preference]);
+            Ok(())
+        }
+        (None, Some(_)) => Err(miette!(
+            "missing provider for auth mode update; use `tentgent auth mode <provider> <mode>`"
+        )),
+    }
 }
 
 async fn handle_provider_action(
@@ -204,6 +305,68 @@ async fn handle_provider_action(
     }
 
     Ok(())
+}
+
+fn render_auth_preferences(preferences: &[AuthProviderPreference]) {
+    println!(
+        "{} {}",
+        style("==>").cyan().bold(),
+        style("Provider auth modes").bold()
+    );
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL_CONDENSED)
+        .apply_modifier(UTF8_ROUND_CORNERS)
+        .set_header(vec!["Provider", "Mode", "File"]);
+
+    for preference in preferences {
+        table.add_row(vec![
+            Cell::new(preference.provider.display_name()),
+            Cell::new(preference.source_mode.as_str()),
+            Cell::new(
+                preference
+                    .env_file
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+            ),
+        ]);
+    }
+
+    println!("{table}");
+    println!();
+}
+
+fn parse_provider_arg(command: &str, value: &str) -> miette::Result<Provider> {
+    Provider::ALL
+        .into_iter()
+        .find(|provider| provider.cli_name() == value)
+        .ok_or_else(|| {
+            miette!(
+                "invalid provider `{value}` for `{command}`; expected one of hf, openai, anthropic, gemini"
+            )
+        })
+}
+
+fn parse_auth_source_mode(value: &str) -> miette::Result<AuthSourceMode> {
+    match value {
+        "auto" => Ok(AuthSourceMode::Auto),
+        "keychain" => Ok(AuthSourceMode::Keychain),
+        "file" => Ok(AuthSourceMode::File),
+        "env" => Ok(AuthSourceMode::Env),
+        "none" => Ok(AuthSourceMode::None),
+        other => Err(miette!(
+            "invalid auth mode `{other}`; expected one of auto, keychain, file, env, none"
+        )),
+    }
+}
+
+fn absolutize_auth_path(path: PathBuf) -> miette::Result<PathBuf> {
+    if path.is_absolute() {
+        return Ok(path);
+    }
+    Ok(std::env::current_dir().into_diagnostic()?.join(path))
 }
 
 async fn set_key(auth: &CliAuthKernel, provider: Provider) -> miette::Result<()> {
@@ -232,12 +395,23 @@ async fn set_key(auth: &CliAuthKernel, provider: Provider) -> miette::Result<()>
 
     render_validation(provider, &validation);
 
-    let status = auth.validated_status(provider).await?;
+    let status = auth.local_status(provider)?;
     if matches!(status.effective_source, Some(AuthSecretSource::Env)) {
         println!(
             "{} .env/env currently overrides the keychain value for {}.",
             style("note").yellow().bold(),
             provider.display_name()
+        );
+    }
+    if !matches!(
+        status.preference.source_mode,
+        AuthSourceMode::Auto | AuthSourceMode::Keychain
+    ) {
+        println!(
+            "{} Current {} auth mode is `{}`; the stored keychain value will not be used until mode is changed.",
+            style("note").yellow().bold(),
+            provider.display_name(),
+            status.preference.source_mode
         );
     }
 
@@ -289,12 +463,19 @@ fn render_key_status(status: &AuthKeyStatus) {
         Cell::new(status.provider.display_name()),
     ]);
     table.add_row(vec![
-        Cell::new("env override"),
-        Cell::new(presence(status.env_present)),
+        Cell::new("mode"),
+        Cell::new(status.preference.source_mode.as_str()),
     ]);
+    if let Some(path) = status.preference.env_file.as_ref() {
+        table.add_row(vec![
+            Cell::new("file"),
+            Cell::new(path.display().to_string()),
+        ]);
+    }
+    table.add_row(vec![Cell::new("env/file"), Cell::new(env_presence(status))]);
     table.add_row(vec![
         Cell::new("keychain entry"),
-        Cell::new(keychain_presence(status.keychain_presence)),
+        Cell::new(keychain_status(status)),
     ]);
     table.add_row(vec![
         Cell::new("effective source"),
@@ -349,6 +530,22 @@ fn presence(present: bool) -> &'static str {
         "present"
     } else {
         "absent"
+    }
+}
+
+fn env_presence(status: &AuthKeyStatus) -> &'static str {
+    if !status.preference.source_mode.can_probe_env() {
+        "skipped"
+    } else {
+        presence(status.env_present)
+    }
+}
+
+fn keychain_status(status: &AuthKeyStatus) -> &'static str {
+    if !status.preference.source_mode.can_probe_keychain() {
+        "skipped"
+    } else {
+        keychain_presence(status.keychain_presence)
     }
 }
 

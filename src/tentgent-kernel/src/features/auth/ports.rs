@@ -5,8 +5,8 @@ use std::{future::Future, pin::Pin};
 use crate::foundation::error::KernelResult;
 
 use super::domain::{
-    AuthEnvLoadPolicy, AuthEnvSecretMaterial, AuthProviderMetadata, AuthSecretAccessPolicy,
-    AuthSecretMaterial, AuthValidationState, KeychainPresence, Provider,
+    AuthEnvLoadPolicy, AuthEnvSecretMaterial, AuthProviderMetadata, AuthProviderPreference,
+    AuthSecretAccessPolicy, AuthSecretMaterial, AuthValidationState, KeychainPresence, Provider,
 };
 
 pub type AuthValidationFuture<'a> =
@@ -72,4 +72,10 @@ pub trait AuthMetadataStore {
 
     /// Removes recorded non-secret metadata for a provider.
     fn remove_provider_metadata(&self, provider: Provider) -> KernelResult<()>;
+
+    /// Loads non-secret provider auth preference, defaulting when no preference is recorded.
+    fn load_provider_preference(&self, provider: Provider) -> KernelResult<AuthProviderPreference>;
+
+    /// Saves non-secret provider auth preference. Implementations must never serialize secrets.
+    fn save_provider_preference(&self, preference: &AuthProviderPreference) -> KernelResult<()>;
 }
