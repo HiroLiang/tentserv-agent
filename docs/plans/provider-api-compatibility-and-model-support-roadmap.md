@@ -263,16 +263,21 @@ post-1.0 direction remains possible.
 
 ### v0.8.0: Runtime Profile And Gating Release
 
-- Add profile planning for the first local chat and embedding backend families.
-- Record accepted parameters, rejected parameters, default context/output
+- Added profile planning for the first local chat and embedding backend families.
+- Recorded accepted parameters, rejected parameters, default context/output
   limits, and backend-specific knobs.
-- Surface the selected profile in inspect output or runtime diagnostics.
-- Gate direct server start with declared capability, support status, and runtime
+- Surfaced the selected profile in inspect output and runtime diagnostics.
+- Gated direct server start with declared capability, support status, and runtime
   profile availability.
-- Keep unknown models usable only through explicit policy.
-- Record successful and failed launches as support evidence.
+- Kept unknown models usable only through explicit policy.
+- Recorded successful and failed launches as support evidence.
+- Added configurable provider auth source modes: `auto`, `keychain`, `file`,
+  `env`, and `none`.
 
 ### v0.9.0: 1.0 Hardening Release
+
+Detailed execution plan:
+[v0.9.0-hardening-plan.md](./v0.9.0-hardening-plan.md).
 
 - Expand provider conformance tests and curated model fixture smoke tests.
 - Harden install, upgrade, runtime bootstrap, doctor, and auth recovery flows.
