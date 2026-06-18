@@ -9,7 +9,7 @@ use super::domain::{
     effective_source, normalize_secret_value, AuthEnvLoadPolicy, AuthEnvSecretOrigin,
     AuthKeyStatus, AuthProviderMetadata, AuthProviderPreference, AuthSecretAccessPolicy,
     AuthSecretCacheScope, AuthSecretMaterial, AuthSecretReadIntent, AuthSecretSource,
-    AuthValidationState, KeychainPresence, Provider, AUTH_SERVICE,
+    AuthSourceMode, AuthValidationState, KeychainPresence, Provider, AUTH_SERVICE,
 };
 use super::infra::{
     FileAuthMetadataStore, InMemoryAuthMetadataStore, ProcessSessionAuthSecretCache,
@@ -143,11 +143,8 @@ fn provider_preference_defaults_to_enabled_secret_use_policy() {
     let preference = AuthProviderPreference::default_for(Provider::Anthropic);
 
     assert_eq!(preference.provider, Provider::Anthropic);
-    assert!(preference.enabled);
-    assert_eq!(
-        preference.access_policy,
-        AuthSecretAccessPolicy::resolve_for_use()
-    );
+    assert_eq!(preference.source_mode, AuthSourceMode::Auto);
+    assert_eq!(preference.env_file, None);
 }
 
 #[test]
@@ -277,6 +274,32 @@ fn in_memory_metadata_store_round_trips_non_secret_metadata() {
 }
 
 #[test]
+fn in_memory_metadata_store_round_trips_non_secret_auth_preference() {
+    let store = InMemoryAuthMetadataStore::new();
+    let preference = AuthProviderPreference {
+        provider: Provider::OpenAI,
+        source_mode: AuthSourceMode::File,
+        env_file: Some(PathBuf::from("/tmp/tentgent-auth.env")),
+    };
+
+    assert_eq!(
+        store
+            .load_provider_preference(Provider::OpenAI)
+            .expect("load default preference"),
+        AuthProviderPreference::default_for(Provider::OpenAI)
+    );
+    store
+        .save_provider_preference(&preference)
+        .expect("save preference");
+    assert_eq!(
+        store
+            .load_provider_preference(Provider::OpenAI)
+            .expect("load preference"),
+        preference
+    );
+}
+
+#[test]
 fn file_metadata_store_round_trips_non_secret_auth_state() {
     let path = temp_path("auth-file-metadata").join("runtime/auth.toml");
     let store = FileAuthMetadataStore::new(path.clone());
@@ -313,6 +336,34 @@ fn file_metadata_store_round_trips_non_secret_auth_state() {
         .load_provider_metadata(Provider::OpenAI)
         .expect("load removed file metadata")
         .is_none());
+}
+
+#[test]
+fn file_metadata_store_round_trips_non_secret_auth_preference() {
+    let path = temp_path("auth-file-preference").join("runtime/auth.toml");
+    let store = FileAuthMetadataStore::new(path.clone());
+    let preference = AuthProviderPreference {
+        provider: Provider::Gemini,
+        source_mode: AuthSourceMode::Env,
+        env_file: None,
+    };
+
+    store
+        .save_provider_preference(&preference)
+        .expect("save file preference");
+
+    let raw = fs::read_to_string(&path).expect("read preference file");
+    assert!(raw.contains("preferences"));
+    assert!(raw.contains("source_mode = \"env\""));
+    assert!(!raw.contains("sk-"));
+
+    let reloaded = FileAuthMetadataStore::new(path);
+    assert_eq!(
+        reloaded
+            .load_provider_preference(Provider::Gemini)
+            .expect("load file preference"),
+        preference
+    );
 }
 
 #[test]

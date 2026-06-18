@@ -3,8 +3,8 @@ use std::sync::Mutex;
 
 use crate::features::auth::domain::{
     AuthEnvLoadPolicy, AuthEnvSecretMaterial, AuthEnvSecretOrigin, AuthProviderMetadata,
-    AuthSecretAccessPolicy, AuthSecretMaterial, AuthSecretSource, AuthValidationState,
-    KeychainPresence, Provider,
+    AuthProviderPreference, AuthSecretAccessPolicy, AuthSecretMaterial, AuthSecretSource,
+    AuthSourceMode, AuthValidationState, KeychainPresence, Provider,
 };
 use crate::features::auth::infra::{InMemoryAuthMetadataStore, ProcessSessionAuthSecretCache};
 use crate::features::auth::ports::{
@@ -78,6 +78,40 @@ fn status_can_probe_keychain_presence_when_requested() {
 }
 
 #[test]
+fn status_env_mode_skips_keychain_presence_probe() {
+    let env_probe = FakeEnvProbe::default();
+    env_probe.insert(Provider::OpenAI, "sk-from-env");
+    let keychain_store = FakeKeychainStore::default();
+    keychain_store
+        .write_keychain_secret(Provider::OpenAI, "sk-from-keychain")
+        .expect("write fake keychain");
+    let metadata_store = InMemoryAuthMetadataStore::new();
+    metadata_store
+        .save_provider_preference(&AuthProviderPreference {
+            provider: Provider::OpenAI,
+            source_mode: AuthSourceMode::Env,
+            env_file: None,
+        })
+        .expect("save preference");
+    let usecase = StdAuthStatusUseCase::new(&env_probe, &keychain_store, &metadata_store);
+
+    let report = usecase
+        .status(
+            AuthStatusRequest::for_provider(Provider::OpenAI, AuthEnvLoadPolicy::CwdDotenvOverride)
+                .with_keychain_probe(),
+        )
+        .expect("status");
+
+    let status = report.status_for(Provider::OpenAI).expect("openai status");
+    assert_eq!(status.preference.source_mode, AuthSourceMode::Env);
+    assert!(status.env_present);
+    assert_eq!(status.keychain_presence, KeychainPresence::Unknown);
+    assert_eq!(status.effective_source, Some(AuthSecretSource::Env));
+    assert_eq!(keychain_store.presence_checks(), 0);
+    assert_eq!(keychain_store.secret_reads(), 0);
+}
+
+#[test]
 fn resolver_prefers_env_and_does_not_touch_keychain() {
     let env_probe = FakeEnvProbe::default();
     env_probe.insert(Provider::OpenAI, "sk-from-env");
@@ -86,7 +120,9 @@ fn resolver_prefers_env_and_does_not_touch_keychain() {
         .write_keychain_secret(Provider::OpenAI, "sk-from-keychain")
         .expect("write fake keychain");
     let cache = ProcessSessionAuthSecretCache::new();
-    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
+    let metadata_store = InMemoryAuthMetadataStore::new();
+    let resolver =
+        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &metadata_store, &cache);
 
     let resolution = resolver
         .resolve_secret(AuthSecretResolutionRequest::for_secret_use(
@@ -102,6 +138,104 @@ fn resolver_prefers_env_and_does_not_touch_keychain() {
 }
 
 #[test]
+fn resolver_env_mode_uses_process_env_only_and_skips_keychain() {
+    let env_probe = FakeEnvProbe::default();
+    env_probe.insert(Provider::OpenAI, "sk-from-env");
+    let keychain_store = FakeKeychainStore::default();
+    keychain_store
+        .write_keychain_secret(Provider::OpenAI, "sk-from-keychain")
+        .expect("write fake keychain");
+    let metadata_store = InMemoryAuthMetadataStore::new();
+    metadata_store
+        .save_provider_preference(&AuthProviderPreference {
+            provider: Provider::OpenAI,
+            source_mode: AuthSourceMode::Env,
+            env_file: None,
+        })
+        .expect("save preference");
+    let cache = ProcessSessionAuthSecretCache::new();
+    let resolver =
+        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &metadata_store, &cache);
+
+    let resolution = resolver
+        .resolve_secret(AuthSecretResolutionRequest::for_secret_use(
+            Provider::OpenAI,
+            AuthEnvLoadPolicy::CwdDotenvOverride,
+        ))
+        .expect("resolve secret");
+
+    assert_eq!(resolution.source(), Some(AuthSecretSource::Env));
+    assert_eq!(resolution.secret.expect("secret").secret(), "sk-from-env");
+    assert_eq!(keychain_store.secret_reads(), 0);
+}
+
+#[test]
+fn resolver_keychain_mode_skips_env() {
+    let env_probe = FakeEnvProbe::default();
+    env_probe.insert(Provider::OpenAI, "sk-from-env");
+    let keychain_store = FakeKeychainStore::default();
+    keychain_store
+        .write_keychain_secret(Provider::OpenAI, "sk-from-keychain")
+        .expect("write fake keychain");
+    let metadata_store = InMemoryAuthMetadataStore::new();
+    metadata_store
+        .save_provider_preference(&AuthProviderPreference {
+            provider: Provider::OpenAI,
+            source_mode: AuthSourceMode::Keychain,
+            env_file: None,
+        })
+        .expect("save preference");
+    let cache = ProcessSessionAuthSecretCache::new();
+    let resolver =
+        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &metadata_store, &cache);
+
+    let resolution = resolver
+        .resolve_secret(AuthSecretResolutionRequest::for_secret_use(
+            Provider::OpenAI,
+            AuthEnvLoadPolicy::ProcessOnly,
+        ))
+        .expect("resolve secret");
+
+    assert_eq!(resolution.source(), Some(AuthSecretSource::Keychain));
+    assert_eq!(
+        resolution.secret.expect("secret").secret(),
+        "sk-from-keychain"
+    );
+    assert_eq!(keychain_store.secret_reads(), 1);
+}
+
+#[test]
+fn resolver_none_mode_does_not_resolve_local_secret_sources() {
+    let env_probe = FakeEnvProbe::default();
+    env_probe.insert(Provider::OpenAI, "sk-from-env");
+    let keychain_store = FakeKeychainStore::default();
+    keychain_store
+        .write_keychain_secret(Provider::OpenAI, "sk-from-keychain")
+        .expect("write fake keychain");
+    let metadata_store = InMemoryAuthMetadataStore::new();
+    metadata_store
+        .save_provider_preference(&AuthProviderPreference {
+            provider: Provider::OpenAI,
+            source_mode: AuthSourceMode::None,
+            env_file: None,
+        })
+        .expect("save preference");
+    let cache = ProcessSessionAuthSecretCache::new();
+    let resolver =
+        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &metadata_store, &cache);
+
+    let resolution = resolver
+        .resolve_secret(AuthSecretResolutionRequest::for_secret_use(
+            Provider::OpenAI,
+            AuthEnvLoadPolicy::ProcessOnly,
+        ))
+        .expect("resolve secret");
+
+    assert_eq!(resolution.source(), None);
+    assert_eq!(keychain_store.secret_reads(), 0);
+}
+
+#[test]
 fn resolver_uses_provided_secret_before_env_and_keychain() {
     let env_probe = FakeEnvProbe::default();
     env_probe.insert(Provider::OpenAI, "sk-from-env");
@@ -110,7 +244,9 @@ fn resolver_uses_provided_secret_before_env_and_keychain() {
         .write_keychain_secret(Provider::OpenAI, "sk-from-keychain")
         .expect("write fake keychain");
     let cache = ProcessSessionAuthSecretCache::new();
-    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
+    let metadata_store = InMemoryAuthMetadataStore::new();
+    let resolver =
+        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &metadata_store, &cache);
 
     let resolution = resolver
         .resolve_secret(
@@ -144,7 +280,9 @@ fn resolver_does_not_cache_request_secret_without_cache_scope() {
     let env_probe = FakeEnvProbe::default();
     let keychain_store = FakeKeychainStore::default();
     let cache = ProcessSessionAuthSecretCache::new();
-    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
+    let metadata_store = InMemoryAuthMetadataStore::new();
+    let resolver =
+        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &metadata_store, &cache);
     let mut request = AuthSecretResolutionRequest::for_secret_use(
         Provider::Anthropic,
         AuthEnvLoadPolicy::ProcessOnly,
@@ -171,7 +309,9 @@ fn resolver_reads_keychain_once_then_uses_process_cache() {
         .write_keychain_secret(Provider::HuggingFace, "hf-keychain")
         .expect("write fake keychain");
     let cache = ProcessSessionAuthSecretCache::new();
-    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
+    let metadata_store = InMemoryAuthMetadataStore::new();
+    let resolver =
+        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &metadata_store, &cache);
     let request = AuthSecretResolutionRequest::for_secret_use(
         Provider::HuggingFace,
         AuthEnvLoadPolicy::ProcessOnly,
@@ -195,6 +335,13 @@ fn resolver_reads_keychain_once_then_uses_process_cache() {
 fn mutation_sets_metadata_cache_and_removes_all_local_auth_state() {
     let keychain_store = FakeKeychainStore::default();
     let metadata_store = InMemoryAuthMetadataStore::new();
+    metadata_store
+        .save_provider_preference(&AuthProviderPreference {
+            provider: Provider::Anthropic,
+            source_mode: AuthSourceMode::Keychain,
+            env_file: None,
+        })
+        .expect("save preference");
     let cache = ProcessSessionAuthSecretCache::new();
     let mutation = StdAuthSecretMutationUseCase::new(&keychain_store, &metadata_store, &cache);
 
@@ -245,6 +392,13 @@ fn mutation_sets_metadata_cache_and_removes_all_local_auth_state() {
         .load_cached_secret(Provider::Anthropic)
         .expect("load removed cache")
         .is_none());
+    assert_eq!(
+        metadata_store
+            .load_provider_preference(Provider::Anthropic)
+            .expect("load retained preference")
+            .source_mode,
+        AuthSourceMode::Keychain
+    );
 }
 
 #[tokio::test]
@@ -256,7 +410,8 @@ async fn validation_resolves_secret_validates_provider_and_updates_metadata() {
         .expect("write fake keychain");
     let metadata_store = InMemoryAuthMetadataStore::new();
     let cache = ProcessSessionAuthSecretCache::new();
-    let resolver = StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &cache);
+    let resolver =
+        StdAuthSecretResolverUseCase::new(&env_probe, &keychain_store, &metadata_store, &cache);
     let validator = FakeValidator {
         expected_secret: "sk-openai".to_string(),
         validation: AuthValidationState::Verified,

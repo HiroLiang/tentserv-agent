@@ -8,9 +8,10 @@ This document summarizes the current user-facing version. It is not a changelog 
 inspectable without turning support status into a hard runtime gate yet.
 
 The active `v0.8.0` runtime-profile track extends those diagnostics with
-runtime profile, execution backend, and copyable next-action details in
-`model inspect`, `server inspect`, and `doctor`. Long details stay in inspect
-or doctor detail blocks rather than expanding compact list tables.
+runtime profile, execution backend, copyable next-action details, startup
+gating, launch proof recording, and configurable provider auth source modes.
+Long details stay in inspect or doctor detail blocks rather than expanding
+compact list tables.
 
 What changed:
 

@@ -149,7 +149,7 @@ TENTGENT_HOME/runtime/auth.toml
 ```
 
 These files are local cached/state metadata, not user data identity.
-`auth.toml` must contain only non-secret provider metadata.
+`auth.toml` must contain only non-secret provider metadata and preferences.
 
 ## Features
 
@@ -790,7 +790,7 @@ back to the platform password prompt.
 - reading/writing/removing Keychain secrets
 - validating provider secrets
 - process-session secret caching
-- loading/saving non-secret auth metadata
+- loading/saving non-secret auth metadata and preferences
 
 Current lightweight auth infra includes `ProcessSessionAuthSecretCache`,
 `StdAuthEnvSecretProbe`, `InMemoryAuthMetadataStore`,
@@ -810,8 +810,8 @@ The store owns native unlock behavior; callers must not pass prompt
 preferences through domain or use-case request data.
 `ProcessSessionAuthSecretCache` is in-memory only and TTL-bounded; it must not
 be replaced with a persisted secret cache.
-File-backed auth metadata lives in `infra/metadata.rs` and writes
-`runtime/auth.toml`; it must never serialize secret material.
+File-backed auth metadata and preference state lives in `infra/metadata.rs` and
+writes `runtime/auth.toml`; it must never serialize secret material.
 Provider validation lives in `infra/validator.rs`: `reqwest` is the concrete
 HTTP client, while the package boundary remains `AuthSecretValidator`.
 

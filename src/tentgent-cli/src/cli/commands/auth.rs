@@ -1,4 +1,5 @@
 use clap::Subcommand;
+use std::path::PathBuf;
 
 #[derive(Debug, Subcommand)]
 pub enum AuthCommands {
@@ -7,9 +8,25 @@ pub enum AuthCommands {
         name = "status",
         visible_alias = "ls",
         about = "Show auth status for every provider.",
-        long_about = "Show auth status for every provider. Tentgent reports .env/env override state, keychain presence, effective source, and validation status without printing secret values."
+        long_about = "Show auth status for every provider. Tentgent reports auth mode, .env/env override state, keychain presence, effective source, and validation status without printing secret values."
     )]
     Status,
+    /// Show or set provider auth source modes.
+    #[command(
+        name = "mode",
+        about = "Show or set provider auth source modes.",
+        long_about = "Show or set provider auth source modes. Modes are non-secret preferences that control where Tentgent may resolve provider credentials from: auto, keychain, file, env, or none.",
+        after_help = "Examples:\n  tentgent auth mode\n  tentgent auth mode openai\n  tentgent auth mode openai env\n  tentgent auth mode gemini file --path ~/.config/tentgent/provider.env\n  tentgent auth mode anthropic none"
+    )]
+    Mode {
+        /// Provider to inspect or configure: hf, openai, anthropic, or gemini.
+        provider: Option<String>,
+        /// Auth mode to set: auto, keychain, file, env, or none.
+        mode: Option<String>,
+        /// Explicit env file path for file mode.
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
     /// Show, store, or remove the Hugging Face API key.
     #[command(
         name = "hf",

@@ -7,6 +7,10 @@ use crate::foundation::error::KernelResult;
 use super::mutation::{
     RemoveAuthSecretRequest, RemoveAuthSecretResult, SetAuthSecretRequest, SetAuthSecretResult,
 };
+use super::preference::{
+    AuthPreferenceListRequest, AuthPreferenceReport, AuthPreferenceRequest,
+    SetAuthPreferenceRequest,
+};
 use super::resolver::{AuthSecretResolution, AuthSecretResolutionRequest};
 use super::status::{AuthStatusReport, AuthStatusRequest};
 use super::validation::{AuthSecretValidationRequest, AuthSecretValidationResult};
@@ -39,6 +43,27 @@ pub trait AuthSecretMutationUseCase {
         &self,
         request: RemoveAuthSecretRequest,
     ) -> KernelResult<RemoveAuthSecretResult>;
+}
+
+/// Use-case boundary for non-secret provider auth preferences.
+pub trait AuthPreferenceUseCase {
+    /// Loads one provider preference, returning the default when unset.
+    fn get_preference(
+        &self,
+        request: AuthPreferenceRequest,
+    ) -> KernelResult<crate::features::auth::domain::AuthProviderPreference>;
+
+    /// Loads preferences for a provider set.
+    fn list_preferences(
+        &self,
+        request: AuthPreferenceListRequest,
+    ) -> KernelResult<AuthPreferenceReport>;
+
+    /// Saves one non-secret provider auth preference.
+    fn set_preference(
+        &self,
+        request: SetAuthPreferenceRequest,
+    ) -> KernelResult<crate::features::auth::domain::AuthProviderPreference>;
 }
 
 /// Use-case boundary for resolving and validating provider secrets.

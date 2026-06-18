@@ -409,6 +409,7 @@ struct CliDatasetKernel {
     runtime_resolver: StdPythonRuntimeResolver,
     env_probe: StdAuthEnvSecretProbe,
     keychain_store: SystemKeychainAuthSecretStore,
+    metadata_store: FileAuthMetadataStore,
     cache: ProcessSessionAuthSecretCache,
     layout_initializer: StdDatasetStoreLayoutInitializer,
     stager: StdDatasetSourceStager,
@@ -431,6 +432,7 @@ impl CliDatasetKernel {
             runtime_resolver: StdPythonRuntimeResolver,
             env_probe: StdAuthEnvSecretProbe,
             keychain_store: SystemKeychainAuthSecretStore::new(),
+            metadata_store: default_auth_metadata_store(),
             cache: ProcessSessionAuthSecretCache::new(),
             layout_initializer: StdDatasetStoreLayoutInitializer,
             stager: StdDatasetSourceStager,
@@ -496,7 +498,12 @@ impl CliDatasetKernel {
     }
 
     fn auth_resolver_usecase(&self) -> StdAuthSecretResolverUseCase<'_> {
-        StdAuthSecretResolverUseCase::new(&self.env_probe, &self.keychain_store, &self.cache)
+        StdAuthSecretResolverUseCase::new(
+            &self.env_probe,
+            &self.keychain_store,
+            &self.metadata_store,
+            &self.cache,
+        )
     }
 
     async fn validate_dataset_provider_auth(
@@ -561,6 +568,17 @@ impl CliDatasetKernel {
 struct DatasetProviderAuthPreflight {
     provider: Provider,
     source: AuthSecretSource,
+}
+
+fn default_auth_metadata_store() -> FileAuthMetadataStore {
+    let layout = StdRuntimeLayoutResolver
+        .resolve(RuntimeLayoutInput {
+            mode: LayoutResolveMode::Create,
+            home_dir: None,
+            data_root_dir: None,
+        })
+        .expect("runtime layout should resolve for auth metadata");
+    FileAuthMetadataStore::from_layout(&layout)
 }
 
 fn runtime_layout_input(mode: LayoutResolveMode) -> RuntimeLayoutInput {

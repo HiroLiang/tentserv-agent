@@ -150,6 +150,9 @@ async fn auth_status_lists_gemini_provider() {
     assert!(providers
         .iter()
         .any(|provider| provider["provider"] == "gemini"));
+    assert!(providers
+        .iter()
+        .all(|provider| provider["source_mode"] == "auto"));
 }
 
 #[tokio::test]

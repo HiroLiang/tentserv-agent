@@ -85,6 +85,42 @@ impl std::fmt::Display for AuthSecretSource {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AuthSourceMode {
+    Auto,
+    Keychain,
+    File,
+    Env,
+    None,
+}
+
+impl AuthSourceMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Keychain => "keychain",
+            Self::File => "file",
+            Self::Env => "env",
+            Self::None => "none",
+        }
+    }
+
+    pub const fn can_probe_env(self) -> bool {
+        matches!(self, Self::Auto | Self::File | Self::Env)
+    }
+
+    pub const fn can_probe_keychain(self) -> bool {
+        matches!(self, Self::Auto | Self::Keychain)
+    }
+}
+
+impl std::fmt::Display for AuthSourceMode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 pub(crate) fn normalize_secret_value(mut secret: String) -> Option<String> {
     let trimmed = secret.trim();
     if trimmed.is_empty() {
@@ -210,6 +246,7 @@ pub enum KeychainPresence {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthKeyStatus {
     pub provider: Provider,
+    pub preference: AuthProviderPreference,
     pub env_present: bool,
     pub keychain_presence: KeychainPresence,
     pub effective_source: Option<AuthSecretSource>,
@@ -224,6 +261,7 @@ impl AuthKeyStatus {
     ) -> Self {
         Self {
             provider,
+            preference: AuthProviderPreference::default_for(provider),
             env_present,
             keychain_presence,
             effective_source: effective_source(env_present, keychain_presence),
@@ -316,8 +354,8 @@ impl AuthSecretAccessPolicy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthProviderPreference {
     pub provider: Provider,
-    pub enabled: bool,
-    pub access_policy: AuthSecretAccessPolicy,
+    pub source_mode: AuthSourceMode,
+    pub env_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -333,8 +371,8 @@ impl AuthProviderPreference {
     pub const fn default_for(provider: Provider) -> Self {
         Self {
             provider,
-            enabled: true,
-            access_policy: AuthSecretAccessPolicy::resolve_for_use(),
+            source_mode: AuthSourceMode::Auto,
+            env_file: None,
         }
     }
 }
@@ -349,5 +387,23 @@ pub fn effective_source(
         Some(AuthSecretSource::Keychain)
     } else {
         None
+    }
+}
+
+pub fn effective_source_for_mode(
+    mode: AuthSourceMode,
+    env_present: bool,
+    keychain_presence: KeychainPresence,
+) -> Option<AuthSecretSource> {
+    match mode {
+        AuthSourceMode::Auto => effective_source(env_present, keychain_presence),
+        AuthSourceMode::File | AuthSourceMode::Env if env_present => Some(AuthSecretSource::Env),
+        AuthSourceMode::Keychain if keychain_presence == KeychainPresence::Present => {
+            Some(AuthSecretSource::Keychain)
+        }
+        AuthSourceMode::File
+        | AuthSourceMode::Env
+        | AuthSourceMode::Keychain
+        | AuthSourceMode::None => None,
     }
 }

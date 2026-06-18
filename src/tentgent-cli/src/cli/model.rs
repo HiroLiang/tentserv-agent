@@ -7,7 +7,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use miette::{miette, IntoDiagnostic, Result};
 use tentgent_kernel::features::auth::domain::{AuthEnvLoadPolicy, Provider};
 use tentgent_kernel::features::auth::infra::{
-    ProcessSessionAuthSecretCache, StdAuthEnvSecretProbe, SystemKeychainAuthSecretStore,
+    FileAuthMetadataStore, ProcessSessionAuthSecretCache, StdAuthEnvSecretProbe,
+    SystemKeychainAuthSecretStore,
 };
 use tentgent_kernel::features::auth::usecases::{
     AuthSecretResolutionRequest, StdAuthSecretResolverUseCase,
@@ -42,7 +43,7 @@ use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::StdPythonRuntimeResolver;
 use tentgent_kernel::foundation::error::KernelError;
 use tentgent_kernel::foundation::layout::{
-    LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver,
+    LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
 };
 
 use super::app::Cli;
@@ -385,6 +386,7 @@ struct CliModelKernel {
     runtime_resolver: StdPythonRuntimeResolver,
     env_probe: StdAuthEnvSecretProbe,
     keychain_store: SystemKeychainAuthSecretStore,
+    metadata_store: FileAuthMetadataStore,
     cache: ProcessSessionAuthSecretCache,
     layout_initializer: StdModelStoreLayoutInitializer,
     stager: StdModelSourceStager,
@@ -406,6 +408,7 @@ impl CliModelKernel {
             runtime_resolver: StdPythonRuntimeResolver,
             env_probe: StdAuthEnvSecretProbe,
             keychain_store: SystemKeychainAuthSecretStore::new(),
+            metadata_store: default_auth_metadata_store(),
             cache: ProcessSessionAuthSecretCache::new(),
             layout_initializer: StdModelStoreLayoutInitializer,
             stager: StdModelSourceStager,
@@ -481,8 +484,24 @@ impl CliModelKernel {
     }
 
     fn auth_resolver_usecase(&self) -> StdAuthSecretResolverUseCase<'_> {
-        StdAuthSecretResolverUseCase::new(&self.env_probe, &self.keychain_store, &self.cache)
+        StdAuthSecretResolverUseCase::new(
+            &self.env_probe,
+            &self.keychain_store,
+            &self.metadata_store,
+            &self.cache,
+        )
     }
+}
+
+fn default_auth_metadata_store() -> FileAuthMetadataStore {
+    let layout = StdRuntimeLayoutResolver
+        .resolve(RuntimeLayoutInput {
+            mode: LayoutResolveMode::Create,
+            home_dir: None,
+            data_root_dir: None,
+        })
+        .expect("runtime layout should resolve for auth metadata");
+    FileAuthMetadataStore::from_layout(&layout)
 }
 
 fn runtime_layout_input(mode: LayoutResolveMode) -> RuntimeLayoutInput {

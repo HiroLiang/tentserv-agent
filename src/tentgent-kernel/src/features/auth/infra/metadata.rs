@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use crate::features::auth::domain::{AuthProviderMetadata, Provider};
+use crate::features::auth::domain::{AuthProviderMetadata, AuthProviderPreference, Provider};
 use crate::features::auth::ports::AuthMetadataStore;
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayout;
@@ -18,6 +18,7 @@ const AUTH_METADATA_SCHEMA_VERSION: u32 = 1;
 #[derive(Debug, Default)]
 pub struct InMemoryAuthMetadataStore {
     metadata: Mutex<HashMap<Provider, AuthProviderMetadata>>,
+    preferences: Mutex<HashMap<Provider, AuthProviderPreference>>,
 }
 
 impl InMemoryAuthMetadataStore {
@@ -70,6 +71,21 @@ impl AuthMetadataStore for FileAuthMetadataStore {
             .retain(|metadata| metadata.provider != provider);
         write_document(&self.path, &document)
     }
+
+    fn load_provider_preference(&self, provider: Provider) -> KernelResult<AuthProviderPreference> {
+        let document = read_document(&self.path)?;
+        Ok(document
+            .preferences
+            .into_iter()
+            .find(|preference| preference.provider == provider)
+            .unwrap_or_else(|| AuthProviderPreference::default_for(provider)))
+    }
+
+    fn save_provider_preference(&self, preference: &AuthProviderPreference) -> KernelResult<()> {
+        let mut document = read_document(&self.path)?;
+        upsert_provider_preference(&mut document, preference.clone());
+        write_document(&self.path, &document)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +93,8 @@ struct AuthMetadataDocument {
     schema_version: u32,
     #[serde(default)]
     providers: Vec<AuthProviderMetadata>,
+    #[serde(default)]
+    preferences: Vec<AuthProviderPreference>,
 }
 
 impl Default for AuthMetadataDocument {
@@ -84,6 +102,7 @@ impl Default for AuthMetadataDocument {
         Self {
             schema_version: AUTH_METADATA_SCHEMA_VERSION,
             providers: Vec::new(),
+            preferences: Vec::new(),
         }
     }
 }
@@ -144,6 +163,21 @@ fn upsert_provider_metadata(document: &mut AuthMetadataDocument, metadata: AuthP
     }
 }
 
+fn upsert_provider_preference(
+    document: &mut AuthMetadataDocument,
+    preference: AuthProviderPreference,
+) {
+    if let Some(existing) = document
+        .preferences
+        .iter_mut()
+        .find(|existing| existing.provider == preference.provider)
+    {
+        *existing = preference;
+    } else {
+        document.preferences.push(preference);
+    }
+}
+
 impl AuthMetadataStore for InMemoryAuthMetadataStore {
     fn load_provider_metadata(
         &self,
@@ -168,6 +202,24 @@ impl AuthMetadataStore for InMemoryAuthMetadataStore {
             KernelError::RuntimeStateUnavailable("auth metadata store lock is poisoned".to_string())
         })?;
         metadata.remove(&provider);
+        Ok(())
+    }
+
+    fn load_provider_preference(&self, provider: Provider) -> KernelResult<AuthProviderPreference> {
+        let preferences = self.preferences.lock().map_err(|_| {
+            KernelError::RuntimeStateUnavailable("auth metadata store lock is poisoned".to_string())
+        })?;
+        Ok(preferences
+            .get(&provider)
+            .cloned()
+            .unwrap_or_else(|| AuthProviderPreference::default_for(provider)))
+    }
+
+    fn save_provider_preference(&self, preference: &AuthProviderPreference) -> KernelResult<()> {
+        let mut preferences = self.preferences.lock().map_err(|_| {
+            KernelError::RuntimeStateUnavailable("auth metadata store lock is poisoned".to_string())
+        })?;
+        preferences.insert(preference.provider, preference.clone());
         Ok(())
     }
 }

@@ -71,10 +71,10 @@ Missing runtime-home states should be reported with stable warning codes such as
 
 ## Auth Metadata
 
-`runtime/auth.toml` stores non-secret provider auth metadata such as keychain
-presence, validation state, and last update/validation timestamps. It must not
-contain provider secret values, daemon bearer tokens, or request-provided
-provider keys.
+`runtime/auth.toml` stores non-secret provider auth metadata and preferences
+such as keychain presence, validation state, source mode, explicit auth env file
+path, and last update/validation timestamps. It must not contain provider secret
+values, daemon bearer tokens, or request-provided provider keys.
 
 ## Runtime Jobs And Workspaces
 

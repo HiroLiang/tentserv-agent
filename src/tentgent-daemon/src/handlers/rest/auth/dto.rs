@@ -14,6 +14,7 @@ pub struct AuthProviderResponse {
 pub struct AuthProviderItem {
     pub provider: String,
     pub display_name: String,
+    pub source_mode: String,
     pub env_present: bool,
     pub keychain_present: bool,
     pub effective_source: Option<String>,

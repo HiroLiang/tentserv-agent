@@ -2,6 +2,7 @@
 
 pub mod mutation;
 pub mod port;
+pub mod preference;
 pub mod resolver;
 pub mod status;
 pub mod validation;
@@ -14,8 +15,12 @@ pub use mutation::{
     StdAuthSecretMutationUseCase,
 };
 pub use port::{
-    AuthSecretMutationUseCase, AuthSecretResolverUseCase, AuthSecretValidationUseCase,
-    AuthStatusUseCase, AuthUseCaseFuture,
+    AuthPreferenceUseCase, AuthSecretMutationUseCase, AuthSecretResolverUseCase,
+    AuthSecretValidationUseCase, AuthStatusUseCase, AuthUseCaseFuture,
+};
+pub use preference::{
+    AuthPreferenceListRequest, AuthPreferenceReport, AuthPreferenceRequest,
+    SetAuthPreferenceRequest, StdAuthPreferenceUseCase,
 };
 pub use resolver::{
     AuthSecretResolution, AuthSecretResolutionRequest, StdAuthSecretResolverUseCase,

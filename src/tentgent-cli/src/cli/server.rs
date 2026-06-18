@@ -56,7 +56,8 @@ use tentgent_kernel::features::server::usecases::{
     ServerResolveForStartRequest, ServerSpecUseCase, ServerStopRequest, StdServerUseCase,
 };
 use tentgent_kernel::foundation::layout::{
-    LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput, StdRuntimeLayoutResolver,
+    LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput, RuntimeLayoutResolver,
+    StdRuntimeLayoutResolver,
 };
 
 use super::app::Cli;
@@ -705,6 +706,7 @@ struct CliServerKernel {
     executable_resolver: StdRuntimeExecutableResolver,
     auth_env_probe: StdAuthEnvSecretProbe,
     auth_keychain_store: SystemKeychainAuthSecretStore,
+    auth_metadata_store: FileAuthMetadataStore,
     auth_cache: ProcessSessionAuthSecretCache,
     auth_validator: ReqwestAuthSecretValidator,
     server_initializer: StdServerStoreLayoutInitializer,
@@ -725,6 +727,7 @@ impl CliServerKernel {
             executable_resolver: StdRuntimeExecutableResolver,
             auth_env_probe: StdAuthEnvSecretProbe,
             auth_keychain_store: SystemKeychainAuthSecretStore::new(),
+            auth_metadata_store: default_auth_metadata_store(),
             auth_cache: ProcessSessionAuthSecretCache::new(),
             auth_validator: ReqwestAuthSecretValidator::new()
                 .expect("auth validation HTTP client should be constructible"),
@@ -780,9 +783,21 @@ impl CliServerKernel {
         StdAuthSecretResolverUseCase::new(
             &self.auth_env_probe,
             &self.auth_keychain_store,
+            &self.auth_metadata_store,
             &self.auth_cache,
         )
     }
+}
+
+fn default_auth_metadata_store() -> FileAuthMetadataStore {
+    let layout = StdRuntimeLayoutResolver
+        .resolve(RuntimeLayoutInput {
+            mode: LayoutResolveMode::Create,
+            home_dir: None,
+            data_root_dir: None,
+        })
+        .expect("runtime layout should resolve for auth metadata");
+    FileAuthMetadataStore::from_layout(&layout)
 }
 
 fn server_model_support_lines(

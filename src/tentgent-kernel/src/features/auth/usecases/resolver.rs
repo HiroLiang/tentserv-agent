@@ -2,9 +2,11 @@
 
 use crate::features::auth::domain::{
     normalize_secret_value, AuthEnvLoadPolicy, AuthSecretAccessPolicy, AuthSecretMaterial,
-    AuthSecretSource, Provider,
+    AuthSecretSource, AuthSourceMode, Provider,
 };
-use crate::features::auth::ports::{AuthEnvSecretProbe, AuthKeychainSecretStore, AuthSecretCache};
+use crate::features::auth::ports::{
+    AuthEnvSecretProbe, AuthKeychainSecretStore, AuthMetadataStore, AuthSecretCache,
+};
 use crate::foundation::error::{KernelError, KernelResult};
 
 use super::port::AuthSecretResolverUseCase;
@@ -69,6 +71,7 @@ impl AuthSecretResolution {
 pub struct StdAuthSecretResolverUseCase<'a> {
     env_probe: &'a dyn AuthEnvSecretProbe,
     keychain_store: &'a dyn AuthKeychainSecretStore,
+    metadata_store: &'a dyn AuthMetadataStore,
     cache: &'a dyn AuthSecretCache,
 }
 
@@ -76,11 +79,13 @@ impl<'a> StdAuthSecretResolverUseCase<'a> {
     pub fn new(
         env_probe: &'a dyn AuthEnvSecretProbe,
         keychain_store: &'a dyn AuthKeychainSecretStore,
+        metadata_store: &'a dyn AuthMetadataStore,
         cache: &'a dyn AuthSecretCache,
     ) -> Self {
         Self {
             env_probe,
             keychain_store,
+            metadata_store,
             cache,
         }
     }
@@ -110,27 +115,78 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
             });
         }
 
-        if let Some(env_secret) = self
-            .env_probe
-            .probe_env_secret(request.provider, request.env_policy)?
-        {
-            return Ok(AuthSecretResolution {
-                provider: request.provider,
-                secret: Some(env_secret.into_secret_material()),
-                keychain_read_attempted: false,
-            });
-        }
+        let preference = self
+            .metadata_store
+            .load_provider_preference(request.provider)?;
 
-        if request.access_policy.should_cache_for_process() {
-            if let Some(secret) = self.cache.load_cached_secret(request.provider)? {
+        match preference.source_mode {
+            AuthSourceMode::Auto => {
+                if let Some(env_secret) = self
+                    .env_probe
+                    .probe_env_secret(request.provider, request.env_policy.clone())?
+                {
+                    return Ok(AuthSecretResolution {
+                        provider: request.provider,
+                        secret: Some(env_secret.into_secret_material()),
+                        keychain_read_attempted: false,
+                    });
+                }
+
+                if request.access_policy.should_cache_for_process() {
+                    if let Some(secret) = self.cache.load_cached_secret(request.provider)? {
+                        return Ok(AuthSecretResolution {
+                            provider: request.provider,
+                            secret: Some(secret),
+                            keychain_read_attempted: false,
+                        });
+                    }
+                }
+
+                self.resolve_keychain_secret(request)
+            }
+            AuthSourceMode::Env => {
+                let secret = self
+                    .env_probe
+                    .probe_env_secret(request.provider, AuthEnvLoadPolicy::ProcessOnly)?
+                    .map(|secret| secret.into_secret_material());
                 return Ok(AuthSecretResolution {
                     provider: request.provider,
-                    secret: Some(secret),
+                    secret,
                     keychain_read_attempted: false,
                 });
             }
+            AuthSourceMode::File => {
+                let secret = match preference.env_file {
+                    Some(path) => self
+                        .env_probe
+                        .probe_env_secret(
+                            request.provider,
+                            AuthEnvLoadPolicy::ExplicitDotenvOverride { path },
+                        )?
+                        .map(|secret| secret.into_secret_material()),
+                    None => None,
+                };
+                return Ok(AuthSecretResolution {
+                    provider: request.provider,
+                    secret,
+                    keychain_read_attempted: false,
+                });
+            }
+            AuthSourceMode::Keychain => self.resolve_keychain_secret(request),
+            AuthSourceMode::None => Ok(AuthSecretResolution {
+                provider: request.provider,
+                secret: None,
+                keychain_read_attempted: false,
+            }),
         }
+    }
+}
 
+impl StdAuthSecretResolverUseCase<'_> {
+    fn resolve_keychain_secret(
+        &self,
+        request: AuthSecretResolutionRequest,
+    ) -> KernelResult<AuthSecretResolution> {
         if !request.access_policy.may_read_keychain_secret() {
             return Ok(AuthSecretResolution {
                 provider: request.provider,
@@ -138,7 +194,6 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
                 keychain_read_attempted: false,
             });
         }
-
         let secret = self
             .keychain_store
             .read_keychain_secret(request.provider, request.access_policy)?

@@ -292,6 +292,33 @@ HF_TOKEN="your token" tentgent model pull hf-internal-testing/tiny-random-gpt2 -
 
 One-shot environment variables apply only to that command and do not need `unset`.
 
+For repeatable non-Keychain behavior, set a provider auth source mode:
+
+```bash
+tentgent auth mode openai env
+tentgent auth mode gemini file --path ~/.config/tentgent/provider.env
+tentgent auth mode anthropic none
+```
+
+`env` reads only process environment variables. This is the preferred mode when
+OpenShell or another launcher injects standard provider variables into the
+Tentgent process. `file` reads only the explicit env file path configured for
+that provider. `none` disables local provider auth resolution and returns
+predictable missing-auth behavior.
+
+The configured auth file uses dotenv-style provider variables:
+
+```dotenv
+HF_TOKEN=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
+```
+
+A future OpenShell-managed provider gateway is a separate serving boundary. If
+OpenShell supplies `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or
+`HF_TOKEN` directly to the Tentgent process, use `env`.
+
 On platforms where native secret storage is unsupported or unavailable,
 Tentgent should not store provider keys in plaintext files. Use environment
 variables for repeatable headless flows. Commands that need a provider key may

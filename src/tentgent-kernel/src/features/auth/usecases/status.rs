@@ -1,8 +1,8 @@
 //! Auth status use case.
 
 use crate::features::auth::domain::{
-    effective_source, AuthEnvLoadPolicy, AuthKeyStatus, AuthProviderMetadata, AuthValidationState,
-    KeychainPresence, Provider,
+    effective_source_for_mode, AuthEnvLoadPolicy, AuthKeyStatus, AuthProviderMetadata,
+    AuthSourceMode, AuthValidationState, KeychainPresence, Provider,
 };
 use crate::features::auth::ports::{
     AuthEnvSecretProbe, AuthKeychainSecretStore, AuthMetadataStore,
@@ -79,11 +79,27 @@ impl AuthStatusUseCase for StdAuthStatusUseCase<'_> {
         let mut statuses = Vec::with_capacity(request.providers.len());
 
         for provider in request.providers {
-            let env_secret = self
-                .env_probe
-                .probe_env_secret(provider, request.env_policy.clone())?;
+            let preference = self.metadata_store.load_provider_preference(provider)?;
+            let env_secret = match preference.source_mode {
+                AuthSourceMode::Auto => self
+                    .env_probe
+                    .probe_env_secret(provider, request.env_policy.clone())?,
+                AuthSourceMode::Env => self
+                    .env_probe
+                    .probe_env_secret(provider, AuthEnvLoadPolicy::ProcessOnly)?,
+                AuthSourceMode::File => match preference.env_file.clone() {
+                    Some(path) => self.env_probe.probe_env_secret(
+                        provider,
+                        AuthEnvLoadPolicy::ExplicitDotenvOverride { path },
+                    )?,
+                    None => None,
+                },
+                AuthSourceMode::Keychain | AuthSourceMode::None => None,
+            };
             let metadata = self.metadata_store.load_provider_metadata(provider)?;
-            let keychain_presence = if request.probe_keychain_presence {
+            let keychain_presence = if !preference.source_mode.can_probe_keychain() {
+                KeychainPresence::Unknown
+            } else if request.probe_keychain_presence {
                 let presence = self.keychain_store.keychain_presence(provider)?;
                 self.save_keychain_presence(provider, presence, metadata.as_ref())?;
                 presence
@@ -94,11 +110,13 @@ impl AuthStatusUseCase for StdAuthStatusUseCase<'_> {
                     .unwrap_or(KeychainPresence::Unknown)
             };
             let env_present = env_secret.is_some();
-            let effective_source = effective_source(env_present, keychain_presence);
+            let effective_source =
+                effective_source_for_mode(preference.source_mode, env_present, keychain_presence);
             let validation = status_validation(effective_source.is_some(), metadata.as_ref());
 
             statuses.push(AuthKeyStatus {
                 provider,
+                preference,
                 env_present,
                 keychain_presence,
                 effective_source,
