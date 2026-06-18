@@ -175,7 +175,8 @@ pulling a model. See
 [docs/user/commands.md](./docs/user/commands.md#models-and-chat) for full
 model, adapter, dataset, and chat command examples.
 `model ls` keeps support status compact, while `model inspect` shows the full
-per-capability proof, hint, backend, and reason details.
+per-capability proof, hint, runtime profile, backend, reason, and next-action
+details.
 `model capability proofs` lists local verification and launch evidence. Use
 `model capability proof clear <model-ref> <capability>` after fixing a runtime
 problem to remove failed proof evidence before retrying a local server start.
@@ -218,6 +219,9 @@ capability proof metadata so `tentgent model capability proofs <model-ref>` can
 show which capability paths have launched or failed locally. If a failed proof
 blocks retry after you fix the runtime environment, clear it with
 `tentgent model capability proof clear <model-ref> <capability>`.
+`server inspect` and `doctor` surface the same runtime-profile and backend
+diagnostics, including copyable next-action commands for failed, stale,
+unknown, or unsupported local tuples.
 
 Cloud provider servers are paused until they are ported to the model runtime
 HTTP boundary.
@@ -244,9 +248,10 @@ model-ref based native and compatibility chat routes. For server chat request
 and adapter rules, see [docs/contracts/server-chat.md](./docs/contracts/server-chat.md).
 For local model-bound servers, `server ls` shows compact model short refs and
 `server inspect` shows the full bound model plus selected-capability support
-status. Local chat and embedding server specs also show the selected runtime
-profile, such as `local-chat-mlx-v1` or
-`local-embedding-transformers-peft-v1`, when profile metadata is recorded.
+status, runtime profile, runtime profile version, execution backend, and next
+action when operator work is needed. Local chat and embedding server specs show
+selected runtime profiles such as `local-chat-mlx-v1` or
+`local-embedding-transformers-peft-v1` when profile metadata is recorded.
 
 ## Start And Stop The Daemon
 

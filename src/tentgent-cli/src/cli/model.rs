@@ -49,7 +49,7 @@ use super::app::Cli;
 use super::commands::{ModelCapabilityCommands, ModelCapabilityProofCommands, ModelCommands};
 use super::display::format_bytes;
 use super::model_support::{
-    model_support_detail_lines, model_support_list_label, model_support_summaries,
+    model_support_diagnostic_lines, model_support_list_label, model_support_summaries,
 };
 
 pub fn handle_model_command(action: ModelCommands) -> Result<()> {
@@ -900,7 +900,7 @@ fn add_model_support_status_rows(
     }
 
     for (index, summary) in summaries.into_iter().enumerate() {
-        let mut lines = model_support_detail_lines(&summary);
+        let mut lines = model_support_diagnostic_lines(&summary, Some(&metadata.short_ref));
         if index > 0 {
             lines.insert(0, String::new());
         }

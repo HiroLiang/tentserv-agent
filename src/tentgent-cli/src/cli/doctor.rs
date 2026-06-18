@@ -50,7 +50,10 @@ use tentgent_kernel::{
 
 use super::{
     commands::DoctorCommand,
-    model_support::{model_support_summaries, support_status_is_healthy, ModelSupportSummary},
+    model_support::{
+        model_support_next_action, model_support_summaries, support_status_is_healthy,
+        ModelSupportSummary,
+    },
     runtime_footprint::{collect_runtime_footprint_best_effort, FootprintEntry},
 };
 
@@ -333,17 +336,27 @@ fn model_support_warning_check(
             summary.capability.as_str()
         ),
         DoctorCheckStatus::Warn,
-        model_support_warning_detail(summary),
+        model_support_warning_detail(summary, short_ref),
     ))
 }
 
-fn model_support_warning_detail(summary: &ModelSupportSummary) -> String {
-    format!(
-        "{} via {}: {}",
+fn model_support_warning_detail(summary: &ModelSupportSummary, short_ref: &str) -> String {
+    let mut detail = format!(
+        "{} via {}: {}; execution_backend: {}",
         summary.status.as_str(),
         summary.evidence.as_str(),
-        summary.short_reason()
-    )
+        summary.short_reason(),
+        summary.backend,
+    );
+    if let Some(profile) = summary.runtime_profile_label() {
+        detail.push_str("; runtime_profile: ");
+        detail.push_str(&profile);
+    }
+    if let Some(action) = model_support_next_action(summary, Some(short_ref)) {
+        detail.push_str("; next_action: ");
+        detail.push_str(&action);
+    }
+    detail
 }
 
 fn render_repair_summary(
@@ -519,7 +532,10 @@ mod tests {
         assert_eq!(check.status, DoctorCheckStatus::Warn);
         assert_eq!(check.category, DoctorCheckCategory::Capability);
         assert_eq!(check.name, "model support: abc123abc123 chat");
-        assert_eq!(check.detail, "failed via local-proof: runtime failed");
+        assert_eq!(
+            check.detail,
+            "failed via local-proof: runtime failed; execution_backend: mlx-lm; next_action: tentgent model capability proof clear abc123abc123 chat"
+        );
     }
 
     #[test]
@@ -539,6 +555,8 @@ mod tests {
             backend: "mlx-lm".to_string(),
             mlx_runtime_family: None,
             runtime_version: None,
+            runtime_profile: None,
+            runtime_profile_version: None,
             reason: "latest local proof failed chat".to_string(),
             stale_reason: None,
             failure_reason,

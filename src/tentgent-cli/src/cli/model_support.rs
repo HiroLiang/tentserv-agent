@@ -17,6 +17,8 @@ pub struct ModelSupportSummary {
     pub backend: String,
     pub mlx_runtime_family: Option<MlxRuntimeFamily>,
     pub runtime_version: Option<String>,
+    pub runtime_profile: Option<String>,
+    pub runtime_profile_version: Option<u32>,
     pub reason: String,
     pub stale_reason: Option<String>,
     pub failure_reason: Option<String>,
@@ -34,19 +36,41 @@ impl ModelSupportSummary {
             .filter(|reason| !reason.is_empty())
             .unwrap_or(&self.reason)
     }
+
+    pub fn runtime_profile_label(&self) -> Option<String> {
+        match (
+            self.runtime_profile.as_deref(),
+            self.runtime_profile_version,
+        ) {
+            (Some(profile), Some(version)) => Some(format!("{profile}@v{version}")),
+            (Some(profile), None) => Some(profile.to_string()),
+            (None, _) => None,
+        }
+    }
 }
 
 pub fn model_support_summaries(
     metadata: &ModelMetadata,
     proofs: &[ModelCapabilityProof],
 ) -> Vec<ModelSupportSummary> {
+    model_support_summaries_with_runtime_profile(metadata, proofs, None)
+}
+
+pub fn model_support_summaries_with_runtime_profile(
+    metadata: &ModelMetadata,
+    proofs: &[ModelCapabilityProof],
+    runtime_profile: Option<(&str, u32)>,
+) -> Vec<ModelSupportSummary> {
     let hints = built_in_support_hints_for_model(metadata);
     inspect_capabilities(metadata, proofs)
         .into_iter()
         .map(|capability| {
-            let query = ModelSupportQuery::from_metadata(metadata, capability);
+            let mut query = ModelSupportQuery::from_metadata(metadata, capability);
+            if let Some((profile, version)) = runtime_profile {
+                query = query.with_runtime_profile(profile, version);
+            }
             let resolution = ModelSupportStatusResolver.resolve(metadata, &query, proofs, &hints);
-            support_summary_from_resolution(metadata, capability, query, resolution)
+            support_summary_from_resolution(metadata, capability, query, resolution, proofs)
         })
         .collect()
 }
@@ -84,9 +108,12 @@ pub fn model_support_detail_lines(summary: &ModelSupportSummary) -> Vec<String> 
         format!("declared: {}", if summary.declared { "yes" } else { "no" }),
         format!("status: {}", summary.status.as_str()),
         format!("evidence: {}", summary.evidence.as_str()),
-        format!("backend: {}", summary.backend),
+        format!("execution_backend: {}", summary.backend),
     ];
 
+    if let Some(profile) = summary.runtime_profile_label() {
+        lines.push(format!("runtime_profile: {profile}"));
+    }
     if let Some(family) = summary.mlx_runtime_family {
         lines.push(format!("mlx_runtime_family: {}", family.as_str()));
     }
@@ -106,6 +133,38 @@ pub fn model_support_detail_lines(summary: &ModelSupportSummary) -> Vec<String> 
     lines
 }
 
+pub fn model_support_diagnostic_lines(
+    summary: &ModelSupportSummary,
+    model_ref: Option<&str>,
+) -> Vec<String> {
+    let mut lines = model_support_detail_lines(summary);
+    if let Some(action) = model_support_next_action(summary, model_ref) {
+        lines.push(format!("next_action: {action}"));
+    }
+    lines
+}
+
+pub fn model_support_next_action(
+    summary: &ModelSupportSummary,
+    model_ref: Option<&str>,
+) -> Option<String> {
+    let model_ref = model_ref?;
+    let capability = summary.capability.as_str();
+    match summary.status {
+        ModelSupportStatus::Failed | ModelSupportStatus::Stale => Some(format!(
+            "tentgent model capability proof clear {model_ref} {capability}"
+        )),
+        ModelSupportStatus::Unknown => Some(format!(
+            "tentgent model capability verify {model_ref} {capability}"
+        )),
+        ModelSupportStatus::Unsupported if !summary.declared => Some(format!(
+            "tentgent model capability add {model_ref} {capability}"
+        )),
+        ModelSupportStatus::Unsupported => Some(format!("tentgent model inspect {model_ref}")),
+        ModelSupportStatus::Verified | ModelSupportStatus::Supported => None,
+    }
+}
+
 pub fn support_status_is_healthy(status: ModelSupportStatus) -> bool {
     matches!(
         status,
@@ -118,7 +177,17 @@ fn support_summary_from_resolution(
     capability: ModelCapability,
     query: ModelSupportQuery,
     resolution: ModelSupportResolution,
+    proofs: &[ModelCapabilityProof],
 ) -> ModelSupportSummary {
+    let proof_profile = latest_proof_runtime_profile(metadata, &query, proofs);
+    let runtime_profile = query.runtime_profile.clone().or_else(|| {
+        proof_profile
+            .as_ref()
+            .and_then(|(profile, _)| profile.clone())
+    });
+    let runtime_profile_version = query
+        .runtime_profile_version
+        .or_else(|| proof_profile.and_then(|(_, version)| version));
     ModelSupportSummary {
         capability,
         declared: metadata.supports_capability(capability),
@@ -127,10 +196,30 @@ fn support_summary_from_resolution(
         backend: query.backend,
         mlx_runtime_family: query.mlx_runtime_family,
         runtime_version: query.runtime_version,
+        runtime_profile,
+        runtime_profile_version,
         reason: resolution.reason,
         stale_reason: resolution.stale_reason,
         failure_reason: resolution.failure_reason,
     }
+}
+
+fn latest_proof_runtime_profile(
+    metadata: &ModelMetadata,
+    query: &ModelSupportQuery,
+    proofs: &[ModelCapabilityProof],
+) -> Option<(Option<String>, Option<u32>)> {
+    proofs
+        .iter()
+        .rev()
+        .find(|proof| {
+            proof.model_ref == metadata.model_ref
+                && proof.capability == query.capability
+                && proof.primary_format == query.primary_format
+                && proof.mlx_runtime_family == query.mlx_runtime_family
+                && proof.backend == query.backend
+        })
+        .map(|proof| (proof.runtime_profile.clone(), proof.runtime_profile_version))
 }
 
 fn inspect_capabilities(
@@ -210,8 +299,87 @@ mod tests {
 
         assert!(lines.iter().any(|line| line == "chat"));
         assert!(lines.iter().any(|line| line == "status: unknown"));
-        assert!(lines.iter().any(|line| line == "backend: safetensors"));
+        assert!(!lines
+            .iter()
+            .any(|line| line.starts_with("runtime_profile:")));
+        assert!(lines
+            .iter()
+            .any(|line| line == "execution_backend: safetensors"));
         assert!(lines.iter().any(|line| line.starts_with("reason: ")));
+    }
+
+    #[test]
+    fn profile_aware_summary_includes_selected_runtime_profile() {
+        let metadata = metadata_with_capabilities([ModelCapability::Chat]);
+        let summary = model_support_summaries_with_runtime_profile(
+            &metadata,
+            &[],
+            Some(("local-chat-mlx-v1", 1)),
+        )
+        .into_iter()
+        .next()
+        .expect("support summary");
+        let lines = model_support_detail_lines(&summary);
+
+        assert!(lines
+            .iter()
+            .any(|line| line == "runtime_profile: local-chat-mlx-v1@v1"));
+    }
+
+    #[test]
+    fn detail_lines_include_profile_recorded_by_latest_proof() {
+        let metadata = metadata_with_capabilities([ModelCapability::Chat]);
+        let mut proof = proof_for(
+            &metadata,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Verified,
+            None,
+        );
+        proof.runtime_profile = Some("local-chat-transformers-peft-v1".to_string());
+        proof.runtime_profile_version = Some(2);
+        let summary = model_support_summaries(&metadata, &[proof])
+            .into_iter()
+            .next()
+            .expect("support summary");
+        let lines = model_support_detail_lines(&summary);
+
+        assert!(lines
+            .iter()
+            .any(|line| line == "runtime_profile: local-chat-transformers-peft-v1@v2"));
+    }
+
+    #[test]
+    fn diagnostic_lines_include_copyable_next_action_for_unknown_support() {
+        let metadata = metadata_with_capabilities([ModelCapability::Chat]);
+        let summary = model_support_summaries(&metadata, &[])
+            .into_iter()
+            .next()
+            .expect("support summary");
+        let lines = model_support_diagnostic_lines(&summary, Some(&metadata.short_ref));
+
+        assert!(lines.iter().any(|line| {
+            line == "next_action: tentgent model capability verify 0123456789ab chat"
+        }));
+    }
+
+    #[test]
+    fn next_action_clears_failed_proofs() {
+        let metadata = metadata_with_capabilities([ModelCapability::Chat]);
+        let proofs = vec![proof_for(
+            &metadata,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Failed,
+            Some("runtime failed".to_string()),
+        )];
+        let summary = model_support_summaries(&metadata, &proofs)
+            .into_iter()
+            .next()
+            .expect("support summary");
+
+        assert_eq!(
+            model_support_next_action(&summary, Some("0123456789ab")).as_deref(),
+            Some("tentgent model capability proof clear 0123456789ab chat")
+        );
     }
 
     #[test]
