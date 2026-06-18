@@ -42,6 +42,10 @@ one pass without a staged breakdown.
   Focused roadmap for OpenAI, Claude/Anthropic, and Gemini-compatible API
   surfaces, model support records, runtime parameter profiles, verification
   gates, bounded dynamic routing, and the staged path to `1.0.0`.
+- [v0.9.0-hardening-plan.md](./v0.9.0-hardening-plan.md)
+  Active `v0.9.0` execution plan for 1.0 hardening, stable/experimental API
+  audit, conformance smoke coverage, runtime recovery, cleanup, support proof
+  retry behavior, and release closeout.
 
 ## Deferred Plans
 

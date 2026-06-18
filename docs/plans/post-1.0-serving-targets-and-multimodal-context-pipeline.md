@@ -37,7 +37,7 @@ server:
   port: 8790
 auth:
   mode: auto
-  dotenv: .env
+  secret_file: .env
   allow_openshell_broker: true
 routes:
   chat:
@@ -77,20 +77,28 @@ bounded context artifact, and then appended to the chat model input.
 
 ## Auth Source Strategy
 
+As of `v0.8.0`, normal provider auth resolution already supports `auto`,
+`keychain`, `file`, `env`, and `none` modes outside cluster targets. Cluster
+work should reuse that foundation instead of introducing a second secret
+resolver.
+
 Cluster targets should support multiple auth source modes because they may run
 inside normal local shells, restricted shells, and future OpenShell-managed
 agent environments:
 
 - `keychain`: read provider secrets only through Tentgent-managed Keychain or
   equivalent OS secret storage.
+- `file`: read provider secrets from an explicitly configured local secret
+  file.
 - `env`: read process environment variables only.
-- `dotenv`: load an explicitly configured `.env` file before resolving provider
-  secrets.
+- `none`: disable provider secret lookup for flows that intentionally rely on
+  caller-supplied credentials or non-provider local routes.
 - `openshell`: do not materialize provider secrets in Tentgent config; call
   through an OpenShell-managed provider or gateway so OpenShell supplies the
   credential boundary.
-- `auto`: resolve in order from provided request secret, process env, optional
-  dotenv, Keychain if available, then OpenShell broker/gateway if configured.
+- `auto`: compose existing request, environment, file, and Keychain sources,
+  then use an OpenShell broker/gateway only when that future boundary is
+  explicitly configured.
 
 OpenShell integration should be modeled as an auth boundary, not as a hidden
 provider key fallback. If Tentgent is launched inside an OpenShell environment,

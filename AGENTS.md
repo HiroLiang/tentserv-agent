@@ -130,6 +130,10 @@ Key current documents:
   Focused roadmap for provider-compatible API surfaces, model support records,
   runtime parameter profiles, verification gates, bounded dynamic routing, and
   the staged path to `1.0.0`.
+- `docs/plans/v0.9.0-hardening-plan.md`
+  Active `v0.9.0` execution plan for 1.0 hardening, stable/experimental API
+  audit, conformance smoke coverage, runtime recovery, cleanup, support proof
+  retry behavior, and release closeout.
 - `docs/plans/post-1.0-serving-targets-and-multimodal-context-pipeline.md`
   Deferred post-1.0 direction for grouping capability-specific models behind
   one serving target and pre-processing local media attachments into chat
