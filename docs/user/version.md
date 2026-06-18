@@ -393,7 +393,7 @@ Known limits:
 
 `v0.3.0` was the stable 0.3.x baseline for the former terminal UI alpha line
 and the first release candidate for Homebrew tap distribution. The current
-`v0.7.0` surface is CLI plus daemon REST only.
+surface is CLI plus daemon REST only.
 
 Added:
 
@@ -424,7 +424,7 @@ Known limits:
 ## v0.3.0-alpha.2
 
 `v0.3.0-alpha.2` was a bugfix preview release for the former terminal UI alpha
-line. The current `v0.7.0` surface is CLI plus daemon REST only.
+line. The current surface is CLI plus daemon REST only.
 
 Added:
 
@@ -451,7 +451,7 @@ Known limits:
 ## v0.3.0-alpha.1
 
 `v0.3.0-alpha.1` was a terminal UI preview release. It is kept here for
-historical context; the current `v0.7.0` surface is CLI plus daemon REST
+historical context; the current surface is CLI plus daemon REST
 only.
 
 Added:

@@ -363,6 +363,10 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.8.0`: runtime profile and startup gating release; adds local `chat` and
+  `embedding` runtime profiles, gates local server starts by support status and
+  profile availability, records launch proofs, improves inspect/doctor
+  diagnostics, and adds configurable provider auth source modes.
 - `v0.7.0`: support status release; surfaces model capability support in
   `model ls`, `model inspect`, `server ls`, and `doctor`, adds local proof and
   catalog evidence records, and documents how support moves between unknown,
