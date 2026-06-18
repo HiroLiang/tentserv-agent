@@ -1,7 +1,8 @@
 # Model Support Proof Schema
 
 This document defines the minimum record schema used to explain model support
-status. It is a design contract for the `v0.7.0` support-status track.
+status. It is the local proof schema introduced for support status and extended
+by the `v0.8.0` runtime-profile gate.
 
 Support proof records and support hint records are separate:
 
@@ -131,10 +132,12 @@ dimension fields as less specific evidence and mark them `stale` when a precise
 comparison is required.
 
 Current CLI diagnostics read `runtime_profile` and `runtime_profile_version`
-from persisted proof records when a server launch recorded them. Server-bound
-inspection may also pass the selected server runtime profile into the resolver
-before comparing support evidence. `execution_backend` is derived from the
-proof tuple's backend/runtime-family fields.
+from persisted proof records when a server launch recorded them. Local
+server-start proof recording must include these fields whenever the selected
+server spec has runtime profile metadata. Server-bound inspection may also pass
+the selected server runtime profile into the resolver before comparing support
+evidence. `execution_backend` is derived from the proof tuple's
+backend/runtime-family fields.
 
 ## Identity Fields
 

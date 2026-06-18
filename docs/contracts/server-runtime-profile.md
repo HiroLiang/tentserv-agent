@@ -13,10 +13,10 @@ This is separate from Python dependency bootstrap profiles such as
 `tentgent runtime bootstrap --profile local-model`. Bootstrap profiles install
 packages. Server runtime profiles describe the selected server execution path.
 
-## Current Selection
+## Current v0.8.0 Selection
 
-The current local runtime profile slices cover local chat and local embedding
-servers.
+The current `v0.8.0` local runtime profile slices cover local chat and local
+embedding servers.
 
 | Capability | Backend | Profile |
 | --- | --- | --- |
@@ -29,7 +29,8 @@ servers.
 `embedding` on the `mlx` backend currently has no local runtime profile because
 the bundled Apache-licensed runtime recognizes the path but returns
 `501 not_implemented`. `rerank`, media, and cloud provider server profiles are
-later runtime-profile slices.
+later runtime-profile slices and must not be treated as covered by the v0.8.0
+profile gate.
 
 ## Stored Metadata
 
@@ -85,8 +86,8 @@ Embedding batching accepts one string or a non-empty string array. The response
 preserves input order.
 
 Future slices may use runtime profiles to decide backend-specific defaults,
-hard limits, and verification stale rules. Local server starts already require
-available runtime profiles for covered local chat and embedding backends before
+hard limits, and verification stale rules. Local server starts require available
+runtime profiles for covered local chat and embedding backends before
 support-status gates are evaluated.
 
 Local server launch outcomes are recorded as model capability proofs. When a

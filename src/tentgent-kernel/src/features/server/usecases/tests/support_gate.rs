@@ -88,6 +88,36 @@ fn standard_server_usecase_rejects_failed_local_support_status() {
 }
 
 #[test]
+fn standard_server_usecase_rejects_unsupported_local_support_status() {
+    let fixture = Fixture::new("gate-unsupported");
+    fixture.write_hf_mlx_model_capabilities(
+        vec![ModelCapability::AudioTranscription],
+        "mlx-community/whisper-tiny-fp16",
+        MlxRuntimeFamily::Audio,
+    );
+    let deps = ServerUseCaseFixture::new(StaticProcessProbe { running: false });
+    let servers = deps.usecase();
+
+    let err = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            runtime_ref: fixture.model_ref.short_ref().to_string(),
+            capability: Some(ServerCapability::AudioTranscription),
+            host: None,
+            port: Some(8798),
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect_err("unsupported support status should block local server preparation");
+
+    let message = err.to_string();
+    assert!(message.contains("support status `unsupported`"));
+    assert!(message.contains("older MLX Whisper packages"));
+    assert!(message.contains("choose a different model"));
+}
+
+#[test]
 fn standard_server_usecase_rejects_unknown_support_without_override() {
     let fixture = Fixture::new("gate-unknown");
     fixture.write_model_capabilities(vec![ModelCapability::Chat]);

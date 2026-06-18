@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::features::model::domain::{
-    default_model_capabilities, default_model_capability_source, ModelCapability,
+    default_model_capabilities, default_model_capability_source, MlxRuntimeFamily, ModelCapability,
     ModelCapabilityProof, ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelFormat,
     ModelMetadata, ModelRef, ModelSourceKind, ModelStoreLayout,
 };
@@ -873,6 +873,39 @@ impl Fixture {
             ModelSourceKind::HuggingFace,
             Some(source_repo.to_string()),
         );
+    }
+
+    fn write_hf_mlx_model_capabilities(
+        &self,
+        capabilities: Vec<ModelCapability>,
+        source_repo: &str,
+        mlx_runtime_family: MlxRuntimeFamily,
+    ) {
+        let layout = StdRuntimeLayoutResolver
+            .resolve(self.layout_input(LayoutResolveMode::Create))
+            .expect("layout");
+        let model_store = ModelStoreLayout::from_models_dir(layout.models_dir);
+        FileModelCatalogStore
+            .save_model_metadata(
+                &model_store,
+                &ModelMetadata {
+                    model_ref: self.model_ref.clone(),
+                    short_ref: self.model_ref.short_ref().to_string(),
+                    source_kind: ModelSourceKind::HuggingFace,
+                    source_repo: Some(source_repo.to_string()),
+                    source_revision: None,
+                    source_path: Some("/tmp/model".to_string()),
+                    primary_format: ModelFormat::Mlx,
+                    detected_formats: vec![ModelFormat::Mlx],
+                    mlx_runtime_family: Some(mlx_runtime_family),
+                    model_capabilities: capabilities,
+                    model_capability_source: default_model_capability_source(),
+                    file_count: 1,
+                    total_bytes: 1024,
+                    imported_at: "2026-05-17T00:00:00Z".to_string(),
+                },
+            )
+            .expect("save model");
     }
 
     fn write_model_metadata(

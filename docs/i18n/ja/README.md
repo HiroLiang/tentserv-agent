@@ -155,6 +155,8 @@ tentgent model catalog --capability chat --publisher Qwen
 tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
 tentgent model ls
 tentgent model inspect <model-ref-or-prefix>
+tentgent model capability proofs <model-ref-or-prefix>
+tentgent model capability proof clear <model-ref-or-prefix> chat
 tentgent model add /absolute/path/to/model
 tentgent model rm <model-ref>
 ```
@@ -162,6 +164,8 @@ tentgent model rm <model-ref>
 `model catalog` は built-in model family と support hints を先に確認するための入口です。
 `model ls` は compact な support status を表示し、`model inspect` は capability
 ごとの proof、hint、backend、reason の詳細を表示します。
+`model capability proof clear` は runtime 問題を直した後、failed proof を
+消して local server start を再試行するために使います。
 
 model、adapter、dataset、chat の完整な examples は [docs/user/commands.md](../../../docs/user/commands.md#models-and-chat) を参照してください。
 
@@ -271,6 +275,11 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 models、adapters、datasets、sessions、servers、train records、その他 local runtime data を消したい場合以外、`TENTGENT_HOME` は削除しないでください。uninstall と runtime-home の詳細は [docs/user/install.md](../../../docs/user/install.md) と [docs/user/runtime.md](../../../docs/user/runtime.md) を参照してください。
 
 ## Version Notes
+
+`v0.8.0` は runtime profile と startup gating release です。Local
+model-bound server start は capability、support status、runtime profile gate
+に基づいて起動し、`server inspect`、`model inspect`、`doctor` は runtime
+profile、execution backend、proof、copyable next action を表示します。
 
 `v0.7.0` は support status release です。model support status を
 `model ls`、`model inspect`、`server inspect`、`doctor` から確認できます。
