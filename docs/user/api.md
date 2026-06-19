@@ -65,6 +65,11 @@ References such as `model_ref`, `adapter_ref`, `dataset_ref`, `server_ref`, and
 `job_id` accept full refs where available; many routes also accept unique short
 prefixes.
 
+For the `v0.9.0` stable, experimental, internal, and deprecated surface audit,
+see [api-surface-stability.md](../contracts/api-surface-stability.md). The
+route tables below describe callable HTTP routes; they do not make every
+backend, cleanup, or recovery behavior a final `1.0.0` guarantee.
+
 ## Diagnostics
 
 | Method | Path | Purpose |

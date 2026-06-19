@@ -16,6 +16,12 @@ Status key:
 - Unsupported: no compatible route exists, or the provider field or endpoint
   family is not supported and should not be relied on.
 
+This matrix describes provider feature coverage, not the stability tier of each
+Tentgent surface. Partial provider coverage can still have stable route names
+and stable unsupported-error codes. See
+[api-surface-stability.md](../contracts/api-surface-stability.md) for the
+stable, experimental, internal, and deprecated surface audit.
+
 ## Route Surfaces
 
 | Surface | How to use it | Provider-shaped routes | Notes |
