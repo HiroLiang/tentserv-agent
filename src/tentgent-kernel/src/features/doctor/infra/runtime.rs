@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 
 use crate::features::doctor::domain::{
-    DoctorCheck, DoctorCheckCategory, DoctorCheckStatus, DoctorExecutionMode,
+    DoctorCheck, DoctorCheckCategory, DoctorCheckStatus, DoctorExecutionMode, DoctorNextAction,
 };
 use crate::features::doctor::ports::DoctorRuntimeCheckMapper;
 use crate::features::runtime::domain::{
-    PythonRuntimeLayout, PythonRuntimeSource, RuntimeEntrypoint, RuntimeInitState, RuntimeReadiness,
+    BootstrapProfile, PythonRuntimeLayout, PythonRuntimeSource, RuntimeEntrypoint,
+    RuntimeInitState, RuntimeReadiness,
 };
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
@@ -29,11 +30,17 @@ impl DoctorRuntimeCheckMapper for StdDoctorRuntimeCheckMapper {
             Some(runtime) => {
                 checks.extend(runtime_layout_checks(runtime, state, mode));
             }
-            None => checks.push(DoctorCheck::fail(
-                DoctorCheckCategory::Runtime,
-                "python runtime",
-                "could not resolve Python runtime assets",
-            )),
+            None => checks.push(
+                DoctorCheck::fail(
+                    DoctorCheckCategory::Runtime,
+                    "python runtime",
+                    "could not resolve Python runtime assets",
+                )
+                .with_next_action(DoctorNextAction::command(
+                    "Inspect runtime status",
+                    "tentgent runtime status",
+                )),
+            ),
         }
 
         match state {
@@ -66,12 +73,14 @@ fn runtime_layout_checks(
             &runtime.pyproject_path(),
             DoctorCheckStatus::Fail,
             "Python project metadata is required",
+            Vec::new(),
         ),
         check_directory(
             "python package",
             &runtime.python_src_dir(),
             DoctorCheckStatus::Fail,
             "Python package source is required",
+            Vec::new(),
         ),
     ];
 
@@ -81,6 +90,7 @@ fn runtime_layout_checks(
             &runtime.env_dir,
             missing_status,
             python_bootstrap_hint(runtime.source),
+            runtime_recovery_actions(runtime.source),
         ));
         let python_binary = python_binary_path(&runtime.env_dir);
         checks.push(check_file(
@@ -88,6 +98,7 @@ fn runtime_layout_checks(
             &python_binary,
             missing_status,
             python_bootstrap_hint(runtime.source),
+            runtime_recovery_actions(runtime.source),
         ));
     }
 
@@ -97,6 +108,7 @@ fn runtime_layout_checks(
             &entrypoint_path(&runtime.env_dir, entrypoint),
             missing_status,
             python_bootstrap_hint(runtime.source),
+            runtime_recovery_actions(runtime.source),
         ));
     }
 
@@ -130,6 +142,7 @@ fn runtime_state_checks(
                 python_bootstrap_hint(source)
             ),
         )
+        .with_next_actions(runtime_recovery_actions(source))
     });
 
     checks.push(if state.python.binary_path.is_file() {
@@ -149,6 +162,7 @@ fn runtime_state_checks(
                 python_bootstrap_hint(source)
             ),
         )
+        .with_next_actions(runtime_recovery_actions(source))
     });
 
     checks.push(match &state.python.version {
@@ -165,12 +179,13 @@ fn runtime_state_checks(
                 "python version is unavailable; {}",
                 python_bootstrap_hint(source)
             ),
-        ),
+        )
+        .with_next_actions(runtime_recovery_actions(source)),
     });
 
     for profile in &state.profiles {
         let status = runtime_readiness_status(profile.readiness, missing_status);
-        checks.push(DoctorCheck::with_status(
+        let check = DoctorCheck::with_status(
             DoctorCheckCategory::Runtime,
             format!("runtime profile {}", profile.profile.as_str()),
             status,
@@ -178,7 +193,13 @@ fn runtime_state_checks(
                 .message
                 .clone()
                 .unwrap_or_else(|| profile.readiness.as_str().to_string()),
-        ));
+        );
+        checks.push(match status {
+            DoctorCheckStatus::Pass | DoctorCheckStatus::Skipped => check,
+            DoctorCheckStatus::Warn | DoctorCheckStatus::Fail => check.with_next_actions(
+                runtime_profile_recovery_actions(profile.profile, profile.readiness),
+            ),
+        });
     }
 
     checks
@@ -189,6 +210,7 @@ fn check_directory(
     path: &Path,
     missing_status: DoctorCheckStatus,
     hint: &str,
+    next_actions: Vec<DoctorNextAction>,
 ) -> DoctorCheck {
     if path.is_dir() {
         DoctorCheck::pass(
@@ -203,6 +225,7 @@ fn check_directory(
             missing_status,
             format!("missing: {}; {hint}", path.display()),
         )
+        .with_next_actions(next_actions)
     }
 }
 
@@ -211,6 +234,7 @@ fn check_file(
     path: &Path,
     missing_status: DoctorCheckStatus,
     hint: &str,
+    next_actions: Vec<DoctorNextAction>,
 ) -> DoctorCheck {
     if path.is_file() {
         DoctorCheck::pass(
@@ -225,6 +249,7 @@ fn check_file(
             missing_status,
             format!("missing: {}; {hint}", path.display()),
         )
+        .with_next_actions(next_actions)
     }
 }
 
@@ -261,6 +286,42 @@ fn python_bootstrap_hint(source: PythonRuntimeSource) -> &'static str {
         PythonRuntimeSource::DevelopmentSource | PythonRuntimeSource::EnvironmentOverride => {
             "run `tentgent runtime bootstrap` or an explicit local repair flow"
         }
+    }
+}
+
+fn runtime_recovery_actions(source: PythonRuntimeSource) -> Vec<DoctorNextAction> {
+    match source {
+        PythonRuntimeSource::InstalledPrefix => vec![
+            DoctorNextAction::command("Bootstrap managed runtime", "tentgent runtime bootstrap"),
+            DoctorNextAction::command("Inspect runtime status", "tentgent runtime status"),
+        ],
+        PythonRuntimeSource::DevelopmentSource | PythonRuntimeSource::EnvironmentOverride => vec![
+            DoctorNextAction::command("Bootstrap runtime", "tentgent runtime bootstrap"),
+            DoctorNextAction::command("Inspect runtime status", "tentgent runtime status"),
+        ],
+    }
+}
+
+fn runtime_profile_recovery_actions(
+    profile: BootstrapProfile,
+    readiness: RuntimeReadiness,
+) -> Vec<DoctorNextAction> {
+    let inspect = DoctorNextAction::command(
+        "Inspect runtime profile",
+        format!("tentgent runtime status --profile {}", profile.as_str()),
+    );
+    match readiness {
+        RuntimeReadiness::Missing | RuntimeReadiness::Stale | RuntimeReadiness::Unknown => vec![
+            DoctorNextAction::command(
+                "Bootstrap runtime profile",
+                format!("tentgent runtime bootstrap --profile {}", profile.as_str()),
+            ),
+            inspect,
+        ],
+        RuntimeReadiness::Unsupported => vec![inspect.with_detail(
+            "profile support is platform-dependent; inspect status before bootstrapping",
+        )],
+        RuntimeReadiness::Ready => Vec::new(),
     }
 }
 

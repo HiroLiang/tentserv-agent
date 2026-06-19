@@ -15,8 +15,8 @@ use tentgent_kernel::{
 
 use super::display::format_bytes;
 
-const MAX_FOOTPRINT_SCAN_ENTRIES: usize = 50_000;
-const MAX_FOOTPRINT_SCAN_MILLIS: u64 = 2_000;
+const MAX_FOOTPRINT_SCAN_ENTRIES: usize = 10_000;
+const MAX_FOOTPRINT_SCAN_MILLIS: u64 = 250;
 const BOOTSTRAP_UV_CACHE_DIR_ENV: &str = "TENTGENT_BOOTSTRAP_UV_CACHE_DIR";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,12 +97,6 @@ pub(crate) fn collect_runtime_footprint(
     let bootstrap_uv_cache = resolve_uv_package_cache(runtime_home);
 
     vec![
-        FootprintEntry::new(
-            "runtime_home_size",
-            "runtime home",
-            runtime_home.to_path_buf(),
-            None,
-        ),
         FootprintEntry::new(
             "python_env_size",
             "managed Python env",
@@ -329,6 +323,30 @@ mod tests {
     }
 
     #[test]
+    fn partial_scan_still_renders_as_best_effort_size() {
+        let home = temp_dir("partial-render");
+        write_bytes(&home.join("a.bin"), 512);
+        write_bytes(&home.join("b.bin"), 512);
+        let state = scan_path(
+            &home,
+            ScanLimits {
+                max_entries: 1,
+                max_elapsed: Duration::from_secs(10),
+            },
+        );
+        let entry = FootprintEntry {
+            field: "python_env_size",
+            title: "managed Python env",
+            path: home,
+            state,
+            guidance: None,
+        };
+
+        assert!(entry.render_value().contains("(partial scan)"));
+        assert!(!entry.render_value().starts_with("unavailable:"));
+    }
+
+    #[test]
     fn render_value_formats_sizes_and_partial_marker() {
         let entry = FootprintEntry {
             field: "runtime_home_size",
@@ -352,11 +370,10 @@ mod tests {
         let home = temp_dir("layout");
         let entries = collect_runtime_footprint(&home, None);
 
-        assert_eq!(entries[0].field, "runtime_home_size");
-        assert_eq!(entries[1].path, home.join("runtime/python-env"));
-        assert_eq!(entries[2].path, home.join("runtime/bootstrap"));
-        assert_eq!(entries[3].path, home.join("runtime/bootstrap/uv"));
-        assert_eq!(entries[4].path, home.join("runtime/bootstrap/uv-cache"));
+        assert_eq!(entries[0].path, home.join("runtime/python-env"));
+        assert_eq!(entries[1].path, home.join("runtime/bootstrap"));
+        assert_eq!(entries[2].path, home.join("runtime/bootstrap/uv"));
+        assert_eq!(entries[3].path, home.join("runtime/bootstrap/uv-cache"));
     }
 
     fn temp_dir(name: &str) -> PathBuf {

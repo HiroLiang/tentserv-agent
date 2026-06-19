@@ -1,7 +1,7 @@
 use axum::{extract::State, Json};
 use tentgent_kernel::features::{
     doctor::{
-        domain::{DoctorCheck, DoctorReport, DoctorReportRequest, DoctorSummary},
+        domain::{DoctorCheck, DoctorNextAction, DoctorReport, DoctorReportRequest, DoctorSummary},
         usecases::{
             DoctorCapabilityReadPolicy, DoctorCommandCheckPolicy, DoctorReportUseCase,
             DoctorReportUseCaseRequest,
@@ -12,7 +12,7 @@ use tentgent_kernel::features::{
 
 use crate::transport::rest::{error::RestError, state::RestState};
 
-use super::dto::{DoctorCheckItem, DoctorResponse, DoctorSummaryItem};
+use super::dto::{DoctorCheckItem, DoctorNextActionItem, DoctorResponse, DoctorSummaryItem};
 
 pub async fn report(State(state): State<RestState>) -> Result<Json<DoctorResponse>, RestError> {
     let result = state
@@ -54,5 +54,18 @@ fn doctor_check_item(check: DoctorCheck) -> DoctorCheckItem {
         name: check.name,
         status: check.status.as_str().to_string(),
         detail: check.detail,
+        next_actions: check
+            .next_actions
+            .into_iter()
+            .map(doctor_next_action_item)
+            .collect(),
+    }
+}
+
+fn doctor_next_action_item(action: DoctorNextAction) -> DoctorNextActionItem {
+    DoctorNextActionItem {
+        label: action.label,
+        command: action.command,
+        detail: action.detail,
     }
 }

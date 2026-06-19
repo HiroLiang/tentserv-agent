@@ -1,5 +1,7 @@
 use crate::capabilities::domain::{BackendKind, CapabilityState, MachineCapabilities};
-use crate::features::doctor::domain::{DoctorCheck, DoctorCheckCategory, DoctorCheckStatus};
+use crate::features::doctor::domain::{
+    DoctorCheck, DoctorCheckCategory, DoctorCheckStatus, DoctorNextAction,
+};
 use crate::features::doctor::ports::DoctorCapabilityCheckMapper;
 use crate::foundation::error::KernelResult;
 use crate::foundation::platform::{Architecture, OperatingSystem, PlatformFacts};
@@ -28,7 +30,7 @@ impl DoctorCapabilityCheckMapper for StdDoctorCapabilityCheckMapper {
         ];
 
         checks.extend(capabilities.backends.iter().map(|backend| {
-            DoctorCheck::with_status(
+            let check = DoctorCheck::with_status(
                 DoctorCheckCategory::Capability,
                 format!("backend {}", backend_label(backend.backend)),
                 capability_status(backend.state),
@@ -37,10 +39,33 @@ impl DoctorCapabilityCheckMapper for StdDoctorCapabilityCheckMapper {
                     backend.message.as_ref(),
                     backend.next_step.as_ref(),
                 ),
-            )
+            );
+            match backend
+                .next_step
+                .as_deref()
+                .and_then(extract_backtick_command)
+            {
+                Some(command) => check.with_next_action(DoctorNextAction::command(
+                    "Recover backend capability",
+                    command,
+                )),
+                None => check,
+            }
         }));
 
         Ok(checks)
+    }
+}
+
+fn extract_backtick_command(value: &str) -> Option<String> {
+    let start = value.find('`')?;
+    let rest = &value[start + 1..];
+    let end = rest.find('`')?;
+    let command = rest[..end].trim();
+    if command.is_empty() {
+        None
+    } else {
+        Some(command.to_string())
     }
 }
 

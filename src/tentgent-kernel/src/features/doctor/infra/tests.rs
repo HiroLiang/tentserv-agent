@@ -118,11 +118,18 @@ fn runtime_mapper_builds_checks_from_runtime_and_state_without_bootstrap() {
             binary_path: bin_dir.join(script_name("python")),
             version: Some("Python 3.13.11".to_string()),
         },
-        profiles: vec![RuntimeProfileState {
-            profile: BootstrapProfile::Base,
-            readiness: RuntimeReadiness::Ready,
-            message: Some("base runtime is ready".to_string()),
-        }],
+        profiles: vec![
+            RuntimeProfileState {
+                profile: BootstrapProfile::Base,
+                readiness: RuntimeReadiness::Ready,
+                message: Some("base runtime is ready".to_string()),
+            },
+            RuntimeProfileState {
+                profile: BootstrapProfile::Training,
+                readiness: RuntimeReadiness::Missing,
+                message: Some("training profile is missing".to_string()),
+            },
+        ],
     };
 
     let checks = StdDoctorRuntimeCheckMapper
@@ -140,6 +147,14 @@ fn runtime_mapper_builds_checks_from_runtime_and_state_without_bootstrap() {
     assert!(checks.iter().any(
         |check| check.name == "runtime profile base" && check.status == DoctorCheckStatus::Pass
     ));
+    let training = checks
+        .iter()
+        .find(|check| check.name == "runtime profile training")
+        .expect("training profile check");
+    assert_eq!(training.status, DoctorCheckStatus::Warn);
+    assert!(training.next_actions.iter().any(|action| {
+        action.command.as_deref() == Some("tentgent runtime bootstrap --profile training")
+    }));
     assert!(checks
         .iter()
         .any(|check| check.name == "entrypoint tentgent-model-runtime-daemon"));
@@ -198,7 +213,7 @@ fn capability_mapper_maps_platform_profiles_and_backends() {
                 backend: BackendKind::Training,
                 state: CapabilityState::Missing,
                 message: Some("dependencies missing".to_string()),
-                next_step: Some("bootstrap training profile".to_string()),
+                next_step: Some("run `tentgent runtime bootstrap --profile training`".to_string()),
             },
         ],
     };
@@ -223,9 +238,14 @@ fn capability_mapper_maps_platform_profiles_and_backends() {
         .iter()
         .any(|check| check.name == "backend mlx-diffusion"
             && check.status == DoctorCheckStatus::Pass));
-    assert!(checks
+    let training = checks
         .iter()
-        .any(|check| check.name == "backend training" && check.status == DoctorCheckStatus::Fail));
+        .find(|check| check.name == "backend training")
+        .expect("training backend check");
+    assert_eq!(training.status, DoctorCheckStatus::Fail);
+    assert!(training.next_actions.iter().any(|action| {
+        action.command.as_deref() == Some("tentgent runtime bootstrap --profile training")
+    }));
 }
 
 #[test]

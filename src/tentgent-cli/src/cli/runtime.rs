@@ -104,12 +104,14 @@ fn handle_bootstrap(runtime: &CliRuntimeKernel, command: RuntimeBootstrapCommand
 
     if result.outcome.status != RuntimeBootstrapStatus::Succeeded {
         return Err(miette!(
-            "runtime bootstrap failed{}",
+            "runtime bootstrap failed{}\n\nNext steps:\n  tentgent runtime bootstrap --print-plan --profile {}\n  tentgent runtime status --profile {}",
             result
                 .outcome
                 .exit_code
                 .map(|code| format!(" with exit code {code}"))
-                .unwrap_or_default()
+                .unwrap_or_default(),
+            result.plan.profile.as_str(),
+            result.plan.profile.as_str()
         ));
     }
 
