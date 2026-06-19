@@ -28,6 +28,7 @@ use crate::{
 };
 
 mod claude_messages_compat;
+mod conformance_smoke;
 mod gemini_compat;
 mod openai_audio_compat;
 mod openai_chat_compat;
