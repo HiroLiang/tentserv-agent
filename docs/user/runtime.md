@@ -181,9 +181,21 @@ adapter, or dataset content under `store/<ref>`; use the specific `model rm`,
   Python environment. A successful `full` bootstrap should make GGUF,
   safetensors/PEFT, MLX on Apple Silicon macOS, and training dependencies
   report ready.
+- `tentgent doctor` keeps the main check list compact. Warnings and failures
+  include longer detail rows with copyable recovery commands, such as
+  `tentgent runtime bootstrap --profile <profile>`, `tentgent auth openai set`,
+  or `tentgent model capability proof clear <model-ref> <capability>`.
+- `tentgent doctor` checks provider auth from local environment values and
+  cached Keychain metadata only. It does not validate provider keys over the
+  network; run the provider-specific `tentgent auth <provider>` command when
+  validation detail is needed.
 - In an interactive terminal, `tentgent doctor` prints coarse progress messages
   to stderr while checks are running. Redirected or piped stdout remains the
   structured final report output.
+- Runtime footprint rows are best-effort and bounded so cache size reporting
+  cannot dominate normal doctor runtime. If a size scan reaches its time or
+  entry limit, the row is marked as a partial scan and `doctor` continues; the
+  footprint section does not make the command fail.
 - `safetensors` models run through the `transformers-peft` backend when Python dependencies are installed.
 - `embedding` safetensors models run through the same local-model Python
   dependency set with `transformers` feature extraction and mean pooling.

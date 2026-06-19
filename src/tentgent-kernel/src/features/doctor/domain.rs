@@ -166,6 +166,32 @@ pub struct DoctorCheck {
     pub category: DoctorCheckCategory,
     pub status: DoctorCheckStatus,
     pub detail: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_actions: Vec<DoctorNextAction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DoctorNextAction {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl DoctorNextAction {
+    pub fn command(label: impl Into<String>, command: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            command: Some(command.into()),
+            detail: None,
+        }
+    }
+
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
 }
 
 impl DoctorCheck {
@@ -180,7 +206,21 @@ impl DoctorCheck {
             category,
             status,
             detail: detail.into(),
+            next_actions: Vec::new(),
         }
+    }
+
+    pub fn with_next_action(mut self, action: DoctorNextAction) -> Self {
+        self.next_actions.push(action);
+        self
+    }
+
+    pub fn with_next_actions(
+        mut self,
+        actions: impl IntoIterator<Item = DoctorNextAction>,
+    ) -> Self {
+        self.next_actions.extend(actions);
+        self
     }
 
     pub fn pass(

@@ -8,10 +8,17 @@ use tentgent_kernel::{
         usecases::StdMachineCapabilitiesResolver,
     },
     features::{
+        auth::{
+            domain::{
+                AuthEnvLoadPolicy, AuthKeyStatus, AuthSourceMode, AuthValidationState, Provider,
+            },
+            infra::{FileAuthMetadataStore, StdAuthEnvSecretProbe, SystemKeychainAuthSecretStore},
+            usecases::{AuthStatusRequest, AuthStatusUseCase, StdAuthStatusUseCase},
+        },
         doctor::{
             domain::{
-                DoctorCheck, DoctorCheckCategory, DoctorCheckStatus, DoctorRepairIntent,
-                DoctorReport, DoctorReportRequest,
+                DoctorCheck, DoctorCheckCategory, DoctorCheckStatus, DoctorNextAction,
+                DoctorRepairIntent, DoctorReport, DoctorReportRequest,
             },
             infra::{
                 StdDoctorCapabilityCheckMapper, StdDoctorCommandProbe, StdDoctorPathProbe,
@@ -43,7 +50,9 @@ use tentgent_kernel::{
         },
     },
     foundation::{
-        layout::{LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver},
+        layout::{
+            LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
+        },
         platform::StdPlatformProbe,
     },
 };
@@ -72,6 +81,8 @@ pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
     };
     progress.step("checking local model support");
     let report = append_model_support_checks(&kernel, report);
+    progress.step("checking provider auth");
+    let report = append_auth_checks(&kernel, report);
 
     progress.step("rendering doctor report");
     render_checks(&report.checks, &progress);
@@ -123,12 +134,23 @@ struct CliDoctorKernel {
     runtime_mapper: StdDoctorRuntimeCheckMapper,
     capability_mapper: StdDoctorCapabilityCheckMapper,
     repair_planner: StdDoctorRepairPlanner,
+    auth_env_probe: StdAuthEnvSecretProbe,
+    auth_keychain_store: SystemKeychainAuthSecretStore,
+    auth_metadata_store: FileAuthMetadataStore,
 }
 
 impl CliDoctorKernel {
     fn new() -> Self {
+        let layout_resolver = StdRuntimeLayoutResolver;
+        let layout = layout_resolver
+            .resolve(RuntimeLayoutInput {
+                mode: LayoutResolveMode::ReadOnly,
+                home_dir: None,
+                data_root_dir: None,
+            })
+            .expect("runtime layout should resolve for doctor auth checks");
         Self {
-            layout_resolver: StdRuntimeLayoutResolver,
+            layout_resolver,
             platform_probe: StdPlatformProbe,
             runtime_resolver: StdPythonRuntimeResolver,
             state_probe: StdRuntimeStateProbe,
@@ -143,6 +165,9 @@ impl CliDoctorKernel {
             runtime_mapper: StdDoctorRuntimeCheckMapper,
             capability_mapper: StdDoctorCapabilityCheckMapper,
             repair_planner: StdDoctorRepairPlanner,
+            auth_env_probe: StdAuthEnvSecretProbe,
+            auth_keychain_store: SystemKeychainAuthSecretStore::new(),
+            auth_metadata_store: FileAuthMetadataStore::from_layout(&layout),
         }
     }
 }
@@ -226,12 +251,14 @@ fn handle_repair(kernel: &CliDoctorKernel) -> Result<DoctorReport> {
     if let Some(bootstrap) = &result.bootstrap {
         if bootstrap.outcome.status != RuntimeBootstrapStatus::Succeeded {
             return Err(miette!(
-                "doctor repair bootstrap failed{}",
+                "doctor repair bootstrap failed{}\n\nNext steps:\n  tentgent runtime bootstrap --print-plan --profile {}\n  tentgent runtime status --profile {}",
                 bootstrap
                     .outcome
                     .exit_code
                     .map(|code| format!(" with exit code {code}"))
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                bootstrap.plan.profile.as_str(),
+                bootstrap.plan.profile.as_str()
             ));
         }
     }
@@ -252,6 +279,116 @@ fn append_model_support_checks(kernel: &CliDoctorKernel, report: DoctorReport) -
     let mut checks = report.checks;
     checks.extend(model_support_checks(kernel));
     DoctorReport::from_checks(checks)
+}
+
+fn append_auth_checks(kernel: &CliDoctorKernel, report: DoctorReport) -> DoctorReport {
+    let mut checks = report.checks;
+    checks.extend(auth_checks(kernel));
+    DoctorReport::from_checks(checks)
+}
+
+fn auth_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
+    let auth = StdAuthStatusUseCase::new(
+        &kernel.auth_env_probe,
+        &kernel.auth_keychain_store,
+        &kernel.auth_metadata_store,
+    );
+    match auth.status(AuthStatusRequest::all(AuthEnvLoadPolicy::CwdDotenvOverride)) {
+        Ok(report) => vec![provider_auth_check(&report.statuses)],
+        Err(err) => vec![DoctorCheck::warn(
+            DoctorCheckCategory::Auth,
+            "provider auth",
+            format!("provider auth status unavailable: {err}"),
+        )
+        .with_next_action(DoctorNextAction::command(
+            "Inspect provider auth",
+            "tentgent auth status",
+        ))],
+    }
+}
+
+fn provider_auth_check(statuses: &[AuthKeyStatus]) -> DoctorCheck {
+    let available = statuses
+        .iter()
+        .filter(|status| status.effective_source.is_some())
+        .count();
+    let disabled = statuses
+        .iter()
+        .filter(|status| status.preference.source_mode == AuthSourceMode::None)
+        .count();
+    let missing = statuses
+        .iter()
+        .filter(|status| {
+            status.preference.source_mode != AuthSourceMode::None
+                && status.effective_source.is_none()
+        })
+        .collect::<Vec<_>>();
+    let needs_validation = statuses
+        .iter()
+        .filter(|status| {
+            status.effective_source.is_some()
+                && matches!(
+                    status.validation,
+                    AuthValidationState::Invalid { .. } | AuthValidationState::Unknown { .. }
+                )
+        })
+        .collect::<Vec<_>>();
+
+    let status = if missing.is_empty() && needs_validation.is_empty() {
+        DoctorCheckStatus::Pass
+    } else {
+        DoctorCheckStatus::Warn
+    };
+    let mut detail = format!(
+        "{available}/{} provider key(s) available locally",
+        statuses.len()
+    );
+    if disabled > 0 {
+        detail.push_str(&format!("; {disabled} provider(s) intentionally disabled"));
+    }
+    if !missing.is_empty() {
+        detail.push_str("; missing: ");
+        detail.push_str(&provider_list(missing.iter().map(|status| status.provider)));
+    }
+    if !needs_validation.is_empty() {
+        detail.push_str("; validation needs attention: ");
+        detail.push_str(&provider_list(
+            needs_validation.iter().map(|status| status.provider),
+        ));
+    }
+    detail.push_str("; doctor uses local env and cached keychain metadata only");
+
+    let mut check =
+        DoctorCheck::with_status(DoctorCheckCategory::Auth, "provider auth", status, detail);
+    for status in missing {
+        check = check.with_next_action(provider_auth_set_action(status.provider));
+    }
+    for status in needs_validation {
+        check = check.with_next_action(
+            provider_auth_set_action(status.provider)
+                .with_detail("replace or validate the provider key"),
+        );
+    }
+    check
+}
+
+fn provider_auth_set_action(provider: Provider) -> DoctorNextAction {
+    DoctorNextAction::command(
+        format!("Set {} API key", provider.display_name()),
+        format!("tentgent auth {} set", provider.cli_name()),
+    )
+    .with_detail(format!(
+        "or provide {} in the environment or configured auth file",
+        provider.env_var()
+    ))
+}
+
+fn provider_list(providers: impl IntoIterator<Item = Provider>) -> String {
+    providers
+        .into_iter()
+        .map(|provider| provider.display_name())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn model_support_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
@@ -328,7 +465,7 @@ fn model_support_warning_check(
         return None;
     }
 
-    Some(DoctorCheck::with_status(
+    let mut check = DoctorCheck::with_status(
         DoctorCheckCategory::Capability,
         format!(
             "model support: {} {}",
@@ -336,11 +473,18 @@ fn model_support_warning_check(
             summary.capability.as_str()
         ),
         DoctorCheckStatus::Warn,
-        model_support_warning_detail(summary, short_ref),
-    ))
+        model_support_warning_detail(summary),
+    );
+    if let Some(action) = model_support_next_action(summary, Some(short_ref)) {
+        check = check.with_next_action(DoctorNextAction::command(
+            "Recover model support proof",
+            action,
+        ));
+    }
+    Some(check)
 }
 
-fn model_support_warning_detail(summary: &ModelSupportSummary, short_ref: &str) -> String {
+fn model_support_warning_detail(summary: &ModelSupportSummary) -> String {
     let mut detail = format!(
         "{} via {}: {}; execution_backend: {}",
         summary.status.as_str(),
@@ -351,10 +495,6 @@ fn model_support_warning_detail(summary: &ModelSupportSummary, short_ref: &str) 
     if let Some(profile) = summary.runtime_profile_label() {
         detail.push_str("; runtime_profile: ");
         detail.push_str(&profile);
-    }
-    if let Some(action) = model_support_next_action(summary, Some(short_ref)) {
-        detail.push_str("; next_action: ");
-        detail.push_str(&action);
     }
     detail
 }
@@ -433,6 +573,15 @@ fn render_details(checks: &[DoctorCheck]) {
             style(&check.name).bold(),
             check.detail
         );
+        for action in &check.next_actions {
+            println!("   next: {}", action.label);
+            if let Some(command) = &action.command {
+                println!("   command: {command}");
+            }
+            if let Some(detail) = &action.detail {
+                println!("   note: {detail}");
+            }
+        }
     }
 }
 
@@ -459,6 +608,10 @@ fn render_runtime_footprint(entries: &[FootprintEntry]) {
 }
 
 fn should_show_detail(check: &DoctorCheck) -> bool {
+    if !check.next_actions.is_empty() {
+        return true;
+    }
+
     matches!(
         check.name.as_str(),
         "runtime home"
@@ -508,6 +661,9 @@ fn status_marker(status: DoctorCheckStatus) -> console::StyledObject<&'static st
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tentgent_kernel::features::auth::domain::{
+        AuthProviderPreference, AuthSecretSource, KeychainPresence,
+    };
     use tentgent_kernel::features::model::{
         domain::ModelCapability,
         support_status::{ModelSupportEvidenceKind, ModelSupportStatus},
@@ -534,8 +690,54 @@ mod tests {
         assert_eq!(check.name, "model support: abc123abc123 chat");
         assert_eq!(
             check.detail,
-            "failed via local-proof: runtime failed; execution_backend: mlx-lm; next_action: tentgent model capability proof clear abc123abc123 chat"
+            "failed via local-proof: runtime failed; execution_backend: mlx-lm"
         );
+        assert_eq!(check.next_actions.len(), 1);
+        assert_eq!(
+            check.next_actions[0].command.as_deref(),
+            Some("tentgent model capability proof clear abc123abc123 chat")
+        );
+    }
+
+    #[test]
+    fn provider_auth_check_reports_missing_provider_next_actions() {
+        let check = provider_auth_check(&[
+            auth_status(
+                Provider::OpenAI,
+                AuthSourceMode::Auto,
+                None,
+                AuthValidationState::Missing,
+            ),
+            auth_status(
+                Provider::Gemini,
+                AuthSourceMode::Auto,
+                Some(AuthSecretSource::Env),
+                AuthValidationState::NotChecked,
+            ),
+        ]);
+
+        assert_eq!(check.status, DoctorCheckStatus::Warn);
+        assert_eq!(check.category, DoctorCheckCategory::Auth);
+        assert_eq!(check.name, "provider auth");
+        assert!(check.detail.contains("missing: OpenAI"));
+        assert_eq!(check.next_actions.len(), 1);
+        assert_eq!(
+            check.next_actions[0].command.as_deref(),
+            Some("tentgent auth openai set")
+        );
+        assert!(check.next_actions[0]
+            .detail
+            .as_deref()
+            .expect("detail")
+            .contains("OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn details_are_notable_when_next_actions_exist() {
+        let check = DoctorCheck::warn(DoctorCheckCategory::Runtime, "custom", "short")
+            .with_next_action(DoctorNextAction::command("Fix it", "tentgent doctor"));
+
+        assert!(should_show_detail(&check));
     }
 
     #[test]
@@ -560,6 +762,29 @@ mod tests {
             reason: "latest local proof failed chat".to_string(),
             stale_reason: None,
             failure_reason,
+        }
+    }
+
+    fn auth_status(
+        provider: Provider,
+        source_mode: AuthSourceMode,
+        effective_source: Option<AuthSecretSource>,
+        validation: AuthValidationState,
+    ) -> AuthKeyStatus {
+        AuthKeyStatus {
+            provider,
+            preference: AuthProviderPreference {
+                provider,
+                source_mode,
+                env_file: None,
+            },
+            env_present: effective_source == Some(AuthSecretSource::Env),
+            keychain_presence: match effective_source {
+                Some(AuthSecretSource::Keychain) => KeychainPresence::Present,
+                _ => KeychainPresence::Unknown,
+            },
+            effective_source,
+            validation,
         }
     }
 }
