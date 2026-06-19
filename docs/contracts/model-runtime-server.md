@@ -24,7 +24,7 @@ Supported capability values:
 - `video-understanding`
 - `vision-chat`
 
-Runtime capability endpoints:
+Runtime capability endpoints are internal Rust-to-Python execution routes:
 
 - `POST /v1/chat`
 - `POST /v1/chat/stream`
@@ -42,9 +42,10 @@ Runtime capability endpoints:
 
 Rust local-server adapters call these runtime routes with native Tentgent
 request bodies, even when the client-facing local server route is
-provider-shaped. If the Python runtime later mounts `/internal/v1/*` aliases,
-Rust may prefer those aliases to keep runtime execution paths visually separate
-from public provider-compatible API surfaces.
+provider-shaped. These routes are mounted as `/v1/*` today, but they are not
+caller-facing API surfaces. If the Python runtime later mounts
+`/internal/v1/*` aliases, Rust may prefer those aliases to keep runtime
+execution paths visually separate from public provider-compatible API surfaces.
 
 Requests to endpoint families not served by the current process return `400`.
 Rust still owns job creation, workspace paths, model resolution, and server
@@ -77,7 +78,7 @@ plan.
 
 ### Audio Transcription
 
-`POST /internal/v1/audio/transcriptions` runs batch local audio transcription
+`POST /v1/audio/transcriptions` runs batch local audio transcription
 and writes the transcript to the provided output path.
 
 Supported `model_kind` values:
@@ -92,7 +93,7 @@ byte count, and best-effort plain text.
 
 ### Audio Speech
 
-`POST /internal/v1/audio/speech` runs batch local text-to-speech and writes WAV
+`POST /v1/audio/speech` runs batch local text-to-speech and writes WAV
 output to the provided output path.
 
 Supported `model_kind` values:
@@ -108,10 +109,10 @@ API does not support them. Kokoro-family MLX TTS models also require the
 
 ### Image Generation
 
-`POST /internal/v1/images/generations` runs text-to-image generation.
-`POST /internal/v1/images/transforms` runs image-to-image generation.
-`POST /internal/v1/images/inpaint` runs image and mask inpainting.
-`POST /internal/v1/images/control` runs Diffusers ControlNet-style controlled
+`POST /v1/images/generations` runs text-to-image generation.
+`POST /v1/images/transforms` runs image-to-image generation.
+`POST /v1/images/inpaint` runs image and mask inpainting.
+`POST /v1/images/control` runs Diffusers ControlNet-style controlled
 generation.
 
 Supported `model_kind` values:
@@ -137,7 +138,7 @@ runtime does not provide a compatible ControlNet API.
 
 ### LoRA Tuning
 
-`POST /internal/v1/tuning/lora/runs` runs one local chat / causal-LM LoRA
+`POST /v1/tuning/lora/runs` runs one local chat / causal-LM LoRA
 tuning job and returns the final adapter output path plus parsed backend
 events.
 
@@ -159,7 +160,7 @@ adapter, and workspace resolution before it calls the runtime.
 
 ### Vision Chat
 
-`POST /internal/v1/vision/chat` runs one local image-plus-prompt request and
+`POST /v1/vision/chat` runs one local image-plus-prompt request and
 returns text.
 
 Supported `model_kind` values:
@@ -174,7 +175,7 @@ returns `text`, `json`, or `md` text output with a media type and finish reason.
 
 ### Video Understanding
 
-`POST /internal/v1/video/understanding` runs one local video-plus-prompt request
+`POST /v1/video/understanding` runs one local video-plus-prompt request
 and returns text.
 
 Supported `model_kind` values:

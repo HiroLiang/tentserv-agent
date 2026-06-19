@@ -18,6 +18,9 @@ Use this directory for concise interface documents that define stable boundaries
 
 ## Contract Index
 
+- [api-surface-stability.md](./api-surface-stability.md)
+  Stable, experimental, internal, and deprecated surface classification before
+  the `1.0.0` freeze.
 - [auth-secrets.md](./auth-secrets.md)
   Provider-secret resolution and keychain usage rules.
 - [model-store.md](./model-store.md)

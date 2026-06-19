@@ -1,7 +1,11 @@
 # HTTP Daemon
 
-This document defines the stable HTTP daemon boundary for the Rust
-`tentgent-daemon` app host and `tentgent daemon` lifecycle commands.
+This document defines the HTTP daemon boundary for the Rust `tentgent-daemon`
+app host and `tentgent daemon` lifecycle commands. The route-by-route stability
+tier is tracked in [api-surface-stability.md](./api-surface-stability.md);
+some public routes remain experimental until the `v0.9.0` hardening work
+finishes cancellation, cleanup, support-proof recovery, and release-readiness
+documentation.
 
 ## Scope
 

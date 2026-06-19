@@ -46,6 +46,9 @@ one pass without a staged breakdown.
   Active `v0.9.0` execution plan for 1.0 hardening, stable/experimental API
   audit, conformance smoke coverage, runtime recovery, cleanup, support proof
   retry behavior, and release closeout.
+- [v0.9.0-api-surface-audit-findings.md](./v0.9.0-api-surface-audit-findings.md)
+  Temporary `v0.9.0` audit record for API stability findings, follow-up owners,
+  and wording gaps found during issue `#75`.
 
 ## Deferred Plans
 
