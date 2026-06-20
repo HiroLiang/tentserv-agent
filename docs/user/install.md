@@ -31,9 +31,12 @@ Use the direct installer when you want a script-based install or pinned release
 artifact. The direct installer runs Python bootstrap by default:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | bash
 tentgent doctor
+tentgent --version
 ```
+
+Use `bash`, not `sh`, because the Unix installer is a Bash script.
 
 ## Linux x86_64 Install
 
@@ -43,10 +46,8 @@ runtime and local model backend parity is still not claimed on Linux.
 ```bash
 curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | bash
 tentgent doctor
+tentgent --version
 ```
-
-Use `bash`, not `sh`, because the Unix installer is a Bash script and some
-Linux distributions map `/bin/sh` to a smaller shell such as `dash`.
 
 The Linux release path was smoke-tested on `ubuntu:24.04` / `linux/amd64`. The
 default `base` runtime bootstrap does not require `cc`, `gcc`, `g++`, or
@@ -84,6 +85,7 @@ Temporarily add the default install location to `PATH`:
 ```powershell
 $env:Path = "$env:LOCALAPPDATA\Programs\tentgent\bin;$env:Path"
 tentgent doctor
+tentgent --version
 ```
 
 The installer does not edit the user's PowerShell profile automatically.
@@ -93,16 +95,25 @@ The installer does not edit the user's PowerShell profile automatically.
 Use a fixed direct-installer version when you want reproducible installation:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.sh | bash
+tentgent doctor
+tentgent --version
 ```
 
 ```powershell
 irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.ps1 | iex
+$env:Path = "$env:LOCALAPPDATA\Programs\tentgent\bin;$env:Path"
+tentgent doctor
+tentgent --version
 ```
 
 The pinned installer is tied to that release's artifact URL and version.
 Use `v0.3.3` if you want the previous stable 0.3.x release, or `v0.2.0` if you
 want the earlier daemon-parity baseline.
+
+Replace `v0.3.3` with the release tag you want to pin. Published GitHub Release
+installer assets are rewritten by the release workflow so their default
+artifact URL and version point at that same tag.
 
 ## Upgrade
 
@@ -119,7 +130,7 @@ tentgent --version
 Upgrade direct installer installs by running the installer again:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | bash
 tentgent doctor
 tentgent --version
 ```
@@ -155,6 +166,18 @@ Install and upgrade flows should preserve:
 - Keychain secrets
 - provider secrets
 - other user runtime data under `TENTGENT_HOME`
+
+## Release Installer Notes
+
+The published GitHub Release copies of `install.sh` and `install.ps1` are
+prepared by the release workflow. The workflow rewrites their default version
+and base URL so `latest/download` installs the selected latest release, while a
+`releases/download/vX.Y.Z/` URL stays pinned to that exact tag.
+
+The source checkout copies under `scripts/` keep source defaults for local
+development and release packaging. When testing from source, pass explicit
+`--archive`, `--checksums`, and `--dry-run` arguments instead of assuming the
+source defaults match the next release tag.
 
 ## Default Layout
 
@@ -268,8 +291,10 @@ scripts/package-local.sh
 Smoke-test install layout without downloading heavy Python ML dependencies:
 
 ```bash
+version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+target="$(rustc -vV | sed -n 's/^host: //p')"
 scripts/install.sh \
-  --archive dist/tentgent-0.3.3-aarch64-apple-darwin.tar.gz \
+  --archive "dist/tentgent-${version}-${target}.tar.gz" \
   --checksums dist/checksums.txt \
   --prefix /tmp/tentgent-install-smoke \
   --skip-python-bootstrap \
