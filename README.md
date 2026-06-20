@@ -84,6 +84,9 @@ Recommended Windows PowerShell install from the latest GitHub Release:
 
 ```powershell
 irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
+$env:Path = "$env:LOCALAPPDATA\Programs\tentgent\bin;$env:Path"
+tentgent doctor
+tentgent --version
 ```
 
 Linux x86_64 install from the latest GitHub Release:
@@ -91,6 +94,7 @@ Linux x86_64 install from the latest GitHub Release:
 ```bash
 curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | bash
 tentgent doctor
+tentgent --version
 ```
 
 The Linux release uses the GitHub Release tarball and the default `base`
@@ -104,12 +108,20 @@ Use GitHub Release installers when you want a pinned or reproducible
 script-based setup:
 
 ```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.sh | sh
+curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.sh | bash
+tentgent doctor
+tentgent --version
 ```
 
 ```powershell
 irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.ps1 | iex
+$env:Path = "$env:LOCALAPPDATA\Programs\tentgent\bin;$env:Path"
+tentgent doctor
+tentgent --version
 ```
+
+Replace `v0.3.3` with the release tag you want to pin. The Unix installer is a
+Bash script; use `bash`, not `sh`.
 
 If you previously installed with `install.sh`, `~/.local/bin/tentgent` may
 shadow the Homebrew binary. Check the Homebrew build directly with:
@@ -118,8 +130,17 @@ shadow the Homebrew binary. Check the Homebrew build directly with:
 /opt/homebrew/opt/tentgent/bin/tentgent -V
 ```
 
-Upgrade Homebrew installs with `brew upgrade hiroliang/tap/tentgent`. User
-runtime data under `TENTGENT_HOME` is preserved.
+Upgrade Homebrew installs with:
+
+```bash
+brew update
+brew upgrade hiroliang/tap/tentgent
+tentgent runtime bootstrap
+tentgent doctor
+tentgent --version
+```
+
+User runtime data under `TENTGENT_HOME` is preserved.
 
 See [docs/user/install.md](./docs/user/install.md) for install, upgrade, pinned versions, local package smoke tests, and uninstall notes.
 

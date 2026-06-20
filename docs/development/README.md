@@ -105,17 +105,18 @@ The current release workflow does not run `cargo fmt`, `cargo check`,
 `cargo test`, or Python unit tests before packaging. `scripts/package-local.sh`
 performs `cargo build --release --bin tentgent` as part of artifact packaging.
 
-Check release tag parsing and prerelease flag helpers:
+Before tagging a release, run the script-level release-readiness checks:
 
 ```bash
-bash scripts/test-release-metadata.sh
-bash scripts/test-package-python-layout.sh
-bash -n scripts/release-metadata.sh
-bash -n scripts/test-release-metadata.sh
-bash -n scripts/test-package-python-layout.sh
-bash -n scripts/macos-import-codesign-certificate.sh
-bash -n scripts/macos-notarize-package.sh
+bash scripts/test-release-readiness.sh
 ```
+
+The readiness wrapper checks release metadata parsing, Homebrew formula update
+fixtures, Linux target mapping, packaged Python layout, release script syntax,
+installer dry-runs, current install-doc shell usage, and the release workflow
+patches that make published installers point at the tag-specific GitHub Release
+asset URL. If PowerShell Core is installed, it also dry-runs `install.ps1`; when
+`pwsh` is absent, that optional local check is skipped.
 
 Required GitHub Actions secrets for the macOS signing path:
 
@@ -134,14 +135,15 @@ temporary keychain.
 Update the project Homebrew tap after a stable GitHub Release is published:
 
 ```bash
-bash scripts/update-homebrew-formula.sh --tag v0.3.3
+bash scripts/update-homebrew-formula.sh --tag vX.Y.Z
 ```
 
 The helper reads release `checksums.txt`, updates the local
 `hiroliang/tap` formula checkout, and prints the tap validation commands. It is
 edit-only: run `brew audit`, `brew install`, `brew test`, and tap git
-commit/push manually after reviewing the diff. Use `--dry-run` to preview the
-formula patch without writing.
+commit/push manually after reviewing the diff. The stable Homebrew formula does
+not accept prerelease tags. Use `--dry-run` to preview the formula patch
+without writing.
 
 Check the tap updater itself:
 

@@ -597,5 +597,12 @@ Known limits:
 ## Upgrade Expectations
 
 Patch releases should preserve all user runtime data under `TENTGENT_HOME`.
+After upgrading, verify the installed binary with `tentgent --version` and run
+`tentgent doctor`. Homebrew upgrades should also run `tentgent runtime
+bootstrap` so packaged support files and the managed Python runtime stay in
+sync. Direct installer upgrades run the base managed Python bootstrap by
+default.
 
-If a future release needs a runtime metadata migration, `tentgent doctor` should detect that state and print the required next step before destructive changes are made.
+If a future release needs a runtime metadata migration, `tentgent doctor`
+should detect that state and print the required next step before destructive
+changes are made.
