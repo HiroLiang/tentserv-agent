@@ -832,6 +832,18 @@ Jobs are used for detached model/adapter/dataset operations and media
 workflows. The daemon manages job workspaces; public APIs do not expose
 workspace chunks or spool routes.
 
+Cancellation updates the durable job state to terminal `canceled` for active
+jobs and asks the daemon in-flight handle to abort. Already-started blocking
+runtime work may continue outside the durable job state, so cancellation is a
+best-effort worker interruption rather than a hard process-kill guarantee.
+Terminal jobs are no longer cancellable.
+
+Deleting a terminal job removes both the durable job record and the job
+workspace when that workspace exists. Active jobs return `409 job_active`.
+Daemon shutdown marks active daemon jobs `interrupted` and runs one
+retention-aware workspace sweep; fresh interrupted or just-completed
+workspaces are retained for inspection and result/recovery behavior.
+
 ## Models
 
 | Method | Path | Body |

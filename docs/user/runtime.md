@@ -277,6 +277,40 @@ video-oriented routes may add more capability-specific checks. Those checks
 should stay warning-level unless the user is actively running a feature that
 requires them.
 
+## Stale Runtime And Job State
+
+Daemon job workspaces are temporary runtime state under `TENTGENT_HOME`. They
+may be retained after success, failure, cancellation, interruption, or daemon
+shutdown so result routes and inspection still have stable files to read.
+Deleting a terminal job through the daemon job API removes both the durable job
+record and its workspace:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/jobs
+curl -X DELETE http://127.0.0.1:8790/v1/jobs/<job-id>
+```
+
+Active jobs cannot be deleted. Cancel them first when the job is still active:
+
+```bash
+curl -X POST http://127.0.0.1:8790/v1/jobs/<job-id>/cancel
+```
+
+Cancellation always updates the durable job state, but already-started blocking
+runtime work may take time to stop. If daemon shutdown or restart leaves an
+active job in doubt, restart the daemon and inspect `/v1/jobs`; previously
+queued or running daemon jobs are recorded as `interrupted` instead of being
+silently reused.
+
+Local model-bound server processes are separate from daemon jobs. Use server
+inspection and stop commands for stale server runtime state:
+
+```bash
+tentgent server ps
+tentgent server inspect <server-ref>
+tentgent server stop <server-ref>
+```
+
 ## Keychain Prompts
 
 On macOS, Tentgent may trigger a Keychain prompt when a command needs a stored provider secret and no environment override is present.

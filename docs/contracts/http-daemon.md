@@ -268,9 +268,13 @@ warns, otherwise `pass`.
 ```
 
 Shutdown stops only the daemon process. It does not stop running model-bound
-servers. Unlike most loopback-local daemon routes, shutdown requires
-`TENTGENT_DAEMON_TOKEN` to be enabled and a valid bearer token; otherwise it
-returns `409 daemon_token_required` or `401 unauthorized`.
+servers. Before the daemon accept loop stops, shutdown aborts in-flight daemon
+job handles, marks queued or running daemon jobs as terminal `interrupted`, and
+runs one retention-aware workspace sweep. The sweep is best-effort and must not
+delete just-interrupted or just-completed workspaces immediately. Unlike most
+loopback-local daemon routes, shutdown requires `TENTGENT_DAEMON_TOKEN` to be
+enabled and a valid bearer token; otherwise it returns
+`409 daemon_token_required` or `401 unauthorized`.
 
 ## Read-Only Store Discovery
 
@@ -774,7 +778,7 @@ return `202` with:
     "target_ref": null,
     "status": "queued",
     "stage": "queued",
-    "cancellable": false,
+    "cancellable": true,
     "refresh_targets": ["models"],
     "bytes_done": null,
     "bytes_total": null,
@@ -796,11 +800,15 @@ return `202` with:
 ```
 
 Job `status` values are `queued`, `running`, `succeeded`, `failed`,
-`interrupted`, and, once M6B cancel/delete is implemented, `canceled`. Existing
-store and dataset jobs do not expose cancellation yet, so `cancellable` is
-`false` until the worker can honor cancel requests. Job records are persisted
-under the resolved runtime home. Daemon restart marks previously queued or
-running jobs as terminal `interrupted` instead of resuming them.
+`interrupted`, and `canceled`. `cancellable` is `true` only while a daemon job is
+active and the daemon can accept a cancellation request for its durable job
+state. Cancellation guarantees a terminal `canceled` record for non-terminal
+jobs; aborting already-started blocking worker work is best-effort and must not
+be treated as a hard process-kill guarantee. `DELETE /v1/jobs/{job_id}` accepts
+terminal jobs only and removes both the durable job record and its workspace if
+present. Job records are persisted under the resolved runtime home. Daemon
+restart marks previously queued or running jobs as terminal `interrupted`
+instead of resuming them.
 
 Job records must not contain daemon tokens, provider secrets, raw provider
 output, or unbounded logs. `/v1/jobs*` follows the same daemon bearer-token auth

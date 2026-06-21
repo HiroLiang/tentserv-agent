@@ -102,13 +102,14 @@ pub struct JobTimingResponse {
 }
 
 pub fn job_item(job: JobItem) -> JobItemResponse {
+    let cancellable = job.cancellable && !job.status.is_terminal();
     JobItemResponse {
         job_id: job.job_id.into_string(),
         kind: job.kind.into_string(),
         label: job.label,
         status: job_status(job.status).to_string(),
         stage: job.stage,
-        cancellable: job.cancellable,
+        cancellable,
         target: job.target.map(job_target),
         artifact: job.artifact.map(job_artifact),
         refresh_targets: job.refresh_targets,

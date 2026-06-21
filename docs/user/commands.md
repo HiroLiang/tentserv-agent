@@ -1206,7 +1206,9 @@ Detached daemon children inherit daemon configuration environment variables,
 including `TENTGENT_DAEMON_TOKEN`; local model-server proxy children remove
 that token before launch.
 `POST /v1/daemon/shutdown` requires `TENTGENT_DAEMON_TOKEN` even on loopback
-and stops only the daemon process; it does not stop running model-bound servers.
+and stops only the daemon process. It marks active daemon jobs `interrupted` and
+runs one retention-aware job workspace sweep, but it does not stop running
+model-bound servers.
 
 Inspect and remove managed store entries through the daemon:
 

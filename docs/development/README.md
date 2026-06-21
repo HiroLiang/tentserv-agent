@@ -810,13 +810,19 @@ synchronous compatibility calls. Background variants use
 /v1/adapters/pull/jobs`, `POST /v1/adapters/import/jobs`, `POST
 /v1/datasets/import/jobs`, `POST /v1/datasets/synth/jobs`, and `POST
 /v1/datasets/eval/jobs`, then expose progress through `GET /v1/jobs` and `GET
-/v1/jobs/<job-id>`. No cancel route exists in Slice 4.1.
+/v1/jobs/<job-id>`. Generic job control is exposed through
+`POST /v1/jobs/<job-id>/cancel` and `DELETE /v1/jobs/<job-id>`. Cancellation
+marks active durable job state `canceled` and asks in-flight daemon task
+handles to abort; already-started blocking work may continue, so worker
+interruption is best-effort. Deleting a terminal job removes its durable record
+and job workspace.
 Request logs are emitted to stderr with peer, method, path, status, and elapsed
 time fields. Auth failures never log token or header values.
 Auth status is read-only and reports local env/keychain presence without
 provider network validation. HTTP doctor is observational only and does not run
 `doctor --fix` behavior. Daemon shutdown requires an enabled bearer token even
-on loopback and stops only the daemon process.
+on loopback, stops only the daemon process, marks active daemon jobs
+`interrupted`, and runs one retention-aware job workspace sweep.
 
 The active Rust daemon host lives in `src/tentgent-daemon/`:
 

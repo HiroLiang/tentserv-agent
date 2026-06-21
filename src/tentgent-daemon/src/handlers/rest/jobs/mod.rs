@@ -4,9 +4,10 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use tentgent_kernel::features::job::{infra::FileJobWorkspaceStore, ports::JobWorkspacePort};
 
 use crate::{
-    runtime::JobId,
+    runtime::{JobId, JobWorkspaceSummary},
     transport::rest::{error::RestError, state::RestState},
 };
 
@@ -87,12 +88,22 @@ pub async fn delete(
         ));
     }
 
-    let Some(job) = state.app().jobs().delete_terminal(&job_id) else {
+    FileJobWorkspaceStore::from_runtime_dir(state.app().layout().runtime_dir.clone())
+        .remove_workspace(&job)
+        .map_err(|err| {
+            RestError::internal(
+                "job_workspace_cleanup_failed",
+                format!("failed to remove workspace for job `{job_id}`: {err}"),
+            )
+        })?;
+
+    let Some(mut job) = state.app().jobs().delete_terminal(&job_id) else {
         return Err(RestError::not_found(
             "not_found",
             format!("job `{job_id}` was not found"),
         ));
     };
+    job.workspace = Some(JobWorkspaceSummary::removed());
 
     Ok(Json(JobResponse { job: job_item(job) }))
 }
