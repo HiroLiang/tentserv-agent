@@ -175,6 +175,16 @@ POST   /v1/jobs/{job_id}/cancel
 DELETE /v1/jobs/{job_id}
 ```
 
+`POST /v1/jobs/{job_id}/cancel` marks a non-terminal durable job record
+`canceled`. For daemon blocking workers, cancellation also asks the in-flight
+task handle to abort, but already-started blocking work may continue outside
+the durable job state. This is best-effort worker interruption, not a guarantee
+that every underlying runtime operation stops immediately.
+
+`DELETE /v1/jobs/{job_id}` is terminal-only. It must remove the durable job
+record and the job workspace when that workspace exists. Active jobs must
+return conflict instead of deleting their workspace.
+
 Starting detached/background work belongs to a feature endpoint:
 
 ```text

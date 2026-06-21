@@ -80,7 +80,7 @@ impl JobRegistry {
         refresh_targets: impl IntoIterator<Item = String>,
     ) -> JobItem {
         let job_id = self.next_job_id();
-        let mut job = JobItem::queued(job_id, kind, label, now_string());
+        let mut job = JobItem::queued(job_id, kind, label, now_string()).with_cancellable(true);
         job.target = target;
         job.refresh_targets = refresh_targets.into_iter().collect();
         self.insert(job.clone());

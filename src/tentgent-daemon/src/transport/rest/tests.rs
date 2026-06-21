@@ -21,8 +21,8 @@ use crate::{
     app::{DaemonAppState, DaemonServices},
     bootstrap::{DaemonBootstrapConfig, LoggingConfig, LoggingRuntime, RestConfig},
     runtime::{
-        JobArtifact, JobKind, JobOutputLine, JobProgressPatch, JobProgressUpdate, JobStream,
-        JobTarget,
+        JobArtifact, JobKind, JobOutputLine, JobProgressPatch, JobProgressUpdate, JobStatus,
+        JobStream, JobTarget,
     },
     transport::rest::{build_router, security::DaemonSecurityConfig, state::RestState},
 };
@@ -1830,6 +1830,20 @@ async fn jobs_cancel_marks_active_job_canceled() {
         .create(JobKind::model_pull(), "Pull model", None, Vec::new());
     state.app().jobs().start(&job.job_id, "downloading");
 
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/jobs/{}", job.job_id.as_str()))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["job"]["cancellable"], true);
+
     let response = build_router(state)
         .oneshot(
             Request::builder()
@@ -1845,6 +1859,7 @@ async fn jobs_cancel_marks_active_job_canceled() {
     let body = json_body(response).await;
     assert_eq!(body["job"]["status"], "canceled");
     assert_eq!(body["job"]["stage"], "canceled");
+    assert_eq!(body["job"]["cancellable"], false);
 
     let _ = fs::remove_dir_all(home);
 }
@@ -1863,10 +1878,21 @@ async fn jobs_delete_rejects_active_and_removes_terminal_job() {
             .app()
             .jobs()
             .create(JobKind::adapter_pull(), "Pull adapter", None, Vec::new());
+    let workspace_store =
+        FileJobWorkspaceStore::from_runtime_dir(&state.app().layout().runtime_dir);
+    let terminal_workspace = workspace_store
+        .open_workspace(&terminal.job_id)
+        .expect("open terminal workspace");
+    fs::write(
+        terminal_workspace.workspace_dir.join("marker.txt"),
+        b"retained",
+    )
+    .expect("write terminal workspace marker");
     state
         .app()
         .jobs()
         .succeed(&terminal.job_id, None, "adapter imported");
+    assert!(terminal_workspace.workspace_dir.exists());
 
     let response = build_router(state.clone())
         .oneshot(
@@ -1893,6 +1919,8 @@ async fn jobs_delete_rejects_active_and_removes_terminal_job() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["job"]["job_id"], terminal.job_id.as_str());
+    assert_eq!(body["job"]["workspace"]["cleanup_state"], "removed");
+    assert!(!terminal_workspace.workspace_dir.exists());
 
     let response = build_router(state)
         .oneshot(
@@ -1904,6 +1932,53 @@ async fn jobs_delete_rejects_active_and_removes_terminal_job() {
         .await
         .expect("response");
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn daemon_shutdown_interrupts_active_jobs_and_retains_fresh_workspaces() {
+    let requested_home = unique_home("daemon-shutdown-jobs");
+    let state = rest_state_for_home_with_security(
+        requested_home,
+        DaemonSecurityConfig::from_token_value(Some("secret")),
+    );
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let job = state.app().jobs().create(
+        JobKind::audio_transcription(),
+        "Transcribe audio",
+        None,
+        Vec::new(),
+    );
+    let workspace_store =
+        FileJobWorkspaceStore::from_runtime_dir(&state.app().layout().runtime_dir);
+    let workspace = workspace_store
+        .open_workspace(&job.job_id)
+        .expect("open active workspace");
+    fs::write(workspace.workspace_dir.join("input.wav"), b"audio")
+        .expect("write active workspace marker");
+    state.app().jobs().start(&job.job_id, "running");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/daemon/shutdown")
+                .header("authorization", "Bearer secret")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let interrupted = state.app().jobs().get(&job.job_id).expect("job");
+    assert_eq!(interrupted.status, JobStatus::Interrupted);
+    assert_eq!(
+        interrupted.error_summary.as_deref(),
+        Some("daemon shutdown requested")
+    );
+    assert!(workspace.workspace_dir.exists());
 
     let _ = fs::remove_dir_all(home);
 }
