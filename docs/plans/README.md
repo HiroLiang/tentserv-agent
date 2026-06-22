@@ -33,21 +33,11 @@ one pass without a staged breakdown.
 
 ## Active Plan Index
 
-- [v1.0.0-stable-compatibility-plan.md](./v1.0.0-stable-compatibility-plan.md)
-  Active `v1.0.0` release train for freezing stable API surfaces, proving
-  provider-compatible and native workflow compatibility, validating install and
-  diagnostics readiness, publishing the release, updating Homebrew, and closing
-  the roadmap.
 - [post-m7-platform-compatibility-roadmap.md](./post-m7-platform-compatibility-roadmap.md)
   Active post-M7 roadmap for platform trust, model and LoRA compatibility
   management, runtime proof storage, dynamic runtime routing, media serving
   wrappers, runtime stream proxy decisions, resource coordination, and
   conversion boundaries after the signed `v0.4.1` release.
-- [provider-api-compatibility-and-model-support-roadmap.md](./provider-api-compatibility-and-model-support-roadmap.md)
-  Focused roadmap for OpenAI, Claude/Anthropic, and Gemini-compatible API
-  surfaces, model support records, runtime parameter profiles, verification
-  gates, bounded dynamic routing, and the staged compatibility path through
-  `v1.0.0`.
 
 ## Deferred Plans
 
@@ -62,8 +52,14 @@ one pass without a staged breakdown.
 
 - [archive/README.md](./archive/README.md)
   Router for completed or superseded plans, including the completed
-  capability-first M2-M7 release roadmap and archived `v0.9.0` hardening
-  records.
+  capability-first M2-M7 release roadmap and archived `v0.9.0` / `v1.0.0`
+  release records.
+- [archive/v1.0.0-stable-compatibility-plan.md](./archive/v1.0.0-stable-compatibility-plan.md)
+  Archived `v1.0.0` stable compatibility release train and post-merge
+  release/tap checklist.
+- [archive/provider-api-compatibility-and-model-support-roadmap.md](./archive/provider-api-compatibility-and-model-support-roadmap.md)
+  Archived provider compatibility, model support, runtime profile, and 1.0
+  readiness roadmap.
 - [archive/v0.9.0-hardening-plan.md](./archive/v0.9.0-hardening-plan.md)
   Completed `v0.9.0` hardening execution plan and release PR/tag checklist.
 - [archive/v0.9.0-api-surface-audit-findings.md](./archive/v0.9.0-api-surface-audit-findings.md)

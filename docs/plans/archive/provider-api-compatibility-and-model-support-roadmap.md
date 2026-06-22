@@ -1,16 +1,17 @@
 # Provider API Compatibility, Model Support, And 1.0 Readiness Roadmap
 
-Status: active focused roadmap.
+Status: archived. Completed as the focused compatibility roadmap through the
+`v1.0.0` release closeout.
 
-This roadmap turns the post-M7 compatibility direction into a product-facing
-track: make Tentgent easier to adopt as a local or hosted-compatible runtime by
+This roadmap turned the post-M7 compatibility direction into a product-facing
+track: making Tentgent easier to adopt as a local or hosted-compatible runtime by
 supporting familiar provider API shapes and by making model support explicit,
-inspectable, and bounded. It also defines the staged path from the current
-0.x line toward a trustworthy `1.0.0` release.
+inspectable, and bounded. It also defined the staged path from the 0.x line
+toward the `v1.0.0` stability promise.
 
 ## Relationship To Post-M7 Roadmap
 
-[post-m7-platform-compatibility-roadmap.md](./post-m7-platform-compatibility-roadmap.md)
+[post-m7-platform-compatibility-roadmap.md](../post-m7-platform-compatibility-roadmap.md)
 is the broad architecture roadmap for platform trust, durable compatibility
 proofs, runtime routing, resource coordination, and conversion boundaries.
 
@@ -22,8 +23,8 @@ This document is the focused execution roadmap for:
   differences.
 - Request routing that explains why a model is accepted, rejected, or treated as
   unknown.
-- The minimum compatibility, diagnostic, and documentation work needed before
-  `1.0.0`.
+- The minimum compatibility, diagnostic, and documentation work needed for the
+  `v1.0.0` stability promise.
 
 ## Purpose
 
@@ -56,10 +57,10 @@ unknown, or stale before they put it behind a server or job workflow.
 
 ## 1.0 Readiness Definition
 
-Tentgent should reach `1.0.0` only when supported workflows can be trusted in
-real use and unsupported workflows fail clearly.
+Tentgent should treat `1.0.0` as ready only when supported workflows can be
+trusted in real use and unsupported workflows fail clearly.
 
-Before `1.0.0`, Tentgent should provide:
+For the `v1.0.0` stable promise, Tentgent provides:
 
 - Stable native daemon contracts for chat, embeddings, rerank, and durable media
   job workflows.
@@ -96,7 +97,7 @@ group multiple capability-specific local models behind one API target.
 Automatic media pre-processing, where images, audio, video, or files are
 parsed by the configured capability model before their extracted context is
 sent to a chat model, is tracked separately in
-[post-1.0-serving-targets-and-multimodal-context-pipeline.md](./post-1.0-serving-targets-and-multimodal-context-pipeline.md).
+[post-1.0-serving-targets-and-multimodal-context-pipeline.md](../post-1.0-serving-targets-and-multimodal-context-pipeline.md).
 
 That future pipeline is outside the `v1.0.0` stable promise. The important
 constraint is to keep provider request parsing, native intent types,
@@ -133,10 +134,10 @@ that this post-1.0 direction remains possible.
 
 ### P3: Model Support Registry
 
-- Use [model-support-status.md](../contracts/model-support-status.md) as the
+- Use [model-support-status.md](../../contracts/model-support-status.md) as the
   vocabulary and precedence contract for support status resolution.
 - Use
-  [model-support-proof-schema.md](../contracts/model-support-proof-schema.md)
+  [model-support-proof-schema.md](../../contracts/model-support-proof-schema.md)
   as the local proof and support hint record schema.
 - Add a local support registry that can answer whether a model/backend/platform
   tuple is supported, unsupported, verified, failed, unknown, or stale.
@@ -172,7 +173,7 @@ that this post-1.0 direction remains possible.
 - Gate server starts and daemon jobs using declared capability, support status,
   platform readiness, runtime profile availability, and stale proof state.
 - Treat support status as a derived result from the
-  [model-support-status.md](../contracts/model-support-status.md) resolver
+  [model-support-status.md](../../contracts/model-support-status.md) resolver
   rules, not as a direct replacement for declared `model_capabilities`.
 - Provide clear override policy for unknown models, such as the explicit
   server `--allow-unverified` flag, and record the outcome in proof workflows.
@@ -277,7 +278,7 @@ that this post-1.0 direction remains possible.
 ### v0.9.0: 1.0 Hardening Release
 
 Completed execution record:
-[v0.9.0-hardening-plan.md](./archive/v0.9.0-hardening-plan.md).
+[v0.9.0-hardening-plan.md](./v0.9.0-hardening-plan.md).
 
 - Expand provider conformance tests and curated model fixture smoke tests.
 - Harden install, upgrade, runtime bootstrap, doctor, and auth recovery flows.
@@ -316,5 +317,6 @@ Completed execution record:
 - Runtime parameter profiles exist for the first supported backend families.
 - Server and job routing can explain why a model is accepted, rejected,
   unknown, or stale.
-- `1.0.0` is cut only after the documented stable API subset, conformance
-  tests, fixture tests, diagnostics, and upgrade expectations are ready.
+- `v1.0.0` is prepared only after the documented stable API subset,
+  conformance tests, fixture tests, diagnostics, and upgrade expectations are
+  ready.
