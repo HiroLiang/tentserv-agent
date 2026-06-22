@@ -167,10 +167,16 @@ Execution backend labels, such as `mlx-lm`, `mlx-vlm`, `mlx-audio`,
 family used for the model tuple. These labels are diagnostics, not provider API
 route names.
 
-When a status is actionable, CLI diagnostics should provide a copyable command:
+When a status is actionable, CLI and doctor diagnostics should provide compact
+recovery guidance plus a copyable command when a local command can directly
+advance recovery:
 
-- `failed` or `stale`: clear the local proof before retrying the route.
-- `unknown`: record or run a verification flow before relying on the tuple.
+- `failed`: show the failure reason, clear the failed proof after fixing the
+  runtime/backend issue, then retry the route or rerun verification.
+- `stale`: show the stale reason, refresh evidence for the current runtime
+  tuple, or clear stale proof before retrying.
+- `unknown`: record or run a verification flow before relying on the tuple, or
+  use an explicit allow-unverified policy for a local server retry.
 - `unsupported`: add missing capability metadata only when the model does not
   declare the requested capability; otherwise inspect the model and choose a
   different tuple.

@@ -853,6 +853,7 @@ workspaces are retained for inspection and result/recovery behavior.
 | `DELETE` | `/v1/models/{reference}` | None. |
 | `POST` | `/v1/models/{reference}/capabilities` | `{"set":["chat","vision-chat"]}` or `{"add":["vision-chat"],"remove":["chat"]}`. |
 | `GET` | `/v1/models/{reference}/capabilities/proofs` | None. |
+| `DELETE` | `/v1/models/{reference}/capabilities/proofs/{capability}` | None. |
 | `POST` | `/v1/models/{reference}/capabilities/verify` | `{"capability":"chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation"}`. |
 | `PATCH` | `/v1/models/{reference}` | Legacy compatibility alias for replacing the capability set with one `{"capability":"..."}` value. |
 | `POST` | `/v1/models/import` | `{"path":"/absolute/model-dir","capability":"optional-capability"}` |
@@ -867,6 +868,11 @@ leave a model with no capabilities.
 Capability proofs are latest local records keyed by model and capability.
 Manual `verify` is a metadata-level probe in this slice; local model-bound
 server starts also write `server-start` proofs after launch success or failure.
+Deleting a capability proof path clears all local proof records for that model
+capability, including tuple-aware backend/runtime-profile records and the
+legacy latest-proof file, without changing model content or capability
+metadata. The delete response includes `proof_clear.capability` and
+`proof_clear.removed_proof_count`.
 
 ## Adapters
 

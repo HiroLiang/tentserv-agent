@@ -2617,7 +2617,7 @@ async fn model_capability_verify_records_and_lists_proofs() {
     assert_eq!(body["proof"]["status"], "verified");
     assert_eq!(body["proof"]["source"], "manual-probe");
 
-    let response = build_router(state)
+    let response = build_router(state.clone())
         .oneshot(
             Request::builder()
                 .uri(format!(
@@ -2635,6 +2635,42 @@ async fn model_capability_verify_records_and_lists_proofs() {
     assert_eq!(body["proofs"].as_array().expect("proofs").len(), 1);
     assert_eq!(body["proofs"][0]["capability"], "vision-chat");
     assert_eq!(body["proofs"][0]["status"], "verified");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/v1/models/{}/capabilities/proofs/vision-chat",
+                    &model_ref[..12]
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["proof_clear"]["capability"], "vision-chat");
+    assert_eq!(body["proof_clear"]["removed_proof_count"], 1);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/models/{}/capabilities/proofs",
+                    &model_ref[..12]
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert!(body["proofs"].as_array().expect("proofs").is_empty());
 
     let _ = fs::remove_dir_all(home);
 }
@@ -2670,6 +2706,35 @@ async fn model_capability_verify_records_failed_proof_for_undeclared_capability(
         .as_str()
         .expect("error")
         .contains("does not advertise capability"));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn model_capability_proof_clear_rejects_invalid_capability() {
+    let requested_home = unique_home("models-capability-clear-invalid");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "7".repeat(64);
+    write_model_fixture_with_capabilities(&home, &model_ref, &["chat"]);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/v1/models/{}/capabilities/proofs/not-a-capability",
+                    &model_ref[..12]
+                ))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
 
     let _ = fs::remove_dir_all(home);
 }

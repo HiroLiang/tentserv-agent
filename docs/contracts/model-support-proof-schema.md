@@ -58,6 +58,12 @@ That path stores only one latest proof per capability. It must not be treated
 as the durable tuple index when multiple backend, runtime, adapter, or shape
 proofs exist for the same capability.
 
+Capability proof clearing is intentionally capability-wide in this schema
+generation. Clearing one `model_ref + capability` removes all tuple-aware
+support proof files for that capability and the legacy latest-proof file. It
+does not remove model content, stored capability metadata, or proof records for
+other capabilities.
+
 The `v0.7.0` schema should be versioned:
 
 ```toml

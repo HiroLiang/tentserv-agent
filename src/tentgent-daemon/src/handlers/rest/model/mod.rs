@@ -14,7 +14,8 @@ use tentgent_kernel::{
     features::model::{
         domain::{HfModelPullProgress, ModelCapability, ModelRefSelector},
         usecases::{
-            ModelCapabilityMutation, ModelCapabilityProofListRequest, ModelCapabilityProofUseCase,
+            ModelCapabilityMutation, ModelCapabilityProofClearRequest,
+            ModelCapabilityProofListRequest, ModelCapabilityProofUseCase,
             ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase,
             ModelCapabilityVerifyRequest, ModelCatalogReadUseCase, ModelHfPullRequest,
             ModelHfPullUseCase, ModelInspectRequest, ModelListRequest, ModelLocalImportRequest,
@@ -42,9 +43,10 @@ use crate::{
 };
 
 use self::dto::{
-    model_capability_proofs_response, model_capability_update_response,
-    model_capability_verify_response, model_inspection_item, model_mutation_response,
-    model_removal_item, model_summary_item, ModelCapabilityProofsResponse,
+    model_capability_proof_clear_response, model_capability_proofs_response,
+    model_capability_update_response, model_capability_verify_response, model_inspection_item,
+    model_mutation_response, model_removal_item, model_summary_item,
+    ModelCapabilityProofClearResponse, ModelCapabilityProofsResponse,
     ModelCapabilityUpdateResponse, ModelCapabilityVerifyResponse, ModelMutationResponse,
     ModelResponse, ModelsResponse,
 };
@@ -188,6 +190,30 @@ pub async fn verify_capability(
         result.model,
         result.proof,
     )))
+}
+
+pub async fn clear_capability_proofs(
+    State(state): State<RestState>,
+    Path((reference, capability)): Path<(String, String)>,
+) -> Result<Json<ModelCapabilityProofClearResponse>, RestError> {
+    let selector = ModelRefSelector::parse(&reference).map_err(|err| {
+        RestError::bad_request("bad_request", format!("invalid model reference: {err}"))
+    })?;
+    let capability = parse_required_model_capability("capability", &capability)?;
+    let result = state
+        .app()
+        .services()
+        .kernel()
+        .models()
+        .capability_proof_usecase()
+        .clear_model_capability_proofs(ModelCapabilityProofClearRequest {
+            layout: state.app().layout_input(LayoutResolveMode::Create),
+            selector,
+            capability,
+        })
+        .map_err(model_error)?;
+
+    Ok(Json(model_capability_proof_clear_response(result)))
 }
 
 async fn update_capabilities_with_mutation(

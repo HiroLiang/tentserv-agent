@@ -236,8 +236,12 @@ the server spec has one, so a later profile version is treated as new evidence
 instead of silently reusing the old proof.
 Use `model capability proof clear <model-ref> <capability>` after fixing a
 runtime problem to remove stale local `verified` or `failed` proof evidence for
-that capability. This does not remove stored capability metadata or model
-content.
+that capability, then retry the route or rerun verification. This command clears
+all local proof records for that model capability, including tuple-aware
+backend/runtime-profile records and the legacy latest-proof file. It does not
+remove stored capability metadata or model content. The daemon REST API exposes
+the same recovery action with
+`DELETE /v1/models/{reference}/capabilities/proofs/{capability}`.
 `tentgent doctor` also reports local model support summaries as capability
 checks. Local model-bound server starts now use the same support status as a
 startup gate: `verified` and `supported` are allowed by default, `failed` and

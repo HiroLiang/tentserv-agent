@@ -840,10 +840,23 @@ fn standard_model_capability_proof_usecase_clears_capability_proofs() {
     let listed = usecase
         .list_model_capability_proofs(ModelCapabilityProofListRequest {
             layout: layout_input(home.to_str().expect("home path")),
-            selector,
+            selector: selector.clone(),
         })
         .expect("list proofs");
     assert!(listed.proofs.is_empty());
+
+    let reader = StdModelCatalogReadUseCase::new(&layout_resolver, &catalog);
+    let inspected = reader
+        .inspect_model(ModelInspectRequest {
+            layout: layout_input(home.to_str().expect("home path")),
+            selector,
+        })
+        .expect("inspect model after clear");
+    assert!(inspected.model.store_path.is_dir());
+    assert_eq!(
+        inspected.model.metadata.model_capabilities,
+        vec![ModelCapability::Chat]
+    );
 
     let _ = fs::remove_dir_all(home);
 }
