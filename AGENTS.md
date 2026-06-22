@@ -108,7 +108,8 @@ Key current documents:
 - `docs/user/install.md`
   Install, upgrade, pinned-version, PATH, and local package smoke-test guidance.
 - `docs/user/version.md`
-  Current MVP feature list, known limits, and upgrade expectations.
+  User-facing release notes, stable promises, known limits, and upgrade
+  expectations.
 - `docs/user/1.0-readiness.md`
   User and contributor checklist for the `1.0.0` stability promise, release
   smoke expectations, and post-1.0 boundaries.
@@ -129,16 +130,18 @@ Key current documents:
   management, runtime proof storage, dynamic routing, media serving wrappers,
   stream proxy decisions, and resource coordination after the signed `v0.4.1`
   release.
-- `docs/plans/provider-api-compatibility-and-model-support-roadmap.md`
-  Focused roadmap for provider-compatible API surfaces, model support records,
-  runtime parameter profiles, verification gates, bounded dynamic routing, and
-  the staged path to `1.0.0`.
 - `docs/plans/post-1.0-serving-targets-and-multimodal-context-pipeline.md`
   Deferred post-1.0 direction for grouping capability-specific models behind
   one serving target and pre-processing local media attachments into chat
   context.
 - `docs/plans/archive/README.md`
   Router for completed or superseded plans that should be consulted only when historical implementation context is needed.
+- `docs/plans/archive/v1.0.0-stable-compatibility-plan.md`
+  Archived `v1.0.0` stable compatibility release train and post-merge release
+  and Homebrew tap checklist.
+- `docs/plans/archive/provider-api-compatibility-and-model-support-roadmap.md`
+  Archived provider compatibility, model support, runtime profile, and 1.0
+  readiness roadmap.
 - `docs/plans/archive/v0.9.0-hardening-plan.md`
   Completed `v0.9.0` execution plan for 1.0 hardening, stable/experimental API
   audit, conformance smoke coverage, runtime recovery, cleanup, support proof

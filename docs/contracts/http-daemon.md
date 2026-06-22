@@ -3,9 +3,9 @@
 This document defines the HTTP daemon boundary for the Rust `tentgent-daemon`
 app host and `tentgent daemon` lifecycle commands. The route-by-route stability
 tier is tracked in [api-surface-stability.md](./api-surface-stability.md);
-some public routes remain experimental until the `v0.9.0` hardening work
-finishes cancellation, cleanup, support-proof recovery, and release-readiness
-documentation.
+some public routes remain experimental because their cleanup, support-proof
+recovery, runtime, or release-readiness semantics are documented but still
+allowed to tighten outside the `v1.0.0` stable surface.
 
 ## Scope
 

@@ -21,6 +21,20 @@ active execution track.
   - completed slice order
   - rationale behind earlier runtime, release, server, or backend decisions
 
+## v1.0.0 Compatibility Track
+
+These plans were the staged compatibility and release-readiness path through
+the `v1.0.0` release closeout.
+
+- [v1.0.0-stable-compatibility-plan.md](./v1.0.0-stable-compatibility-plan.md)
+  Completed release train for freezing stable API surfaces, proving native and
+  provider-compatible workflows, validating install and diagnostics readiness,
+  and preparing the post-merge release/tap checklist.
+- [provider-api-compatibility-and-model-support-roadmap.md](./provider-api-compatibility-and-model-support-roadmap.md)
+  Completed focused roadmap for provider-shaped API compatibility, model
+  support status, runtime profiles, verification gates, and the path from the
+  0.x line to the `v1.0.0` stability promise.
+
 ## v0.9.0 Hardening Track
 
 These plans were the active 1.0 hardening roadmap through the `v0.9.0`
