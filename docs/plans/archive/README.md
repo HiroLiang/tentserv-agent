@@ -21,6 +21,20 @@ active execution track.
   - completed slice order
   - rationale behind earlier runtime, release, server, or backend decisions
 
+## v0.9.0 Hardening Track
+
+These plans were the active 1.0 hardening roadmap through the `v0.9.0`
+closeout issue and were archived after `#82` completed.
+
+- [v0.9.0-hardening-plan.md](./v0.9.0-hardening-plan.md)
+  Completed execution plan for stable/experimental API audit, conformance smoke
+  coverage, runtime and doctor recovery, install and upgrade hardening,
+  cancellation and cleanup semantics, support proof recovery, readiness docs,
+  and release closeout.
+- [v0.9.0-api-surface-audit-findings.md](./v0.9.0-api-surface-audit-findings.md)
+  Archived API surface audit findings and follow-up routing record from issue
+  `#75`.
+
 ## Capability-First M2-M7 Track
 
 These plans were the active release roadmap through signed `v0.4.1` and were
