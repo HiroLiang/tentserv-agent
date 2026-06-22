@@ -91,17 +91,17 @@ Tentgent should aim for domain-swap compatibility only within declared support:
 
 ## Post-1.0 Direction
 
-The path to `1.0.0` should leave room for future serving targets that group
-multiple capability-specific local models behind one API target. Automatic
-media pre-processing, where images, audio, video, or files are parsed by the
-configured capability model before their extracted context is sent to a chat
-model, is tracked separately in
+The `v1.0.0` compatibility boundary leaves room for future serving targets that
+group multiple capability-specific local models behind one API target.
+Automatic media pre-processing, where images, audio, video, or files are
+parsed by the configured capability model before their extracted context is
+sent to a chat model, is tracked separately in
 [post-1.0-serving-targets-and-multimodal-context-pipeline.md](./post-1.0-serving-targets-and-multimodal-context-pipeline.md).
 
-That future pipeline is not a `1.0.0` blocker. Before `1.0.0`, the important
-constraint is to keep provider request parsing, native intent types, capability
-metadata, runtime profiles, and attachment handling explicit enough that this
-post-1.0 direction remains possible.
+That future pipeline is outside the `v1.0.0` stable promise. The important
+constraint is to keep provider request parsing, native intent types,
+capability metadata, runtime profiles, and attachment handling explicit enough
+that this post-1.0 direction remains possible.
 
 ## Work Tracks
 
@@ -284,7 +284,7 @@ Completed execution record:
 - Add missing cancellation, cleanup, and shutdown behavior that blocks stable
   operational use.
 - Review native and compatible API contracts for fields that must be frozen,
-  renamed, or clearly marked experimental before `1.0.0`.
+  renamed, or clearly marked experimental for the `v1.0.0` freeze.
 - Prepare user-facing stable/experimental documentation and upgrade notes.
 
 ### v1.0.0: Stable Compatibility Release

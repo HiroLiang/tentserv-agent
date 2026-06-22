@@ -124,10 +124,10 @@ model focused on the capability it can actually perform.
 
 ## Cloud Rerank Direction
 
-Provider-compatible rerank should remain unsupported before `1.0.0`. OpenAI,
-Claude/Anthropic, and the Gemini Developer API do not expose a stable rerank
-endpoint family that Tentgent can mirror as part of the current compatibility
-contract.
+Provider-compatible rerank remains outside the `v1.0.0` stable promise.
+OpenAI, Claude/Anthropic, and the Gemini Developer API do not expose a stable
+rerank endpoint family that Tentgent can mirror as part of the current
+compatibility contract.
 
 Future cloud rerank support should be added as an explicit capability and
 adapter family instead of being hidden behind chat, embeddings, or Gemini

@@ -46,7 +46,8 @@ one pass without a staged breakdown.
 - [provider-api-compatibility-and-model-support-roadmap.md](./provider-api-compatibility-and-model-support-roadmap.md)
   Focused roadmap for OpenAI, Claude/Anthropic, and Gemini-compatible API
   surfaces, model support records, runtime parameter profiles, verification
-  gates, bounded dynamic routing, and the staged path to `1.0.0`.
+  gates, bounded dynamic routing, and the staged compatibility path through
+  `v1.0.0`.
 
 ## Deferred Plans
 

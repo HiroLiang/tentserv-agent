@@ -388,6 +388,10 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v1.0.0`: stable compatibility release; freezes the documented stable CLI,
+  daemon REST, local model-bound server, direct cloud server, provider
+  unsupported-error, install readiness, and diagnostics surfaces while keeping
+  experimental and post-1.0 work explicitly routed outside the stable promise.
 - `v0.9.0`: 1.0 hardening readiness release; adds API surface audit
   documentation, provider-compatible conformance smoke coverage, install and
   runtime recovery diagnostics, cancellation and shutdown semantics, support
@@ -430,8 +434,8 @@ Detailed contracts live under [docs/contracts/](./docs/contracts/README.md) so
 this README stays easy to scan.
 
 - [docs/contracts/api-surface-stability.md](./docs/contracts/api-surface-stability.md)
-  Stable, experimental, internal, and deprecated surface classification before
-  the `1.0.0` freeze.
+  Stable, experimental, internal, and deprecated surface classification for
+  the `v1.0.0` stability promise.
 - [docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md)
   Complete local daemon API contract, endpoint list, auth behavior, response
   shapes, and error mapping.

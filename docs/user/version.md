@@ -1,6 +1,54 @@
 # Version Notes
 
-This document summarizes the current user-facing version. It is not a changelog yet.
+This document summarizes user-facing release notes, stable promises, and known
+limits for current and historical Tentgent versions.
+
+## v1.0.0
+
+`v1.0.0` is the stable compatibility release. It turns the `v0.9.0`
+hardening track into a documented stability promise for the CLI, daemon REST
+API, local model-bound server routes, direct cloud server routes, provider
+unsupported-error semantics, install readiness, and diagnostics surfaces.
+
+This is not a feature expansion release. It freezes what is documented as
+stable and clearly routes partial, experimental, internal, deprecated, and
+post-1.0 work to the relevant contract or roadmap document.
+
+What changed:
+
+- Finalized the documented API surface stability contract for stable,
+  experimental, internal, and deprecated surfaces.
+- Proved stable daemon native routes, provider-compatible routes, stable
+  management routes, and unsupported-provider error codes through release
+  conformance smoke coverage.
+- Validated install and upgrade readiness through source CLI smoke coverage for
+  `tentgent -V`, runtime bootstrap print-plan, runtime status, doctor
+  diagnostics, installer dry-runs, and the release-readiness wrapper.
+- Kept provider compatibility explicitly partial while preserving stable
+  unsupported errors for unsupported fields, content, operations, endpoint
+  families, and capabilities.
+- Preserved model support status, runtime profile, failed-proof retry, stale
+  proof recovery, and actionable `doctor` / inspect guidance as the supported
+  recovery path for local model workflows.
+- Finalized user-facing readiness routing so detailed stability rules stay in
+  [api-surface-stability.md](../contracts/api-surface-stability.md) while
+  user docs summarize the promise.
+
+Known limits:
+
+- `v1.0.0` does not promise full OpenAI, Claude/Anthropic, or Gemini API
+  parity. It promises the documented Tentgent subset and stable unsupported
+  errors.
+- Experimental surfaces remain experimental unless the stability contract marks
+  them stable. This includes provider-backed dataset synthesis/evaluation,
+  LoRA run execution, durable media workflow details, support-proof operations,
+  daemon shutdown, and job-control semantics.
+- Broader provider tool orchestration, cloud rerank adapters, grouped serving
+  targets, automatic multimodal context assembly, multi-model scheduling,
+  conversion automation, and broader direct media server wrappers remain
+  post-1.0 work.
+- GitHub Release publication, asset verification, Homebrew tap update, and
+  roadmap closeout are handled by the `#97` release slice.
 
 ## v0.9.0
 
@@ -30,7 +78,8 @@ What changed:
 
 Known limits:
 
-- `v0.9.0` prepares the `1.0.0` promise; it does not tag or publish `1.0.0`.
+- `v0.9.0` prepared the documented `1.0.0` promise; `v1.0.0` is the release
+  that applies that promise to the stable surfaces listed above.
 - The exact stable, experimental, internal, and deprecated surface inventory is
   maintained in
   [api-surface-stability.md](../contracts/api-surface-stability.md), not copied
