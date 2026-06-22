@@ -25,7 +25,11 @@ keychain.
 - Traditional Chinese: [docs/i18n/zh-TW/README.md](./docs/i18n/zh-TW/README.md)
 - Japanese: [docs/i18n/ja/README.md](./docs/i18n/ja/README.md)
 - Full user guide: [docs/user/README.md](./docs/user/README.md)
+- 1.0 readiness checklist:
+  [docs/user/1.0-readiness.md](./docs/user/1.0-readiness.md)
 - HTTP API reference: [docs/user/api.md](./docs/user/api.md)
+- API surface stability contract:
+  [docs/contracts/api-surface-stability.md](./docs/contracts/api-surface-stability.md)
 - Model fixture and smoke-test guide:
   [docs/user/model-fixtures.md](./docs/user/model-fixtures.md)
 - Model support catalog:
@@ -384,6 +388,10 @@ Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, ad
 
 ## Version Notes
 
+- `v0.9.0`: 1.0 hardening readiness release; adds API surface audit
+  documentation, provider-compatible conformance smoke coverage, install and
+  runtime recovery diagnostics, cancellation and shutdown semantics, support
+  proof retry and stale-state recovery, and the 1.0 readiness checklist.
 - `v0.8.0`: runtime profile and startup gating release; adds local `chat` and
   `embedding` runtime profiles, gates local server starts by support status and
   profile availability, records launch proofs, improves inspect/doctor
@@ -421,6 +429,9 @@ The README intentionally shows the shortest path. See [docs/user/commands.md](./
 Detailed contracts live under [docs/contracts/](./docs/contracts/README.md) so
 this README stays easy to scan.
 
+- [docs/contracts/api-surface-stability.md](./docs/contracts/api-surface-stability.md)
+  Stable, experimental, internal, and deprecated surface classification before
+  the `1.0.0` freeze.
 - [docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md)
   Complete local daemon API contract, endpoint list, auth behavior, response
   shapes, and error mapping.
@@ -432,6 +443,12 @@ this README stays easy to scan.
   Runtime-home, store-path, Python runtime, and environment override rules.
 - [docs/contracts/auth-secrets.md](./docs/contracts/auth-secrets.md)
   Provider secret resolution, `.env` / env behavior, and Keychain boundaries.
+- [docs/contracts/provider-api-errors.md](./docs/contracts/provider-api-errors.md)
+  Stable unsupported-field, content, operation, and capability error semantics
+  for provider-shaped API routes.
+- [docs/contracts/model-support-status.md](./docs/contracts/model-support-status.md)
+  Support status vocabulary, evidence precedence, stale-proof rules, and
+  transition rules for model/capability/backend tuples.
 - [docs/contracts/training-lora.md](./docs/contracts/training-lora.md)
   Managed LoRA plan and run boundaries.
 
@@ -528,7 +545,8 @@ enough to review.
 ## Project Docs
 
 - [docs/user/](./docs/user/README.md)
-  User install, upgrade, version, command, runtime, and Keychain docs.
+  User install, upgrade, version, 1.0 readiness, command, runtime, provider
+  compatibility, support status, and Keychain docs.
 - [AGENTS.md](./AGENTS.md)
   Shared repository context and documentation routing.
 - [CLAUDE.md](./CLAUDE.md)

@@ -2,6 +2,44 @@
 
 This document summarizes the current user-facing version. It is not a changelog yet.
 
+## v0.9.0
+
+`v0.9.0` is the 1.0 hardening readiness release. It clarifies the documented
+surface promise, adds conformance and release-readiness coverage, and improves
+operator recovery guidance without changing the product surface.
+
+What changed:
+
+- Added an API surface stability inventory for daemon REST routes, local
+  model-bound servers, direct cloud servers, Python model-runtime boundaries,
+  and CLI command surfaces.
+- Added provider-compatible conformance smoke coverage for the documented
+  OpenAI, Claude/Anthropic, and Gemini-shaped route subset.
+- Hardened install, upgrade, runtime bootstrap, and release-readiness checks,
+  including Linux preview installer wording and shell expectations.
+- Improved `doctor`, runtime, and install diagnostics so operators get clearer
+  next actions when bootstrap, auth, runtime footprint, or support proof state
+  needs attention.
+- Documented cancellation, cleanup, shutdown, and stale runtime state recovery
+  semantics across daemon, local server, runtime process, and job-workspace
+  paths.
+- Hardened model support proof retry and stale-state recovery so failed proofs
+  can be cleared and stale evidence explains why it no longer applies.
+- Added the [1.0 readiness checklist](./1.0-readiness.md) as the user and
+  contributor entry point for readiness expectations.
+
+Known limits:
+
+- `v0.9.0` prepares the `1.0.0` promise; it does not tag or publish `1.0.0`.
+- The exact stable, experimental, internal, and deprecated surface inventory is
+  maintained in
+  [api-surface-stability.md](../contracts/api-surface-stability.md), not copied
+  into every user document.
+- Provider-compatible support remains partial where documented. Unsupported
+  provider operations can still have stable error codes.
+- Broader provider parity, grouped serving targets, and the multimodal context
+  pipeline remain post-1.0 work.
+
 ## v0.8.0
 
 `v0.8.0` is the runtime profile and startup gating release. It turns the

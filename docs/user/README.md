@@ -24,6 +24,9 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
   versions, PATH notes, and local package smoke tests.
 - [version.md](./version.md)
   Current version feature list, known limits, and release expectations.
+- [1.0-readiness.md](./1.0-readiness.md)
+  User and contributor checklist for the `1.0.0` stability promise, release
+  smoke expectations, and post-1.0 boundaries.
 - [commands.md](./commands.md)
   Common commands for auth, models, adapters, datasets, chat, media workflows,
   servers, daemon, sessions, LoRA training, model support proofs, and proof
@@ -73,4 +76,6 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
 
 - The root [README.md](../../README.md) is the short user entry point.
 - Detailed runtime contracts stay under [docs/contracts/](../contracts/README.md).
+- Stable, experimental, internal, and deprecated surface classification lives in
+  [api-surface-stability.md](../contracts/api-surface-stability.md).
 - Developer-only source workflows stay under [docs/development/](../development/README.md).

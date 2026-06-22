@@ -39,7 +39,7 @@ If the current task is about agent workflows, role selection, or role-specific w
 - `docs/contracts/`
   Concise contract documents for cross-module and cross-language interfaces.
 - `docs/user/`
-  User-facing install, upgrade, version, command, runtime, model fixture, and Keychain documentation.
+  User-facing install, upgrade, version, readiness, command, runtime, model fixture, and Keychain documentation.
 - `docs/plans/`
   Active roadmap for larger runtime, backend, and release initiatives.
 - `docs/development/`
@@ -109,6 +109,9 @@ Key current documents:
   Install, upgrade, pinned-version, PATH, and local package smoke-test guidance.
 - `docs/user/version.md`
   Current MVP feature list, known limits, and upgrade expectations.
+- `docs/user/1.0-readiness.md`
+  User and contributor checklist for the `1.0.0` stability promise, release
+  smoke expectations, and post-1.0 boundaries.
 - `docs/user/commands.md`
   User command examples for auth, model, adapter, dataset, chat, server, and LoRA training flows.
 - `docs/user/model-fixtures.md`
