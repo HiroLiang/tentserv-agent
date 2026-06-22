@@ -1,8 +1,8 @@
 # API Surface Stability
 
-This contract classifies the Tentgent caller-facing API surface before the
-`1.0.0` freeze. It is the source of truth for whether an endpoint, command, or
-wire shape is stable enough to document as a long-lived interface.
+This contract classifies the Tentgent caller-facing API surface for the
+`v1.0.0` stability promise. It is the source of truth for whether an endpoint,
+command, or wire shape is stable enough to document as a long-lived interface.
 
 Provider compatibility status is separate from stability. A provider-shaped
 surface can be `Partial` in the user matrix while still having stable route
@@ -12,8 +12,8 @@ names and stable unsupported-error codes.
 
 | Tier | Meaning |
 | --- | --- |
-| `stable` | Public, documented, and intended to remain compatible through `1.0.0` except for additive fields or clearer error messages. |
-| `experimental` | Public or documented for current users, but still allowed to tighten behavior, fields, diagnostics, or operational semantics before `1.0.0`. |
+| `stable` | Public, documented, and intended to remain compatible across the `1.x` stability line except for additive fields or clearer error messages. |
+| `experimental` | Public or documented for current users, but still allowed to tighten behavior, fields, diagnostics, or operational semantics in later releases unless promoted to `stable`. |
 | `internal` | Implementation boundary for Tentgent components, hidden commands, workers, or daemon-local state. External callers must not depend on it. |
 | `deprecated` | Kept callable for compatibility, but not promoted for new use. Prefer the replacement listed in this contract. |
 
@@ -43,7 +43,7 @@ These routes are exposed by `tentgent daemon`.
 | `deprecated` | `PATCH /v1/models/{reference}` | Legacy alias for updating one model capability. Prefer `POST /v1/models/{reference}/capabilities`. |
 | `stable` | `GET /v1/adapters`, `GET /v1/adapters/{reference}`, `POST /v1/adapters/import`, `POST /v1/adapters/pull`, `POST /v1/adapters/import/jobs`, `POST /v1/adapters/pull/jobs`, `POST /v1/adapters/{reference}/bind`, `DELETE /v1/adapters/{reference}` | Managed adapter discovery, import/pull, binding, and deletion surface. |
 | `stable` | `GET /v1/datasets`, `GET /v1/datasets/{reference}`, `POST /v1/datasets/validate`, `POST /v1/datasets/template`, `POST /v1/datasets/import`, `POST /v1/datasets/import/jobs`, `POST /v1/datasets/{reference}/export`, `POST /v1/datasets/{reference}/diff`, `DELETE /v1/datasets/{reference}` | Managed dataset discovery and deterministic local dataset tools. |
-| `experimental` | `POST /v1/datasets/synth/jobs`, `POST /v1/datasets/eval/jobs` | Provider-backed dataset tools. Prompt contracts and provider output diagnostics may tighten before `1.0.0`. |
+| `experimental` | `POST /v1/datasets/synth/jobs`, `POST /v1/datasets/eval/jobs` | Provider-backed dataset tools. Prompt contracts and provider output diagnostics may tighten in later releases. |
 | `experimental` | `GET /v1/train/lora/plans`, `POST /v1/train/lora/plans/preview`, `POST /v1/train/lora/plans`, `GET /v1/train/lora/plans/{reference}`, `DELETE /v1/train/lora/plans/{reference}` | Managed LoRA plan surface. Plan identity is contracted; training readiness remains model/backend dependent. |
 | `experimental` | `POST /v1/train/lora/plans/{reference}/runs`, `GET /v1/train/lora/plans/{reference}/runs`, `GET /v1/train/lora/runs`, `GET /v1/train/lora/runs/{reference}`, `GET /v1/train/lora/runs/{reference}/metrics`, `GET /v1/train/lora/runs/{reference}/logs`, `GET /v1/train/lora/runs/{reference}/logs/raw` | Managed LoRA run surface. Plan identity is contracted; run execution, stale process handling, and diagnostics remain experimental. |
 | `stable` | `GET /v1/servers`, `POST /v1/servers`, `GET /v1/servers/{reference}`, `DELETE /v1/servers/{reference}`, `POST /v1/servers/{reference}/start`, `POST /v1/servers/{reference}/stop`, `GET /v1/servers/{reference}/health`, `GET /v1/servers/{reference}/logs`, `GET /v1/servers/{reference}/logs/stdout`, `GET /v1/servers/{reference}/logs/stderr` | Stored local/cloud server registry and lifecycle surface. Runtime profile coverage still expands by capability. |
@@ -101,7 +101,7 @@ listed as hidden or deprecated below.
 | `deprecated` | `tentgent model set-capability` | Hidden legacy compatibility command. Prefer `tentgent model capability set`. |
 | `stable` | `tentgent chat`, `tentgent embed`, `tentgent rerank`, `tentgent transcribe`, `tentgent speak`, `tentgent vision chat`, `tentgent video understand`, `tentgent image generate/transform/inpaint/control` | One-shot local inference commands. Backend availability remains model/platform dependent. |
 | `stable` | `tentgent adapter add/pull/ls/inspect/bind/rm`, `tentgent dataset add/validate/template/ls/inspect/export/diff/rm`, `tentgent store gc` | Managed store, adapter, and deterministic local dataset commands. |
-| `experimental` | `tentgent dataset synth`, `tentgent dataset eval` | Provider-backed dataset commands. Prompt contracts and provider output diagnostics may tighten before `1.0.0`. |
+| `experimental` | `tentgent dataset synth`, `tentgent dataset eval` | Provider-backed dataset commands. Prompt contracts and provider output diagnostics may tighten in later releases. |
 | `experimental` | `tentgent train lora plan create/ls/inspect/rm`, `tentgent train lora run` | Public LoRA training commands. Plan identity is contracted; run behavior and stale recovery remain experimental. |
 | `internal` | `tentgent train lora run-worker` | Hidden detached worker command. |
 | `stable` | `tentgent daemon run/start/status/stop`, `tentgent server run/ls/ps/inspect/start/stop/rm`, `tentgent session ls/inspect/messages/create/update/append/compact/rm`, `tentgent auth status/mode/hf/openai/anthropic/gemini set/rm` | Daemon lifecycle, server registry, session management, and provider auth commands. |
