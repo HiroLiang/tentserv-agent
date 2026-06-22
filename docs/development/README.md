@@ -111,12 +111,13 @@ Before tagging a release, run the script-level release-readiness checks:
 bash scripts/test-release-readiness.sh
 ```
 
-The readiness wrapper checks release metadata parsing, Homebrew formula update
-fixtures, Linux target mapping, packaged Python layout, release script syntax,
-installer dry-runs, current install-doc shell usage, and the release workflow
-patches that make published installers point at the tag-specific GitHub Release
-asset URL. If PowerShell Core is installed, it also dry-runs `install.ps1`; when
-`pwsh` is absent, that optional local check is skipped.
+The readiness wrapper checks release metadata parsing, source CLI install and
+diagnostics smoke, Homebrew formula update fixtures, Linux target mapping,
+packaged Python layout, release script syntax, installer dry-runs, current
+install-doc shell usage, and the release workflow patches that make published
+installers point at the tag-specific GitHub Release asset URL. If PowerShell
+Core is installed, it also dry-runs `install.ps1`; when `pwsh` is absent, that
+optional local check is skipped.
 
 For the `1.0.0` readiness promise, contributor checklist, and post-1.0 routing,
 see [1.0-readiness.md](../user/1.0-readiness.md). The detailed stable,
