@@ -276,8 +276,8 @@ post-1.0 direction remains possible.
 
 ### v0.9.0: 1.0 Hardening Release
 
-Detailed execution plan:
-[v0.9.0-hardening-plan.md](./v0.9.0-hardening-plan.md).
+Completed execution record:
+[v0.9.0-hardening-plan.md](./archive/v0.9.0-hardening-plan.md).
 
 - Expand provider conformance tests and curated model fixture smoke tests.
 - Harden install, upgrade, runtime bootstrap, doctor, and auth recovery flows.
