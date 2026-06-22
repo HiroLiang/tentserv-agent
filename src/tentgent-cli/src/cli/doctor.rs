@@ -722,6 +722,45 @@ mod tests {
     }
 
     #[test]
+    fn model_support_warning_check_reports_missing_capability_next_action() {
+        let mut summary = support_summary(ModelSupportStatus::Unsupported, None);
+        summary.declared = false;
+        summary.evidence = ModelSupportEvidenceKind::CapabilityMetadata;
+        summary.reason = "model does not declare chat capability".to_string();
+        let check = model_support_warning_check("abc123abc123", &summary)
+            .expect("unsupported support status should warn");
+
+        assert_eq!(check.status, DoctorCheckStatus::Warn);
+        assert_eq!(
+            check.detail,
+            "unsupported via capability-metadata: model does not declare chat capability; execution_backend: mlx-lm; recovery: add capability metadata only if the model is intended to support this capability"
+        );
+        assert_eq!(
+            check.next_actions[0].command.as_deref(),
+            Some("tentgent model capability add abc123abc123 chat")
+        );
+    }
+
+    #[test]
+    fn model_support_warning_check_reports_declared_unsupported_tuple_next_action() {
+        let mut summary = support_summary(ModelSupportStatus::Unsupported, None);
+        summary.evidence = ModelSupportEvidenceKind::SupportHint;
+        summary.reason = "known unsupported runtime tuple".to_string();
+        let check = model_support_warning_check("abc123abc123", &summary)
+            .expect("unsupported support status should warn");
+
+        assert_eq!(check.status, DoctorCheckStatus::Warn);
+        assert_eq!(
+            check.detail,
+            "unsupported via support-hint: known unsupported runtime tuple; execution_backend: mlx-lm; recovery: choose a different model, capability, or backend tuple"
+        );
+        assert_eq!(
+            check.next_actions[0].command.as_deref(),
+            Some("tentgent model inspect abc123abc123")
+        );
+    }
+
+    #[test]
     fn provider_auth_check_reports_missing_provider_next_actions() {
         let check = provider_auth_check(&[
             auth_status(

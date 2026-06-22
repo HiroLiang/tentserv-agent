@@ -166,6 +166,163 @@ async fn native_routes_have_release_smoke_coverage() {
     assert_eq!(rerank_response.status(), StatusCode::NOT_FOUND);
     let rerank_body = json_body(rerank_response).await;
     assert_eq!(rerank_body["error"], "not_found");
+
+    let boundary = "tentgent-conformance-vision-chat";
+    let body = multipart_body(
+        boundary,
+        &[
+            MultipartPart::text("model_ref", "not-a-ref"),
+            MultipartPart::text("prompt", "describe this image"),
+            MultipartPart::file("image", "input.png", "image/png", b"not real png"),
+        ],
+    );
+    let vision_response = post_multipart(
+        rest_state("conformance-native-vision-chat"),
+        "/v1/vision/chat",
+        boundary,
+        body,
+    )
+    .await;
+    assert_eq!(vision_response.status(), StatusCode::NOT_FOUND);
+    let vision_body = json_body(vision_response).await;
+    assert_eq!(vision_body["error"], "not_found");
+}
+
+#[tokio::test]
+async fn stable_management_routes_have_release_smoke_coverage() {
+    let cases = [
+        StableRouteCase::get("status", "/v1/status", StatusCode::OK),
+        StableRouteCase::get("auth-list", "/v1/auth", StatusCode::OK),
+        StableRouteCase::get("auth-provider", "/v1/auth/openai", StatusCode::OK),
+        StableRouteCase::get("daemon-logs", "/v1/daemon/logs", StatusCode::OK),
+        StableRouteCase::get("daemon-stdout", "/v1/daemon/logs/stdout", StatusCode::OK),
+        StableRouteCase::get("daemon-stderr", "/v1/daemon/logs/stderr", StatusCode::OK),
+        StableRouteCase::get("models-list", "/v1/models", StatusCode::OK),
+        StableRouteCase::get(
+            "models-inspect",
+            "/v1/models/not-a-ref",
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::json(
+            "models-capability-set",
+            Method::PATCH,
+            "/v1/models/not-a-ref",
+            r#"{"capability":"chat"}"#,
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::json(
+            "models-capabilities",
+            Method::POST,
+            "/v1/models/not-a-ref/capabilities",
+            r#"{"set":["chat"]}"#,
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::get("adapters-list", "/v1/adapters", StatusCode::OK),
+        StableRouteCase::get(
+            "adapters-inspect",
+            "/v1/adapters/not-a-ref",
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::json(
+            "adapters-bind",
+            Method::POST,
+            "/v1/adapters/not-a-ref/bind",
+            r#"{"base_model_ref":"aaaaaaaaaaaa"}"#,
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::get("datasets-list", "/v1/datasets", StatusCode::OK),
+        StableRouteCase::get(
+            "datasets-inspect",
+            "/v1/datasets/not-a-ref",
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::json(
+            "datasets-validate",
+            Method::POST,
+            "/v1/datasets/validate",
+            r#"{}"#,
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::json(
+            "datasets-template",
+            Method::POST,
+            "/v1/datasets/template",
+            r#"{}"#,
+            StatusCode::OK,
+        ),
+        StableRouteCase::get("servers-list", "/v1/servers", StatusCode::OK),
+        StableRouteCase::get(
+            "servers-inspect",
+            "/v1/servers/not-a-ref",
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::json_error(
+            "servers-create",
+            Method::POST,
+            "/v1/servers",
+            r#"{"runtime_ref":"not-a-ref"}"#,
+            StatusCode::BAD_REQUEST,
+            "unsupported_target",
+        ),
+        StableRouteCase::json(
+            "servers-start",
+            Method::POST,
+            "/v1/servers/not-a-ref/start",
+            r#"{}"#,
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::get("sessions-list", "/v1/sessions", StatusCode::OK),
+        StableRouteCase::get(
+            "sessions-inspect",
+            "/v1/sessions/not-a-ref",
+            StatusCode::BAD_REQUEST,
+        ),
+        StableRouteCase::json(
+            "sessions-create",
+            Method::POST,
+            "/v1/sessions",
+            r#"{"title":"conformance"}"#,
+            StatusCode::CREATED,
+        ),
+        StableRouteCase::json(
+            "sessions-append",
+            Method::POST,
+            "/v1/sessions/not-a-ref/messages",
+            r#"{"messages":[{"role":"user","content":"hello"}]}"#,
+            StatusCode::BAD_REQUEST,
+        ),
+    ];
+
+    for case in cases {
+        let response = request(
+            rest_state(&format!("conformance-stable-route-{}", case.label)),
+            case.method,
+            case.uri,
+            case.body,
+        )
+        .await;
+        assert_eq!(response.status(), case.expected_status, "{}", case.label);
+        assert_json_response(&response, case.label);
+        let body = json_body(response).await;
+        match case.expected_status {
+            StatusCode::OK | StatusCode::CREATED => {
+                assert!(
+                    body.as_object().is_some_and(|object| !object.is_empty()),
+                    "{}: expected non-empty JSON body, got {body}",
+                    case.label
+                );
+            }
+            StatusCode::BAD_REQUEST => {
+                assert_eq!(
+                    body["error"],
+                    case.expected_error.expect("expected error code"),
+                    "{}",
+                    case.label
+                );
+            }
+            status => panic!("{}: unexpected stable route status {status}", case.label),
+        }
+    }
 }
 
 #[tokio::test]
@@ -239,6 +396,56 @@ struct ProviderErrorCase {
     uri: &'static str,
     body: &'static str,
     expected_code: &'static str,
+}
+
+struct StableRouteCase {
+    label: &'static str,
+    method: Method,
+    uri: &'static str,
+    body: Option<&'static str>,
+    expected_status: StatusCode,
+    expected_error: Option<&'static str>,
+}
+
+impl StableRouteCase {
+    const fn get(label: &'static str, uri: &'static str, expected_status: StatusCode) -> Self {
+        Self {
+            label,
+            method: Method::GET,
+            uri,
+            body: None,
+            expected_status,
+            expected_error: Some("bad_request"),
+        }
+    }
+
+    const fn json(
+        label: &'static str,
+        method: Method,
+        uri: &'static str,
+        body: &'static str,
+        expected_status: StatusCode,
+    ) -> Self {
+        Self::json_error(label, method, uri, body, expected_status, "bad_request")
+    }
+
+    const fn json_error(
+        label: &'static str,
+        method: Method,
+        uri: &'static str,
+        body: &'static str,
+        expected_status: StatusCode,
+        expected_error: &'static str,
+    ) -> Self {
+        Self {
+            label,
+            method,
+            uri,
+            body: Some(body),
+            expected_status,
+            expected_error: Some(expected_error),
+        }
+    }
 }
 
 async fn assert_audio_transcription_upload_job_shape() {
@@ -406,15 +613,24 @@ async fn assert_pending_file_route(
 }
 
 async fn post_json(state: RestState, uri: &str, body: &str) -> axum::response::Response {
+    request(state, Method::POST, uri, Some(body)).await
+}
+
+async fn request(
+    state: RestState,
+    method: Method,
+    uri: &str,
+    body: Option<&str>,
+) -> axum::response::Response {
+    let mut builder = Request::builder().method(method).uri(uri);
+    let request_body = if let Some(body) = body {
+        builder = builder.header(CONTENT_TYPE, "application/json");
+        Body::from(body.to_string())
+    } else {
+        Body::empty()
+    };
     build_router(state)
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(uri)
-                .header(CONTENT_TYPE, "application/json")
-                .body(Body::from(body.to_string()))
-                .expect("request"),
-        )
+        .oneshot(builder.body(request_body).expect("request"))
         .await
         .expect("response")
 }
@@ -474,6 +690,17 @@ fn assert_event_stream(response: &axum::response::Response, label: &str) {
             .get(CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .is_some_and(|value| value.starts_with("text/event-stream")),
+        "{label}"
+    );
+}
+
+fn assert_json_response(response: &axum::response::Response, label: &str) {
+    assert!(
+        response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.starts_with("application/json")),
         "{label}"
     );
 }

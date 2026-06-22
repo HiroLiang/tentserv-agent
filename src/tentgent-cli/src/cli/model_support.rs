@@ -401,6 +401,36 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_missing_capability_points_to_capability_metadata() {
+        let summary = summary_for_status(ModelSupportStatus::Unsupported, false);
+
+        assert_eq!(
+            model_support_recovery_guidance(&summary, Some("0123456789ab")).as_deref(),
+            Some(
+                "add capability metadata only if the model is intended to support this capability"
+            )
+        );
+        assert_eq!(
+            model_support_next_action(&summary, Some("0123456789ab")).as_deref(),
+            Some("tentgent model capability add 0123456789ab chat")
+        );
+    }
+
+    #[test]
+    fn unsupported_declared_capability_points_to_another_tuple() {
+        let summary = summary_for_status(ModelSupportStatus::Unsupported, true);
+
+        assert_eq!(
+            model_support_recovery_guidance(&summary, Some("0123456789ab")).as_deref(),
+            Some("choose a different model, capability, or backend tuple")
+        );
+        assert_eq!(
+            model_support_next_action(&summary, Some("0123456789ab")).as_deref(),
+            Some("tentgent model inspect 0123456789ab")
+        );
+    }
+
+    #[test]
     fn next_action_clears_failed_proofs() {
         let metadata = metadata_with_capabilities([ModelCapability::Chat]);
         let proofs = vec![proof_for(
@@ -537,6 +567,23 @@ mod tests {
             server_ref: None,
             checked_at: "2026-06-15T00:00:00Z".to_string(),
             error,
+        }
+    }
+
+    fn summary_for_status(status: ModelSupportStatus, declared: bool) -> ModelSupportSummary {
+        ModelSupportSummary {
+            capability: ModelCapability::Chat,
+            declared,
+            status,
+            evidence: ModelSupportEvidenceKind::SupportHint,
+            backend: "mlx-lm".to_string(),
+            mlx_runtime_family: None,
+            runtime_version: None,
+            runtime_profile: None,
+            runtime_profile_version: None,
+            reason: "known unsupported runtime tuple".to_string(),
+            stale_reason: None,
+            failure_reason: None,
         }
     }
 
