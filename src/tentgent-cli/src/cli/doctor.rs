@@ -60,8 +60,8 @@ use tentgent_kernel::{
 use super::{
     commands::DoctorCommand,
     model_support::{
-        model_support_next_action, model_support_summaries, support_status_is_healthy,
-        ModelSupportSummary,
+        model_support_next_action, model_support_recovery_guidance, model_support_summaries,
+        support_status_is_healthy, ModelSupportSummary,
     },
     runtime_footprint::{collect_runtime_footprint_best_effort, FootprintEntry},
 };
@@ -496,6 +496,10 @@ fn model_support_warning_detail(summary: &ModelSupportSummary) -> String {
         detail.push_str("; runtime_profile: ");
         detail.push_str(&profile);
     }
+    if let Some(guidance) = model_support_recovery_guidance(summary, None) {
+        detail.push_str("; recovery: ");
+        detail.push_str(&guidance);
+    }
     detail
 }
 
@@ -690,9 +694,27 @@ mod tests {
         assert_eq!(check.name, "model support: abc123abc123 chat");
         assert_eq!(
             check.detail,
-            "failed via local-proof: runtime failed; execution_backend: mlx-lm"
+            "failed via local-proof: runtime failed; execution_backend: mlx-lm; recovery: fix the runtime/backend issue, clear the failed proof, then retry the route or rerun verification"
         );
         assert_eq!(check.next_actions.len(), 1);
+        assert_eq!(
+            check.next_actions[0].command.as_deref(),
+            Some("tentgent model capability proof clear abc123abc123 chat")
+        );
+    }
+
+    #[test]
+    fn model_support_warning_check_reports_stale_status_with_reason() {
+        let mut summary = support_summary(ModelSupportStatus::Stale, None);
+        summary.stale_reason = Some("backend changed from old-backend to mlx-lm".to_string());
+        let check = model_support_warning_check("abc123abc123", &summary)
+            .expect("stale support status should warn");
+
+        assert_eq!(check.status, DoctorCheckStatus::Warn);
+        assert_eq!(
+            check.detail,
+            "stale via local-proof: backend changed from old-backend to mlx-lm; execution_backend: mlx-lm; recovery: refresh evidence for the current runtime tuple, or clear stale proof before retrying"
+        );
         assert_eq!(
             check.next_actions[0].command.as_deref(),
             Some("tentgent model capability proof clear abc123abc123 chat")

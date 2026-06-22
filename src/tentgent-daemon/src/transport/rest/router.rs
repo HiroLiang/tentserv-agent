@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     middleware,
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
@@ -195,6 +195,10 @@ fn store_routes() -> Router<RestState> {
         .route(
             "/v1/models/{reference}/capabilities/proofs",
             get(model::capability_proofs),
+        )
+        .route(
+            "/v1/models/{reference}/capabilities/proofs/{capability}",
+            delete(model::clear_capability_proofs),
         )
         .route(
             "/v1/models/{reference}/capabilities/verify",

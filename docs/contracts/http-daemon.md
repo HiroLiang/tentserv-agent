@@ -1107,6 +1107,7 @@ entries:
 ```text
 POST /v1/models/{model_ref}/capabilities
 GET /v1/models/{model_ref}/capabilities/proofs
+DELETE /v1/models/{model_ref}/capabilities/proofs/{capability}
 POST /v1/models/{model_ref}/capabilities/verify
 DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
@@ -1196,6 +1197,24 @@ The manual verify route records a metadata-level `manual-probe` proof. It does
 not run full endpoint inference in this slice. Local model-bound server starts
 write `server-start` proofs after launch success or failure. Future endpoint
 smoke tests can write `endpoint-smoke` proofs with the same response shape.
+
+`DELETE /v1/models/{model_ref}/capabilities/proofs/{capability}` clears all
+local proof records for that model capability, including tuple-aware
+backend/runtime-profile records and the legacy latest-proof file. It does not
+remove model content or stored capability metadata. Successful proof clears
+return:
+
+```json
+{
+  "model": {
+    "...": "same shape as GET /v1/models/{model_ref}"
+  },
+  "proof_clear": {
+    "capability": "vision-chat",
+    "removed_proof_count": 2
+  }
+}
+```
 
 `DELETE` requests must have an empty body. Non-empty bodies return JSON `400`
 because this slice has no hidden `force`, dry-run, bulk, or cascade options.

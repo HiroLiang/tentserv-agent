@@ -138,10 +138,48 @@ pub fn model_support_diagnostic_lines(
     model_ref: Option<&str>,
 ) -> Vec<String> {
     let mut lines = model_support_detail_lines(summary);
+    if let Some(guidance) = model_support_recovery_guidance(summary, model_ref) {
+        lines.push(format!("recovery: {guidance}"));
+    }
     if let Some(action) = model_support_next_action(summary, model_ref) {
         lines.push(format!("next_action: {action}"));
     }
     lines
+}
+
+pub fn model_support_recovery_guidance(
+    summary: &ModelSupportSummary,
+    model_ref: Option<&str>,
+) -> Option<String> {
+    let capability = summary.capability.as_str();
+    match summary.status {
+        ModelSupportStatus::Failed => Some(match model_ref {
+            Some(model_ref) => format!(
+                "fix the runtime/backend issue, clear the failed proof, then retry the route or run tentgent model capability verify {model_ref} {capability}"
+            ),
+            None => "fix the runtime/backend issue, clear the failed proof, then retry the route or rerun verification".to_string(),
+        }),
+        ModelSupportStatus::Stale => Some(match model_ref {
+            Some(model_ref) => format!(
+                "refresh evidence for the current runtime tuple, or clear stale proof with tentgent model capability proof clear {model_ref} {capability} before retrying"
+            ),
+            None => "refresh evidence for the current runtime tuple, or clear stale proof before retrying".to_string(),
+        }),
+        ModelSupportStatus::Unknown => Some(match model_ref {
+            Some(model_ref) => format!(
+                "run tentgent model capability verify {model_ref} {capability} before relying on this tuple, or use --allow-unverified for an explicit local server retry"
+            ),
+            None => "run verification before relying on this tuple, or use --allow-unverified for an explicit local server retry".to_string(),
+        }),
+        ModelSupportStatus::Unsupported if !summary.declared => Some(
+            "add capability metadata only if the model is intended to support this capability"
+                .to_string(),
+        ),
+        ModelSupportStatus::Unsupported => {
+            Some("choose a different model, capability, or backend tuple".to_string())
+        }
+        ModelSupportStatus::Verified | ModelSupportStatus::Supported => None,
+    }
 }
 
 pub fn model_support_next_action(
@@ -380,6 +418,58 @@ mod tests {
             model_support_next_action(&summary, Some("0123456789ab")).as_deref(),
             Some("tentgent model capability proof clear 0123456789ab chat")
         );
+    }
+
+    #[test]
+    fn diagnostic_lines_include_failed_recovery_guidance() {
+        let metadata = metadata_with_capabilities([ModelCapability::Chat]);
+        let proofs = vec![proof_for(
+            &metadata,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Failed,
+            Some("runtime failed".to_string()),
+        )];
+        let summary = model_support_summaries(&metadata, &proofs)
+            .into_iter()
+            .next()
+            .expect("support summary");
+        let lines = model_support_diagnostic_lines(&summary, Some("0123456789ab"));
+
+        assert!(lines.iter().any(|line| line == "failure: runtime failed"));
+        assert!(lines.iter().any(|line| {
+            line == "recovery: fix the runtime/backend issue, clear the failed proof, then retry the route or run tentgent model capability verify 0123456789ab chat"
+        }));
+        assert!(lines.iter().any(|line| {
+            line == "next_action: tentgent model capability proof clear 0123456789ab chat"
+        }));
+    }
+
+    #[test]
+    fn diagnostic_lines_include_stale_recovery_guidance() {
+        let metadata = metadata_with_capabilities([ModelCapability::Chat]);
+        let mut proof = proof_for(
+            &metadata,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Failed,
+            Some("old backend failed".to_string()),
+        );
+        proof.backend = "old-backend".to_string();
+        let summary = model_support_summaries(&metadata, &[proof])
+            .into_iter()
+            .next()
+            .expect("support summary");
+        let lines = model_support_diagnostic_lines(&summary, Some("0123456789ab"));
+
+        assert_eq!(summary.status, ModelSupportStatus::Stale);
+        assert!(lines
+            .iter()
+            .any(|line| line == "stale: backend changed from old-backend to safetensors"));
+        assert!(lines.iter().any(|line| {
+            line == "recovery: refresh evidence for the current runtime tuple, or clear stale proof with tentgent model capability proof clear 0123456789ab chat before retrying"
+        }));
+        assert!(lines.iter().any(|line| {
+            line == "next_action: tentgent model capability proof clear 0123456789ab chat"
+        }));
     }
 
     #[test]

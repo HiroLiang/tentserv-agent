@@ -676,6 +676,28 @@ mod tests {
     }
 
     #[test]
+    fn failed_proof_for_different_backend_is_stale_not_failed() {
+        let metadata = metadata_with_capabilities(vec![ModelCapability::Chat]);
+        let query = query_for(ModelCapability::Chat);
+        let proofs = vec![proof_for(
+            &metadata,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Failed,
+            "llama-cpp",
+            Some("old backend failed".to_string()),
+        )];
+
+        let resolution = resolver().resolve(&metadata, &query, &proofs, &[]);
+
+        assert_eq!(resolution.status, ModelSupportStatus::Stale);
+        assert_eq!(resolution.failure_reason, None);
+        assert_eq!(
+            resolution.stale_reason.as_deref(),
+            Some("backend changed from llama-cpp to gguf")
+        );
+    }
+
+    #[test]
     fn resolver_returns_stale_when_runtime_profile_version_changes() {
         let metadata = metadata_with_capabilities(vec![ModelCapability::Chat]);
         let query =

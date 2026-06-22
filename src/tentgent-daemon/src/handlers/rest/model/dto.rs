@@ -5,7 +5,9 @@ use tentgent_kernel::features::model::domain::{
     ModelCapabilityProof, ModelImportOutcome, ModelInspection, ModelMetadata, ModelRemovalOutcome,
     ModelSummary,
 };
-use tentgent_kernel::features::model::usecases::ModelCapabilityUpdateResult;
+use tentgent_kernel::features::model::usecases::{
+    ModelCapabilityProofClearResult, ModelCapabilityUpdateResult,
+};
 
 #[derive(Debug, Serialize)]
 pub struct ModelsResponse {
@@ -41,6 +43,18 @@ pub struct ModelCapabilityProofsResponse {
 pub struct ModelCapabilityVerifyResponse {
     pub model: ModelItem,
     pub proof: ModelCapabilityProofItem,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelCapabilityProofClearResponse {
+    pub model: ModelItem,
+    pub proof_clear: ModelCapabilityProofClearItem,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelCapabilityProofClearItem {
+    pub capability: String,
+    pub removed_proof_count: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -220,6 +234,23 @@ pub fn model_capability_verify_response(
             Some(&inspection.variant_source_path),
         ),
         proof: model_capability_proof_item(proof),
+    }
+}
+
+pub fn model_capability_proof_clear_response(
+    result: ModelCapabilityProofClearResult,
+) -> ModelCapabilityProofClearResponse {
+    ModelCapabilityProofClearResponse {
+        model: model_item_from_parts(
+            result.model.metadata,
+            &result.model.store_path,
+            Some(&result.model.manifest_path),
+            Some(&result.model.variant_source_path),
+        ),
+        proof_clear: ModelCapabilityProofClearItem {
+            capability: result.capability.to_string(),
+            removed_proof_count: result.removed_proof_count,
+        },
     }
 }
 
