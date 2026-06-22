@@ -118,6 +118,11 @@ patches that make published installers point at the tag-specific GitHub Release
 asset URL. If PowerShell Core is installed, it also dry-runs `install.ps1`; when
 `pwsh` is absent, that optional local check is skipped.
 
+For the `1.0.0` readiness promise, contributor checklist, and post-1.0 routing,
+see [1.0-readiness.md](../user/1.0-readiness.md). The detailed stable,
+experimental, internal, and deprecated inventory lives in
+[api-surface-stability.md](../contracts/api-surface-stability.md).
+
 Required GitHub Actions secrets for the macOS signing path:
 
 - `APPLE_TEAM_ID`
