@@ -74,19 +74,19 @@ or `tentgent server run gemini:<model>`.
 ## Python Model Runtime Surface
 
 The Python model runtime is started and managed by Rust. Its routes are mounted
-as `/v1/*` today, but they are daemon/server-internal execution routes rather
-than caller-facing API surfaces.
+as `/v1/*` today, and capability execution routes are also mirrored under
+`/internal/v1/*`. Both path families are daemon/server-internal execution
+routes rather than caller-facing API surfaces.
 
 | Tier | Routes | Notes |
 | --- | --- | --- |
 | `internal` | `GET /healthz`, `POST /v1/lifecycle/shutdown` | Rust supervisor health and graceful shutdown boundary for one runtime process. |
-| `internal` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/embeddings`, `POST /v1/rerank` | Direct local inference execution routes called by Rust. |
-| `internal` | `POST /v1/audio/transcriptions`, `POST /v1/audio/speech`, `POST /v1/images/generations`, `POST /v1/images/transforms`, `POST /v1/images/inpaint`, `POST /v1/images/control`, `POST /v1/video/understanding`, `POST /v1/vision/chat` | Direct media execution routes. Rust owns upload handling, job workspaces, and public result routes. |
-| `internal` | `POST /v1/tuning/lora/runs` | Direct LoRA execution route. Rust owns managed plan identity, durable run records, and adapter import. |
+| `internal` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/embeddings`, `POST /v1/rerank`, plus mirrored `/internal/v1/...` aliases where mounted | Direct local inference execution routes called by Rust. |
+| `internal` | `POST /v1/audio/transcriptions`, `POST /v1/audio/speech`, `POST /v1/images/generations`, `POST /v1/images/transforms`, `POST /v1/images/inpaint`, `POST /v1/images/control`, `POST /v1/video/understanding`, `POST /v1/vision/chat`, plus mirrored `/internal/v1/...` aliases where mounted | Direct media execution routes. Rust owns upload handling, job workspaces, and public result routes. |
+| `internal` | `POST /v1/tuning/lora/runs`, plus mirrored `/internal/v1/...` aliases where mounted | Direct LoRA execution route. Rust owns managed plan identity, durable run records, and adapter import. |
 
-Future `/internal/v1/*` aliases may be added to make this boundary visually
-distinct, but external callers must not depend on either the current `/v1/*`
-runtime routes or a future alias.
+External callers must not depend on either the current `/v1/*` runtime routes
+or the mirrored `/internal/v1/*` aliases.
 
 ## CLI Surface
 
@@ -107,9 +107,10 @@ listed as hidden or deprecated below.
 | `stable` | `tentgent daemon run/start/status/stop`, `tentgent server run/ls/ps/inspect/start/stop/rm`, `tentgent session ls/inspect/messages/create/update/append/compact/rm`, `tentgent auth status/mode/hf/openai/anthropic/gemini set/rm` | Daemon lifecycle, server registry, session management, and provider auth commands. |
 | `internal` | `tentgent __cloud-server-runtime`, `tentgent __local-server-runtime` | Hidden worker entry points for managed server processes. |
 
-Visible aliases such as `embed` / `embedding`, `ls` / `list`, `rm` / `remove`,
-and provider auth `status` / `ls` are stable spelling aliases unless a future
-release explicitly deprecates them.
+Visible aliases such as `embed` / `embedding`, `model catalog` /
+`model recommend`, `ls` / `list`, `rm` / `remove`, and provider auth `status` /
+`ls` are stable spelling aliases unless a future release explicitly deprecates
+them.
 
 ## Audit Record
 

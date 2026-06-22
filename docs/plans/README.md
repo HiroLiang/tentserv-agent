@@ -33,6 +33,11 @@ one pass without a staged breakdown.
 
 ## Active Plan Index
 
+- [v1.0.0-stable-compatibility-plan.md](./v1.0.0-stable-compatibility-plan.md)
+  Active `v1.0.0` release train for freezing stable API surfaces, proving
+  provider-compatible and native workflow compatibility, validating install and
+  diagnostics readiness, publishing the release, updating Homebrew, and closing
+  the roadmap.
 - [post-m7-platform-compatibility-roadmap.md](./post-m7-platform-compatibility-roadmap.md)
   Active post-M7 roadmap for platform trust, model and LoRA compatibility
   management, runtime proof storage, dynamic runtime routing, media serving
