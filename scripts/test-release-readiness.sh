@@ -23,6 +23,15 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local path="$1"
+  local needle="$2"
+
+  if rg -F -q -- "${needle}" "${path}"; then
+    fail "expected ${path} not to contain: ${needle}"
+  fi
+}
+
 assert_current_docs_use_bash_installer() {
   local output
 
@@ -43,12 +52,13 @@ assert_release_workflow_patches_installers() {
   assert_contains "${workflow}" '$BaseUrl = if ($env:TENTGENT_INSTALL_BASE_URL) { $env:TENTGENT_INSTALL_BASE_URL } else { $DefaultBaseUrl }'
 }
 
-assert_macos_release_signing_checks_keychain_entitlements() {
-  assert_contains "${root_dir}/scripts/package-local.sh" '--entitlements "${entitlements_path}"'
-  assert_contains "${root_dir}/scripts/package-local.sh" 'verify_macos_entitlements "${binary_path}" "${team_id}"'
-  assert_contains "${root_dir}/scripts/package-local.sh" 'TENTGENT_MACOS_CODESIGN_TEAM_ID or APPLE_TEAM_ID is required'
-  assert_contains "${root_dir}/scripts/macos-notarize-package.sh" 'verify_macos_entitlements "${binary_path}" "${APPLE_TEAM_ID}"'
-  assert_contains "${root_dir}/scripts/macos-notarize-package.sh" 'keychain-access-groups'
+assert_macos_release_signing_avoids_restricted_keychain_entitlements() {
+  assert_contains "${root_dir}/scripts/package-local.sh" '--options runtime'
+  assert_contains "${root_dir}/scripts/package-local.sh" '--identifier "${MACOS_SIGNING_IDENTIFIER}"'
+  assert_contains "${root_dir}/scripts/macos-notarize-package.sh" 'TeamIdentifier=${APPLE_TEAM_ID}'
+  assert_not_contains "${root_dir}/scripts/package-local.sh" 'keychain-access-groups'
+  assert_not_contains "${root_dir}/scripts/package-local.sh" '--entitlements'
+  assert_not_contains "${root_dir}/scripts/macos-notarize-package.sh" 'keychain-access-groups'
 }
 
 run bash -n "${script_dir}/install.sh"
@@ -107,8 +117,8 @@ fi
 echo "==> Checking release workflow installer patching"
 assert_release_workflow_patches_installers
 
-echo "==> Checking macOS release Keychain entitlements"
-assert_macos_release_signing_checks_keychain_entitlements
+echo "==> Checking macOS release signing avoids restricted Keychain entitlements"
+assert_macos_release_signing_avoids_restricted_keychain_entitlements
 
 echo "==> Checking current install docs use bash for install.sh"
 assert_current_docs_use_bash_installer

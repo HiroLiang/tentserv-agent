@@ -22,28 +22,6 @@ require_command() {
   fi
 }
 
-macos_keychain_access_group() {
-  local team_id="$1"
-  echo "${team_id}.com.tentserv.tentgent"
-}
-
-verify_macos_entitlements() {
-  local binary_path="$1"
-  local team_id="$2"
-  local access_group
-  local entitlements
-  access_group="$(macos_keychain_access_group "${team_id}")"
-
-  entitlements="$(codesign -d --entitlements - "${binary_path}" 2>/dev/null || true)"
-  if [[ "${entitlements}" != *"keychain-access-groups"* ]] ||
-    [[ "${entitlements}" != *"${access_group}"* ]] ||
-    [[ "${entitlements}" != *"com.apple.developer.team-identifier"* ]] ||
-    [[ "${entitlements}" != *"${team_id}"* ]]; then
-    printf '%s\n' "${entitlements}" >&2
-    fail "signed binary is missing expected Keychain entitlements for ${access_group}"
-  fi
-}
-
 require_env() {
   local name="$1"
   if [[ -z "${!name:-}" ]]; then
@@ -155,7 +133,6 @@ if [[ "${codesign_details}" != *"TeamIdentifier=${APPLE_TEAM_ID}"* ]]; then
   echo "${codesign_details}" >&2
   fail "signed binary TeamIdentifier does not match APPLE_TEAM_ID"
 fi
-verify_macos_entitlements "${binary_path}" "${APPLE_TEAM_ID}"
 
 ditto "${extract_dir}" "${payload_dir}"
 ditto -c -k --sequesterRsrc --keepParent "${payload_dir}" "${notary_archive}"

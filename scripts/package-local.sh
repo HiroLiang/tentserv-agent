@@ -24,9 +24,6 @@ Environment:
                     macOS binaries are ad-hoc signed for local development.
   TENTGENT_MACOS_KEYCHAIN_PATH
                     Optional keychain path used to find the signing identity.
-  TENTGENT_MACOS_CODESIGN_TEAM_ID
-                    Apple Team ID used to generate macOS Keychain entitlements.
-                    Release signing sets this from APPLE_TEAM_ID.
 USAGE
 }
 
@@ -60,52 +57,6 @@ require_command() {
   fi
 }
 
-macos_keychain_access_group() {
-  local team_id="$1"
-  echo "${team_id}.${MACOS_SIGNING_IDENTIFIER}"
-}
-
-write_macos_entitlements() {
-  local path="$1"
-  local team_id="$2"
-  local access_group
-  access_group="$(macos_keychain_access_group "${team_id}")"
-
-  cat >"${path}" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>com.apple.application-identifier</key>
-  <string>${access_group}</string>
-  <key>com.apple.developer.team-identifier</key>
-  <string>${team_id}</string>
-  <key>keychain-access-groups</key>
-  <array>
-    <string>${access_group}</string>
-  </array>
-</dict>
-</plist>
-PLIST
-}
-
-verify_macos_entitlements() {
-  local binary_path="$1"
-  local team_id="$2"
-  local access_group
-  local entitlements
-  access_group="$(macos_keychain_access_group "${team_id}")"
-
-  entitlements="$(codesign -d --entitlements - "${binary_path}" 2>/dev/null || true)"
-  if [[ "${entitlements}" != *"keychain-access-groups"* ]] ||
-    [[ "${entitlements}" != *"${access_group}"* ]] ||
-    [[ "${entitlements}" != *"com.apple.developer.team-identifier"* ]] ||
-    [[ "${entitlements}" != *"${team_id}"* ]]; then
-    printf '%s\n' "${entitlements}" >&2
-    fail "signed macOS binary is missing expected Keychain entitlements for ${access_group}"
-  fi
-}
-
 validate_package_target() {
   local target="$1"
   case "${target}" in
@@ -136,23 +87,12 @@ sign_macos_binary() {
   local identity="${TENTGENT_MACOS_CODESIGN_IDENTITY:-}"
   if [[ -n "${identity}" ]]; then
     require_command codesign
-    local team_id="${TENTGENT_MACOS_CODESIGN_TEAM_ID:-${APPLE_TEAM_ID:-}}"
-    if [[ -z "${team_id}" ]]; then
-      fail "TENTGENT_MACOS_CODESIGN_TEAM_ID or APPLE_TEAM_ID is required for Developer ID release signing"
-    fi
-
-    local entitlements_dir="${DIST_DIR}/.entitlements"
-    local entitlements_path="${entitlements_dir}/tentgent-macos-entitlements.plist"
-    mkdir -p "${entitlements_dir}"
-    write_macos_entitlements "${entitlements_path}" "${team_id}"
-
     local codesign_args=(
       --force
       --sign "${identity}"
       --timestamp
       --options runtime
       --identifier "${MACOS_SIGNING_IDENTIFIER}"
-      --entitlements "${entitlements_path}"
     )
 
     if [[ -n "${TENTGENT_MACOS_KEYCHAIN_PATH:-}" ]]; then
@@ -162,7 +102,6 @@ sign_macos_binary() {
     echo "==> Developer ID signing macOS binary"
     codesign "${codesign_args[@]}" "${binary_path}"
     codesign --verify --strict --verbose=2 "${binary_path}"
-    verify_macos_entitlements "${binary_path}" "${team_id}"
     return
   fi
 
@@ -240,7 +179,6 @@ archive: ${archive_path}
 checksums: ${checksums_path}
 host matches target: ${host_match}
 macOS signing: $(if [[ -n "${TENTGENT_MACOS_CODESIGN_IDENTITY:-}" ]]; then echo "developer-id"; else echo "ad-hoc"; fi)
-macOS keychain access group: $(if [[ -n "${TENTGENT_MACOS_CODESIGN_IDENTITY:-}" && -n "${TENTGENT_MACOS_CODESIGN_TEAM_ID:-${APPLE_TEAM_ID:-}}" ]]; then macos_keychain_access_group "${TENTGENT_MACOS_CODESIGN_TEAM_ID:-${APPLE_TEAM_ID:-}}"; else echo "-"; fi)
 PLAN
 }
 

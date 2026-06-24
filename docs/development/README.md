@@ -90,16 +90,20 @@ prerelease/latest release state.
 macOS package jobs use the `apple-developer` GitHub Actions environment with
 `deployment: false`. They import an Apple Developer ID Application certificate
 from environment secrets, sign the `tentgent` binary with hardened runtime and
-a timestamp, and generate Keychain access-group entitlements from the existing
-Apple Team ID. The package script verifies those entitlements with `codesign`
-before uploading workflow artifacts, so failed notarization runs still retain a
-diagnostic package for local inspection. The workflow then submits the package
-contents to Apple notarization and verifies the signed executable with strict
-`codesign` verification before the release job can publish GitHub Release
-assets. The macOS release asset names stay `.tar.gz`; the workflow creates a
-temporary zip only for Apple notarization submission.
+a timestamp. The workflow uploads the signed macOS package artifact before
+Apple notarization, so failed notarization runs still retain a diagnostic
+package for local inspection. The workflow then submits the package contents to
+Apple notarization and verifies the signed executable with strict `codesign`
+verification before the release job can publish GitHub Release assets. The
+macOS release asset names stay `.tar.gz`; the workflow creates a temporary zip
+only for Apple notarization submission.
 Bare CLI executables are not app bundles, so the workflow does not use
 `spctl -t exec` as the release gate.
+
+The release workflow intentionally does not add restricted Keychain access-group
+entitlements to the bare CLI binary. A v1.0.1 release-candidate probe showed
+that adding those entitlements without an eligible Apple provisioning profile
+causes macOS AMFI to block the executable before it starts.
 
 The Linux x86_64 package job installs `libdbus-1-dev` and `pkg-config` before
 packaging because the native Linux keychain backend links `libdbus-sys` through

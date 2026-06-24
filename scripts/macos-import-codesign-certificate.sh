@@ -102,7 +102,6 @@ if [[ -n "${GITHUB_ENV:-}" ]]; then
   {
     echo "TENTGENT_MACOS_KEYCHAIN_PATH=${keychain_path}"
     echo "TENTGENT_MACOS_CODESIGN_IDENTITY=${codesign_identity}"
-    echo "TENTGENT_MACOS_CODESIGN_TEAM_ID=${APPLE_TEAM_ID}"
   } >>"${GITHUB_ENV}"
 fi
 
