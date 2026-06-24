@@ -11,7 +11,7 @@ toward the `v1.0.0` stability promise.
 
 ## Relationship To Post-M7 Roadmap
 
-[post-m7-platform-compatibility-roadmap.md](../post-m7-platform-compatibility-roadmap.md)
+[post-m7-platform-compatibility-roadmap.md](./post-m7-platform-compatibility-roadmap.md)
 is the broad architecture roadmap for platform trust, durable compatibility
 proofs, runtime routing, resource coordination, and conversion boundaries.
 
@@ -97,7 +97,7 @@ group multiple capability-specific local models behind one API target.
 Automatic media pre-processing, where images, audio, video, or files are
 parsed by the configured capability model before their extracted context is
 sent to a chat model, is tracked separately in
-[post-1.0-serving-targets-and-multimodal-context-pipeline.md](../post-1.0-serving-targets-and-multimodal-context-pipeline.md).
+[post-1.0-serving-targets-and-multimodal-context-pipeline.md](./post-1.0-serving-targets-and-multimodal-context-pipeline.md).
 
 That future pipeline is outside the `v1.0.0` stable promise. The important
 constraint is to keep provider request parsing, native intent types,

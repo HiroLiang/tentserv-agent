@@ -125,20 +125,26 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
-- `docs/plans/post-m7-platform-compatibility-roadmap.md`
-  Active post-M7 roadmap for platform trust, model and LoRA compatibility
-  management, runtime proof storage, dynamic routing, media serving wrappers,
-  stream proxy decisions, and resource coordination after the signed `v0.4.1`
-  release.
-- `docs/plans/post-1.0-serving-targets-and-multimodal-context-pipeline.md`
-  Deferred post-1.0 direction for grouping capability-specific models behind
-  one serving target and pre-processing local media attachments into chat
-  context.
+- `docs/plans/v1.x-roadmap.md`
+  Active post-`v1.0.0` product roadmap for cluster/serving targets,
+  compatibility proof foundations, tuple-aware model and LoRA gates, resource
+  coordination, and later 1.x capabilities.
+- `docs/plans/cluster-serving-target-roadmap.md`
+  Focused `v1.x` sub-roadmap for grouping cluster/serving target candidates
+  before individual `v1.1.0` issues are selected.
+- `docs/plans/bugfix-maintenance-plan.md`
+  Active post-`v1.0.0` maintenance plan for bug fixes, diagnostics polish,
+  release follow-up, documentation cleanup, and repository hygiene.
 - `docs/plans/archive/README.md`
   Router for completed or superseded plans that should be consulted only when historical implementation context is needed.
 - `docs/plans/archive/v1.0.0-stable-compatibility-plan.md`
   Archived `v1.0.0` stable compatibility release train and post-merge release
   and Homebrew tap checklist.
+- `docs/plans/archive/post-m7-platform-compatibility-roadmap.md`
+  Archived post-M7 platform compatibility roadmap. Current follow-up work is
+  split between the active `v1.x` roadmap and bugfix maintenance plan.
+- `docs/plans/archive/post-1.0-serving-targets-and-multimodal-context-pipeline.md`
+  Archived post-1.0 serving-target and multimodal-context planning note.
 - `docs/plans/archive/provider-api-compatibility-and-model-support-roadmap.md`
   Archived provider compatibility, model support, runtime profile, and 1.0
   readiness roadmap.

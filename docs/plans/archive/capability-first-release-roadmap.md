@@ -630,7 +630,7 @@ Review target:
 - M7: Developer ID signing and notarization pipeline is implemented in source;
   the next gate is a credentials-backed prerelease workflow smoke.
 - Post-M7 architecture work is continued by
-  [post-m7-platform-compatibility-roadmap.md](../post-m7-platform-compatibility-roadmap.md),
+  [post-m7-platform-compatibility-roadmap.md](./post-m7-platform-compatibility-roadmap.md),
   which tracks full model compatibility, LoRA adapter compatibility management,
   SQLite-backed metadata/proof storage, dynamic runtime transduction,
   compatibility probe/cache, optional shared registry, resource coordination,
