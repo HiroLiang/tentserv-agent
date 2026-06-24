@@ -3,6 +3,35 @@
 This document summarizes user-facing release notes, stable promises, and known
 limits for current and historical Tentgent versions.
 
+## v1.0.1
+
+`v1.0.1` is a macOS release-signing and Keychain reliability patch. It keeps
+the `v1.0.0` product surface unchanged while making the signed macOS release
+path safer after Keychain prompt investigation.
+
+What changed:
+
+- Kept macOS release binaries on Developer ID signing and hardened runtime
+  without restricted Keychain access-group entitlements, so the CLI remains
+  launchable without an embedded provisioning profile.
+- Preserved Apple notarization for macOS release archives and kept package
+  artifacts available before notarization so failed submissions can still be
+  inspected.
+- Clarified that provider secrets use the platform native credential store.
+  On macOS, Tentgent asks Keychain for the secret and macOS decides whether to
+  prompt with Touch ID, password, or an already-authorized session.
+- Documented that forced user-presence / Touch ID protection needs a separate
+  provisioning-compatible release path and is not claimed by this patch.
+
+Known limits:
+
+- This patch does not add new CLI, daemon REST, server, runtime, or provider
+  compatibility features.
+- macOS release binaries continue to use standard login Keychain fallback when
+  restricted user-presence writes are unavailable.
+- Linux and Windows continue to use their native keyring backends; macOS
+  Touch ID behavior is not compiled into those platform paths.
+
 ## v1.0.0
 
 `v1.0.0` is the stable compatibility release. It turns the `v0.9.0`
