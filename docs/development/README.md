@@ -91,11 +91,13 @@ macOS package jobs use the `apple-developer` GitHub Actions environment with
 `deployment: false`. They import an Apple Developer ID Application certificate
 from environment secrets, sign the `tentgent` binary with hardened runtime and
 a timestamp, and generate Keychain access-group entitlements from the existing
-Apple Team ID. The package and notarization scripts verify those entitlements
-with `codesign` before uploading artifacts. The workflow then submits the
-package contents to Apple notarization and verifies the signed executable with
-strict `codesign` verification. The macOS release asset names stay `.tar.gz`;
-the workflow creates a temporary zip only for Apple notarization submission.
+Apple Team ID. The package script verifies those entitlements with `codesign`
+before uploading workflow artifacts, so failed notarization runs still retain a
+diagnostic package for local inspection. The workflow then submits the package
+contents to Apple notarization and verifies the signed executable with strict
+`codesign` verification before the release job can publish GitHub Release
+assets. The macOS release asset names stay `.tar.gz`; the workflow creates a
+temporary zip only for Apple notarization submission.
 Bare CLI executables are not app bundles, so the workflow does not use
 `spctl -t exec` as the release gate.
 

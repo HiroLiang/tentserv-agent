@@ -100,6 +100,15 @@ jobs:
           scripts/package-local.sh
           mv dist/checksums.txt "dist/checksums-${TENTGENT_TARGET}.txt"
 
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tentgent-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            dist/tentgent-${{ steps.release.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+            dist/checksums-${{ matrix.target }}.txt
+
       - name: Notarize macOS package
         shell: bash
         env:
@@ -111,15 +120,6 @@ jobs:
           scripts/macos-notarize-package.sh \
             --archive "dist/tentgent-${{ steps.release.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}" \
             --target "${{ matrix.target }}"
-
-      - name: Upload package artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: tentgent-${{ matrix.target }}
-          if-no-files-found: error
-          path: |
-            dist/tentgent-${{ steps.release.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}
-            dist/checksums-${{ matrix.target }}.txt
 
       - name: Delete temporary Apple signing keychain
         if: always()
