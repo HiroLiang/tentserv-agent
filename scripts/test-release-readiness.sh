@@ -18,7 +18,7 @@ assert_contains() {
   local path="$1"
   local needle="$2"
 
-  if ! rg -F -q "${needle}" "${path}"; then
+  if ! rg -F -q -- "${needle}" "${path}"; then
     fail "expected ${path} to contain: ${needle}"
   fi
 }
@@ -41,6 +41,14 @@ assert_release_workflow_patches_installers() {
   assert_contains "${workflow}" 'BASE_URL="${TENTGENT_INSTALL_BASE_URL:-${DEFAULT_BASE_URL}}"'
   assert_contains "${workflow}" '$DefaultBaseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}"'
   assert_contains "${workflow}" '$BaseUrl = if ($env:TENTGENT_INSTALL_BASE_URL) { $env:TENTGENT_INSTALL_BASE_URL } else { $DefaultBaseUrl }'
+}
+
+assert_macos_release_signing_checks_keychain_entitlements() {
+  assert_contains "${root_dir}/scripts/package-local.sh" '--entitlements "${entitlements_path}"'
+  assert_contains "${root_dir}/scripts/package-local.sh" 'verify_macos_entitlements "${binary_path}" "${team_id}"'
+  assert_contains "${root_dir}/scripts/package-local.sh" 'TENTGENT_MACOS_CODESIGN_TEAM_ID or APPLE_TEAM_ID is required'
+  assert_contains "${root_dir}/scripts/macos-notarize-package.sh" 'verify_macos_entitlements "${binary_path}" "${APPLE_TEAM_ID}"'
+  assert_contains "${root_dir}/scripts/macos-notarize-package.sh" 'keychain-access-groups'
 }
 
 run bash -n "${script_dir}/install.sh"
@@ -98,6 +106,9 @@ fi
 
 echo "==> Checking release workflow installer patching"
 assert_release_workflow_patches_installers
+
+echo "==> Checking macOS release Keychain entitlements"
+assert_macos_release_signing_checks_keychain_entitlements
 
 echo "==> Checking current install docs use bash for install.sh"
 assert_current_docs_use_bash_installer

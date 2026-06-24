@@ -330,6 +330,17 @@ binary may cause macOS to ask again. Unsigned development binaries may fall back
 to a standard login Keychain entry when macOS rejects the protected Keychain
 entitlement.
 
+Signed macOS release binaries are expected to carry Tentgent's Keychain access
+group entitlement. That allows newly written provider secrets to request
+macOS user-presence protection. Existing secrets written as standard login
+Keychain entries keep their old behavior until you remove and set the provider
+key again:
+
+```bash
+tentgent auth hf rm
+tentgent auth hf set
+```
+
 To skip Keychain reads for one command, pass a one-shot environment variable:
 
 ```bash
