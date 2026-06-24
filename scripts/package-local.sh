@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${ROOT_DIR}/dist"
 VERSION="${TENTGENT_VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' "${ROOT_DIR}/Cargo.toml" | head -n 1)}"
+MACOS_SIGNING_IDENTIFIER="com.tentserv.tentgent"
 
 usage() {
   cat <<'USAGE'
@@ -86,13 +87,12 @@ sign_macos_binary() {
   local identity="${TENTGENT_MACOS_CODESIGN_IDENTITY:-}"
   if [[ -n "${identity}" ]]; then
     require_command codesign
-
     local codesign_args=(
       --force
       --sign "${identity}"
       --timestamp
       --options runtime
-      --identifier com.tentserv.tentgent
+      --identifier "${MACOS_SIGNING_IDENTIFIER}"
     )
 
     if [[ -n "${TENTGENT_MACOS_KEYCHAIN_PATH:-}" ]]; then

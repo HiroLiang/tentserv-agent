@@ -330,6 +330,13 @@ binary may cause macOS to ask again. Unsigned development binaries may fall back
 to a standard login Keychain entry when macOS rejects the protected Keychain
 entitlement.
 
+Signed macOS release binaries use Developer ID signing and hardened runtime,
+but they do not currently ship with restricted Keychain access-group
+entitlements. Those entitlements require an eligible Apple provisioning profile
+for the binary identity; without that profile macOS blocks the executable before
+it starts. Provider secrets therefore continue to use the standard login
+Keychain path unless you provide an environment override.
+
 To skip Keychain reads for one command, pass a one-shot environment variable:
 
 ```bash
