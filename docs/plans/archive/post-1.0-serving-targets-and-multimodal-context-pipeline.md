@@ -1,6 +1,7 @@
 # Post-1.0 Serving Targets And Multimodal Context Pipeline
 
-Status: deferred post-1.0 planning note.
+Status: archived. Current cluster and later 1.x direction is summarized in
+[../v1.x-roadmap.md](../v1.x-roadmap.md).
 
 This plan records a future direction that should influence current 1.0 design
 decisions without becoming a `1.0.0` release blocker.

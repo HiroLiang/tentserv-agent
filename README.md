@@ -558,7 +558,7 @@ enough to review.
 - [docs/contracts/](./docs/contracts/README.md)
   Cross-language interfaces and stable runtime contracts.
 - [docs/plans/](./docs/plans/README.md)
-  Active staged plans.
+  Active `v1.x` roadmap and post-`v1.0.0` maintenance plans.
 
 ## License
 

@@ -1,6 +1,8 @@
 # Post-M7 Platform Compatibility Roadmap
 
-Status: active roadmap initialized after the signed `v0.4.1` release.
+Status: archived. Current follow-up work is split between
+[../v1.x-roadmap.md](../v1.x-roadmap.md) and
+[../bugfix-maintenance-plan.md](../bugfix-maintenance-plan.md).
 
 This roadmap starts the post-M7 architecture track. It replaces the former
 future marker named `post-m7-runtime-compatibility-architecture.md` and broadens
@@ -8,7 +10,7 @@ the scope from runtime compatibility alone to the platform work needed for
 reliable local deployment.
 
 The completed M2-M7 release roadmap is archived in
-[archive/capability-first-release-roadmap.md](./archive/capability-first-release-roadmap.md).
+[capability-first-release-roadmap.md](./capability-first-release-roadmap.md).
 
 ## Purpose
 

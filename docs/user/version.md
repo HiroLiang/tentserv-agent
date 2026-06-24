@@ -46,9 +46,10 @@ Known limits:
 - Broader provider tool orchestration, cloud rerank adapters, grouped serving
   targets, automatic multimodal context assembly, multi-model scheduling,
   conversion automation, and broader direct media server wrappers remain
-  post-1.0 work.
+  post-1.0 work tracked from the
+  [v1.x roadmap](../plans/v1.x-roadmap.md).
 - GitHub Release publication, asset verification, Homebrew tap update, and
-  roadmap closeout are handled by the `#97` release slice.
+  roadmap closeout were completed by the `#97` release slice.
 
 ## v0.9.0
 

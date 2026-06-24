@@ -1,21 +1,20 @@
 # Plans
 
-Use this directory for the current active implementation roadmap and any
-still-open plans that are too large or too cross-cutting to execute safely in
-one pass without a staged breakdown.
+Use this directory for current roadmap and maintenance plans that are too large
+or too cross-cutting to track only in GitHub issues.
 
 ## Scope
 
 - Record step-by-step execution plans before large runtime, server, backend, or
   release changes.
-- Keep one active roadmap unless a future initiative needs its own focused plan.
+- Keep the active plan surface small.
 - Prefer short, action-oriented documents over long design essays.
 - Archive completed or superseded tracks so the active plan surface stays
   focused.
 
 ## Routing Rule
 
-- Start with the active roadmap below.
+- Start with the active plans below.
 - Keep each plan focused on one execution track.
 - If a plan grows large, split it into subfolders with a local `README.md`.
 - Update the plan when the approved execution order changes materially.
@@ -33,18 +32,19 @@ one pass without a staged breakdown.
 
 ## Active Plan Index
 
-- [post-m7-platform-compatibility-roadmap.md](./post-m7-platform-compatibility-roadmap.md)
-  Active post-M7 roadmap for platform trust, model and LoRA compatibility
-  management, runtime proof storage, dynamic runtime routing, media serving
-  wrappers, runtime stream proxy decisions, resource coordination, and
-  conversion boundaries after the signed `v0.4.1` release.
+- [v1.x-roadmap.md](./v1.x-roadmap.md)
+  Long-term post-`v1.0.0` product roadmap for cluster/serving targets,
+  compatibility proof foundations, tuple-aware model and LoRA gates, resource
+  coordination, and later 1.x capabilities.
+  - [cluster-serving-target-roadmap.md](./cluster-serving-target-roadmap.md)
+    Focused sub-roadmap for deciding the cluster/serving target candidate
+    groups before individual `v1.1.0` issues are selected.
+- [bugfix-maintenance-plan.md](./bugfix-maintenance-plan.md)
+  Active maintenance queue for post-`v1.0.0` bug fixes, diagnostics polish,
+  release follow-up, documentation cleanup, and repository hygiene.
 
 ## Deferred Plans
 
-- [post-1.0-serving-targets-and-multimodal-context-pipeline.md](./post-1.0-serving-targets-and-multimodal-context-pipeline.md)
-  Deferred post-1.0 direction for grouping multiple capability-specific models
-  behind one serving target and pre-processing local media attachments into chat
-  context.
 - No terminal UI redesign track is active. The product surface is CLI plus
   daemon REST.
 
@@ -57,6 +57,12 @@ one pass without a staged breakdown.
 - [archive/v1.0.0-stable-compatibility-plan.md](./archive/v1.0.0-stable-compatibility-plan.md)
   Archived `v1.0.0` stable compatibility release train and post-merge
   release/tap checklist.
+- [archive/post-m7-platform-compatibility-roadmap.md](./archive/post-m7-platform-compatibility-roadmap.md)
+  Archived post-M7 platform compatibility roadmap. Its active follow-up items
+  are now split between the `v1.x` roadmap and the bugfix maintenance plan.
+- [archive/post-1.0-serving-targets-and-multimodal-context-pipeline.md](./archive/post-1.0-serving-targets-and-multimodal-context-pipeline.md)
+  Archived post-1.0 serving-target and multimodal-context planning note. Its
+  current direction is summarized in the `v1.x` roadmap.
 - [archive/provider-api-compatibility-and-model-support-roadmap.md](./archive/provider-api-compatibility-and-model-support-roadmap.md)
   Archived provider compatibility, model support, runtime profile, and 1.0
   readiness roadmap.

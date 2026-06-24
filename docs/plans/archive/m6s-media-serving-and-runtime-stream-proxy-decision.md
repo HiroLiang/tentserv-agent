@@ -36,7 +36,7 @@ inputs stay in daemon job workflows.
 - [M6H MLX multimodal backend foundation](./m6h-mlx-multimodal-backend-foundation.md)
 - [M6I MLX vision chat backend](./m6i-mlx-vision-chat-backend.md)
 - [M6J MLX audio runtime backend](./m6j-mlx-audio-runtime-backend.md)
-- [Post-M7 platform compatibility roadmap](../post-m7-platform-compatibility-roadmap.md)
+- [Post-M7 platform compatibility roadmap](./post-m7-platform-compatibility-roadmap.md)
 
 ## Current State
 

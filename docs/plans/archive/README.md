@@ -34,6 +34,17 @@ the `v1.0.0` release closeout.
   Completed focused roadmap for provider-shaped API compatibility, model
   support status, runtime profiles, verification gates, and the path from the
   0.x line to the `v1.0.0` stability promise.
+- [post-m7-platform-compatibility-roadmap.md](./post-m7-platform-compatibility-roadmap.md)
+  Superseded post-M7 platform compatibility roadmap for platform trust, proof
+  storage, model and LoRA compatibility, dynamic routing, media serving
+  wrappers, stream contracts, resource coordination, shared registries, and
+  conversion boundaries. Current follow-up work is split between
+  [../v1.x-roadmap.md](../v1.x-roadmap.md) and
+  [../bugfix-maintenance-plan.md](../bugfix-maintenance-plan.md).
+- [post-1.0-serving-targets-and-multimodal-context-pipeline.md](./post-1.0-serving-targets-and-multimodal-context-pipeline.md)
+  Superseded post-1.0 serving-target and multimodal-context planning note.
+  Current cluster and later 1.x direction is summarized in
+  [../v1.x-roadmap.md](../v1.x-roadmap.md).
 
 ## v0.9.0 Hardening Track
 
