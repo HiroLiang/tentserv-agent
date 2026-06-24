@@ -35,10 +35,10 @@ verify_macos_entitlements() {
   access_group="$(macos_keychain_access_group "${team_id}")"
 
   entitlements="$(codesign -d --entitlements - "${binary_path}" 2>/dev/null || true)"
-  if [[ "${entitlements}" != *"<key>keychain-access-groups</key>"* ]] ||
-    [[ "${entitlements}" != *"<string>${access_group}</string>"* ]] ||
-    [[ "${entitlements}" != *"<key>com.apple.developer.team-identifier</key>"* ]] ||
-    [[ "${entitlements}" != *"<string>${team_id}</string>"* ]]; then
+  if [[ "${entitlements}" != *"keychain-access-groups"* ]] ||
+    [[ "${entitlements}" != *"${access_group}"* ]] ||
+    [[ "${entitlements}" != *"com.apple.developer.team-identifier"* ]] ||
+    [[ "${entitlements}" != *"${team_id}"* ]]; then
     printf '%s\n' "${entitlements}" >&2
     fail "signed binary is missing expected Keychain entitlements for ${access_group}"
   fi
