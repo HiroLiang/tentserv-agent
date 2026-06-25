@@ -1,4 +1,6 @@
+use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeSource};
 use crate::foundation::error::KernelResult;
@@ -8,13 +10,14 @@ use super::domain::{
     default_model_capabilities, default_model_capability_source, detect_model_formats,
     escape_huggingface_repo_id, infer_mlx_runtime_family, select_primary_model_format,
     HfModelPullProgress, HfModelSourceIndex, LocalModelSourceIndex, MlxRuntimeFamily,
-    ModelCapability, ModelCapabilitySource, ModelFormat, ModelImportMethod, ModelManifest,
-    ModelManifestEntry, ModelMetadata, ModelRef, ModelRefParseError, ModelRefSelector,
-    ModelSourceKind, ModelStoreLayout, ModelVariantMetadata, ModelVariantStatus,
-    HUGGINGFACE_SOURCE_DIRNAME, LOCAL_SOURCE_DIRNAME, MODEL_MANIFEST_FILENAME,
+    ModelCapability, ModelCapabilitySource, ModelFileDiagnosticCode, ModelFileDiagnosticSeverity,
+    ModelFormat, ModelImportMethod, ModelManifest, ModelManifestEntry, ModelMetadata, ModelRef,
+    ModelRefParseError, ModelRefSelector, ModelSourceKind, ModelStoreLayout, ModelVariantMetadata,
+    ModelVariantStatus, HUGGINGFACE_SOURCE_DIRNAME, LOCAL_SOURCE_DIRNAME, MODEL_MANIFEST_FILENAME,
     MODEL_METADATA_FILENAME, SHORT_MODEL_REF_LENGTH, SOURCE_DIRNAME, STAGING_DIRNAME,
     STORE_DIRNAME, VARIANTS_DIRNAME, VARIANT_METADATA_FILENAME,
 };
+use super::file_diagnostics::model_file_diagnostics;
 use super::ports::{
     HfModelSnapshot, HfModelSnapshotFetcher, HfModelSnapshotRequest, ModelCatalogStore,
     ModelContentStore, ModelIdentityGenerator, ModelManifestBuilder, ModelServerReferenceProbe,
@@ -158,6 +161,118 @@ fn manifest_sorts_counts_and_sums_files_without_io() {
     assert_eq!(manifest.file_count(), 2);
     assert_eq!(manifest.total_bytes(), 5);
     assert!(!manifest.is_empty());
+}
+
+#[test]
+fn file_diagnostics_accept_healthy_gguf_source() {
+    let layout = temp_model_store("healthy-gguf");
+    let metadata = model_metadata_for(
+        ModelRef::parse("1".repeat(64)).expect("model ref"),
+        ModelFormat::Gguf,
+        vec![ModelCapability::Chat],
+    );
+    write_model_skeleton(&layout, &metadata);
+    write_file(
+        layout
+            .variant_source_dir(&metadata.model_ref, metadata.primary_format)
+            .join("model.gguf"),
+        "gguf",
+    );
+
+    assert_eq!(model_file_diagnostics(&layout, &metadata), Vec::new());
+}
+
+#[test]
+fn file_diagnostics_report_missing_gguf_file_as_blocking() {
+    let layout = temp_model_store("missing-gguf");
+    let metadata = model_metadata_for(
+        ModelRef::parse("2".repeat(64)).expect("model ref"),
+        ModelFormat::Gguf,
+        vec![ModelCapability::Chat],
+    );
+    write_model_skeleton(&layout, &metadata);
+    write_file(
+        layout
+            .variant_source_dir(&metadata.model_ref, metadata.primary_format)
+            .join("README.md"),
+        "not a gguf",
+    );
+
+    let diagnostics = model_file_diagnostics(&layout, &metadata);
+
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == ModelFileDiagnosticCode::MissingGgufFile
+            && diagnostic.severity == ModelFileDiagnosticSeverity::Blocking
+    }));
+}
+
+#[test]
+fn file_diagnostics_report_missing_tokenizer_assets_as_blocking() {
+    let layout = temp_model_store("missing-tokenizer");
+    let metadata = model_metadata_for(
+        ModelRef::parse("3".repeat(64)).expect("model ref"),
+        ModelFormat::Safetensors,
+        vec![ModelCapability::Chat],
+    );
+    write_model_skeleton(&layout, &metadata);
+    let source = layout.variant_source_dir(&metadata.model_ref, metadata.primary_format);
+    write_file(source.join("config.json"), "{}");
+    write_file(source.join("generation_config.json"), "{}");
+
+    let diagnostics = model_file_diagnostics(&layout, &metadata);
+
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == ModelFileDiagnosticCode::MissingTokenizerAssets
+            && diagnostic.severity == ModelFileDiagnosticSeverity::Blocking
+    }));
+}
+
+#[test]
+fn file_diagnostics_report_missing_processor_assets_for_media_models() {
+    let layout = temp_model_store("missing-processor");
+    let metadata = model_metadata_for(
+        ModelRef::parse("4".repeat(64)).expect("model ref"),
+        ModelFormat::Safetensors,
+        vec![ModelCapability::VisionChat],
+    );
+    write_model_skeleton(&layout, &metadata);
+    write_file(
+        layout
+            .variant_source_dir(&metadata.model_ref, metadata.primary_format)
+            .join("config.json"),
+        "{}",
+    );
+
+    let diagnostics = model_file_diagnostics(&layout, &metadata);
+
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == ModelFileDiagnosticCode::MissingProcessorAssets
+            && diagnostic.severity == ModelFileDiagnosticSeverity::Blocking
+    }));
+}
+
+#[test]
+fn file_diagnostics_report_missing_diffusers_index_as_blocking() {
+    let layout = temp_model_store("missing-diffusers-index");
+    let metadata = model_metadata_for(
+        ModelRef::parse("5".repeat(64)).expect("model ref"),
+        ModelFormat::Diffusers,
+        vec![ModelCapability::ImageGeneration],
+    );
+    write_model_skeleton(&layout, &metadata);
+    write_file(
+        layout
+            .variant_source_dir(&metadata.model_ref, metadata.primary_format)
+            .join("README.md"),
+        "not an index",
+    );
+
+    let diagnostics = model_file_diagnostics(&layout, &metadata);
+
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == ModelFileDiagnosticCode::MissingDiffusersIndex
+            && diagnostic.severity == ModelFileDiagnosticSeverity::Blocking
+    }));
 }
 
 #[test]
@@ -555,6 +670,58 @@ fn manifest_entry(relative_path: &str, size_bytes: u64) -> ModelManifestEntry {
         size_bytes,
         sha256: "0".repeat(64),
     }
+}
+
+fn temp_model_store(label: &str) -> ModelStoreLayout {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time before epoch")
+        .as_nanos();
+    ModelStoreLayout::from_models_dir(
+        std::env::temp_dir().join(format!("tentgent-model-file-diagnostics-{label}-{nanos}")),
+    )
+}
+
+fn write_model_skeleton(layout: &ModelStoreLayout, metadata: &ModelMetadata) {
+    let model_dir = layout.model_dir(&metadata.model_ref);
+    fs::create_dir_all(&model_dir).expect("create model dir");
+    write_file(layout.manifest_path(&metadata.model_ref), r#"{"files":[]}"#);
+    let variant = ModelVariantMetadata {
+        format: metadata.primary_format,
+        status: ModelVariantStatus::Imported,
+        import_method: ModelImportMethod::Add,
+        relative_source_path: SOURCE_DIRNAME.to_string(),
+    };
+    let variant_path = layout.variant_metadata_path(&metadata.model_ref, metadata.primary_format);
+    fs::create_dir_all(variant_path.parent().expect("variant metadata parent"))
+        .expect("create variant metadata parent");
+    write_file(
+        variant_path,
+        toml::to_string_pretty(&variant).expect("serialize variant"),
+    );
+    fs::create_dir_all(layout.variant_source_dir(&metadata.model_ref, metadata.primary_format))
+        .expect("create source dir");
+}
+
+fn write_file(path: PathBuf, body: impl AsRef<str>) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("create parent");
+    }
+    fs::write(path, body.as_ref()).expect("write file");
+}
+
+fn model_metadata_for(
+    model_ref: ModelRef,
+    primary_format: ModelFormat,
+    capabilities: Vec<ModelCapability>,
+) -> ModelMetadata {
+    let mut metadata = model_metadata_fixture(model_ref);
+    metadata.primary_format = primary_format;
+    metadata.detected_formats = vec![primary_format];
+    metadata.model_capabilities = capabilities;
+    metadata.mlx_runtime_family =
+        infer_mlx_runtime_family(primary_format, &metadata.model_capabilities);
+    metadata
 }
 
 fn model_metadata_fixture(model_ref: ModelRef) -> ModelMetadata {

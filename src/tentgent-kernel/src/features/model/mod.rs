@@ -2,6 +2,7 @@
 
 pub mod classification;
 pub mod domain;
+pub mod file_diagnostics;
 pub mod infra;
 pub mod ports;
 pub mod support_catalog;

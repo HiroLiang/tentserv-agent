@@ -31,6 +31,8 @@ use tentgent_kernel::{
             },
         },
         model::{
+            domain::ModelFileDiagnostic,
+            file_diagnostics::{model_file_diagnostics, model_file_diagnostics_summary},
             infra::{FileModelCapabilityProofStore, FileModelCatalogStore},
             ports::ModelCapabilityProofStore,
             usecases::{ModelCatalogReadUseCase, ModelListRequest, StdModelCatalogReadUseCase},
@@ -414,6 +416,19 @@ fn model_support_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
     let mut supported_count = 0usize;
     let mut tuple_count = 0usize;
     for model in result.models {
+        let file_diagnostics = model_file_diagnostics(&result.store, &model.metadata);
+        let blocking_file_diagnostics = file_diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.blocks_execution())
+            .cloned()
+            .collect::<Vec<_>>();
+        if let Some(check) = model_file_diagnostic_warning_check(
+            &model.metadata.short_ref,
+            &blocking_file_diagnostics,
+        ) {
+            checks.push(check);
+        }
+
         let proofs = match kernel
             .model_proofs
             .list_capability_proofs(&result.store, &model.metadata.model_ref)
@@ -455,6 +470,30 @@ fn model_support_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
     }
 
     checks
+}
+
+fn model_file_diagnostic_warning_check(
+    short_ref: &str,
+    diagnostics: &[ModelFileDiagnostic],
+) -> Option<DoctorCheck> {
+    if diagnostics.is_empty() {
+        return None;
+    }
+
+    Some(
+        DoctorCheck::warn(
+            DoctorCheckCategory::Capability,
+            format!("model files: {short_ref}"),
+            format!(
+                "model files are incomplete: {}",
+                model_file_diagnostics_summary(diagnostics)
+            ),
+        )
+        .with_next_action(DoctorNextAction::command(
+            "Inspect model files",
+            format!("tentgent model inspect {short_ref}"),
+        )),
+    )
 }
 
 fn model_support_warning_check(
@@ -665,11 +704,12 @@ fn status_marker(status: DoctorCheckStatus) -> console::StyledObject<&'static st
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use tentgent_kernel::features::auth::domain::{
         AuthProviderPreference, AuthSecretSource, KeychainPresence,
     };
     use tentgent_kernel::features::model::{
-        domain::ModelCapability,
+        domain::{ModelCapability, ModelFileDiagnosticCode, ModelFileDiagnosticSeverity},
         support_status::{ModelSupportEvidenceKind, ModelSupportStatus},
     };
 
@@ -678,6 +718,32 @@ mod tests {
         let summary = support_summary(ModelSupportStatus::Verified, None);
 
         assert!(model_support_warning_check("abc123abc123", &summary).is_none());
+    }
+
+    #[test]
+    fn model_file_diagnostic_warning_check_reports_next_action() {
+        let check = model_file_diagnostic_warning_check(
+            "abc123abc123",
+            &[ModelFileDiagnostic {
+                severity: ModelFileDiagnosticSeverity::Blocking,
+                code: ModelFileDiagnosticCode::MissingTokenizerAssets,
+                path: PathBuf::from("/tmp/model/tokenizer.json"),
+                message: "tokenizer assets are missing".to_string(),
+                next_action: "remove the corrupted model, then pull or import it again".to_string(),
+            }],
+        )
+        .expect("missing files should warn");
+
+        assert_eq!(check.status, DoctorCheckStatus::Warn);
+        assert_eq!(check.category, DoctorCheckCategory::Capability);
+        assert_eq!(check.name, "model files: abc123abc123");
+        assert!(check.detail.contains("missing-tokenizer-assets"));
+        assert!(check.detail.contains("next action"));
+        assert_eq!(check.next_actions.len(), 1);
+        assert_eq!(
+            check.next_actions[0].command.as_deref(),
+            Some("tentgent model inspect abc123abc123")
+        );
     }
 
     #[test]

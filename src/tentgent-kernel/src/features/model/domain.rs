@@ -658,6 +658,89 @@ pub struct ModelInspection {
     pub variant_source_path: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelFileDiagnosticSeverity {
+    Warning,
+    Blocking,
+}
+
+impl ModelFileDiagnosticSeverity {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Warning => "warning",
+            Self::Blocking => "blocking",
+        }
+    }
+
+    pub const fn blocks_execution(self) -> bool {
+        matches!(self, Self::Blocking)
+    }
+}
+
+impl std::fmt::Display for ModelFileDiagnosticSeverity {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelFileDiagnosticCode {
+    MissingManifest,
+    MissingVariantMetadata,
+    InvalidVariantMetadata,
+    MissingSourcePath,
+    EmptySourceDirectory,
+    MissingGgufFile,
+    MultipleGgufFiles,
+    MissingModelConfig,
+    MissingTokenizerAssets,
+    MissingGenerationConfig,
+    MissingProcessorAssets,
+    MissingDiffusersIndex,
+}
+
+impl ModelFileDiagnosticCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingManifest => "missing-manifest",
+            Self::MissingVariantMetadata => "missing-variant-metadata",
+            Self::InvalidVariantMetadata => "invalid-variant-metadata",
+            Self::MissingSourcePath => "missing-source-path",
+            Self::EmptySourceDirectory => "empty-source-directory",
+            Self::MissingGgufFile => "missing-gguf-file",
+            Self::MultipleGgufFiles => "multiple-gguf-files",
+            Self::MissingModelConfig => "missing-model-config",
+            Self::MissingTokenizerAssets => "missing-tokenizer-assets",
+            Self::MissingGenerationConfig => "missing-generation-config",
+            Self::MissingProcessorAssets => "missing-processor-assets",
+            Self::MissingDiffusersIndex => "missing-diffusers-index",
+        }
+    }
+}
+
+impl std::fmt::Display for ModelFileDiagnosticCode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelFileDiagnostic {
+    pub severity: ModelFileDiagnosticSeverity,
+    pub code: ModelFileDiagnosticCode,
+    pub path: PathBuf,
+    pub message: String,
+    pub next_action: String,
+}
+
+impl ModelFileDiagnostic {
+    pub fn blocks_execution(&self) -> bool {
+        self.severity.blocks_execution()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelImportOutcome {
     pub metadata: ModelMetadata,
