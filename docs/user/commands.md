@@ -251,6 +251,12 @@ Detailed support diagnostics are intentionally kept out of `model ls`.
 `model inspect <model-ref>` shows each capability as a multi-line detail row
 with `runtime_profile`, `execution_backend`, proof or hint evidence, failure or
 stale reason, and a copyable `next_action` when the tuple needs operator work.
+`model inspect` also reports stored model-file diagnostics. Missing runtime
+required files such as GGUF weights, `config.json`, tokenizer assets,
+processor/preprocessor metadata, or Diffusers `model_index.json` are shown with
+the checked path and a recovery action. Tentgent does not silently create or
+patch missing model files; remove the corrupted model entry, then pull or
+import the model again from a complete source.
 
 For recommended small Hugging Face fixtures, gated-access reminders, and
 copy-paste smoke commands, see [model-fixtures.md](./model-fixtures.md).
@@ -848,6 +854,11 @@ to provider-hosted models rather than records in the local model store.
 Use `doctor` when you want the same support diagnostics across all stored local
 models. `doctor` keeps the main check list compact and places long profile,
 backend, failure, and next-action details in the `Details` block.
+`doctor` also warns when a stored local model is missing files that would block
+runtime execution and points back to `tentgent model inspect <model-ref>` for
+the exact missing path and recovery action. Local model-bound server starts run
+the same blocking file preflight before launching the runtime; `--allow-unverified`
+only bypasses unknown or stale support evidence, not missing required files.
 
 Call the server:
 

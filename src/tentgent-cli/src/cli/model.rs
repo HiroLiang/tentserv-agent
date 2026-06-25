@@ -18,6 +18,7 @@ use tentgent_kernel::features::model::domain::{
     ModelImportOutcome, ModelInspection, ModelMetadata, ModelRef, ModelRefSelector,
     ModelRemovalOutcome, ModelStoreLayout, ModelSummary, MODEL_CAPABILITY_CANONICAL_ORDER,
 };
+use tentgent_kernel::features::model::file_diagnostics::model_file_diagnostics;
 use tentgent_kernel::features::model::infra::{
     FileModelCapabilityProofStore, FileModelCatalogStore, FileModelContentStore,
     FileModelServerReferenceProbe, FileModelSourceIndexStore, StdHfModelSnapshotFetcher,
@@ -901,10 +902,45 @@ fn render_model_inspection(inspection: &ModelInspection, proofs: &[ModelCapabili
         Cell::new("variant source"),
         Cell::new(inspection.variant_source_path.display().to_string()),
     ]);
+    add_model_file_diagnostic_rows(&mut table, inspection);
     add_model_support_status_rows(&mut table, &inspection.metadata, proofs);
 
     println!("{table}");
     println!();
+}
+
+fn add_model_file_diagnostic_rows(table: &mut Table, inspection: &ModelInspection) {
+    let store = ModelStoreLayout::from_models_dir(
+        inspection
+            .store_path
+            .parent()
+            .and_then(|path| path.parent())
+            .map(|path| path.to_path_buf())
+            .unwrap_or_else(|| inspection.store_path.clone()),
+    );
+    let diagnostics = model_file_diagnostics(&store, &inspection.metadata);
+    if diagnostics.is_empty() {
+        table.add_row(vec![Cell::new("model files"), Cell::new("ok")]);
+        return;
+    }
+
+    let lines = diagnostics
+        .iter()
+        .map(|diagnostic| {
+            format!(
+                "{}: {}\npath: {}\n{}\nnext_action: {}",
+                diagnostic.severity.as_str(),
+                diagnostic.code.as_str(),
+                diagnostic.path.display(),
+                diagnostic.message,
+                diagnostic.next_action
+            )
+        })
+        .collect::<Vec<_>>();
+    table.add_row(vec![
+        Cell::new("model files"),
+        Cell::new(lines.join("\n\n")),
+    ]);
 }
 
 fn add_model_support_status_rows(

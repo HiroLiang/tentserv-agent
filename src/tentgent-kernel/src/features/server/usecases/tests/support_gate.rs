@@ -143,6 +143,42 @@ fn standard_server_usecase_rejects_unknown_support_without_override() {
 }
 
 #[test]
+fn standard_server_usecase_rejects_missing_model_files_even_with_override() {
+    let fixture = Fixture::new("gate-missing-files");
+    fixture.write_model_capabilities(vec![ModelCapability::Chat]);
+    let layout = StdRuntimeLayoutResolver
+        .resolve(fixture.layout_input(LayoutResolveMode::ReadOnly))
+        .expect("layout");
+    let model_store = ModelStoreLayout::from_models_dir(layout.models_dir);
+    std::fs::remove_file(
+        model_store
+            .variant_source_dir(&fixture.model_ref, ModelFormat::Safetensors)
+            .join("tokenizer.json"),
+    )
+    .expect("remove tokenizer");
+    let deps = ServerUseCaseFixture::new(StaticProcessProbe { running: false });
+    let servers = deps.usecase();
+
+    let err = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            runtime_ref: fixture.model_ref.short_ref().to_string(),
+            capability: Some(ServerCapability::Chat),
+            host: None,
+            port: Some(8799),
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect_err("missing files should block even when unverified support is allowed");
+
+    let message = err.to_string();
+    assert!(message.contains("model files are incomplete"));
+    assert!(message.contains("missing-tokenizer-assets"));
+    assert!(message.contains("tentgent model rm"));
+}
+
+#[test]
 fn standard_server_usecase_allows_unknown_support_with_override() {
     let fixture = Fixture::new("gate-unknown-allowed");
     fixture.write_model_capabilities(vec![ModelCapability::Chat]);

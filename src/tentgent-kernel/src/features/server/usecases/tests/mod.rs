@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use crate::features::model::domain::{
     default_model_capabilities, default_model_capability_source, MlxRuntimeFamily, ModelCapability,
     ModelCapabilityProof, ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelFormat,
-    ModelMetadata, ModelRef, ModelSourceKind, ModelStoreLayout,
+    ModelImportMethod, ModelManifest, ModelManifestEntry, ModelMetadata, ModelRef, ModelSourceKind,
+    ModelStoreLayout, ModelVariantMetadata, ModelVariantStatus, SOURCE_DIRNAME,
 };
 use crate::features::model::infra::{FileModelCapabilityProofStore, FileModelCatalogStore};
 use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
@@ -885,6 +886,7 @@ impl Fixture {
             .resolve(self.layout_input(LayoutResolveMode::Create))
             .expect("layout");
         let model_store = ModelStoreLayout::from_models_dir(layout.models_dir);
+        let stored_capabilities = capabilities.clone();
         FileModelCatalogStore
             .save_model_metadata(
                 &model_store,
@@ -906,6 +908,7 @@ impl Fixture {
                 },
             )
             .expect("save model");
+        self.write_model_files(&model_store, ModelFormat::Mlx, &stored_capabilities);
     }
 
     fn write_model_metadata(
@@ -919,6 +922,7 @@ impl Fixture {
             .resolve(self.layout_input(LayoutResolveMode::Create))
             .expect("layout");
         let model_store = ModelStoreLayout::from_models_dir(layout.models_dir);
+        let stored_capabilities = capabilities.clone();
         FileModelCatalogStore
             .save_model_metadata(
                 &model_store,
@@ -940,6 +944,72 @@ impl Fixture {
                 },
             )
             .expect("save model");
+        self.write_model_files(&model_store, format, &stored_capabilities);
+    }
+
+    fn write_model_files(
+        &self,
+        model_store: &ModelStoreLayout,
+        format: ModelFormat,
+        capabilities: &[ModelCapability],
+    ) {
+        let catalog = FileModelCatalogStore;
+        catalog
+            .save_model_manifest(
+                model_store,
+                &self.model_ref,
+                &ModelManifest {
+                    files: vec![ModelManifestEntry {
+                        relative_path: "source/config.json".to_string(),
+                        size_bytes: 2,
+                        sha256: "0".repeat(64),
+                    }],
+                },
+            )
+            .expect("save manifest");
+        catalog
+            .save_variant_metadata(
+                model_store,
+                &self.model_ref,
+                &ModelVariantMetadata {
+                    format,
+                    status: ModelVariantStatus::Imported,
+                    import_method: ModelImportMethod::Add,
+                    relative_source_path: SOURCE_DIRNAME.to_string(),
+                },
+            )
+            .expect("save variant");
+
+        let source = model_store.variant_source_dir(&self.model_ref, format);
+        std::fs::create_dir_all(&source).expect("create model source");
+        match format {
+            ModelFormat::Gguf => write_fixture_file(source.join("model.gguf"), "gguf"),
+            ModelFormat::Diffusers => write_fixture_file(source.join("model_index.json"), "{}"),
+            ModelFormat::Safetensors | ModelFormat::Mlx => {
+                write_fixture_file(source.join("config.json"), "{}");
+                if capabilities.iter().any(|capability| {
+                    matches!(
+                        capability,
+                        ModelCapability::Chat
+                            | ModelCapability::Embedding
+                            | ModelCapability::Rerank
+                    )
+                }) {
+                    write_fixture_file(source.join("tokenizer.json"), "{}");
+                }
+                if capabilities.iter().any(|capability| {
+                    matches!(
+                        capability,
+                        ModelCapability::AudioTranscription
+                            | ModelCapability::AudioSpeech
+                            | ModelCapability::VisionChat
+                            | ModelCapability::VideoUnderstanding
+                    )
+                }) {
+                    write_fixture_file(source.join("processor_config.json"), "{}");
+                }
+            }
+        }
     }
 
     fn write_capability_proof(
@@ -980,6 +1050,13 @@ impl Fixture {
             )
             .expect("save proof");
     }
+}
+
+fn write_fixture_file(path: PathBuf, body: &str) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create fixture parent");
+    }
+    std::fs::write(path, body).expect("write fixture file");
 }
 
 struct StaticClock;

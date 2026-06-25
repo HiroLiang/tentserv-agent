@@ -4493,6 +4493,7 @@ fn write_model_fixture_with_capabilities(
     let store_dir = home.join("models/store").join(model_ref);
     fs::create_dir_all(store_dir.join("variants/mlx/source")).expect("model source dir");
     fs::write(store_dir.join("manifest.json"), "{}").expect("manifest");
+    write_model_variant_fixture(&store_dir, "mlx", capabilities);
     let capabilities = capabilities
         .iter()
         .map(|capability| format!(r#""{capability}""#))
@@ -4528,6 +4529,7 @@ fn write_safetensors_model_fixture_with_capabilities(
     let store_dir = home.join("models/store").join(model_ref);
     fs::create_dir_all(store_dir.join("variants/safetensors/source")).expect("model source dir");
     fs::write(store_dir.join("manifest.json"), "{}").expect("manifest");
+    write_model_variant_fixture(&store_dir, "safetensors", capabilities);
     let capabilities = capabilities
         .iter()
         .map(|capability| format!(r#""{capability}""#))
@@ -4553,6 +4555,38 @@ imported_at = "2026-05-01T00:00:00Z"
         ),
     )
     .expect("model metadata");
+}
+
+fn write_model_variant_fixture(store_dir: &std::path::Path, format: &str, capabilities: &[&str]) {
+    let variant_dir = store_dir.join("variants").join(format);
+    let source_dir = variant_dir.join("source");
+    fs::create_dir_all(&source_dir).expect("model source dir");
+    fs::write(
+        variant_dir.join("variant.toml"),
+        format!(
+            r#"format = "{format}"
+status = "imported"
+import_method = "add"
+relative_source_path = "source"
+"#
+        ),
+    )
+    .expect("variant metadata");
+    fs::write(source_dir.join("config.json"), "{}").expect("config");
+    if capabilities
+        .iter()
+        .any(|capability| matches!(*capability, "chat" | "embedding" | "rerank"))
+    {
+        fs::write(source_dir.join("tokenizer.json"), "{}").expect("tokenizer");
+    }
+    if capabilities.iter().any(|capability| {
+        matches!(
+            *capability,
+            "audio-transcription" | "audio-speech" | "vision-chat" | "video-understanding"
+        )
+    }) {
+        fs::write(source_dir.join("processor_config.json"), "{}").expect("processor");
+    }
 }
 
 fn write_adapter_fixture(home: &std::path::Path, adapter_ref: &str, base_model_ref: &str) {
