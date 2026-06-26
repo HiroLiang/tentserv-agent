@@ -10,8 +10,12 @@ use tentgent_kernel::features::embedding::usecases::{
     EmbeddingPreparationRequest, EmbeddingUseCase, StdEmbeddingUseCase,
 };
 use tentgent_kernel::features::model::domain::ModelRefSelector;
-use tentgent_kernel::features::model::infra::FileModelCatalogStore;
-use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
+use tentgent_kernel::features::model::infra::{
+    FileModelCapabilityProofStore, FileModelCatalogStore, SystemModelClock,
+};
+use tentgent_kernel::features::model::usecases::{
+    StdModelCatalogReadUseCase, StdModelRuntimeExecutionEvidenceRecorder,
+};
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
     ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
@@ -35,7 +39,14 @@ pub async fn handle_embed_command(command: EmbedCommand) -> miette::Result<()> {
         &kernel.executable_resolver,
         &kernel.model_runtime_supervisor,
     );
-    let embedding = StdEmbeddingUseCase::new(&runtime_resolution, &model_resolver, &runtime_client);
+    let runtime_evidence =
+        StdModelRuntimeExecutionEvidenceRecorder::new(&kernel.model_proofs, &kernel.model_clock);
+    let embedding = StdEmbeddingUseCase::new_with_runtime_evidence(
+        &runtime_resolution,
+        &model_resolver,
+        &runtime_client,
+        &runtime_evidence,
+    );
 
     let result = embedding
         .embed(request)
@@ -55,6 +66,8 @@ struct CliEmbeddingKernel {
     executable_resolver: StdRuntimeExecutableResolver,
     model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
+    model_proofs: FileModelCapabilityProofStore,
+    model_clock: SystemModelClock,
 }
 
 impl CliEmbeddingKernel {
@@ -65,6 +78,8 @@ impl CliEmbeddingKernel {
             executable_resolver: StdRuntimeExecutableResolver,
             model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
+            model_proofs: FileModelCapabilityProofStore,
+            model_clock: SystemModelClock,
         }
     }
 }

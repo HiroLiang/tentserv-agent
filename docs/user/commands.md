@@ -186,19 +186,28 @@ List and inspect models:
 
 ```bash
 tentgent model catalog
-tentgent model catalog --capability chat --publisher Qwen
-tentgent model catalog --support-level fixture-supported
-tentgent model catalog --local --capability embedding
+tentgent model catalog --capability <capability> --publisher <publisher>
+tentgent model catalog --support-level <support-level>
+tentgent model catalog --local --capability <capability>
 tentgent model ls
 tentgent model inspect <model-ref-or-prefix>
-tentgent model capability show <model-ref>
-tentgent model capability set <model-ref> embedding
-tentgent model capability add <model-ref> vision-chat
-tentgent model capability remove <model-ref> chat
-tentgent model capability verify <model-ref> vision-chat
-tentgent model capability proofs <model-ref>
-tentgent model capability proof clear <model-ref> chat
+tentgent model capability show <model-ref-or-prefix>
+tentgent model capability set <model-ref-or-prefix> <capability> [<capability>...]
+tentgent model capability add <model-ref-or-prefix> <capability> [<capability>...]
+tentgent model capability remove <model-ref-or-prefix> <capability> [<capability>...]
+tentgent model capability verify <model-ref-or-prefix> <capability>
+tentgent model capability proofs <model-ref-or-prefix>
+tentgent model capability proof clear <model-ref-or-prefix> <capability>
 ```
+
+`<model-ref-or-prefix>` is either the full `model_ref` or a unique short
+prefix. `<capability>` accepts `chat`, `embedding`, `rerank`,
+`audio-transcription`, `audio-speech`, `vision-chat`, `video-understanding`, or
+`image-generation`. `<publisher>` filters catalog rows by publisher name, and
+`<support-level>` accepts catalog support levels such as fixture-supported
+levels shown by `tentgent model catalog -h`. The optional `[<capability>...]`
+tail means `set`, `add`, and `remove` can accept more than one capability in
+one command.
 
 `model catalog` lists the built-in model-family support catalog before models
 are pulled into the local store. Use `--capability`, `--publisher`,
@@ -230,17 +239,19 @@ capability maps to a specific MLX runtime family such as `mlx-lm`,
 Capability proof commands read and write local tuple-aware support proof
 records while preserving the legacy latest proof file for compatibility.
 Manual `verify` checks stored metadata and backend labeling; local model-bound
-server starts record `server-start` proofs after launch success or failure.
+server starts record `server-start` proofs after launch success or failure, and
+direct local runtime attempts record `runtime-execution` proofs after chat,
+embedding, or rerank execution succeeds or fails.
 Launch-derived proofs include the selected runtime profile id and version when
 the server spec has one, so a later profile version is treated as new evidence
 instead of silently reusing the old proof.
-Use `model capability proof clear <model-ref> <capability>` after fixing a
-runtime problem to remove stale local `verified` or `failed` proof evidence for
-that capability, then retry the route or rerun verification. This command clears
-all local proof records for that model capability, including tuple-aware
-backend/runtime-profile records and the legacy latest-proof file. It does not
-remove stored capability metadata or model content. The daemon REST API exposes
-the same recovery action with
+Use `model capability proof clear <model-ref-or-prefix> <capability>` after
+fixing a runtime problem to remove stale local `verified` or `failed` proof
+evidence for that capability, then retry the route or rerun verification. This
+command clears all local proof records for that model capability, including
+tuple-aware backend/runtime-profile records and the legacy latest-proof file.
+It does not remove stored capability metadata or model content. The daemon REST
+API exposes the same recovery action with
 `DELETE /v1/models/{reference}/capabilities/proofs/{capability}`.
 `tentgent doctor` also reports local model support summaries as capability
 checks. Local model-bound server starts now use the same support status as a

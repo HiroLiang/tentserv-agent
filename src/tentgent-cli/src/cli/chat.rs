@@ -19,8 +19,12 @@ use tentgent_kernel::features::chat::usecases::{
     ChatTargetSelection, StdChatUseCase,
 };
 use tentgent_kernel::features::model::domain::ModelRefSelector;
-use tentgent_kernel::features::model::infra::FileModelCatalogStore;
-use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
+use tentgent_kernel::features::model::infra::{
+    FileModelCapabilityProofStore, FileModelCatalogStore, SystemModelClock,
+};
+use tentgent_kernel::features::model::usecases::{
+    StdModelCatalogReadUseCase, StdModelRuntimeExecutionEvidenceRecorder,
+};
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
     ModelRuntimeDaemonSupervisor, StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
@@ -252,11 +256,14 @@ async fn complete_chat_with_kernel(
         &kernel.executable_resolver,
         &kernel.model_runtime_supervisor,
     );
-    let chat = StdChatUseCase::new(
+    let runtime_evidence =
+        StdModelRuntimeExecutionEvidenceRecorder::new(&kernel.model_proofs, &kernel.model_clock);
+    let chat = StdChatUseCase::new_with_runtime_evidence(
         &runtime_resolution,
         &model_resolver,
         &adapter_resolver,
         &runtime_client,
+        &runtime_evidence,
     );
 
     chat.complete_chat(request)
@@ -286,11 +293,14 @@ async fn stream_chat_with_kernel(
         &kernel.executable_resolver,
         &kernel.model_runtime_supervisor,
     );
-    let chat = StdChatUseCase::new(
+    let runtime_evidence =
+        StdModelRuntimeExecutionEvidenceRecorder::new(&kernel.model_proofs, &kernel.model_clock);
+    let chat = StdChatUseCase::new_with_runtime_evidence(
         &runtime_resolution,
         &model_resolver,
         &adapter_resolver,
         &runtime_client,
+        &runtime_evidence,
     );
 
     chat.stream_chat(request, sink)
@@ -304,6 +314,8 @@ struct CliChatKernel {
     executable_resolver: StdRuntimeExecutableResolver,
     model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
+    model_proofs: FileModelCapabilityProofStore,
+    model_clock: SystemModelClock,
     adapter_catalog: FileAdapterCatalogStore,
 }
 
@@ -315,6 +327,8 @@ impl CliChatKernel {
             executable_resolver: StdRuntimeExecutableResolver,
             model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
+            model_proofs: FileModelCapabilityProofStore,
+            model_clock: SystemModelClock,
             adapter_catalog: FileAdapterCatalogStore,
         }
     }

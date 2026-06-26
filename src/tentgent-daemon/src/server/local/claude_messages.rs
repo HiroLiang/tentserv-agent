@@ -14,6 +14,7 @@ use crate::{provider_compat::ProviderCompatRejection, time::unix_timestamp_secon
 use super::{
     capability::{ensure_local_provider_capability, ensure_model_endpoint},
     error::LocalServerError,
+    evidence::record_runtime_execution_result,
     native::{NativeLocalChatMessage, NativeLocalChatRequest, NativeLocalChatResponse},
     proxy::response_from_upstream,
     sse::claude_stream_from_local_sse,
@@ -30,14 +31,16 @@ pub(super) async fn claude_messages(
         "Claude-compatible local messages",
     )?;
     let endpoint = ensure_model_endpoint(&state).await?;
-    claude_messages_to_upstream(
+    let result = claude_messages_to_upstream(
         &state.client,
         request,
         &endpoint.base_url,
         &state.config.model_ref,
         state.config.capability,
     )
-    .await
+    .await;
+    record_runtime_execution_result(&state, &result);
+    result
 }
 
 pub(super) async fn claude_messages_to_upstream(

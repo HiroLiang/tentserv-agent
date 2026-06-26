@@ -390,6 +390,7 @@ pub enum ModelCapabilityProofSource {
     ManualProbe,
     ServerStart,
     EndpointSmoke,
+    RuntimeExecution,
 }
 
 impl ModelCapabilityProofSource {
@@ -398,6 +399,7 @@ impl ModelCapabilityProofSource {
             Self::ManualProbe => "manual-probe",
             Self::ServerStart => "server-start",
             Self::EndpointSmoke => "endpoint-smoke",
+            Self::RuntimeExecution => "runtime-execution",
         }
     }
 }

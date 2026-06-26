@@ -129,7 +129,8 @@ Every local proof must include:
 - `platform`
 - `device_class`
 - `status = "verified" | "failed"`
-- `proof_source = "manual-probe" | "server-start" | "endpoint-smoke"`
+- `proof_source = "manual-probe" | "server-start" | "endpoint-smoke" |
+  "runtime-execution"`
 - `checked_at`
 
 The first implementation may preserve older records that only contain the
@@ -211,6 +212,11 @@ success or failure. Those records include the selected runtime profile id and
 version when the server spec has one. Runtime launch errors are normalized for
 display: multi-line output is compacted, common secret environment variable
 names are redacted, and long messages are truncated.
+
+Direct local runtime attempts record `runtime-execution` proofs after model
+resolution and runtime dispatch. These records are for concrete execution
+outcomes, not model lookup, request validation, unsupported input, or cloud
+provider failures.
 
 ## Input And Output Shape
 

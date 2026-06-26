@@ -14,6 +14,7 @@ use crate::provider_compat::ProviderCompatRejection;
 use super::{
     capability::{ensure_local_provider_capability, ensure_model_endpoint},
     error::LocalServerError,
+    evidence::record_runtime_execution_result,
     native::{NativeLocalChatMessage, NativeLocalChatRequest, NativeLocalChatResponse},
     proxy::response_from_upstream,
     sse::gemini_stream_from_local_sse,
@@ -31,7 +32,7 @@ pub(super) async fn gemini_generate_content(
         "Gemini-compatible local generateContent",
     )?;
     let endpoint = ensure_model_endpoint(&state).await?;
-    gemini_generate_content_to_upstream(
+    let result = gemini_generate_content_to_upstream(
         &state.client,
         request,
         &operation,
@@ -39,7 +40,9 @@ pub(super) async fn gemini_generate_content(
         &state.config.model_ref,
         state.config.capability,
     )
-    .await
+    .await;
+    record_runtime_execution_result(&state, &result);
+    result
 }
 
 pub(super) async fn gemini_generate_content_to_upstream(

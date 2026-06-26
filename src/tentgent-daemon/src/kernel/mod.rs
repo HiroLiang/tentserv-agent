@@ -185,15 +185,31 @@ impl KernelComponents {
     }
 
     pub fn chat_usecase(&self) -> StdChatUseCase<'_> {
-        StdChatUseCase::new(&self.runtime, &self.models, &self.adapters, self)
+        StdChatUseCase::new_with_runtime_evidence(
+            &self.runtime,
+            &self.models,
+            &self.adapters,
+            self,
+            &self.models,
+        )
     }
 
     pub fn embedding_usecase(&self) -> StdEmbeddingUseCase<'_> {
-        StdEmbeddingUseCase::new(&self.runtime, &self.models, &self.runtime)
+        StdEmbeddingUseCase::new_with_runtime_evidence(
+            &self.runtime,
+            &self.models,
+            &self.runtime,
+            &self.models,
+        )
     }
 
     pub fn rerank_usecase(&self) -> StdRerankUseCase<'_> {
-        StdRerankUseCase::new(&self.runtime, &self.models, &self.runtime)
+        StdRerankUseCase::new_with_runtime_evidence(
+            &self.runtime,
+            &self.models,
+            &self.runtime,
+            &self.models,
+        )
     }
 
     pub fn audio_transcription_usecase(&self) -> StdAudioTranscriptionUseCase<'_> {

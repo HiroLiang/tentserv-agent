@@ -1190,13 +1190,19 @@ keys.
 `POST /v1/models/{model_ref}/capabilities/verify` accepts one capability:
 
 ```json
-{ "capability": "vision-chat" }
+{ "capability": "<capability>" }
 ```
+
+`<capability>` is one model capability value, such as `chat`, `embedding`,
+`rerank`, `audio-transcription`, `audio-speech`, `vision-chat`,
+`video-understanding`, or `image-generation`.
 
 The manual verify route records a metadata-level `manual-probe` proof. It does
 not run full endpoint inference in this slice. Local model-bound server starts
-write `server-start` proofs after launch success or failure. Future endpoint
-smoke tests can write `endpoint-smoke` proofs with the same response shape.
+write `server-start` proofs after launch success or failure. Resolved local
+runtime attempts may write `runtime-execution` proofs after execution succeeds
+or fails. Future endpoint smoke tests can write `endpoint-smoke` proofs with
+the same response shape.
 
 `DELETE /v1/models/{model_ref}/capabilities/proofs/{capability}` clears all
 local proof records for that model capability, including tuple-aware

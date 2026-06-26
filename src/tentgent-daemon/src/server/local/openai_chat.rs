@@ -17,6 +17,7 @@ use crate::{
 use super::{
     capability::{ensure_local_provider_capability, ensure_model_endpoint},
     error::LocalServerError,
+    evidence::record_runtime_execution_result,
     native::{NativeLocalChatMessage, NativeLocalChatRequest, NativeLocalChatResponse},
     proxy::response_from_upstream,
     sse::openai_stream_from_local_sse,
@@ -33,14 +34,16 @@ pub(super) async fn openai_chat_completions(
         "OpenAI-compatible local chat completions",
     )?;
     let endpoint = ensure_model_endpoint(&state).await?;
-    openai_chat_completions_to_upstream(
+    let result = openai_chat_completions_to_upstream(
         &state.client,
         request,
         &endpoint.base_url,
         &state.config.model_ref,
         state.config.capability,
     )
-    .await
+    .await;
+    record_runtime_execution_result(&state, &result);
+    result
 }
 
 pub(super) async fn openai_chat_completions_to_upstream(

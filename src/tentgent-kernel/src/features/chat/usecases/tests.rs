@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
 use crate::features::adapter::domain::{
     AdapterBackendSupport, AdapterFormat, AdapterInspection, AdapterMetadata, AdapterRef,
@@ -14,8 +17,13 @@ use crate::features::chat::ports::{
     ChatRuntimeClient, ChatRuntimeRequest,
 };
 use crate::features::model::domain::{
-    default_model_capability_source, ModelCapability, ModelFormat, ModelInspection, ModelMetadata,
-    ModelRef, ModelRefSelector, ModelSourceKind,
+    default_model_capability_source, ModelCapability, ModelCapabilityProofSource,
+    ModelCapabilityProofStatus, ModelFormat, ModelInspection, ModelMetadata, ModelRef,
+    ModelRefSelector, ModelSourceKind,
+};
+use crate::features::model::usecases::{
+    ModelRuntimeExecutionEvidenceRecordRequest, ModelRuntimeExecutionEvidenceRecordResult,
+    ModelRuntimeExecutionEvidenceRecorder,
 };
 use crate::features::runtime::domain::{
     PythonRuntimeLayout, PythonRuntimeResolutionInput, PythonRuntimeSource,
@@ -23,7 +31,7 @@ use crate::features::runtime::domain::{
 use crate::features::runtime::usecases::{
     RuntimeResolutionRequest, RuntimeResolutionResult, RuntimeResolutionUseCase,
 };
-use crate::foundation::error::KernelResult;
+use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
 
 use super::port::{
@@ -173,6 +181,115 @@ fn standard_chat_usecase_prepares_cloud_target_without_model_or_adapter() {
     assert!(prepared.request.target.adapter.is_none());
 }
 
+#[tokio::test]
+async fn standard_chat_usecase_records_verified_runtime_execution_proof() {
+    let runtime_resolution = FakeRuntimeResolutionUseCase;
+    let model_resolver = FakeChatModelResolver;
+    let adapter_resolver = FakeChatAdapterResolver;
+    let runtime_client = FakeChatRuntimeClient;
+    let evidence = RecordingRuntimeEvidenceRecorder::default();
+    let usecase = StdChatUseCase::new_with_runtime_evidence(
+        &runtime_resolution,
+        &model_resolver,
+        &adapter_resolver,
+        &runtime_client,
+        &evidence,
+    );
+
+    usecase
+        .complete_chat(chat_preparation_request())
+        .await
+        .expect("complete chat");
+
+    let records = evidence.records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].capability, ModelCapability::Chat);
+    assert_eq!(records[0].status, ModelCapabilityProofStatus::Verified);
+    assert_eq!(records[0].error, None);
+}
+
+#[tokio::test]
+async fn standard_chat_usecase_records_failed_runtime_execution_proof() {
+    let runtime_resolution = FakeRuntimeResolutionUseCase;
+    let model_resolver = FakeChatModelResolver;
+    let adapter_resolver = FakeChatAdapterResolver;
+    let runtime_client = FailingChatRuntimeClient;
+    let evidence = RecordingRuntimeEvidenceRecorder::default();
+    let usecase = StdChatUseCase::new_with_runtime_evidence(
+        &runtime_resolution,
+        &model_resolver,
+        &adapter_resolver,
+        &runtime_client,
+        &evidence,
+    );
+
+    let error = usecase
+        .complete_chat(chat_preparation_request())
+        .await
+        .expect_err("runtime failure");
+
+    assert!(error.to_string().contains("runtime failed"));
+    let records = evidence.records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].capability, ModelCapability::Chat);
+    assert_eq!(records[0].status, ModelCapabilityProofStatus::Failed);
+    assert!(records[0]
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains("runtime failed")));
+}
+
+#[tokio::test]
+async fn standard_chat_usecase_does_not_record_cloud_runtime_failure_as_local_proof() {
+    let runtime_resolution = FakeRuntimeResolutionUseCase;
+    let model_resolver = FakeChatModelResolver;
+    let adapter_resolver = FakeChatAdapterResolver;
+    let runtime_client = FailingChatRuntimeClient;
+    let evidence = RecordingRuntimeEvidenceRecorder::default();
+    let usecase = StdChatUseCase::new_with_runtime_evidence(
+        &runtime_resolution,
+        &model_resolver,
+        &adapter_resolver,
+        &runtime_client,
+        &evidence,
+    );
+    let mut request = chat_preparation_request();
+    request.target = ChatTargetSelection::CloudProvider {
+        provider: crate::features::auth::domain::Provider::OpenAI,
+        provider_model: "gpt-test".to_string(),
+    };
+
+    usecase
+        .complete_chat(request)
+        .await
+        .expect_err("cloud runtime failure");
+
+    assert!(evidence.records().is_empty());
+}
+
+#[tokio::test]
+async fn standard_chat_usecase_does_not_record_prepare_failure_as_runtime_proof() {
+    let runtime_resolution = FakeRuntimeResolutionUseCase;
+    let model_resolver = FailingChatModelResolver;
+    let adapter_resolver = FakeChatAdapterResolver;
+    let runtime_client = FakeChatRuntimeClient;
+    let evidence = RecordingRuntimeEvidenceRecorder::default();
+    let usecase = StdChatUseCase::new_with_runtime_evidence(
+        &runtime_resolution,
+        &model_resolver,
+        &adapter_resolver,
+        &runtime_client,
+        &evidence,
+    );
+
+    usecase
+        .complete_chat(chat_preparation_request())
+        .await
+        .expect_err("prepare failure");
+
+    assert!(evidence.records().is_empty());
+}
+
 struct FakeChatUseCase;
 
 impl ChatPreparationUseCase for FakeChatUseCase {
@@ -284,6 +401,19 @@ impl ChatModelResolver for FakeChatModelResolver {
     }
 }
 
+struct FailingChatModelResolver;
+
+impl ChatModelResolver for FailingChatModelResolver {
+    fn resolve_chat_model(
+        &self,
+        _request: ChatModelResolveRequest,
+    ) -> KernelResult<ChatModelResolveResult> {
+        Err(KernelError::ModelStoreUnavailable(
+            "model lookup failed".to_string(),
+        ))
+    }
+}
+
 struct FakeChatAdapterResolver;
 
 impl ChatAdapterResolver for FakeChatAdapterResolver {
@@ -348,6 +478,66 @@ impl ChatRuntimeClient for FakeChatRuntimeClient {
                 text: "runtime stream".to_string(),
                 finish_reason: ChatFinishReason::Stop,
             })
+        })
+    }
+}
+
+struct FailingChatRuntimeClient;
+
+impl ChatRuntimeClient for FailingChatRuntimeClient {
+    fn generate_chat<'a>(
+        &'a self,
+        _request: ChatRuntimeRequest,
+    ) -> ChatPortFuture<'a, ChatResponse> {
+        Box::pin(async move { Err(KernelError::ChatRuntimeUnavailable("runtime failed".into())) })
+    }
+
+    fn stream_chat<'a>(
+        &'a self,
+        _request: ChatRuntimeRequest,
+        _sink: &'a mut dyn FnMut(ChatStreamEvent),
+    ) -> ChatPortFuture<'a, ChatResponse> {
+        Box::pin(async move { Err(KernelError::ChatRuntimeUnavailable("runtime failed".into())) })
+    }
+}
+
+#[derive(Default)]
+struct RecordingRuntimeEvidenceRecorder {
+    records: Mutex<Vec<ModelRuntimeExecutionEvidenceRecordRequest>>,
+}
+
+impl RecordingRuntimeEvidenceRecorder {
+    fn records(&self) -> Vec<ModelRuntimeExecutionEvidenceRecordRequest> {
+        self.records.lock().expect("records lock").clone()
+    }
+}
+
+impl ModelRuntimeExecutionEvidenceRecorder for RecordingRuntimeEvidenceRecorder {
+    fn record_runtime_execution_evidence(
+        &self,
+        request: ModelRuntimeExecutionEvidenceRecordRequest,
+    ) -> KernelResult<ModelRuntimeExecutionEvidenceRecordResult> {
+        let metadata = request.metadata.clone();
+        self.records
+            .lock()
+            .expect("records lock")
+            .push(request.clone());
+        Ok(ModelRuntimeExecutionEvidenceRecordResult {
+            proof: crate::features::model::domain::ModelCapabilityProof {
+                model_ref: metadata.model_ref,
+                capability: request.capability,
+                status: request.status,
+                source: ModelCapabilityProofSource::RuntimeExecution,
+                primary_format: metadata.primary_format,
+                mlx_runtime_family: metadata.mlx_runtime_family,
+                backend: "safetensors".to_string(),
+                runtime_version: None,
+                runtime_profile: request.runtime_profile,
+                runtime_profile_version: request.runtime_profile_version,
+                server_ref: request.server_ref,
+                checked_at: "2026-06-12T00:00:00Z".to_string(),
+                error: request.error,
+            },
         })
     }
 }

@@ -23,9 +23,10 @@ pub use port::{
     ModelHfPullRequest, ModelHfPullResult, ModelHfPullUseCase, ModelInspectRequest,
     ModelInspectResult, ModelListRequest, ModelListResult, ModelLocalImportRequest,
     ModelLocalImportResult, ModelLocalImportUseCase, ModelRemoveRequest, ModelRemoveResult,
-    ModelRemoveUseCase,
+    ModelRemoveUseCase, ModelRuntimeExecutionEvidenceRecordRequest,
+    ModelRuntimeExecutionEvidenceRecordResult, ModelRuntimeExecutionEvidenceRecorder,
 };
-pub use proof::StdModelCapabilityProofUseCase;
+pub use proof::{StdModelCapabilityProofUseCase, StdModelRuntimeExecutionEvidenceRecorder};
 pub use pull::StdModelHfPullUseCase;
 pub use remove::StdModelRemoveUseCase;
 pub use update::StdModelCapabilityUpdateUseCase;

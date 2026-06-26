@@ -16,6 +16,7 @@ use crate::{provider_compat::ProviderCompatRejection, time::unix_timestamp_secon
 use super::{
     capability::{ensure_local_provider_capability, ensure_model_endpoint},
     error::LocalServerError,
+    evidence::record_runtime_execution_result,
     native::{NativeLocalImageGenerationRequest, NativeLocalImageGenerationResponse},
     proxy::response_from_upstream,
     LocalServerState, RUNTIME_IMAGE_GENERATIONS_PATH,
@@ -31,9 +32,9 @@ pub(super) async fn image_generations(
         "local image generation",
     )?;
     let endpoint = ensure_model_endpoint(&state).await?;
-    if local_image_generation_request_uses_openai_shape(&request) {
+    let result = if local_image_generation_request_uses_openai_shape(&request) {
         let request = LocalOpenAiImageGenerationRequest::from_value(request)?;
-        return openai_image_generation_to_upstream(
+        openai_image_generation_to_upstream(
             &state.client,
             request,
             &endpoint.base_url,
@@ -42,9 +43,12 @@ pub(super) async fn image_generations(
             &state.config.server_ref,
             state.config.capability,
         )
-        .await;
-    }
-    native_image_generation_to_upstream(&state.client, request, &endpoint.base_url).await
+        .await
+    } else {
+        native_image_generation_to_upstream(&state.client, request, &endpoint.base_url).await
+    };
+    record_runtime_execution_result(&state, &result);
+    result
 }
 
 pub(super) async fn openai_image_generation_to_upstream(

@@ -1,33 +1,40 @@
 #[cfg(any())]
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::embedding::domain::{
-    EmbeddingBackend, EmbeddingInput, EmbeddingRuntimeTarget,
+    EmbeddingBackend, EmbeddingInput, EmbeddingResponse, EmbeddingRuntimeTarget,
 };
 #[cfg(any())]
-use crate::features::embedding::domain::{
-    EmbeddingRequest, EmbeddingResponse, EmbeddingVector, ResolvedEmbeddingTarget,
-};
+use crate::features::embedding::domain::{EmbeddingRequest, ResolvedEmbeddingTarget};
 use crate::features::embedding::infra::StdEmbeddingModelResolver;
-use crate::features::embedding::ports::{EmbeddingModelResolveRequest, EmbeddingModelResolver};
-#[cfg(any())]
-use crate::features::embedding::ports::{EmbeddingRuntimeClient, EmbeddingRuntimeRequest};
+use crate::features::embedding::ports::{
+    EmbeddingModelResolveRequest, EmbeddingModelResolver, EmbeddingPortFuture,
+    EmbeddingRuntimeClient, EmbeddingRuntimeRequest,
+};
+use crate::features::embedding::usecases::{
+    EmbeddingPreparationRequest, EmbeddingUseCase, StdEmbeddingUseCase,
+};
 use crate::features::model::domain::{
-    default_model_capability_source, ModelCapability, ModelFormat, ModelInspection, ModelMetadata,
-    ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
+    default_model_capability_source, ModelCapability, ModelCapabilityProofSource,
+    ModelCapabilityProofStatus, ModelFormat, ModelInspection, ModelMetadata, ModelRef,
+    ModelRefSelector, ModelSourceKind, ModelStoreLayout,
 };
 use crate::features::model::usecases::{
     ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
-    ModelListResult,
+    ModelListResult, ModelRuntimeExecutionEvidenceRecordRequest,
+    ModelRuntimeExecutionEvidenceRecordResult, ModelRuntimeExecutionEvidenceRecorder,
 };
 #[cfg(any())]
-use crate::features::runtime::domain::{
-    PythonRuntimeLayout, PythonRuntimeSource, RuntimeEntrypoint,
-};
+use crate::features::runtime::domain::RuntimeEntrypoint;
+use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeSource};
 #[cfg(any())]
 use crate::features::runtime::ports::RuntimeExecutableResolver;
+use crate::features::runtime::usecases::{
+    RuntimeResolutionRequest, RuntimeResolutionResult, RuntimeResolutionUseCase,
+};
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
 
@@ -115,6 +122,38 @@ fn std_embedding_model_resolver_rejects_unsupported_embedding_format() {
     assert!(err.to_string().contains("does not support `gguf`"));
 }
 
+#[tokio::test]
+async fn std_embedding_usecase_records_failed_runtime_execution_proof() {
+    let runtime_resolution = FakeRuntimeResolutionUseCase;
+    let catalog = FakeModelCatalog {
+        metadata: model_metadata(ModelFormat::Safetensors, vec![ModelCapability::Embedding]),
+    };
+    let model_resolver = StdEmbeddingModelResolver::new(&catalog);
+    let runtime_client = FailingEmbeddingRuntimeClient;
+    let evidence = RecordingRuntimeEvidenceRecorder::default();
+    let usecase = StdEmbeddingUseCase::new_with_runtime_evidence(
+        &runtime_resolution,
+        &model_resolver,
+        &runtime_client,
+        &evidence,
+    );
+
+    let err = usecase
+        .embed(embedding_preparation_request())
+        .await
+        .expect_err("embedding runtime failure");
+
+    assert!(err.to_string().contains("embedding runtime failed"));
+    let records = evidence.records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].capability, ModelCapability::Embedding);
+    assert_eq!(records[0].status, ModelCapabilityProofStatus::Failed);
+    assert!(records[0]
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains("embedding runtime failed")));
+}
+
 #[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
@@ -178,6 +217,81 @@ async fn python_embedding_once_client_runs_entrypoint_with_embedding_arguments()
     assert!(args.contains(&format!("{}\n", model_ref())));
     assert!(args.contains("--input\nfirst\n"));
     assert!(args.contains("--input\nsecond\n"));
+}
+
+struct FakeRuntimeResolutionUseCase;
+
+impl RuntimeResolutionUseCase for FakeRuntimeResolutionUseCase {
+    fn resolve_runtime(
+        &self,
+        request: RuntimeResolutionRequest,
+    ) -> KernelResult<RuntimeResolutionResult> {
+        let home = request
+            .layout
+            .home_dir
+            .as_deref()
+            .unwrap_or_else(|| Path::new("/tmp/tentgent-embedding-usecase"));
+        Ok(RuntimeResolutionResult {
+            layout: runtime_layout(home),
+            runtime: python_runtime(&home.join("project"), &home.join("env")),
+        })
+    }
+}
+
+struct FailingEmbeddingRuntimeClient;
+
+impl EmbeddingRuntimeClient for FailingEmbeddingRuntimeClient {
+    fn embed(
+        &'_ self,
+        _request: EmbeddingRuntimeRequest,
+    ) -> EmbeddingPortFuture<'_, EmbeddingResponse> {
+        Box::pin(async move {
+            Err(KernelError::RuntimeStateUnavailable(
+                "embedding runtime failed".to_string(),
+            ))
+        })
+    }
+}
+
+#[derive(Default)]
+struct RecordingRuntimeEvidenceRecorder {
+    records: Mutex<Vec<ModelRuntimeExecutionEvidenceRecordRequest>>,
+}
+
+impl RecordingRuntimeEvidenceRecorder {
+    fn records(&self) -> Vec<ModelRuntimeExecutionEvidenceRecordRequest> {
+        self.records.lock().expect("records lock").clone()
+    }
+}
+
+impl ModelRuntimeExecutionEvidenceRecorder for RecordingRuntimeEvidenceRecorder {
+    fn record_runtime_execution_evidence(
+        &self,
+        request: ModelRuntimeExecutionEvidenceRecordRequest,
+    ) -> KernelResult<ModelRuntimeExecutionEvidenceRecordResult> {
+        let metadata = request.metadata.clone();
+        self.records
+            .lock()
+            .expect("records lock")
+            .push(request.clone());
+        Ok(ModelRuntimeExecutionEvidenceRecordResult {
+            proof: crate::features::model::domain::ModelCapabilityProof {
+                model_ref: metadata.model_ref,
+                capability: request.capability,
+                status: request.status,
+                source: ModelCapabilityProofSource::RuntimeExecution,
+                primary_format: metadata.primary_format,
+                mlx_runtime_family: metadata.mlx_runtime_family,
+                backend: "safetensors".to_string(),
+                runtime_version: None,
+                runtime_profile: request.runtime_profile,
+                runtime_profile_version: request.runtime_profile_version,
+                server_ref: request.server_ref,
+                checked_at: "2026-06-12T00:00:00Z".to_string(),
+                error: request.error,
+            },
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -268,6 +382,15 @@ fn embedding_request() -> EmbeddingRequest {
     }
 }
 
+fn embedding_preparation_request() -> EmbeddingPreparationRequest {
+    EmbeddingPreparationRequest {
+        layout: layout_input(unique_path("embedding-usecase-home")),
+        runtime: crate::features::runtime::domain::PythonRuntimeResolutionInput::default(),
+        model_selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+        input: EmbeddingInput::new(vec!["first".to_string()]).expect("embedding input"),
+    }
+}
+
 fn model_metadata(format: ModelFormat, capabilities: Vec<ModelCapability>) -> ModelMetadata {
     ModelMetadata {
         model_ref: model_ref(),
@@ -323,7 +446,6 @@ fn runtime_layout(home: &Path) -> RuntimeLayout {
     }
 }
 
-#[cfg(any())]
 fn python_runtime(project: &Path, env: &Path) -> PythonRuntimeLayout {
     PythonRuntimeLayout {
         project_dir: project.to_path_buf(),

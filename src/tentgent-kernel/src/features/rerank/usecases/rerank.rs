@@ -1,5 +1,9 @@
 //! Standard rerank use case orchestration.
 
+use crate::features::model::{
+    domain::{ModelCapability, ModelCapabilityProofStatus},
+    usecases::{ModelRuntimeExecutionEvidenceRecordRequest, ModelRuntimeExecutionEvidenceRecorder},
+};
 use crate::features::rerank::domain::{RerankRequest, ResolvedRerankTarget};
 use crate::features::rerank::ports::{
     RerankModelResolveRequest, RerankModelResolver, RerankRuntimeClient, RerankRuntimeRequest,
@@ -18,6 +22,7 @@ pub struct StdRerankUseCase<'a> {
     runtime_resolution: &'a dyn RuntimeResolutionUseCase,
     model_resolver: &'a dyn RerankModelResolver,
     runtime_client: &'a dyn RerankRuntimeClient,
+    runtime_evidence: Option<&'a dyn ModelRuntimeExecutionEvidenceRecorder>,
 }
 
 impl<'a> StdRerankUseCase<'a> {
@@ -30,7 +35,45 @@ impl<'a> StdRerankUseCase<'a> {
             runtime_resolution,
             model_resolver,
             runtime_client,
+            runtime_evidence: None,
         }
+    }
+
+    pub fn new_with_runtime_evidence(
+        runtime_resolution: &'a dyn RuntimeResolutionUseCase,
+        model_resolver: &'a dyn RerankModelResolver,
+        runtime_client: &'a dyn RerankRuntimeClient,
+        runtime_evidence: &'a dyn ModelRuntimeExecutionEvidenceRecorder,
+    ) -> Self {
+        Self {
+            runtime_resolution,
+            model_resolver,
+            runtime_client,
+            runtime_evidence: Some(runtime_evidence),
+        }
+    }
+
+    fn record_runtime_execution_evidence(
+        &self,
+        prepared: &RerankPreparationResult,
+        status: ModelCapabilityProofStatus,
+        error: Option<String>,
+    ) {
+        let Some(recorder) = self.runtime_evidence else {
+            return;
+        };
+        let _ = recorder.record_runtime_execution_evidence(
+            ModelRuntimeExecutionEvidenceRecordRequest {
+                layout: prepared.layout.clone(),
+                metadata: prepared.model.metadata.clone(),
+                capability: ModelCapability::Rerank,
+                status,
+                server_ref: None,
+                runtime_profile: None,
+                runtime_profile_version: None,
+                error,
+            },
+        );
     }
 }
 
@@ -80,14 +123,27 @@ impl RerankUseCase for StdRerankUseCase<'_> {
     ) -> RerankUseCaseFuture<'_, RerankExecutionResult> {
         Box::pin(async move {
             let prepared = self.prepare_rerank(request)?;
-            let response = self
+            let result = self
                 .runtime_client
                 .rerank(RerankRuntimeRequest {
                     layout: prepared.layout.clone(),
                     runtime: prepared.runtime.clone(),
                     request: prepared.request.clone(),
                 })
-                .await?;
+                .await;
+            match &result {
+                Ok(_) => self.record_runtime_execution_evidence(
+                    &prepared,
+                    ModelCapabilityProofStatus::Verified,
+                    None,
+                ),
+                Err(error) => self.record_runtime_execution_evidence(
+                    &prepared,
+                    ModelCapabilityProofStatus::Failed,
+                    Some(error.to_string()),
+                ),
+            }
+            let response = result?;
 
             Ok(RerankExecutionResult { prepared, response })
         })

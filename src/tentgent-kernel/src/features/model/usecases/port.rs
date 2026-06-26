@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use crate::features::auth::usecases::AuthSecretResolutionRequest;
 use crate::features::model::domain::{
     HfModelPullProgress, ModelCapability, ModelCapabilityProof, ModelCapabilityProofSource,
-    ModelCapabilityProofStatus, ModelImportOutcome, ModelInspection, ModelRefSelector,
-    ModelRemovalOutcome, ModelStoreLayout, ModelSummary,
+    ModelCapabilityProofStatus, ModelImportOutcome, ModelInspection, ModelMetadata,
+    ModelRefSelector, ModelRemovalOutcome, ModelStoreLayout, ModelSummary,
 };
 use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput};
 use crate::foundation::error::KernelResult;
@@ -168,6 +168,25 @@ pub struct ModelCapabilityProofRecordResult {
     pub proof: ModelCapabilityProof,
 }
 
+/// Request for recording proof evidence from a resolved local runtime execution attempt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelRuntimeExecutionEvidenceRecordRequest {
+    pub layout: RuntimeLayout,
+    pub metadata: ModelMetadata,
+    pub capability: ModelCapability,
+    pub status: ModelCapabilityProofStatus,
+    pub server_ref: Option<String>,
+    pub runtime_profile: Option<String>,
+    pub runtime_profile_version: Option<u32>,
+    pub error: Option<String>,
+}
+
+/// Result of recording runtime execution proof evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelRuntimeExecutionEvidenceRecordResult {
+    pub proof: ModelCapabilityProof,
+}
+
 /// Request for clearing stored proof records for one model capability.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelCapabilityProofClearRequest {
@@ -254,4 +273,13 @@ pub trait ModelCapabilityProofUseCase {
         &self,
         request: ModelCapabilityProofClearRequest,
     ) -> KernelResult<ModelCapabilityProofClearResult>;
+}
+
+/// Use-case boundary for recording local runtime execution evidence.
+pub trait ModelRuntimeExecutionEvidenceRecorder {
+    /// Records a verified or failed local runtime execution proof.
+    fn record_runtime_execution_evidence(
+        &self,
+        request: ModelRuntimeExecutionEvidenceRecordRequest,
+    ) -> KernelResult<ModelRuntimeExecutionEvidenceRecordResult>;
 }

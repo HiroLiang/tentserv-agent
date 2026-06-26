@@ -36,7 +36,7 @@ queue that should stay visible from the active plan.
 | [#104](https://github.com/HiroLiang/tentserv-agent/issues/104) | Open | `v1.0.1 Patch` | Clean up stale post-1.0 roadmap wording and converge active plan routing. |
 | [#105](https://github.com/HiroLiang/tentserv-agent/issues/105) | Open | `v1.0.1 Patch` | Investigate signed Homebrew macOS Keychain password prompt behavior and decide whether docs or credential reset/migration guidance is needed. |
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Open | `v1.0.1 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
-| [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Open | `v1.0.1 Patch` | Retain failed local model execution outcomes as inspectable support evidence when this can be done within the existing recovery path. Move to the `v1.x` roadmap if it requires a new durable proof store. |
+| [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Open | `v1.0.2 Patch` | Retain failed local model execution outcomes as inspectable support evidence through the existing file-backed proof store. Move to the `v1.x` roadmap only if later work requires a new durable proof store. |
 
 ## Candidate Maintenance Issues
 
