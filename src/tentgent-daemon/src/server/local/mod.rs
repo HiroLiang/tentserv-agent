@@ -26,6 +26,7 @@ use tentgent_kernel::{
 mod capability;
 mod claude_messages;
 mod error;
+mod evidence;
 mod gemini_generate;
 mod native;
 mod openai_chat;

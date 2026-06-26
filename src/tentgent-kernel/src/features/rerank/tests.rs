@@ -1,15 +1,18 @@
 #[cfg(any())]
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::features::model::domain::{
-    default_model_capability_source, ModelCapability, ModelFormat, ModelInspection, ModelMetadata,
-    ModelRef, ModelRefSelector, ModelSourceKind, ModelStoreLayout,
+    default_model_capability_source, ModelCapability, ModelCapabilityProofSource,
+    ModelCapabilityProofStatus, ModelFormat, ModelInspection, ModelMetadata, ModelRef,
+    ModelRefSelector, ModelSourceKind, ModelStoreLayout,
 };
 use crate::features::model::usecases::{
     ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
-    ModelListResult,
+    ModelListResult, ModelRuntimeExecutionEvidenceRecordRequest,
+    ModelRuntimeExecutionEvidenceRecordResult, ModelRuntimeExecutionEvidenceRecorder,
 };
 use crate::features::rerank::domain::{
     RerankBackend, RerankInput, RerankResponse, RerankRuntimeTarget, RerankScore,
@@ -17,15 +20,19 @@ use crate::features::rerank::domain::{
 #[cfg(any())]
 use crate::features::rerank::domain::{RerankRequest, ResolvedRerankTarget};
 use crate::features::rerank::infra::StdRerankModelResolver;
-use crate::features::rerank::ports::{RerankModelResolveRequest, RerankModelResolver};
-#[cfg(any())]
-use crate::features::rerank::ports::{RerankRuntimeClient, RerankRuntimeRequest};
-#[cfg(any())]
-use crate::features::runtime::domain::{
-    PythonRuntimeLayout, PythonRuntimeSource, RuntimeEntrypoint,
+use crate::features::rerank::ports::{
+    RerankModelResolveRequest, RerankModelResolver, RerankPortFuture, RerankRuntimeClient,
+    RerankRuntimeRequest,
 };
+use crate::features::rerank::usecases::RerankUseCase;
+#[cfg(any())]
+use crate::features::runtime::domain::RuntimeEntrypoint;
+use crate::features::runtime::domain::{PythonRuntimeLayout, PythonRuntimeSource};
 #[cfg(any())]
 use crate::features::runtime::ports::RuntimeExecutableResolver;
+use crate::features::runtime::usecases::{
+    RuntimeResolutionRequest, RuntimeResolutionResult, RuntimeResolutionUseCase,
+};
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput};
 
@@ -147,6 +154,38 @@ fn std_rerank_model_resolver_rejects_unsupported_rerank_format() {
     assert!(err.to_string().contains("does not support `mlx`"));
 }
 
+#[tokio::test]
+async fn std_rerank_usecase_records_failed_runtime_execution_proof() {
+    let runtime_resolution = FakeRuntimeResolutionUseCase;
+    let catalog = FakeModelCatalog {
+        metadata: model_metadata(ModelFormat::Safetensors, vec![ModelCapability::Rerank]),
+    };
+    let model_resolver = StdRerankModelResolver::new(&catalog);
+    let runtime_client = FailingRerankRuntimeClient;
+    let evidence = RecordingRuntimeEvidenceRecorder::default();
+    let usecase = crate::features::rerank::usecases::StdRerankUseCase::new_with_runtime_evidence(
+        &runtime_resolution,
+        &model_resolver,
+        &runtime_client,
+        &evidence,
+    );
+
+    let err = usecase
+        .rerank(rerank_preparation_request())
+        .await
+        .expect_err("rerank runtime failure");
+
+    assert!(err.to_string().contains("rerank runtime failed"));
+    let records = evidence.records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].capability, ModelCapability::Rerank);
+    assert_eq!(records[0].status, ModelCapabilityProofStatus::Failed);
+    assert!(records[0]
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains("rerank runtime failed")));
+}
+
 #[cfg(any())]
 #[cfg(unix)]
 #[tokio::test]
@@ -212,6 +251,78 @@ async fn python_rerank_once_client_runs_entrypoint_with_rerank_arguments() {
     assert!(args.contains("--document\nfirst\n"));
     assert!(args.contains("--document\nsecond\n"));
     assert!(args.contains("--top-n\n1\n"));
+}
+
+struct FakeRuntimeResolutionUseCase;
+
+impl RuntimeResolutionUseCase for FakeRuntimeResolutionUseCase {
+    fn resolve_runtime(
+        &self,
+        request: RuntimeResolutionRequest,
+    ) -> KernelResult<RuntimeResolutionResult> {
+        let home = request
+            .layout
+            .home_dir
+            .as_deref()
+            .unwrap_or_else(|| Path::new("/tmp/tentgent-rerank-usecase"));
+        Ok(RuntimeResolutionResult {
+            layout: runtime_layout(home),
+            runtime: python_runtime(&home.join("project"), &home.join("env")),
+        })
+    }
+}
+
+struct FailingRerankRuntimeClient;
+
+impl RerankRuntimeClient for FailingRerankRuntimeClient {
+    fn rerank(&'_ self, _request: RerankRuntimeRequest) -> RerankPortFuture<'_, RerankResponse> {
+        Box::pin(async move {
+            Err(KernelError::RuntimeStateUnavailable(
+                "rerank runtime failed".to_string(),
+            ))
+        })
+    }
+}
+
+#[derive(Default)]
+struct RecordingRuntimeEvidenceRecorder {
+    records: Mutex<Vec<ModelRuntimeExecutionEvidenceRecordRequest>>,
+}
+
+impl RecordingRuntimeEvidenceRecorder {
+    fn records(&self) -> Vec<ModelRuntimeExecutionEvidenceRecordRequest> {
+        self.records.lock().expect("records lock").clone()
+    }
+}
+
+impl ModelRuntimeExecutionEvidenceRecorder for RecordingRuntimeEvidenceRecorder {
+    fn record_runtime_execution_evidence(
+        &self,
+        request: ModelRuntimeExecutionEvidenceRecordRequest,
+    ) -> KernelResult<ModelRuntimeExecutionEvidenceRecordResult> {
+        let metadata = request.metadata.clone();
+        self.records
+            .lock()
+            .expect("records lock")
+            .push(request.clone());
+        Ok(ModelRuntimeExecutionEvidenceRecordResult {
+            proof: crate::features::model::domain::ModelCapabilityProof {
+                model_ref: metadata.model_ref,
+                capability: request.capability,
+                status: request.status,
+                source: ModelCapabilityProofSource::RuntimeExecution,
+                primary_format: metadata.primary_format,
+                mlx_runtime_family: metadata.mlx_runtime_family,
+                backend: "safetensors".to_string(),
+                runtime_version: None,
+                runtime_profile: request.runtime_profile,
+                runtime_profile_version: request.runtime_profile_version,
+                server_ref: request.server_ref,
+                checked_at: "2026-06-12T00:00:00Z".to_string(),
+                error: request.error,
+            },
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -306,6 +417,16 @@ fn rerank_request() -> RerankRequest {
     }
 }
 
+fn rerank_preparation_request() -> crate::features::rerank::usecases::RerankPreparationRequest {
+    crate::features::rerank::usecases::RerankPreparationRequest {
+        layout: layout_input(unique_path("rerank-usecase-home")),
+        runtime: crate::features::runtime::domain::PythonRuntimeResolutionInput::default(),
+        model_selector: ModelRefSelector::parse(model_ref().short_ref()).expect("selector"),
+        input: RerankInput::new("question".to_string(), vec!["doc".to_string()], None)
+            .expect("rerank input"),
+    }
+}
+
 fn model_metadata(format: ModelFormat, capabilities: Vec<ModelCapability>) -> ModelMetadata {
     ModelMetadata {
         model_ref: model_ref(),
@@ -361,7 +482,6 @@ fn runtime_layout(home: &Path) -> RuntimeLayout {
     }
 }
 
-#[cfg(any())]
 fn python_runtime(project: &Path, env: &Path) -> PythonRuntimeLayout {
     PythonRuntimeLayout {
         project_dir: project.to_path_buf(),

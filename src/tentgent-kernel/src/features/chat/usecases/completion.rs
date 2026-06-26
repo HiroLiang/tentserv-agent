@@ -8,6 +8,10 @@ use crate::features::chat::ports::{
     ChatAdapterResolveRequest, ChatAdapterResolver, ChatModelResolveRequest, ChatModelResolver,
     ChatRuntimeClient, ChatRuntimeRequest,
 };
+use crate::features::model::{
+    domain::{ModelCapability, ModelCapabilityProofStatus},
+    usecases::{ModelRuntimeExecutionEvidenceRecordRequest, ModelRuntimeExecutionEvidenceRecorder},
+};
 use crate::features::runtime::usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase};
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayoutInput;
@@ -23,6 +27,7 @@ pub struct StdChatUseCase<'a> {
     model_resolver: &'a dyn ChatModelResolver,
     adapter_resolver: &'a dyn ChatAdapterResolver,
     runtime_client: &'a dyn ChatRuntimeClient,
+    runtime_evidence: Option<&'a dyn ModelRuntimeExecutionEvidenceRecorder>,
 }
 
 impl<'a> StdChatUseCase<'a> {
@@ -37,7 +42,57 @@ impl<'a> StdChatUseCase<'a> {
             model_resolver,
             adapter_resolver,
             runtime_client,
+            runtime_evidence: None,
         }
+    }
+
+    pub fn new_with_runtime_evidence(
+        runtime_resolution: &'a dyn RuntimeResolutionUseCase,
+        model_resolver: &'a dyn ChatModelResolver,
+        adapter_resolver: &'a dyn ChatAdapterResolver,
+        runtime_client: &'a dyn ChatRuntimeClient,
+        runtime_evidence: &'a dyn ModelRuntimeExecutionEvidenceRecorder,
+    ) -> Self {
+        Self {
+            runtime_resolution,
+            model_resolver,
+            adapter_resolver,
+            runtime_client,
+            runtime_evidence: Some(runtime_evidence),
+        }
+    }
+
+    fn record_runtime_execution_evidence(
+        &self,
+        prepared: &ChatPreparationResult,
+        status: ModelCapabilityProofStatus,
+        error: Option<String>,
+    ) {
+        let Some(recorder) = self.runtime_evidence else {
+            return;
+        };
+        if !matches!(
+            prepared.request.target.runtime,
+            ChatRuntimeTarget::LocalModel { .. }
+        ) {
+            return;
+        }
+        let Some(model) = prepared.model.as_ref() else {
+            return;
+        };
+
+        let _ = recorder.record_runtime_execution_evidence(
+            ModelRuntimeExecutionEvidenceRecordRequest {
+                layout: prepared.layout.clone(),
+                metadata: model.metadata.clone(),
+                capability: ModelCapability::Chat,
+                status,
+                server_ref: None,
+                runtime_profile: None,
+                runtime_profile_version: None,
+                error,
+            },
+        );
     }
 }
 
@@ -155,14 +210,27 @@ impl ChatCompletionUseCase for StdChatUseCase<'_> {
     ) -> ChatUseCaseFuture<'_, ChatCompletionResult> {
         Box::pin(async move {
             let prepared = self.prepare_chat(request)?;
-            let response = self
+            let result = self
                 .runtime_client
                 .generate_chat(ChatRuntimeRequest {
                     layout: prepared.layout.clone(),
                     runtime: prepared.runtime.clone(),
                     request: prepared.request.clone(),
                 })
-                .await?;
+                .await;
+            match &result {
+                Ok(_) => self.record_runtime_execution_evidence(
+                    &prepared,
+                    ModelCapabilityProofStatus::Verified,
+                    None,
+                ),
+                Err(error) => self.record_runtime_execution_evidence(
+                    &prepared,
+                    ModelCapabilityProofStatus::Failed,
+                    Some(error.to_string()),
+                ),
+            }
+            let response = result?;
 
             Ok(ChatCompletionResult { prepared, response })
         })
@@ -177,7 +245,7 @@ impl ChatStreamingUseCase for StdChatUseCase<'_> {
     ) -> ChatUseCaseFuture<'a, ChatCompletionResult> {
         Box::pin(async move {
             let prepared = self.prepare_chat(request)?;
-            let response = self
+            let result = self
                 .runtime_client
                 .stream_chat(
                     ChatRuntimeRequest {
@@ -187,7 +255,20 @@ impl ChatStreamingUseCase for StdChatUseCase<'_> {
                     },
                     sink,
                 )
-                .await?;
+                .await;
+            match &result {
+                Ok(_) => self.record_runtime_execution_evidence(
+                    &prepared,
+                    ModelCapabilityProofStatus::Verified,
+                    None,
+                ),
+                Err(error) => self.record_runtime_execution_evidence(
+                    &prepared,
+                    ModelCapabilityProofStatus::Failed,
+                    Some(error.to_string()),
+                ),
+            }
+            let response = result?;
 
             Ok(ChatCompletionResult { prepared, response })
         })

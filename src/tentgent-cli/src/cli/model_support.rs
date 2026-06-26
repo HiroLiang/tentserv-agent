@@ -475,6 +475,31 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_lines_include_runtime_execution_failed_recovery_guidance() {
+        let metadata = metadata_with_capabilities([ModelCapability::Chat]);
+        let mut proof = proof_for(
+            &metadata,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Failed,
+            Some("runtime execution failed".to_string()),
+        );
+        proof.source = ModelCapabilityProofSource::RuntimeExecution;
+        let summary = model_support_summaries(&metadata, &[proof])
+            .into_iter()
+            .next()
+            .expect("support summary");
+        let lines = model_support_diagnostic_lines(&summary, Some("0123456789ab"));
+
+        assert_eq!(summary.status, ModelSupportStatus::Failed);
+        assert!(lines
+            .iter()
+            .any(|line| line == "failure: runtime execution failed"));
+        assert!(lines.iter().any(|line| {
+            line == "next_action: tentgent model capability proof clear 0123456789ab chat"
+        }));
+    }
+
+    #[test]
     fn diagnostic_lines_include_stale_recovery_guidance() {
         let metadata = metadata_with_capabilities([ModelCapability::Chat]);
         let mut proof = proof_for(

@@ -3,8 +3,12 @@ use std::{io, path::Path};
 use miette::{miette, IntoDiagnostic};
 use serde_json::json;
 use tentgent_kernel::features::model::domain::ModelRefSelector;
-use tentgent_kernel::features::model::infra::FileModelCatalogStore;
-use tentgent_kernel::features::model::usecases::StdModelCatalogReadUseCase;
+use tentgent_kernel::features::model::infra::{
+    FileModelCapabilityProofStore, FileModelCatalogStore, SystemModelClock,
+};
+use tentgent_kernel::features::model::usecases::{
+    StdModelCatalogReadUseCase, StdModelRuntimeExecutionEvidenceRecorder,
+};
 use tentgent_kernel::features::rerank::domain::RerankInput;
 use tentgent_kernel::features::rerank::infra::{
     PythonRerankModelRuntimeClient, StdRerankModelResolver,
@@ -35,7 +39,14 @@ pub async fn handle_rerank_command(command: RerankCommand) -> miette::Result<()>
         &kernel.executable_resolver,
         &kernel.model_runtime_supervisor,
     );
-    let rerank = StdRerankUseCase::new(&runtime_resolution, &model_resolver, &runtime_client);
+    let runtime_evidence =
+        StdModelRuntimeExecutionEvidenceRecorder::new(&kernel.model_proofs, &kernel.model_clock);
+    let rerank = StdRerankUseCase::new_with_runtime_evidence(
+        &runtime_resolution,
+        &model_resolver,
+        &runtime_client,
+        &runtime_evidence,
+    );
 
     let result = rerank
         .rerank(request)
@@ -55,6 +66,8 @@ struct CliRerankKernel {
     executable_resolver: StdRuntimeExecutableResolver,
     model_runtime_supervisor: ModelRuntimeDaemonSupervisor,
     model_catalog: FileModelCatalogStore,
+    model_proofs: FileModelCapabilityProofStore,
+    model_clock: SystemModelClock,
 }
 
 impl CliRerankKernel {
@@ -65,6 +78,8 @@ impl CliRerankKernel {
             executable_resolver: StdRuntimeExecutableResolver,
             model_runtime_supervisor: ModelRuntimeDaemonSupervisor::new(),
             model_catalog: FileModelCatalogStore,
+            model_proofs: FileModelCapabilityProofStore,
+            model_clock: SystemModelClock,
         }
     }
 }

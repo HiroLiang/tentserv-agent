@@ -6,8 +6,9 @@ use axum::{
 };
 
 use super::{
-    capability::ensure_model_endpoint, error::LocalServerError, LocalServerState,
-    PROXY_BODY_LIMIT_BYTES, RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH, RUNTIME_EMBEDDINGS_PATH,
+    capability::ensure_model_endpoint, error::LocalServerError,
+    evidence::record_runtime_execution_result, LocalServerState, PROXY_BODY_LIMIT_BYTES,
+    RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH, RUNTIME_EMBEDDINGS_PATH,
     RUNTIME_IMAGE_GENERATIONS_PATH,
 };
 
@@ -27,7 +28,9 @@ pub(super) async fn proxy_request(
         endpoint.base_url.trim_end_matches('/'),
         path_and_query
     );
-    forward_to_runtime(&state.client, request, &target_url).await
+    let result = forward_to_runtime(&state.client, request, &target_url).await;
+    record_runtime_execution_result(&state, &result);
+    result
 }
 
 pub(super) async fn forward_to_runtime(

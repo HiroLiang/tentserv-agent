@@ -242,7 +242,8 @@ Current proof records store a legacy subset:
 - `model_ref`
 - `capability`
 - `status = "verified" | "failed"`
-- `source = "manual-probe" | "server-start" | "endpoint-smoke"`
+- `source = "manual-probe" | "server-start" | "endpoint-smoke" |
+  "runtime-execution"`
 - `primary_format`
 - optional `mlx_runtime_family`
 - `backend`
@@ -257,8 +258,10 @@ versioned schema without breaking reads of the legacy subset.
 The current manual probe is metadata-level: it verifies that the stored model
 advertises the requested capability and records the inferred backend label. A
 server start writes a `server-start` proof for local model-bound servers after
-the launch path succeeds or fails. Endpoint-level smoke proofs can later reuse
-the same file shape with `source = "endpoint-smoke"`.
+the launch path succeeds or fails. Resolved local runtime attempts write
+`runtime-execution` proofs after execution succeeds or fails. Endpoint-level
+smoke proofs can later reuse the same file shape with
+`source = "endpoint-smoke"`.
 
 ## Hugging Face Pull Contract
 

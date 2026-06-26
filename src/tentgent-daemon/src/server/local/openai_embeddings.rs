@@ -13,6 +13,7 @@ use crate::provider_compat::ProviderCompatRejection;
 use super::{
     capability::{ensure_local_provider_capability, ensure_model_endpoint},
     error::LocalServerError,
+    evidence::record_runtime_execution_result,
     native::{NativeLocalEmbeddingRequest, NativeLocalEmbeddingResponse},
     proxy::response_from_upstream,
     LocalServerState, RUNTIME_EMBEDDINGS_PATH,
@@ -28,18 +29,21 @@ pub(super) async fn openai_embeddings(
         "local embeddings",
     )?;
     let endpoint = ensure_model_endpoint(&state).await?;
-    if local_embedding_request_uses_openai_shape(&request) {
+    let result = if local_embedding_request_uses_openai_shape(&request) {
         let request = LocalOpenAiEmbeddingRequest::from_value(request)?;
-        return openai_embeddings_to_upstream(
+        openai_embeddings_to_upstream(
             &state.client,
             request,
             &endpoint.base_url,
             &state.config.model_ref,
             state.config.capability,
         )
-        .await;
-    }
-    native_embedding_to_upstream(&state.client, request, &endpoint.base_url).await
+        .await
+    } else {
+        native_embedding_to_upstream(&state.client, request, &endpoint.base_url).await
+    };
+    record_runtime_execution_result(&state, &result);
+    result
 }
 
 pub(super) async fn openai_embeddings_to_upstream(

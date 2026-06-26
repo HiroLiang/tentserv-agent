@@ -5,6 +5,10 @@ use crate::features::embedding::ports::{
     EmbeddingModelResolveRequest, EmbeddingModelResolver, EmbeddingRuntimeClient,
     EmbeddingRuntimeRequest,
 };
+use crate::features::model::{
+    domain::{ModelCapability, ModelCapabilityProofStatus},
+    usecases::{ModelRuntimeExecutionEvidenceRecordRequest, ModelRuntimeExecutionEvidenceRecorder},
+};
 use crate::features::runtime::usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase};
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayoutInput;
@@ -19,6 +23,7 @@ pub struct StdEmbeddingUseCase<'a> {
     runtime_resolution: &'a dyn RuntimeResolutionUseCase,
     model_resolver: &'a dyn EmbeddingModelResolver,
     runtime_client: &'a dyn EmbeddingRuntimeClient,
+    runtime_evidence: Option<&'a dyn ModelRuntimeExecutionEvidenceRecorder>,
 }
 
 impl<'a> StdEmbeddingUseCase<'a> {
@@ -31,7 +36,45 @@ impl<'a> StdEmbeddingUseCase<'a> {
             runtime_resolution,
             model_resolver,
             runtime_client,
+            runtime_evidence: None,
         }
+    }
+
+    pub fn new_with_runtime_evidence(
+        runtime_resolution: &'a dyn RuntimeResolutionUseCase,
+        model_resolver: &'a dyn EmbeddingModelResolver,
+        runtime_client: &'a dyn EmbeddingRuntimeClient,
+        runtime_evidence: &'a dyn ModelRuntimeExecutionEvidenceRecorder,
+    ) -> Self {
+        Self {
+            runtime_resolution,
+            model_resolver,
+            runtime_client,
+            runtime_evidence: Some(runtime_evidence),
+        }
+    }
+
+    fn record_runtime_execution_evidence(
+        &self,
+        prepared: &EmbeddingPreparationResult,
+        status: ModelCapabilityProofStatus,
+        error: Option<String>,
+    ) {
+        let Some(recorder) = self.runtime_evidence else {
+            return;
+        };
+        let _ = recorder.record_runtime_execution_evidence(
+            ModelRuntimeExecutionEvidenceRecordRequest {
+                layout: prepared.layout.clone(),
+                metadata: prepared.model.metadata.clone(),
+                capability: ModelCapability::Embedding,
+                status,
+                server_ref: None,
+                runtime_profile: None,
+                runtime_profile_version: None,
+                error,
+            },
+        );
     }
 }
 
@@ -81,14 +124,27 @@ impl EmbeddingUseCase for StdEmbeddingUseCase<'_> {
     ) -> EmbeddingUseCaseFuture<'_, EmbeddingExecutionResult> {
         Box::pin(async move {
             let prepared = self.prepare_embedding(request)?;
-            let response = self
+            let result = self
                 .runtime_client
                 .embed(EmbeddingRuntimeRequest {
                     layout: prepared.layout.clone(),
                     runtime: prepared.runtime.clone(),
                     request: prepared.request.clone(),
                 })
-                .await?;
+                .await;
+            match &result {
+                Ok(_) => self.record_runtime_execution_evidence(
+                    &prepared,
+                    ModelCapabilityProofStatus::Verified,
+                    None,
+                ),
+                Err(error) => self.record_runtime_execution_evidence(
+                    &prepared,
+                    ModelCapabilityProofStatus::Failed,
+                    Some(error.to_string()),
+                ),
+            }
+            let response = result?;
 
             Ok(EmbeddingExecutionResult { prepared, response })
         })

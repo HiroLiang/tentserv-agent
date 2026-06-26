@@ -14,6 +14,8 @@ use super::port::{
     ModelCapabilityProofListRequest, ModelCapabilityProofListResult,
     ModelCapabilityProofRecordRequest, ModelCapabilityProofRecordResult,
     ModelCapabilityProofUseCase, ModelCapabilityVerifyRequest,
+    ModelRuntimeExecutionEvidenceRecordRequest, ModelRuntimeExecutionEvidenceRecordResult,
+    ModelRuntimeExecutionEvidenceRecorder,
 };
 
 /// Standard model capability proof orchestration.
@@ -37,6 +39,41 @@ impl<'a> StdModelCapabilityProofUseCase<'a> {
             proofs,
             clock,
         }
+    }
+}
+
+/// Standard local runtime execution proof recorder.
+pub struct StdModelRuntimeExecutionEvidenceRecorder<'a> {
+    proofs: &'a dyn ModelCapabilityProofStore,
+    clock: &'a dyn ModelClock,
+}
+
+impl<'a> StdModelRuntimeExecutionEvidenceRecorder<'a> {
+    pub fn new(proofs: &'a dyn ModelCapabilityProofStore, clock: &'a dyn ModelClock) -> Self {
+        Self { proofs, clock }
+    }
+}
+
+impl ModelRuntimeExecutionEvidenceRecorder for StdModelRuntimeExecutionEvidenceRecorder<'_> {
+    fn record_runtime_execution_evidence(
+        &self,
+        request: ModelRuntimeExecutionEvidenceRecordRequest,
+    ) -> KernelResult<ModelRuntimeExecutionEvidenceRecordResult> {
+        let store = model_store_layout(&request.layout);
+        let proof = build_proof(
+            &request.metadata,
+            request.capability,
+            request.status,
+            ModelCapabilityProofSource::RuntimeExecution,
+            request.server_ref,
+            request.runtime_profile,
+            request.runtime_profile_version,
+            request.error,
+            self.clock.now_rfc3339()?,
+        );
+        self.proofs.save_capability_proof(&store, &proof)?;
+
+        Ok(ModelRuntimeExecutionEvidenceRecordResult { proof })
     }
 }
 

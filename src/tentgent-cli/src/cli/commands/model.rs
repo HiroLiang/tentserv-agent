@@ -116,7 +116,7 @@ pub enum ModelCommands {
         /// Full model_ref or unique short-ref prefix.
         #[arg(value_name = "REF")]
         reference: String,
-        /// Capability metadata to assign to this model.
+        /// Capability metadata to assign, such as chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, video-understanding, or image-generation.
         #[arg(value_name = "CAPABILITY")]
         capability: ModelCapability,
     },
@@ -145,8 +145,8 @@ pub enum ModelCapabilityCommands {
         /// Full model_ref or unique short-ref prefix.
         #[arg(value_name = "REF")]
         reference: String,
-        /// Capability metadata to assign to this model.
-        #[arg(value_name = "CAPABILITY", num_args = 1..)]
+        /// Capability metadata to assign, such as chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, video-understanding, or image-generation.
+        #[arg(value_name = "CAPABILITY", num_args = 1.., required = true)]
         capabilities: Vec<ModelCapability>,
     },
     /// Add stored capability metadata to one model.
@@ -159,8 +159,8 @@ pub enum ModelCapabilityCommands {
         /// Full model_ref or unique short-ref prefix.
         #[arg(value_name = "REF")]
         reference: String,
-        /// Capability metadata to add to this model.
-        #[arg(value_name = "CAPABILITY", num_args = 1..)]
+        /// Capability metadata to add, such as chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, video-understanding, or image-generation.
+        #[arg(value_name = "CAPABILITY", num_args = 1.., required = true)]
         capabilities: Vec<ModelCapability>,
     },
     /// Remove stored capability metadata from one model.
@@ -174,15 +174,15 @@ pub enum ModelCapabilityCommands {
         /// Full model_ref or unique short-ref prefix.
         #[arg(value_name = "REF")]
         reference: String,
-        /// Capability metadata to remove from this model.
-        #[arg(value_name = "CAPABILITY", num_args = 1..)]
+        /// Capability metadata to remove, such as chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, video-understanding, or image-generation.
+        #[arg(value_name = "CAPABILITY", num_args = 1.., required = true)]
         capabilities: Vec<ModelCapability>,
     },
     /// List latest proof records for one model.
     #[command(
         name = "proofs",
-        about = "List latest proof records for one model.",
-        long_about = "List latest proof records for one model capability set. Proofs are local metadata records written by manual probes and runtime events such as server start."
+        about = "List local proof records for one model, including runtime execution evidence.",
+        long_about = "List latest proof records for one model capability set. Proofs are local metadata records written by manual probes, local server-start outcomes, direct local runtime execution attempts, and future endpoint smoke checks."
     )]
     Proofs {
         /// Full model_ref or unique short-ref prefix.
@@ -192,7 +192,7 @@ pub enum ModelCapabilityCommands {
     /// Manage stored proof records for one model capability.
     #[command(
         name = "proof",
-        about = "Manage stored proof records for one model capability.",
+        about = "Manage stored proof records and recovery for one model capability.",
         long_about = "Manage stored proof records for one model capability. Use this when a failed local proof should be cleared after fixing the runtime environment."
     )]
     Proof {
@@ -202,14 +202,14 @@ pub enum ModelCapabilityCommands {
     /// Run a local capability probe and write a proof record.
     #[command(
         name = "verify",
-        about = "Run a local capability probe and write a proof record.",
-        long_about = "Run a local metadata-level capability probe and write a proof record without changing model content or model_ref. Runtime endpoint smoke proofs are recorded by server/runtime flows."
+        about = "Run a metadata-level capability probe and write a manual proof.",
+        long_about = "Run a local metadata-level capability probe and write a proof record without changing model content or model_ref. Direct local runtime attempts record runtime-execution proofs, while local server launch flows record server-start proofs."
     )]
     Verify {
         /// Full model_ref or unique short-ref prefix.
         #[arg(value_name = "REF")]
         reference: String,
-        /// Capability metadata to probe.
+        /// Capability metadata to probe, such as chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, video-understanding, or image-generation.
         #[arg(value_name = "CAPABILITY")]
         capability: ModelCapability,
     },
@@ -221,14 +221,14 @@ pub enum ModelCapabilityProofCommands {
     #[command(
         name = "clear",
         visible_alias = "rm",
-        about = "Clear stored proof records for one model capability.",
+        about = "Clear local proof records for one model capability after recovery.",
         long_about = "Clear stored proof records for one model capability. This removes local verified or failed proof evidence for the selected capability without changing model capability metadata or model content."
     )]
     Clear {
         /// Full model_ref or unique short-ref prefix.
         #[arg(value_name = "REF")]
         reference: String,
-        /// Capability proof records to clear.
+        /// Capability proof records to clear, such as chat, embedding, rerank, audio-transcription, audio-speech, vision-chat, video-understanding, or image-generation.
         #[arg(value_name = "CAPABILITY")]
         capability: ModelCapability,
     },

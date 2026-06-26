@@ -852,10 +852,10 @@ workspaces are retained for inspection and result/recovery behavior.
 | `GET` | `/v1/models` | None. |
 | `GET` | `/v1/models/{reference}` | None. |
 | `DELETE` | `/v1/models/{reference}` | None. |
-| `POST` | `/v1/models/{reference}/capabilities` | `{"set":["chat","vision-chat"]}` or `{"add":["vision-chat"],"remove":["chat"]}`. |
+| `POST` | `/v1/models/{reference}/capabilities` | `{"set":["<capability>"]}` or `{"add":["<capability>"],"remove":["<capability>"]}`. |
 | `GET` | `/v1/models/{reference}/capabilities/proofs` | None. |
 | `DELETE` | `/v1/models/{reference}/capabilities/proofs/{capability}` | None. |
-| `POST` | `/v1/models/{reference}/capabilities/verify` | `{"capability":"chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation"}`. |
+| `POST` | `/v1/models/{reference}/capabilities/verify` | `{"capability":"<capability>"}`. |
 | `PATCH` | `/v1/models/{reference}` | Legacy compatibility alias for replacing the capability set with one `{"capability":"..."}` value. |
 | `POST` | `/v1/models/import` | `{"path":"/absolute/model-dir","capability":"optional-capability"}` |
 | `POST` | `/v1/models/pull` | `{"repo_id":"org/model","revision":"optional","capability":"optional-capability"}` |
@@ -865,10 +865,14 @@ workspaces are retained for inspection and result/recovery behavior.
 Capability mutations canonicalize and de-duplicate values, set
 `model_capability_source` to `manual-update`, and reject requests that would
 leave a model with no capabilities.
+`<capability>` accepts `chat`, `embedding`, `rerank`, `audio-transcription`,
+`audio-speech`, `vision-chat`, `video-understanding`, or `image-generation`.
 
 Capability proofs are latest local records keyed by model and capability.
 Manual `verify` is a metadata-level probe in this slice; local model-bound
-server starts also write `server-start` proofs after launch success or failure.
+server starts also write `server-start` proofs after launch success or failure,
+and direct local runtime attempts write `runtime-execution` proofs after
+execution succeeds or fails.
 Deleting a capability proof path clears all local proof records for that model
 capability, including tuple-aware backend/runtime-profile records and the
 legacy latest-proof file, without changing model content or capability

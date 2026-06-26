@@ -81,7 +81,8 @@ Support status may use these evidence sources:
   `default-chat`, `explicit-user`, `huggingface-metadata`, or
   `manual-update`.
 - Local proof records:
-  `manual-probe`, `server-start`, or `endpoint-smoke`.
+  `manual-probe`, `server-start`, `endpoint-smoke`, or
+  `runtime-execution`.
 - Built-in support records shipped with Tentgent.
 - Future shared or downloaded support records.
 - Runtime profile availability and backend compatibility rules.
@@ -193,7 +194,9 @@ decision may allow a `supported` or explicitly allowed `unknown`/`stale` tuple
 to launch, but that decision does not by itself create a `verified` proof. The
 actual local server launch outcome records a `server-start` proof: successful
 starts write `verified`, and launch failures after profile selection write
-`failed`.
+`failed`. Resolved direct local runtime attempts, such as chat, embedding, and
+rerank execution, record `runtime-execution` proofs when the runtime succeeds
+or fails.
 
 ## Stale Evidence
 

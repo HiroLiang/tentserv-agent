@@ -37,7 +37,7 @@ use tentgent_kernel::{
                 ModelCatalogReadUseCase, ModelInspectRequest, ModelInspectResult, ModelListRequest,
                 ModelListResult, StdModelCapabilityProofUseCase, StdModelCapabilityUpdateUseCase,
                 StdModelCatalogReadUseCase, StdModelHfPullUseCase, StdModelLocalImportUseCase,
-                StdModelRemoveUseCase,
+                StdModelRemoveUseCase, StdModelRuntimeExecutionEvidenceRecorder,
             },
         },
         rerank::{
@@ -61,6 +61,11 @@ use tentgent_kernel::{
         },
     },
     foundation::{error::KernelResult, layout::StdRuntimeLayoutResolver},
+};
+
+use tentgent_kernel::features::model::usecases::{
+    ModelRuntimeExecutionEvidenceRecordRequest, ModelRuntimeExecutionEvidenceRecordResult,
+    ModelRuntimeExecutionEvidenceRecorder,
 };
 
 pub struct ModelKernelComponent {
@@ -156,6 +161,12 @@ impl ModelKernelComponent {
         )
     }
 
+    pub fn runtime_execution_evidence_recorder(
+        &self,
+    ) -> StdModelRuntimeExecutionEvidenceRecorder<'_> {
+        StdModelRuntimeExecutionEvidenceRecorder::new(&self.proofs, &self.clock)
+    }
+
     pub(crate) fn catalog_store(&self) -> &FileModelCatalogStore {
         &self.catalog
     }
@@ -178,6 +189,16 @@ impl ModelCatalogReadUseCase for ModelKernelComponent {
 
     fn inspect_model(&self, request: ModelInspectRequest) -> KernelResult<ModelInspectResult> {
         self.catalog_usecase().inspect_model(request)
+    }
+}
+
+impl ModelRuntimeExecutionEvidenceRecorder for ModelKernelComponent {
+    fn record_runtime_execution_evidence(
+        &self,
+        request: ModelRuntimeExecutionEvidenceRecordRequest,
+    ) -> KernelResult<ModelRuntimeExecutionEvidenceRecordResult> {
+        self.runtime_execution_evidence_recorder()
+            .record_runtime_execution_evidence(request)
     }
 }
 
