@@ -100,6 +100,26 @@ without mixing unrelated cluster features.
 | 4. Native Local Routing MVP | Start the first useful target runtime path for native local `chat`, `embedding`, and `rerank` routes. Keep provider-compatible multimodal, tools, and automatic context assembly out of scope. | Requests through the target reach the configured local route; unsupported or missing routes fail predictably; route failures are scoped to the route; existing direct single-model server behavior remains unchanged. |
 | 5. Runtime Ownership And Shutdown Safety | Add the runtime ownership rules needed once a target can run multiple routes. This covers active route ownership, cancellation, shutdown, and cleanup boundaries. | Active target routes keep their model/runtime resources from being removed underneath them; shutdown and cancellation release ownership cleanly; cleanup does not delete retained artifacts or bound resources that still have an active owner. |
 
+## v1.1 Issue Drafts
+
+Use this table when creating the initial `v1.1.0` GitHub issues from a clean
+session. Keep the parent issue as a tracking issue, then create one sub-issue
+per slice after the issue order is accepted.
+
+| Order | Issue Title | Description | Labels |
+| --- | --- | --- | --- |
+| Parent | `v1.1.0 Cluster / Serving Target MVP` | Track the first `v1.1.0` feature milestone for named serving targets. The milestone should deliver a small local multi-route foundation without automatic multimodal context assembly, provider tool orchestration, shared registries, or conversion automation. | `enhancement`, `type:tracking`, `area:roadmap` |
+| 1 | `Define Serving Target Capability And Resource State Safety` | Define how models, adapters, capability metadata, runtime profile references, server specs, and future target bindings are written, read back, and protected. The default behavior should reject accidental deletion of bound resources and require an explicit unbind or separately designed force behavior. | `enhancement`, `type:implementation`, `area:gating`, `area:model-support` |
+| 2 | `Add Serving Target Definition And Validation` | Add the first serving target data shape and validation path without request routing. Targets may be partial, but declared routes must validate route names, model/provider references, capabilities, and runtime profile references before they are stored. | `enhancement`, `type:implementation`, `area:api`, `area:gating` |
+| 3 | `Add Serving Target Route Readiness Diagnostics` | Show per-route readiness in target inspection, including capability, backend/runtime profile, support status, proof state, stale/failed reason, and next action. One failed or stale route must stay visible without hiding the rest of the target. | `enhancement`, `type:implementation`, `area:diagnostics`, `area:model-support`, `area:runtime-profile` |
+| 4 | `Implement Native Local Serving Target Routing MVP` | Route native local `chat`, `embedding`, and `rerank` requests through the configured serving target routes. Missing, unsupported, or unverified routes should fail with explicit route-scoped errors, and existing direct single-model server behavior must remain unchanged. | `enhancement`, `type:implementation`, `area:api`, `area:gating` |
+| 5 | `Add Serving Target Runtime Ownership And Shutdown Safety` | Add the runtime ownership rules needed after targets can run multiple routes. Active target routes should protect bound model/runtime resources from unsafe removal, and cancellation, shutdown, and cleanup should release ownership predictably. | `enhancement`, `type:implementation`, `area:gating`, `area:runtime-profile` |
+
+Do not add a SQLite migration issue as a standalone `v1.1.0` slice by default.
+If indexed storage is needed, include only the minimum state-family migration
+required by the selected slice and document why the file-backed state is no
+longer enough.
+
 ## Slice Grouping Notes
 
 - Slice 1 is first because cluster routing should not be built on top of

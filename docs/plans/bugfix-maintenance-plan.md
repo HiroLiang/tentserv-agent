@@ -1,6 +1,7 @@
 # Bugfix And Maintenance Plan
 
-Status: active post-`v1.0.0` maintenance and patch planning record.
+Status: active post-`v1.0.0` maintenance and patch planning record. All
+currently tracked `#103`-`#107` maintenance issues are completed.
 
 This plan tracks released-product cleanup: bugs, diagnostics gaps, stale
 documentation, release follow-up, repository hygiene, and small hardening work.
@@ -33,10 +34,21 @@ queue that should stay visible from the active plan.
 | Issue | Status | Milestone | Summary |
 | --- | --- | --- | --- |
 | [#103](https://github.com/HiroLiang/tentserv-agent/issues/103) | Completed | `v1.0.1 Patch` | Clean up local `.DS_Store` repository noise; resolved without tracked repository changes. |
-| [#104](https://github.com/HiroLiang/tentserv-agent/issues/104) | Open | `v1.0.1 Patch` | Clean up stale post-1.0 roadmap wording and converge active plan routing. |
-| [#105](https://github.com/HiroLiang/tentserv-agent/issues/105) | Open | `v1.0.1 Patch` | Investigate signed Homebrew macOS Keychain password prompt behavior and decide whether docs or credential reset/migration guidance is needed. |
-| [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Open | `v1.0.1 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
-| [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Open | `v1.0.2 Patch` | Retain failed local model execution outcomes as inspectable support evidence through the existing file-backed proof store. Move to the `v1.x` roadmap only if later work requires a new durable proof store. |
+| [#104](https://github.com/HiroLiang/tentserv-agent/issues/104) | Completed | `v1.0.1 Patch` | Clean up stale post-1.0 roadmap wording and converge active plan routing into this maintenance plan plus the active `v1.x` roadmap. |
+| [#105](https://github.com/HiroLiang/tentserv-agent/issues/105) | Completed | `v1.0.1 Patch` | Fix signed Homebrew macOS Keychain prompt behavior and keep the release path aligned with the existing signing setup. |
+| [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
+| [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
+
+## Current Handoff State
+
+As of `2026-06-27`, no open maintenance issues are tracked in this plan. A new
+session should create additional maintenance issues only when a concrete patch
+bug, diagnostics gap, install/release follow-up, or stale documentation problem
+is identified.
+
+The next planned feature work is the `v1.1.0` cluster/serving-target issue
+selection flow in [v1.x-roadmap.md](./v1.x-roadmap.md) and
+[cluster-serving-target-roadmap.md](./cluster-serving-target-roadmap.md).
 
 ## Candidate Maintenance Issues
 

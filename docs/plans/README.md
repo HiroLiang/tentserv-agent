@@ -38,7 +38,7 @@ or too cross-cutting to track only in GitHub issues.
   coordination, and later 1.x capabilities.
   - [cluster-serving-target-roadmap.md](./cluster-serving-target-roadmap.md)
     Focused sub-roadmap for deciding the cluster/serving target candidate
-    groups before individual `v1.1.0` issues are selected.
+    groups and initial `v1.1.0` issue drafts.
 - [bugfix-maintenance-plan.md](./bugfix-maintenance-plan.md)
   Active maintenance queue for post-`v1.0.0` bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.
