@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod audio;
 pub mod auth;
 pub mod chat;
+pub mod cluster;
 pub mod daemon;
 pub mod dataset;
 pub mod doctor;

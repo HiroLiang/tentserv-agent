@@ -219,12 +219,22 @@ pub trait ModelContentStore {
     ) -> KernelResult<()>;
 }
 
-/// Finds server specs that still reference a model before removal.
+/// Finds stored definitions that still reference a model before removal or capability mutation.
 pub trait ModelServerReferenceProbe {
-    /// Returns stable server refs that would block removal of the model.
+    /// Returns stable references that would block removal of the model.
     fn server_refs_for_model(
         &self,
         layout: &RuntimeLayout,
         model_ref: &ModelRef,
     ) -> KernelResult<Vec<String>>;
+
+    /// Returns stable references that would block removing one model capability.
+    fn refs_for_model_capability(
+        &self,
+        _layout: &RuntimeLayout,
+        _model_ref: &ModelRef,
+        _capability: ModelCapability,
+    ) -> KernelResult<Vec<String>> {
+        Ok(Vec::new())
+    }
 }

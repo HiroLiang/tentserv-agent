@@ -149,7 +149,11 @@ impl ModelKernelComponent {
     }
 
     pub fn capability_update_usecase(&self) -> StdModelCapabilityUpdateUseCase<'_> {
-        StdModelCapabilityUpdateUseCase::new(&self.layout_resolver, &self.catalog)
+        StdModelCapabilityUpdateUseCase::new(
+            &self.layout_resolver,
+            &self.catalog,
+            &self.server_refs,
+        )
     }
 
     pub fn capability_proof_usecase(&self) -> StdModelCapabilityProofUseCase<'_> {

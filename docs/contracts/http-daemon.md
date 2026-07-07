@@ -1099,6 +1099,100 @@ same byte-tail rules as daemon log diagnostics: default `65536`, maximum
 Training raw logs are local diagnostics and may contain dataset text or local
 paths; no redaction is promised in this slice.
 
+## Cluster Definition CRUD
+
+Cluster routes are definition state only in this slice. The daemon validates and
+stores them, but it does not route inference requests through a cluster yet.
+
+```text
+GET /v1/clusters
+PUT /v1/clusters/{cluster_ref}
+GET /v1/clusters/{cluster_ref}
+DELETE /v1/clusters/{cluster_ref}
+```
+
+`cluster_ref` is an exact lowercase ASCII slug:
+`[a-z0-9][a-z0-9._-]{0,63}`.
+
+`GET /v1/clusters` returns stored cluster definitions in compact form:
+
+```json
+{
+  "clusters": [
+    {
+      "cluster_ref": "local-assistant",
+      "routes": ["chat", "embedding"]
+    }
+  ]
+}
+```
+
+`PUT /v1/clusters/{cluster_ref}` accepts a JSON cluster definition and replaces
+the stored TOML definition atomically:
+
+```json
+{
+  "schema_version": 1,
+  "cluster_ref": "local-assistant",
+  "routes": {
+    "chat": {
+      "kind": "local-model",
+      "model_ref": "<model-ref>"
+    },
+    "embedding": {
+      "kind": "provider",
+      "provider": "openai",
+      "provider_model": "<provider-model>"
+    }
+  }
+}
+```
+
+The body `cluster_ref` must match the path `cluster_ref`. Declared routes must
+use supported route keys and must reference existing compatible local models or
+supported providers. The current route keys are `chat`, `embedding`, `rerank`,
+`audio-transcription`, and `vision-chat`. Local `model_ref` values in cluster
+definitions are full canonical model refs, not short selectors.
+
+`GET /v1/clusters/{cluster_ref}` and successful `PUT` return:
+
+```json
+{
+  "cluster": {
+    "cluster_ref": "local-assistant",
+    "schema_version": 1,
+    "routes": [
+      {
+        "route": "chat",
+        "kind": "local-model",
+        "model_ref": "<model-ref>"
+      }
+    ],
+    "home_dir": "/path/to/tentgent-home",
+    "cluster_dir": "/path/to/tentgent-home/clusters/local-assistant",
+    "definition_path": "/path/to/tentgent-home/clusters/local-assistant/cluster.toml"
+  }
+}
+```
+
+`DELETE /v1/clusters/{cluster_ref}` removes one stored definition directory and
+returns pre-removal metadata:
+
+```json
+{
+  "removed": {
+    "kind": "cluster",
+    "cluster_ref": "local-assistant",
+    "cluster_dir": "/path/to/tentgent-home/clusters/local-assistant"
+  },
+  "cluster": {
+    "...": "same shape as GET /v1/clusters/{cluster_ref}"
+  }
+}
+```
+
+Cluster definition details are contracted in [cluster.md](./cluster.md).
+
 ## Store Inspect And Remove Mutations
 
 The daemon exposes safe metadata correction and remove parity for managed store
@@ -1113,6 +1207,7 @@ DELETE /v1/models/{model_ref}
 DELETE /v1/adapters/{adapter_ref}
 DELETE /v1/datasets/{dataset_ref}
 DELETE /v1/servers/{server_ref}
+DELETE /v1/clusters/{cluster_ref}
 ```
 
 `POST /v1/models/{model_ref}/capabilities` rewrites only model capability
@@ -1151,7 +1246,9 @@ Successful model capability updates return:
 Capability mutations canonicalize and de-duplicate values. Empty final
 capability sets, invalid capability values, and bodies that mix `set` with
 `add` or `remove` return `400 bad_request`; missing models return
-`404 not_found`; ambiguous refs return `409 ambiguous_ref`.
+`404 not_found`; ambiguous refs return `409 ambiguous_ref`. Removing a
+capability that is still used by a stored server spec or cluster route returns
+`409 capability_in_use`.
 
 `PATCH /v1/models/{model_ref}` remains a legacy compatibility alias that
 accepts one `capability` string and replaces the model capability set with that
@@ -1266,6 +1363,11 @@ so callers should use `POST /v1/servers/{server_ref}/stop` before `DELETE`.
 Dataset removal only enforces protections currently tracked by core. Future
 train-plan or train-run registries may make dataset deletion return
 `409 in_use` when references are tracked.
+
+Model removal and model capability mutation also inspect stored cluster routes.
+A local model referenced by a cluster route cannot be deleted normally, and a
+capability used by a cluster route cannot be removed until the cluster route is
+updated or deleted.
 
 `GET /v1/servers/{server_ref}/health` checks one stored server spec. Stopped
 servers return `running: false` and `reachable: false` without opening a network

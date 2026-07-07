@@ -67,6 +67,9 @@ Key current documents:
   Provider-secret resolution order and keychain usage rules.
 - `docs/contracts/model-store.md`
   Model-store identity, deduplication, layout, and Hugging Face pull boundaries.
+- `docs/contracts/cluster.md`
+  Cluster definition identity, canonical TOML storage, route-target validation,
+  CLI commands, daemon REST CRUD, and first-slice resource protection.
 - `docs/contracts/model-support-status.md`
   Support status vocabulary, evidence precedence, stale-proof rules, and
   transition rules for model/capability/backend tuples.
@@ -126,12 +129,11 @@ Key current documents:
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
 - `docs/plans/v1.x-roadmap.md`
-  Active post-`v1.0.0` product roadmap for cluster/serving targets,
-  compatibility proof foundations, tuple-aware model and LoRA gates, resource
-  coordination, and later 1.x capabilities.
-- `docs/plans/cluster-serving-target-roadmap.md`
-  Focused `v1.x` sub-roadmap for grouping cluster/serving target candidates
-  before individual `v1.1.0` issues are selected.
+  Active post-`v1.0.0` product roadmap for clusters, compatibility proof
+  foundations, tuple-aware model and LoRA gates, resource coordination, and
+  later 1.x capabilities.
+- `docs/plans/cluster-roadmap.md`
+  Focused `v1.x` sub-roadmap for the selected `v1.1.0` cluster issue slices.
 - `docs/plans/bugfix-maintenance-plan.md`
   Active post-`v1.0.0` maintenance plan for bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.

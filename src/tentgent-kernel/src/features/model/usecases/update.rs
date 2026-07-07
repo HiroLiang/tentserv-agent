@@ -3,7 +3,7 @@
 use crate::features::model::domain::{
     infer_mlx_runtime_family, normalize_model_capabilities, ModelCapability, ModelCapabilitySource,
 };
-use crate::features::model::ports::ModelCatalogStore;
+use crate::features::model::ports::{ModelCatalogStore, ModelServerReferenceProbe};
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayoutResolver;
 
@@ -17,16 +17,19 @@ use super::port::{
 pub struct StdModelCapabilityUpdateUseCase<'a> {
     layout_resolver: &'a dyn RuntimeLayoutResolver,
     catalog: &'a dyn ModelCatalogStore,
+    refs: &'a dyn ModelServerReferenceProbe,
 }
 
 impl<'a> StdModelCapabilityUpdateUseCase<'a> {
     pub fn new(
         layout_resolver: &'a dyn RuntimeLayoutResolver,
         catalog: &'a dyn ModelCatalogStore,
+        refs: &'a dyn ModelServerReferenceProbe,
     ) -> Self {
         Self {
             layout_resolver,
             catalog,
+            refs,
         }
     }
 }
@@ -47,6 +50,20 @@ impl ModelCapabilityUpdateUseCase for StdModelCapabilityUpdateUseCase<'_> {
             capabilities_difference(&next_capabilities, &previous_capabilities);
         let removed_capabilities =
             capabilities_difference(&previous_capabilities, &next_capabilities);
+        for capability in &removed_capabilities {
+            let blockers = self.refs.refs_for_model_capability(
+                &layout,
+                &inspection.metadata.model_ref,
+                *capability,
+            )?;
+            if !blockers.is_empty() {
+                return Err(KernelError::ModelStoreUnavailable(format!(
+                    "model capability `{capability}` for model `{}` is still referenced by stored binding(s): {}",
+                    inspection.metadata.model_ref,
+                    blockers.join(", ")
+                )));
+            }
+        }
 
         inspection.metadata.model_capabilities = next_capabilities;
         inspection.metadata.model_capability_source = ModelCapabilitySource::ManualUpdate;

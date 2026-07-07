@@ -8,8 +8,8 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::Level;
 
 use crate::handlers::rest::{
-    adapter, audio, auth, chat, daemon, dataset, doctor, embedding, health, images, jobs, model,
-    rerank, server, session, status, train, video, vision,
+    adapter, audio, auth, chat, cluster, daemon, dataset, doctor, embedding, health, images, jobs,
+    model, rerank, server, session, status, train, video, vision,
 };
 
 use super::{
@@ -51,6 +51,7 @@ fn v1_routes() -> Router<RestState> {
         .merge(store_routes())
         .merge(train_routes())
         .merge(server_routes())
+        .merge(cluster_routes())
         .merge(session_routes())
 }
 
@@ -281,6 +282,17 @@ fn server_routes() -> Router<RestState> {
         .route(
             "/v1/servers/{reference}/logs/stderr",
             get(server::stderr_log),
+        )
+}
+
+fn cluster_routes() -> Router<RestState> {
+    Router::new()
+        .route("/v1/clusters", get(cluster::list))
+        .route(
+            "/v1/clusters/{cluster_ref}",
+            get(cluster::inspect)
+                .put(cluster::apply)
+                .delete(cluster::remove),
         )
 }
 

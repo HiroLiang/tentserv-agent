@@ -46,9 +46,9 @@ session should create additional maintenance issues only when a concrete patch
 bug, diagnostics gap, install/release follow-up, or stale documentation problem
 is identified.
 
-The next planned feature work is the `v1.1.0` cluster/serving-target issue
-selection flow in [v1.x-roadmap.md](./v1.x-roadmap.md) and
-[cluster-serving-target-roadmap.md](./cluster-serving-target-roadmap.md).
+The active feature work is the selected `v1.1.0` cluster issue flow in
+[v1.x-roadmap.md](./v1.x-roadmap.md) and
+[cluster-roadmap.md](./cluster-roadmap.md).
 
 ## Candidate Maintenance Issues
 
@@ -73,7 +73,7 @@ A maintenance issue can stay in a patch milestone when it:
 Move it to the `v1.x` roadmap when it needs:
 
 - a new compatibility proof store or durable schema
-- serving target or cluster configuration
+- cluster configuration
 - cross-model scheduling or resource management
 - provider tool orchestration
 - cloud rerank provider adoption

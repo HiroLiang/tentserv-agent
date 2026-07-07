@@ -1,0 +1,251 @@
+//! Cluster definition domain types.
+
+use std::collections::BTreeMap;
+use std::fmt;
+use std::path::PathBuf;
+
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::features::model::domain::{ModelCapability, ModelRef};
+use crate::features::server::domain::{
+    CloudProvider, ServerCapability, ServerRuntimeProfileSelection,
+};
+
+pub const CLUSTERS_DIRNAME: &str = "clusters";
+pub const CLUSTER_DEFINITION_FILENAME: &str = "cluster.toml";
+pub const CLUSTER_SCHEMA_VERSION: u32 = 1;
+pub const MAX_CLUSTER_DEFINITION_BYTES: u64 = 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ClusterRef(String);
+
+impl ClusterRef {
+    pub fn parse(value: impl AsRef<str>) -> Result<Self, ClusterRefParseError> {
+        let value = value.as_ref();
+        if value.is_empty() {
+            return Err(ClusterRefParseError::Empty);
+        }
+        if value.len() > 64 {
+            return Err(ClusterRefParseError::TooLong {
+                actual: value.len(),
+            });
+        }
+
+        let mut chars = value.chars();
+        let Some(first) = chars.next() else {
+            return Err(ClusterRefParseError::Empty);
+        };
+        if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
+            return Err(ClusterRefParseError::InvalidStart);
+        }
+        if !chars.all(|ch| {
+            ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '.' | '_' | '-')
+        }) {
+            return Err(ClusterRefParseError::InvalidCharacter);
+        }
+
+        Ok(Self(value.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl AsRef<str> for ClusterRef {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for ClusterRef {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl Serialize for ClusterRef {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ClusterRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ClusterRefParseError {
+    #[error("cluster_ref must not be blank")]
+    Empty,
+    #[error("cluster_ref must be at most 64 characters; got {actual}")]
+    TooLong { actual: usize },
+    #[error("cluster_ref must start with a lowercase ASCII letter or digit")]
+    InvalidStart,
+    #[error("cluster_ref may contain only lowercase ASCII letters, digits, '.', '_', and '-'")]
+    InvalidCharacter,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ClusterRouteKey {
+    Chat,
+    Embedding,
+    Rerank,
+    AudioTranscription,
+    VisionChat,
+}
+
+impl ClusterRouteKey {
+    pub fn parse(value: impl AsRef<str>) -> Result<Self, ClusterRouteKeyParseError> {
+        match value.as_ref() {
+            "" => Err(ClusterRouteKeyParseError::Empty),
+            "chat" => Ok(Self::Chat),
+            "embedding" => Ok(Self::Embedding),
+            "rerank" => Ok(Self::Rerank),
+            "audio-transcription" => Ok(Self::AudioTranscription),
+            "vision-chat" => Ok(Self::VisionChat),
+            other => Err(ClusterRouteKeyParseError::Unsupported {
+                value: other.to_string(),
+            }),
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::Embedding => "embedding",
+            Self::Rerank => "rerank",
+            Self::AudioTranscription => "audio-transcription",
+            Self::VisionChat => "vision-chat",
+        }
+    }
+
+    pub const fn server_capability(self) -> ServerCapability {
+        match self {
+            Self::Chat => ServerCapability::Chat,
+            Self::Embedding => ServerCapability::Embedding,
+            Self::Rerank => ServerCapability::Rerank,
+            Self::AudioTranscription => ServerCapability::AudioTranscription,
+            Self::VisionChat => ServerCapability::VisionChat,
+        }
+    }
+
+    pub const fn model_capability(self) -> ModelCapability {
+        self.server_capability().required_model_capability()
+    }
+}
+
+impl fmt::Display for ClusterRouteKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl Serialize for ClusterRouteKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ClusterRouteKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ClusterRouteKeyParseError {
+    #[error("cluster route key must not be blank")]
+    Empty,
+    #[error(
+        "unsupported cluster route `{value}`; expected one of: chat, embedding, rerank, audio-transcription, vision-chat"
+    )]
+    Unsupported { value: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum ClusterRouteTarget {
+    LocalModel {
+        model_ref: ModelRef,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        runtime_profile: Option<ServerRuntimeProfileSelection>,
+    },
+    Provider {
+        provider: CloudProvider,
+        provider_model: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClusterDefinition {
+    pub schema_version: u32,
+    pub cluster_ref: ClusterRef,
+    #[serde(default)]
+    pub routes: BTreeMap<ClusterRouteKey, ClusterRouteTarget>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterSummary {
+    pub cluster_ref: ClusterRef,
+    pub route_keys: Vec<ClusterRouteKey>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterInspection {
+    pub definition: ClusterDefinition,
+    pub home_dir: PathBuf,
+    pub cluster_dir: PathBuf,
+    pub definition_path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterRemoveOutcome {
+    pub inspection: ClusterInspection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterStoreLayout {
+    pub home_dir: PathBuf,
+    pub clusters_dir: PathBuf,
+}
+
+impl ClusterStoreLayout {
+    pub fn from_home_dir(home_dir: impl Into<PathBuf>) -> Self {
+        let home_dir = home_dir.into();
+        Self {
+            clusters_dir: home_dir.join(CLUSTERS_DIRNAME),
+            home_dir,
+        }
+    }
+
+    pub fn cluster_dir(&self, cluster_ref: impl AsRef<str>) -> PathBuf {
+        self.clusters_dir.join(cluster_ref.as_ref())
+    }
+
+    pub fn cluster_definition_path(&self, cluster_ref: impl AsRef<str>) -> PathBuf {
+        self.cluster_dir(cluster_ref)
+            .join(CLUSTER_DEFINITION_FILENAME)
+    }
+}

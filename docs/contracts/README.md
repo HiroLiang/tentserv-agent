@@ -28,6 +28,9 @@ Use this directory for concise interface documents that define stable boundaries
 - [resource-blockers.md](./resource-blockers.md)
   Structured blocker and guard-validator model for protecting referenced
   resources before deletion, rebinding, or capability mutation.
+- [cluster.md](./cluster.md)
+  Cluster definition identity, TOML storage, route-target validation, CLI
+  commands, daemon REST CRUD, and first-slice resource protection.
 - [model-support-status.md](./model-support-status.md)
   Support status vocabulary, evidence precedence, stale-proof rules, and
   transition rules for model/capability/backend tuples.
