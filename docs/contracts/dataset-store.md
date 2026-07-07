@@ -189,7 +189,9 @@ Use `dataset rm <DATASET_REF>` to remove one managed dataset store record and it
 
 Removal does not delete exported working copies. Kernel-backed dataset removal
 checks local LoRA train plans and run records before deleting managed dataset
-content. The legacy HTTP dataset routes still await the kernel migration.
+content. Dataset blockers should be convertible to the shared structured guard
+contract in [resource-blockers.md](./resource-blockers.md). The legacy HTTP
+dataset routes still await the kernel migration.
 
 ## Non-Goals
 

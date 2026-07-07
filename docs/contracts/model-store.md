@@ -50,6 +50,9 @@ TENTGENT_HOME/
 
 - `tentgent model rm <HASH>` should resolve the model by full hash or unique short-hash prefix.
 - Removing a model must be blocked when any stored Tentgent server spec still references that model.
+- Model deletion and model capability mutation blockers should follow the
+  shared structured guard contract in
+  [resource-blockers.md](./resource-blockers.md).
 - Removing a model should delete the canonical store directory under `models/store/<model_ref>/`.
 - Removing a model should also delete related source indexes in both `models/by-source/local/` and `models/by-source/hf/`.
 - Empty Hugging Face source-index directories should be cleaned up after removal.
@@ -156,6 +159,11 @@ shape. Manual capability updates may replace the whole capability set or apply
 add/remove mutations. Stored capability values are de-duplicated and written in
 canonical model capability order. Mutations that would leave a model with no
 capabilities are invalid.
+
+Manual capability mutations must not remove a capability that is still used by
+a stored server spec or future serving target route. Adding capabilities is
+allowed; replacing or removing capabilities is allowed only when all referenced
+capabilities remain available.
 
 ## MLX Runtime Family Metadata
 

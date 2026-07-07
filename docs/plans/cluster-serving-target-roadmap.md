@@ -76,7 +76,8 @@ pass intentionally promotes them:
   profile, or future target binding that is referenced by an active server spec
   or serving target should reject normal deletion until the user explicitly
   unbinds it. Force-style deletion should be a separately designed behavior, not
-  the default path.
+  the default path. The structured blocker and guard-validator model is defined
+  in [resource-blockers.md](../contracts/resource-blockers.md).
 - SQLite, or an equivalent indexed local metadata layer, is likely the right
   long-term backend for target bindings, proof records, and resource ownership
   queries. Storage should move incrementally by state family, not through one
