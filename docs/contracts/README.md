@@ -25,6 +25,9 @@ Use this directory for concise interface documents that define stable boundaries
   Provider-secret resolution and keychain usage rules.
 - [model-store.md](./model-store.md)
   Model identity, deduplication, managed layout, and Hugging Face pull boundaries.
+- [resource-blockers.md](./resource-blockers.md)
+  Structured blocker and guard-validator model for protecting referenced
+  resources before deletion, rebinding, or capability mutation.
 - [model-support-status.md](./model-support-status.md)
   Support status vocabulary, evidence precedence, stale-proof rules, and
   transition rules for model/capability/backend tuples.

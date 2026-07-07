@@ -201,6 +201,8 @@ The first pull implementation intentionally imports the full adapter repository 
 
 - `tentgent adapter rm <ADAPTER_REF>` should resolve by full hash or unique short-hash prefix.
 - Removing an adapter should be blocked when any stored server spec explicitly allows, preloads, or defaults to that adapter. Current removal protection recognizes future server-spec fields such as `adapter_ref`, `default_adapter_ref`, `allowed_adapters`, and `adapter_refs`.
+- Adapter deletion and unsafe rebind blockers should follow the shared
+  structured guard contract in [resource-blockers.md](./resource-blockers.md).
 - Removing an adapter should delete the canonical store directory under `adapters/store/<adapter_ref>/`.
 - Removing an adapter should also delete related `by-base` and `by-source` index entries.
 

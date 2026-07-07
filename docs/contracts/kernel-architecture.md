@@ -166,6 +166,7 @@ features/server/
 features/daemon/
 features/doctor/
 features/job/
+features/resource_guard/
 features/session/
 features/runtime/
 features/train/
@@ -327,6 +328,22 @@ use cases instead of rebuilding adapter-store orchestration directly.
 Current standard adapter use cases live in focused sibling files under
 `features/adapter/usecases/`: catalog reads, local import, Hugging Face pull,
 training-run import, base-model binding, compatibility checks, and removal.
+
+`features/resource_guard/` owns shared resource blocker vocabulary and guard
+validation. It should stay independent from individual store packages so model,
+adapter, dataset, server, and future serving target use cases can call one
+guard boundary before deleting, rebinding, or mutating referenced resources.
+Resource-specific guard logic should be isolated in focused validator files,
+such as `validators/model.rs`, `validators/adapter.rs`, and
+`validators/dataset.rs`, so adding or changing one resource's blocking rules
+does not require editing unrelated resource validators.
+
+Resource guard domain types should describe protected resources, operations,
+and structured blockers. Guard infra should provide reference probes over
+stored state families such as server specs, train plans/runs, and future
+serving target bindings. Probes report references; validators decide whether
+an operation is blocked. CLI and daemon REST render or map the resulting
+blockers, but they must not inspect resource files directly.
 
 `features/dataset/domain.rs` owns pure dataset-store names and schema state:
 
