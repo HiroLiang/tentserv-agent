@@ -33,12 +33,11 @@ or too cross-cutting to track only in GitHub issues.
 ## Active Plan Index
 
 - [v1.x-roadmap.md](./v1.x-roadmap.md)
-  Long-term post-`v1.0.0` product roadmap for cluster/serving targets,
-  compatibility proof foundations, tuple-aware model and LoRA gates, resource
-  coordination, and later 1.x capabilities.
-  - [cluster-serving-target-roadmap.md](./cluster-serving-target-roadmap.md)
-    Focused sub-roadmap for deciding the cluster/serving target candidate
-    groups and initial `v1.1.0` issue drafts.
+  Long-term post-`v1.0.0` product roadmap for clusters, compatibility proof
+  foundations, tuple-aware model and LoRA gates, resource coordination, and
+  later 1.x capabilities.
+  - [cluster-roadmap.md](./cluster-roadmap.md)
+    Focused sub-roadmap for the selected `v1.1.0` cluster issue slices.
 - [bugfix-maintenance-plan.md](./bugfix-maintenance-plan.md)
   Active maintenance queue for post-`v1.0.0` bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.

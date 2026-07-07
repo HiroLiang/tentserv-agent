@@ -1,6 +1,7 @@
 mod adapter;
 mod auth;
 mod chat;
+mod cluster;
 mod daemon;
 mod dataset;
 mod embed;
@@ -20,6 +21,7 @@ mod vision;
 pub use adapter::AdapterCommands;
 pub use auth::{AuthCommands, AuthProviderAction};
 pub use chat::ChatCommand;
+pub use cluster::ClusterCommands;
 pub use daemon::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 pub use dataset::DatasetCommands;
 pub use embed::EmbedCommand;
@@ -90,6 +92,16 @@ pub enum Commands {
         long_about = "Run a one-shot chat request through the Python runtime harness. Tentgent resolves the stored model reference, routes to the appropriate backend, and forwards generation to the Python subproject. With no --message entries, Tentgent prompts once for a user message."
     )]
     Chat(ChatCommand),
+    /// Inspect and manage cluster definitions.
+    #[command(
+        name = "cluster",
+        about = "Inspect and manage cluster definitions.",
+        long_about = "Inspect and manage cluster definitions. Clusters are named local routing objects stored under TENTGENT_HOME/clusters/<cluster_ref>/cluster.toml. The first cluster slice validates definitions without starting a multi-route server."
+    )]
+    Cluster {
+        #[command(subcommand)]
+        action: ClusterCommands,
+    },
     /// Run one-shot local embedding inference.
     #[command(
         name = "embed",

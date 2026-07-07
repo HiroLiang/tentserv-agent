@@ -2558,6 +2558,61 @@ async fn model_capabilities_post_adds_and_removes_capability_metadata() {
 }
 
 #[tokio::test]
+async fn model_capabilities_post_rejects_removing_cluster_route_capability() {
+    let requested_home = unique_home("models-capability-cluster-blocker");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "4".repeat(64);
+    write_model_fixture_with_capabilities(&home, &model_ref, &["chat", "embedding"]);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/v1/clusters/local-assistant")
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{
+                        "schema_version": 1,
+                        "cluster_ref": "local-assistant",
+                        "routes": {{
+                            "chat": {{
+                                "kind": "local-model",
+                                "model_ref": "{model_ref}"
+                            }}
+                        }}
+                    }}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/models/{}/capabilities", &model_ref[..12]))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"set":["embedding"]}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "capability_in_use");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("cluster-route local-assistant:chat"));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
 async fn model_capabilities_post_rejects_empty_final_capability_set() {
     let requested_home = unique_home("models-capability-post-empty");
     let state = rest_state_for_home(requested_home);
@@ -4089,6 +4144,222 @@ async fn server_inspect_rejects_invalid_reference() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = json_body(response).await;
     assert_eq!(body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn clusters_returns_empty_catalog_for_isolated_home() {
+    let requested_home = unique_home("clusters-empty");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/clusters")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["clusters"].as_array().expect("clusters").len(), 0);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn cluster_apply_inspect_and_remove_roundtrip() {
+    let requested_home = unique_home("clusters-roundtrip");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "4".repeat(64);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["chat", "embedding"]);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/v1/clusters/local-assistant")
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{
+                        "schema_version": 1,
+                        "cluster_ref": "local-assistant",
+                        "routes": {{
+                            "chat": {{
+                                "kind": "local-model",
+                                "model_ref": "{model_ref}"
+                            }},
+                            "embedding": {{
+                                "kind": "local-model",
+                                "model_ref": "{model_ref}"
+                            }}
+                        }}
+                    }}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["cluster"]["cluster_ref"], "local-assistant");
+    assert_eq!(body["cluster"]["schema_version"], 1);
+    let routes = body["cluster"]["routes"].as_array().expect("routes");
+    assert_eq!(routes.len(), 2);
+    assert_eq!(routes[0]["route"], "chat");
+    assert_eq!(routes[0]["kind"], "local-model");
+    assert_eq!(routes[0]["model_ref"].as_str(), Some(model_ref.as_str()));
+    assert_eq!(routes[1]["route"], "embedding");
+    assert!(home
+        .join("clusters")
+        .join("local-assistant")
+        .join("cluster.toml")
+        .exists());
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/clusters")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let clusters = body["clusters"].as_array().expect("clusters");
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0]["cluster_ref"], "local-assistant");
+    assert_eq!(
+        clusters[0]["routes"],
+        serde_json::json!(["chat", "embedding"])
+    );
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/clusters/local-assistant")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["cluster"]["cluster_ref"], "local-assistant");
+    assert_eq!(
+        body["cluster"]["definition_path"].as_str(),
+        Some(
+            path_string(
+                home.join("clusters")
+                    .join("local-assistant")
+                    .join("cluster.toml")
+            )
+            .as_str()
+        )
+    );
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method(Method::DELETE)
+                .uri("/v1/clusters/local-assistant")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["removed"]["kind"], "cluster");
+    assert_eq!(body["removed"]["cluster_ref"], "local-assistant");
+    assert!(!home.join("clusters").join("local-assistant").exists());
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/clusters/local-assistant")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "not_found");
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn cluster_apply_rejects_invalid_cluster_ref() {
+    let state = rest_state("clusters-invalid-ref");
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/v1/clusters/BadRef")
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"schema_version":1,"cluster_ref":"secret","routes":{}}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+}
+
+#[tokio::test]
+async fn cluster_apply_rejects_route_missing_model_capability() {
+    let requested_home = unique_home("clusters-incompatible-route");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "5".repeat(64);
+    write_model_fixture_with_capabilities(&home, &model_ref, &["embedding"]);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/v1/clusters/local-assistant")
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{
+                        "schema_version": 1,
+                        "cluster_ref": "local-assistant",
+                        "routes": {{
+                            "chat": {{
+                                "kind": "local-model",
+                                "model_ref": "{model_ref}"
+                            }}
+                        }}
+                    }}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(body["message"]
+        .as_str()
+        .expect("message")
+        .contains("requires model capability `chat`"));
+
+    let _ = fs::remove_dir_all(home);
 }
 
 #[tokio::test]

@@ -250,6 +250,27 @@ fn standard_model_usecases_import_list_inspect_and_remove_local_model() {
 }
 
 #[test]
+fn standard_model_remove_rejects_model_referenced_by_cluster_route() {
+    let home = unique_path("model-remove-cluster-blocker");
+    let imported = import_local_for_test(&home, None, b"model");
+    write_cluster_definition(
+        &home,
+        "local-assistant",
+        "chat",
+        &imported.outcome.metadata.model_ref,
+    );
+
+    let err = try_remove_model_for_test(&home, imported.outcome.metadata.short_ref.as_str())
+        .expect_err("cluster route should block model removal");
+
+    let message = err.to_string();
+    assert!(message.contains("cluster-route local-assistant:chat"));
+    assert!(imported.outcome.store_path.exists());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
 fn standard_model_usecase_imports_local_model_with_explicit_capability_and_updates_dedup() {
     let home = unique_path("model-local-capability-usecase");
     let source_dir = home.join("source");
@@ -645,6 +666,31 @@ fn standard_model_capability_update_adds_removes_and_canonicalizes_metadata() {
 }
 
 #[test]
+fn standard_model_capability_update_rejects_removing_cluster_route_capability() {
+    let home = unique_path("model-capability-update-cluster-blocker");
+    let imported = import_local_for_test(&home, None, b"model");
+    write_cluster_definition(
+        &home,
+        "local-assistant",
+        "chat",
+        &imported.outcome.metadata.model_ref,
+    );
+
+    let err = try_update_capabilities_for_test(
+        &home,
+        imported.outcome.metadata.short_ref.as_str(),
+        ModelCapabilityMutation::Set(vec![ModelCapability::Embedding]),
+    )
+    .expect_err("cluster route should block removing chat");
+
+    let message = err.to_string();
+    assert!(message.contains("cluster-route local-assistant:chat"));
+    assert!(message.contains("model capability `chat`"));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
 fn standard_model_capability_update_rejects_empty_final_capability_set() {
     let home = unique_path("model-capability-update-empty");
     let imported = import_local_for_test(&home, None, b"model");
@@ -979,6 +1025,23 @@ fn import_local_for_test(
         .expect("import local model")
 }
 
+fn try_remove_model_for_test(
+    home: &Path,
+    reference: &str,
+) -> KernelResult<super::port::ModelRemoveResult> {
+    let layout_resolver = FakeLayoutResolver;
+    let catalog = FileModelCatalogStore;
+    let indexes = FileModelSourceIndexStore;
+    let content = FileModelContentStore;
+    let refs = FileModelServerReferenceProbe;
+    let remover = StdModelRemoveUseCase::new(&layout_resolver, &catalog, &indexes, &content, &refs);
+
+    remover.remove_model(ModelRemoveRequest {
+        layout: layout_input(home.to_str().expect("home path")),
+        selector: ModelRefSelector::parse(reference).expect("selector"),
+    })
+}
+
 fn update_capability_for_test(
     home: &Path,
     reference: &str,
@@ -986,7 +1049,8 @@ fn update_capability_for_test(
 ) -> super::port::ModelCapabilityUpdateResult {
     let layout_resolver = FakeLayoutResolver;
     let catalog = FileModelCatalogStore;
-    let updater = StdModelCapabilityUpdateUseCase::new(&layout_resolver, &catalog);
+    let refs = crate::features::model::infra::FileModelServerReferenceProbe;
+    let updater = StdModelCapabilityUpdateUseCase::new(&layout_resolver, &catalog, &refs);
 
     updater
         .update_model_capability(ModelCapabilityUpdateRequest {
@@ -1012,13 +1076,33 @@ fn try_update_capabilities_for_test(
 ) -> KernelResult<super::port::ModelCapabilityUpdateResult> {
     let layout_resolver = FakeLayoutResolver;
     let catalog = FileModelCatalogStore;
-    let updater = StdModelCapabilityUpdateUseCase::new(&layout_resolver, &catalog);
+    let refs = crate::features::model::infra::FileModelServerReferenceProbe;
+    let updater = StdModelCapabilityUpdateUseCase::new(&layout_resolver, &catalog, &refs);
 
     updater.update_model_capability(ModelCapabilityUpdateRequest {
         layout: layout_input(home.to_str().expect("home path")),
         selector: ModelRefSelector::parse(reference).expect("selector"),
         mutation,
     })
+}
+
+fn write_cluster_definition(home: &Path, cluster_ref: &str, route: &str, model_ref: &ModelRef) {
+    let cluster_dir = home.join("clusters").join(cluster_ref);
+    fs::create_dir_all(&cluster_dir).expect("cluster dir");
+    fs::write(
+        cluster_dir.join("cluster.toml"),
+        format!(
+            r#"
+schema_version = 1
+cluster_ref = "{cluster_ref}"
+
+[routes.{route}]
+kind = "local-model"
+model_ref = "{model_ref}"
+"#
+        ),
+    )
+    .expect("cluster definition");
 }
 
 struct FakeModelUseCases;

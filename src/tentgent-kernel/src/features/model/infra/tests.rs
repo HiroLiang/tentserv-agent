@@ -203,7 +203,45 @@ model_ref = "{}"
     let refs = FileModelServerReferenceProbe
         .server_refs_for_model(&layout, &model_ref)
         .expect("server refs");
-    assert_eq!(refs, vec!["server-a".to_string()]);
+    assert_eq!(refs, vec!["server-spec server-a".to_string()]);
+}
+
+#[test]
+fn server_reference_probe_reports_cluster_route_model_blockers() {
+    let root = unique_path("model-cluster-ref");
+    let layout = runtime_layout(root.as_path());
+    let model_ref = ModelRef::parse("c".repeat(64)).expect("model ref");
+    let cluster_dir = layout.home_dir.join("clusters/local-assistant");
+    fs::create_dir_all(&cluster_dir).expect("cluster dir");
+    fs::write(
+        cluster_dir.join("cluster.toml"),
+        format!(
+            r#"
+schema_version = 1
+cluster_ref = "local-assistant"
+
+[routes.chat]
+kind = "local-model"
+model_ref = "{model_ref}"
+"#
+        ),
+    )
+    .expect("cluster definition");
+
+    let refs = FileModelServerReferenceProbe
+        .server_refs_for_model(&layout, &model_ref)
+        .expect("model refs");
+    assert_eq!(refs, vec!["cluster-route local-assistant:chat"]);
+
+    let chat_refs = FileModelServerReferenceProbe
+        .refs_for_model_capability(&layout, &model_ref, ModelCapability::Chat)
+        .expect("chat refs");
+    assert_eq!(chat_refs, vec!["cluster-route local-assistant:chat"]);
+
+    let embedding_refs = FileModelServerReferenceProbe
+        .refs_for_model_capability(&layout, &model_ref, ModelCapability::Embedding)
+        .expect("embedding refs");
+    assert!(embedding_refs.is_empty());
 }
 
 #[test]

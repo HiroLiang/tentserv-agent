@@ -5,6 +5,7 @@ mod adapter_render;
 mod app;
 mod auth;
 mod chat;
+mod cluster;
 mod commands;
 mod daemon;
 mod dataset;
@@ -45,6 +46,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Adapter { action } => adapter::handle_adapter_command(action)?,
         Commands::Auth { subject } => auth::handle_auth_command(subject).await?,
         Commands::Chat(command) => chat::handle_chat_command(command).await?,
+        Commands::Cluster { action } => cluster::handle_cluster_command(action)?,
         Commands::Dataset { action } => dataset::handle_dataset_command(action).await?,
         Commands::Model { action } => model::handle_model_command(action)?,
         Commands::Embed(command) => embed::handle_embed_command(command).await?,

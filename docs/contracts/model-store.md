@@ -161,7 +161,7 @@ canonical model capability order. Mutations that would leave a model with no
 capabilities are invalid.
 
 Manual capability mutations must not remove a capability that is still used by
-a stored server spec or future serving target route. Adding capabilities is
+a stored server spec or cluster route. Adding capabilities is
 allowed; replacing or removing capabilities is allowed only when all referenced
 capabilities remain available.
 

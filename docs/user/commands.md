@@ -1,6 +1,6 @@
 # Common Commands
 
-This document collects user-facing command examples. Short references are accepted anywhere a local `model_ref`, `adapter_ref`, `dataset_ref`, or `server_ref` is requested, as long as the prefix is unique.
+This document collects user-facing command examples. Short references are accepted by commands that ask for a local `model_ref`, `adapter_ref`, `dataset_ref`, or `server_ref` selector, as long as the prefix is unique. Stored definition files, including cluster TOML, use full canonical refs.
 
 Most common options have short aliases, such as `-m` for model/message-like inputs, `-o` for output, `-p` for provider/path/port depending on the subcommand, and `-H` for runtime home. Run `tentgent <command> --help`; every help screen also supports `-h`.
 
@@ -805,6 +805,69 @@ curl -sS http://127.0.0.1:8790/v1/images/control/job/<job-id>/files/controlled.p
 Small ControlNet smoke fixtures can be slow or memory-heavy at the default
 `512x512` and `20` steps on PyTorch MPS. Use explicit small dimensions for
 plumbing tests, then raise quality settings for real models.
+
+## Cluster
+
+Validate and store a cluster definition:
+
+```bash
+tentgent cluster validate <cluster-definition.toml>
+tentgent cluster apply <cluster-definition.toml>
+tentgent cluster ls
+tentgent cluster inspect <cluster-ref>
+tentgent cluster rm <cluster-ref>
+```
+
+`<cluster-definition.toml>` is a TOML file with `schema_version`,
+`cluster_ref`, and one or more route tables. `apply` is a full replacement:
+routes omitted from the TOML are unbound in stored state.
+
+Example shape:
+
+```toml
+schema_version = 1
+cluster_ref = "local-assistant"
+
+[routes.chat]
+kind = "local-model"
+model_ref = "<chat-model-ref>"
+
+[routes.embedding]
+kind = "provider"
+provider = "openai"
+provider_model = "<provider-model>"
+```
+
+`<chat-model-ref>` is a full managed local model ref. `<provider-model>` is the
+provider's model name, such as the OpenAI model you intend the route to use.
+The first cluster definition slice validates and stores routes; it does not
+route inference requests through the cluster yet.
+
+Daemon REST exposes matching definition CRUD:
+
+```bash
+curl -sS http://127.0.0.1:8790/v1/clusters \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/clusters/<cluster-ref> \
+  -X PUT \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "schema_version": 1,
+    "cluster_ref": "<cluster-ref>",
+    "routes": {
+      "chat": {
+        "kind": "local-model",
+        "model_ref": "<chat-model-ref>"
+      }
+    }
+  }'
+curl -sS http://127.0.0.1:8790/v1/clusters/<cluster-ref> \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/clusters/<cluster-ref> \
+  -X DELETE \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+```
 
 ## Server
 

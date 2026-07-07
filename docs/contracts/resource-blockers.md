@@ -12,7 +12,7 @@ Tentgent stores resources that can be referenced by later workflows:
 - datasets
 - server specs
 - runtime profile selections stored in server specs or proofs
-- future serving target route bindings
+- cluster route bindings
 - future runtime ownership records
 
 A resource operation must not leave these references broken. Before a use case
@@ -24,7 +24,7 @@ stored or active state.
 
 Resource:
 The managed object being changed, such as a model, adapter, dataset, server
-spec, or future serving target route.
+spec, cluster, or cluster route.
 
 Operation:
 The requested change, such as `delete`, `rebind`, `remove-capability`, or
@@ -66,7 +66,7 @@ Optional fields:
 | `resource_ref` | Protected resource reference. | `<model_ref>` |
 | `operation` | Blocked operation. | `remove-capability` |
 | `capability` | Capability involved in the reference. | `chat` |
-| `route` | Route key involved in a serving target. | `chat` |
+| `route` | Route key involved in a cluster. | `chat` |
 | `field` | Stored field that contains the reference. | `model_ref` |
 | `owner` | Owning grouped object, if different from `reference`. | `local-assistant` |
 
@@ -77,7 +77,7 @@ Known blocker kinds:
 | `server-spec` | current | A stored server spec references the resource. |
 | `train-plan` | current | A LoRA train plan references the resource. |
 | `train-run` | current | A LoRA train run references the resource. |
-| `serving-target` | future | A serving target route references the resource. |
+| `cluster-route` | current | A stored cluster route references the resource. |
 | `runtime-owner` | future | A running route or process owns the resource. |
 
 Initial blocker codes:
@@ -112,11 +112,11 @@ features/resource_guard/
 │   ├── adapter.rs     # adapter delete and rebind guards
 │   ├── dataset.rs     # dataset delete guards
 │   ├── server.rs      # server spec delete guards
-│   └── target.rs      # future serving target and runtime-owner guards
+│   └── cluster.rs     # cluster route and runtime-owner guards
 ├── infra/
 │   ├── server_specs.rs
 │   ├── train_refs.rs
-│   └── targets.rs     # future filesystem/indexed target probes
+│   └── clusters.rs    # filesystem/indexed cluster probes
 └── usecases/          # optional wrappers when CLI/daemon need one boundary
 ```
 
@@ -152,8 +152,9 @@ Initial resource operations:
 | `replace-model-capabilities` | model capability metadata | Replace the full model capability set. |
 | `delete-dataset` | dataset | Remove a managed dataset and its indexes. |
 | `delete-server-spec` | server spec | Remove a stopped server spec. |
-| `delete-serving-target` | future serving target | Remove a stored serving target definition. |
-| `unbind-serving-target-route` | future serving target route | Remove one route binding from a target. |
+| `delete-cluster` | cluster | Remove a stored cluster definition. |
+| `replace-cluster` | cluster | Atomically replace a stored cluster definition from a full definition. |
+| `unbind-cluster-route` | cluster route | Remove one route binding from a cluster. |
 | `remove-runtime-resource` | future runtime resource | Remove or clean up an active-owned runtime resource. |
 
 Example operation request types:
@@ -170,10 +171,10 @@ Example validators:
 
 | Validator | Inputs | Probes | Blocks When |
 | --- | --- | --- | --- |
-| `ModelDeleteGuard` | `model_ref` | server spec probe, future target probe | Any server spec or target route references the model. |
-| `ModelCapabilityMutationGuard` | `model_ref`, removed capabilities | server spec probe, future target probe | A removed capability is used by a stored route. |
-| `AdapterDeleteGuard` | `adapter_ref` | server spec probe, future target probe | Any server spec or target route references the adapter. |
-| `AdapterRebindGuard` | `adapter_ref`, new base model | server spec probe, future target probe | Existing bindings would become incompatible. |
+| `ModelDeleteGuard` | `model_ref` | server spec probe, cluster probe | Any server spec or cluster route references the model. |
+| `ModelCapabilityMutationGuard` | `model_ref`, removed capabilities | server spec probe, cluster probe | A removed capability is used by a stored route. |
+| `AdapterDeleteGuard` | `adapter_ref` | server spec probe, runtime owner probe when implemented | Any stored server spec or active runtime owner references the adapter. |
+| `AdapterRebindGuard` | `adapter_ref`, new base model | server spec probe, runtime owner probe when implemented | Existing bindings would become incompatible. |
 | `DatasetDeleteGuard` | `dataset_ref` | train plan/run probe | Any train plan or run references the dataset. |
 | `ServerDeleteGuard` | `server_ref` | server process probe | The server spec is running. |
 
@@ -184,8 +185,8 @@ Validators should return `Ok(())` when no blockers exist and a typed
 
 ### Model Delete
 
-Deleting a model must be blocked when stored server specs reference that model.
-The blocker should include:
+Deleting a model must be blocked when stored server specs or local cluster
+routes reference that model. The blocker should include:
 
 - `kind = "server-spec"`
 - `code = "model-in-use"`
@@ -196,8 +197,11 @@ The blocker should include:
 - `capability = <server capability>`
 - `field = "model_ref"`
 
-Future serving target route references must use the same blocker shape with
-`kind = "serving-target"` and `route = <capability route>`.
+Cluster route references use the same blocker meaning with
+`kind = "cluster-route"`, `owner = <cluster_ref>`, and
+`route = <capability route>`. The current file-backed implementation renders
+cluster blockers as `cluster-route <cluster_ref>:<route>` inside the existing
+model-store error message until the full structured blocker type is introduced.
 
 ### Model Capability Mutation
 
@@ -214,7 +218,7 @@ Blocked:
 - removing `chat` from a model used by a chat server spec
 - removing `embedding` from a model used by an embedding server spec
 - removing `rerank` from a model used by a rerank server spec
-- future: removing a capability used by a serving target route
+- removing a capability used by a cluster route
 
 The operation should report blockers with
 `operation = "remove-model-capability"` or
@@ -234,20 +238,23 @@ Current recognized server-spec fields are:
 The blocker should include `code = "adapter-in-use"` and `field` so users can
 understand why the adapter is still in use.
 
-Future serving target adapter bindings must use the same blocker model.
+Cluster definitions do not store fixed `model + adapter` route targets in the
+`v1.1.0` MVP. Request-time adapter references continue to be validated by the
+existing server-chat path. If a later route-policy feature stores adapter
+allowlists or defaults, it must use the same blocker model.
 
 ### Adapter Rebind
 
 Rebinding an adapter to a different base model must be blocked when existing
-server specs or future target routes reference that adapter. The guard should
+server specs or active runtime owners reference that adapter. The guard should
 not try to prove that the rebind would remain compatible with every existing
 route. The safer rule is that referenced adapters are not rebound until the
-caller removes or updates the server spec or target route that depends on the
-old binding.
+caller removes or updates the server spec, or until the active runtime owner is
+stopped.
 
 The blocker should include the matched adapter field, the referencing server or
-target, `code = "adapter-rebind-in-use"`, and enough base-model context to
-explain why the adapter must be unreferenced before rebinding.
+runtime owner, `code = "adapter-rebind-in-use"`, and enough base-model context
+to explain why the adapter must be unreferenced before rebinding.
 
 ### Dataset Delete
 
@@ -290,30 +297,34 @@ human-readable reason message. The full structured blocker list should remain
 internal unless the specific REST route contract is updated to document a
 machine-readable `blockers` field.
 
-## Serving Target Integration
+## Cluster Integration
 
-Serving target route bindings must plug into this guard system instead of
-adding an independent delete or mutation policy.
+Cluster route bindings plug into the same protection policy instead of adding
+an independent delete or mutation policy.
 
-The first serving target implementation should provide probes that can answer:
+The first cluster definition implementation provides file-backed probes that
+can answer:
 
-- which target routes reference one model
-- which target routes reference one adapter
-- which target routes require one capability
-- which active target routes own a runtime resource
+- which cluster routes reference one model
+- which cluster routes require one capability
 
-The validators should then combine existing server-spec blockers with target
+Future runtime ownership work should add probes for:
+
+- which active cluster routes own a runtime resource
+
+The validators should then combine existing server-spec blockers with cluster
 blockers and return one sorted blocker list.
 
-Partial targets remain valid. A missing route is not a blocker by itself; a
+Partial clusters remain valid. A missing route is not a blocker by itself; a
 configured route becomes a blocker when it references a resource that a user is
 trying to delete or mutate.
 
-Serving targets do not exist in the current implementation. This contract only
-defines the required integration point. When #115 or a later serving target
-slice adds target definitions or target route bindings, that implementation
-must add target probes to `features/resource_guard/` and must not introduce a
-separate target-only deletion or mutation policy.
+Cluster definitions exist as canonical TOML under
+`TENTGENT_HOME/clusters/<cluster_ref>/cluster.toml`. The current implementation
+uses the existing model reference probe path for model delete and capability
+mutation protection. A later shared `features/resource_guard/` implementation
+may replace that wiring, but it must preserve the same blocker semantics and
+must not introduce a separate cluster-only deletion or mutation policy.
 
 ## Non-Goals
 
@@ -329,8 +340,10 @@ Guard implementation should be tested at the validator level before entrypoint
 tests:
 
 - deleting a referenced model returns structured server-spec blockers
+- deleting a model referenced by a cluster route is blocked
 - deleting an unreferenced model succeeds
 - removing a referenced model capability is blocked
+- removing a model capability used by a cluster route is blocked
 - adding a model capability is allowed
 - deleting a referenced adapter returns the matched server-spec field
 - deleting a referenced dataset returns train plan/run blockers

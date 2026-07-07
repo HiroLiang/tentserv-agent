@@ -562,6 +562,9 @@ fn model_error(error: KernelError) -> RestError {
 fn model_capability_error(error: KernelError) -> RestError {
     match error {
         KernelError::UnsupportedTarget(message) => RestError::bad_request("bad_request", message),
+        KernelError::ModelStoreUnavailable(message) if message.contains("still referenced") => {
+            RestError::conflict("capability_in_use", message)
+        }
         KernelError::ModelStoreUnavailable(message) => {
             RestError::store_lookup("model_capability_update_failed", message)
         }

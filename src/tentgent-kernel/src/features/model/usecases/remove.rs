@@ -48,7 +48,7 @@ impl ModelRemoveUseCase for StdModelRemoveUseCase<'_> {
             .server_refs_for_model(&layout, &model_ref)?;
         if !blockers.is_empty() {
             return Err(KernelError::ModelStoreUnavailable(format!(
-                "model `{}` is still referenced by server spec(s): {}",
+                "model `{}` is still referenced by stored binding(s): {}",
                 model_ref,
                 blockers.join(", ")
             )));

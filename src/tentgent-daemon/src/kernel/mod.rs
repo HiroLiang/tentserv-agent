@@ -1,6 +1,7 @@
 mod adapter;
 mod auth;
 mod capability;
+mod cluster;
 mod dataset;
 mod doctor;
 mod model;
@@ -12,6 +13,7 @@ mod train;
 pub use adapter::AdapterKernelComponent;
 pub use auth::AuthKernelComponent;
 pub use capability::CapabilityKernelComponent;
+pub use cluster::ClusterKernelComponent;
 pub use dataset::DatasetKernelComponent;
 pub use doctor::DoctorKernelComponent;
 pub use model::ModelKernelComponent;
@@ -43,6 +45,7 @@ use tentgent_kernel::{
             domain::{CloudChatMessage, CloudChatRequest, CloudChatResponse, CloudStreamEvent},
             infra::ReqwestCloudModelClient,
         },
+        cluster::usecases::StdClusterUseCase,
         daemon::infra::{StdDaemonKernel, DEFAULT_DAEMON_PROBE_TIMEOUT},
         dataset::usecases::{StdDatasetEvaluationUseCase, StdDatasetSynthesisUseCase},
         doctor::usecases::{
@@ -89,6 +92,7 @@ pub struct KernelComponents {
     datasets: DatasetKernelComponent,
     doctor: DoctorKernelComponent,
     servers: ServerKernelComponent,
+    clusters: ClusterKernelComponent,
     sessions: SessionKernelComponent,
     training: TrainKernelComponent,
     daemon: StdDaemonKernel,
@@ -111,6 +115,7 @@ impl KernelComponents {
             datasets: DatasetKernelComponent::new(),
             doctor: DoctorKernelComponent::new(),
             servers: ServerKernelComponent::new(),
+            clusters: ClusterKernelComponent::new(),
             sessions: SessionKernelComponent::new(),
             training: TrainKernelComponent::new(),
             daemon: StdDaemonKernel::new(DEFAULT_DAEMON_PROBE_TIMEOUT)?,
@@ -147,6 +152,10 @@ impl KernelComponents {
 
     pub fn servers(&self) -> &ServerKernelComponent {
         &self.servers
+    }
+
+    pub fn clusters(&self) -> &ClusterKernelComponent {
+        &self.clusters
     }
 
     pub fn sessions(&self) -> &SessionKernelComponent {
@@ -235,6 +244,10 @@ impl KernelComponents {
     pub fn server_usecase(&self) -> StdServerUseCase<'_> {
         self.servers
             .usecase(self.models.catalog_store(), self.models.proof_store())
+    }
+
+    pub fn cluster_usecase(&self) -> StdClusterUseCase<'_> {
+        self.clusters.usecase(self.models.catalog_store())
     }
 
     pub fn session_usecase(&self) -> StdSessionUseCase<'_> {
