@@ -96,7 +96,7 @@ pub enum Commands {
     #[command(
         name = "cluster",
         about = "Inspect and manage cluster definitions.",
-        long_about = "Inspect and manage cluster definitions. Clusters are named local routing objects stored under TENTGENT_HOME/clusters/<cluster_ref>/cluster.toml. The first cluster slice validates definitions without starting a multi-route server."
+        long_about = "Inspect and manage cluster definitions. Clusters are named local routing objects stored under TENTGENT_HOME/clusters/<cluster_ref>/cluster.toml. Current cluster commands validate stored definitions and compute read-only route readiness without starting a multi-route server."
     )]
     Cluster {
         #[command(subcommand)]

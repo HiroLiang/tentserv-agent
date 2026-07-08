@@ -185,6 +185,9 @@ adapter, or dataset content under `store/<ref>`; use the specific `model rm`,
   include longer detail rows with copyable recovery commands, such as
   `tentgent runtime bootstrap --profile <profile>`, `tentgent auth openai set`,
   or `tentgent model capability proof clear <model-ref> <capability>`.
+- `tentgent doctor` also summarizes stored cluster readiness when clusters
+  exist and points to `tentgent cluster inspect <cluster-ref>` for route-level
+  status, flags, and next actions.
 - `tentgent doctor` checks provider auth from local environment values and
   cached Keychain metadata only. It does not validate provider keys over the
   network; run the provider-specific `tentgent auth <provider>` command when

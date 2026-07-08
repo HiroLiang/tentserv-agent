@@ -258,6 +258,9 @@ checks. Local model-bound server starts now use the same support status as a
 startup gate: `verified` and `supported` are allowed by default, `failed` and
 `unsupported` are blocked, and `unknown` or `stale` require an explicit
 `--allow-unverified` retry.
+When stored clusters exist, `doctor` also adds a compact `cluster readiness`
+check. It reports whether clusters are ready, partial, blocked, or unknown and
+points to `tentgent cluster inspect <cluster-ref>` for route-level details.
 Detailed support diagnostics are intentionally kept out of `model ls`.
 `model inspect <model-ref>` shows each capability as a multi-line detail row
 with `runtime_profile`, `execution_backend`, proof or hint evidence, failure or
@@ -843,6 +846,14 @@ provider's model name, such as the OpenAI model you intend the route to use.
 The first cluster definition slice validates and stores routes; it does not
 route inference requests through the cluster yet.
 
+`cluster apply` and REST `PUT` only validate and replace the stored definition.
+They do not start runtimes, read provider secrets, or write route readiness
+state. Use `cluster inspect <cluster-ref>` to compute readiness from existing
+local state. Inspect shows the aggregate status, each configured route's
+capability/backend/runtime profile, support or auth status, problem flags, and
+next action. Omitted routes are allowed and are not warnings until a later
+routing slice attempts to use them.
+
 Daemon REST exposes matching definition CRUD:
 
 ```bash
@@ -926,8 +937,9 @@ Cloud provider servers do not show local model support because they are bound
 to provider-hosted models rather than records in the local model store.
 
 Use `doctor` when you want the same support diagnostics across all stored local
-models. `doctor` keeps the main check list compact and places long profile,
-backend, failure, and next-action details in the `Details` block.
+models and stored clusters. `doctor` keeps the main check list compact and
+places long profile, backend, failure, and next-action details in the `Details`
+block.
 `doctor` also warns when a stored local model is missing files that would block
 runtime execution and points back to `tentgent model inspect <model-ref>` for
 the exact missing path and recovery action. Local model-bound server starts run

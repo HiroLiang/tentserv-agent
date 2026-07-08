@@ -8,8 +8,8 @@ use tentgent_kernel::{
     features::cluster::{
         domain::{ClusterDefinition, ClusterRef},
         usecases::{
-            ClusterApplyDefinitionRequest, ClusterInspectRequest, ClusterListRequest,
-            ClusterRemoveRequest, ClusterSpecUseCase,
+            ClusterApplyDefinitionRequest, ClusterListRequest, ClusterReadinessInspectRequest,
+            ClusterReadinessUseCase, ClusterRemoveRequest, ClusterSpecUseCase,
         },
     },
     foundation::{error::KernelError, layout::LayoutResolveMode},
@@ -51,15 +51,18 @@ pub async fn inspect(
         .app()
         .services()
         .kernel()
-        .cluster_usecase()
-        .inspect_cluster(ClusterInspectRequest {
+        .cluster_readiness_usecase()
+        .inspect_cluster_readiness(ClusterReadinessInspectRequest {
             layout: state.app().layout_input(LayoutResolveMode::ReadOnly),
             cluster_ref,
         })
         .map_err(cluster_error)?;
 
     Ok(Json(ClusterResponse {
-        cluster: cluster_inspection_item(result.inspection),
+        cluster: dto::cluster_inspection_item_with_readiness(
+            result.inspection,
+            Some(result.readiness),
+        ),
     }))
 }
 

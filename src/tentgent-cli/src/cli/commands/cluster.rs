@@ -50,14 +50,17 @@ pub enum ClusterCommands {
         #[arg(short = 'H', long, value_name = "HOME")]
         home: Option<PathBuf>,
     },
-    /// Show one stored cluster definition.
+    /// Show one stored cluster definition and route readiness.
     #[command(
         name = "inspect",
-        about = "Show one stored cluster definition.",
-        long_about = "Show one stored cluster definition and its canonical TOML path. Cluster refs are exact lowercase slugs such as `local-assistant`."
+        about = "Show one stored cluster definition and route readiness.",
+        long_about = "Show one stored cluster definition, its canonical TOML path, and read-only route readiness. Inspect reports support/auth status, inferred runtime profiles, problem flags, and next actions without starting runtimes or reading provider secrets. Cluster refs are exact lowercase slugs such as `local-assistant`."
     )]
     Inspect {
-        /// Cluster ref.
+        /// Stored cluster ref to inspect, for example `local-assistant`.
+        ///
+        /// This is the `cluster_ref` from the stored cluster TOML, not a file
+        /// path and not a model ref.
         #[arg(value_name = "CLUSTER_REF")]
         cluster_ref: String,
         /// Optional Tentgent runtime home override.

@@ -45,7 +45,7 @@ use tentgent_kernel::{
             domain::{CloudChatMessage, CloudChatRequest, CloudChatResponse, CloudStreamEvent},
             infra::ReqwestCloudModelClient,
         },
-        cluster::usecases::StdClusterUseCase,
+        cluster::usecases::{StdClusterReadinessUseCase, StdClusterUseCase},
         daemon::infra::{StdDaemonKernel, DEFAULT_DAEMON_PROBE_TIMEOUT},
         dataset::usecases::{StdDatasetEvaluationUseCase, StdDatasetSynthesisUseCase},
         doctor::usecases::{
@@ -248,6 +248,14 @@ impl KernelComponents {
 
     pub fn cluster_usecase(&self) -> StdClusterUseCase<'_> {
         self.clusters.usecase(self.models.catalog_store())
+    }
+
+    pub fn cluster_readiness_usecase(&self) -> StdClusterReadinessUseCase<'_> {
+        self.clusters.readiness_usecase(
+            self.models.catalog_store(),
+            self.models.proof_store(),
+            &self.auth,
+        )
     }
 
     pub fn session_usecase(&self) -> StdSessionUseCase<'_> {

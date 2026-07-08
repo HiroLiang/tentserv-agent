@@ -244,8 +244,32 @@ repair, or delete anything:
   "checks": [
     {
       "name": "python binary",
+      "category": "runtime",
       "status": "pass",
+      "description": "present: /path/to/python",
       "detail": "present: /path/to/python"
+    },
+    {
+      "name": "cluster readiness",
+      "category": "cluster",
+      "status": "warn",
+      "description": "1/1 cluster(s) need attention",
+      "detail": "1/1 cluster(s) need attention",
+      "flags": ["has-cluster-attention"],
+      "details": [
+        {
+          "name": "local-assistant",
+          "description": "blocked; 0 ready, 1 need attention",
+          "flags": ["unknown-support"]
+        }
+      ],
+      "next_actions": [
+        {
+          "label": "Inspect cluster local-assistant",
+          "code": "inspect-cluster",
+          "command": "tentgent cluster inspect local-assistant"
+        }
+      ]
     }
   ]
 }
@@ -253,6 +277,10 @@ repair, or delete anything:
 
 Doctor status is `fail` if any check fails, otherwise `warn` if any check
 warns, otherwise `pass`.
+
+`detail` is the legacy human-readable message field and remains present for
+compatibility. New clients should prefer `description`, `flags`, `details`, and
+`next_actions[].code` when present.
 
 `POST /v1/daemon/shutdown` accepts an empty body or `{}` and returns
 `202 Accepted` before stopping the daemon accept loop:
@@ -1101,8 +1129,10 @@ paths; no redaction is promised in this slice.
 
 ## Cluster Definition CRUD
 
-Cluster routes are definition state only in this slice. The daemon validates and
-stores them, but it does not route inference requests through a cluster yet.
+Cluster routes are stored definition state. The daemon validates and stores
+them, and inspect/doctor responses compute read-only route readiness from
+existing local state. The daemon does not route inference requests through a
+cluster yet.
 
 ```text
 GET /v1/clusters
@@ -1154,7 +1184,7 @@ supported providers. The current route keys are `chat`, `embedding`, `rerank`,
 `audio-transcription`, and `vision-chat`. Local `model_ref` values in cluster
 definitions are full canonical model refs, not short selectors.
 
-`GET /v1/clusters/{cluster_ref}` and successful `PUT` return:
+Successful `PUT` returns stored definition details only:
 
 ```json
 {
@@ -1174,6 +1204,58 @@ definitions are full canonical model refs, not short selectors.
   }
 }
 ```
+
+`GET /v1/clusters/{cluster_ref}` returns the same definition details plus
+additive readiness fields:
+
+```json
+{
+  "cluster": {
+    "cluster_ref": "local-assistant",
+    "schema_version": 1,
+    "readiness": {
+      "status": "blocked",
+      "ready_route_count": 0,
+      "attention_route_count": 1,
+      "flags": ["unknown-support", "has-attention-route"]
+    },
+    "routes": [
+      {
+        "route": "chat",
+        "kind": "local-model",
+        "capability": "chat",
+        "model_ref": "<model-ref>",
+        "runtime_profile_readiness": {
+          "effective": {
+            "profile_id": "local-chat-transformers-peft",
+            "profile_version": 1
+          },
+          "source": "inferred"
+        },
+        "backend": "safetensors",
+        "readiness": {
+          "status": "unknown",
+          "description": "no local proof or support hint exists for chat"
+        },
+        "next_actions": [
+          {
+            "code": "verify-model-capability",
+            "label": "Verify model capability",
+            "command": "tentgent model capability verify <model-ref> chat"
+          }
+        ]
+      }
+    ],
+    "home_dir": "/path/to/tentgent-home",
+    "cluster_dir": "/path/to/tentgent-home/clusters/local-assistant",
+    "definition_path": "/path/to/tentgent-home/clusters/local-assistant/cluster.toml"
+  }
+}
+```
+
+Route-level `runtime_profile` is a deprecated legacy configured-profile field
+retained for existing clients. Prefer `runtime_profile_readiness` for
+configured/effective/source profile details.
 
 `DELETE /v1/clusters/{cluster_ref}` removes one stored definition directory and
 returns pre-removal metadata:

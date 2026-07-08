@@ -3,16 +3,16 @@ use std::path::{Component, Path};
 
 use crate::features::auth::domain::Provider;
 use crate::features::cloud::domain::{
-    provider_capabilities, provider_supports, CloudEndpointCapability,
+    CloudEndpointCapability, provider_capabilities, provider_supports,
 };
 use crate::features::cluster::domain::{
-    ClusterDefinition, ClusterRef, ClusterRouteKey, ClusterRouteTarget, ClusterStoreLayout,
-    CLUSTER_SCHEMA_VERSION, MAX_CLUSTER_DEFINITION_BYTES,
+    CLUSTER_SCHEMA_VERSION, ClusterDefinition, ClusterRef, ClusterRouteKey, ClusterRouteTarget,
+    ClusterStoreLayout, MAX_CLUSTER_DEFINITION_BYTES,
 };
 use crate::features::model::domain::{ModelFormat, ModelStoreLayout};
 use crate::features::model::ports::ModelCatalogStore;
 use crate::features::server::domain::{
-    ensure_server_model_capability, CloudProvider, ServerCapability, ServerRuntimeBackend,
+    CloudProvider, ServerCapability, ServerRuntimeBackend, ensure_server_model_capability,
 };
 use crate::features::server::profile::local_server_runtime_profile_for;
 use crate::foundation::error::{KernelError, KernelResult};
@@ -222,7 +222,9 @@ fn ensure_provider_supports_route(
     )))
 }
 
-fn cloud_endpoint_capability_for_route(route: ClusterRouteKey) -> Option<CloudEndpointCapability> {
+pub(super) fn cloud_endpoint_capability_for_route(
+    route: ClusterRouteKey,
+) -> Option<CloudEndpointCapability> {
     match route.server_capability() {
         ServerCapability::Chat => Some(CloudEndpointCapability::Chat),
         ServerCapability::VisionChat => Some(CloudEndpointCapability::VisionChat),
@@ -234,7 +236,7 @@ fn cloud_endpoint_capability_for_route(route: ClusterRouteKey) -> Option<CloudEn
     }
 }
 
-fn auth_provider_for_cloud_provider(provider: CloudProvider) -> Provider {
+pub(super) fn auth_provider_for_cloud_provider(provider: CloudProvider) -> Provider {
     match provider {
         CloudProvider::OpenAI => Provider::OpenAI,
         CloudProvider::Anthropic => Provider::Anthropic,
@@ -242,7 +244,7 @@ fn auth_provider_for_cloud_provider(provider: CloudProvider) -> Provider {
     }
 }
 
-fn server_runtime_backend_for_format(
+pub(super) fn server_runtime_backend_for_format(
     capability: ServerCapability,
     format: ModelFormat,
 ) -> KernelResult<ServerRuntimeBackend> {

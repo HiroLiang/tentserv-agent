@@ -1,18 +1,26 @@
-use comfy_table::{Cell, Table};
+use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL_CONDENSED, Cell, Table};
 use miette::{IntoDiagnostic, Result};
+use tentgent_kernel::features::auth::infra::{
+    FileAuthMetadataStore, StdAuthEnvSecretProbe, SystemKeychainAuthSecretStore,
+};
+use tentgent_kernel::features::auth::usecases::StdAuthStatusUseCase;
 use tentgent_kernel::features::cluster::domain::{
-    ClusterInspection, ClusterRef, ClusterRouteKey, ClusterRouteTarget,
+    ClusterInspection, ClusterReadinessReport, ClusterRef, ClusterRouteKey, ClusterRouteReadiness,
+    ClusterRouteTarget,
 };
 use tentgent_kernel::features::cluster::infra::{
     FileClusterCatalogStore, StdClusterStoreLayoutInitializer,
 };
 use tentgent_kernel::features::cluster::usecases::{
-    ClusterApplyFileRequest, ClusterInspectRequest, ClusterListRequest, ClusterRemoveRequest,
-    ClusterSpecUseCase, ClusterValidateFileRequest, StdClusterUseCase,
+    ClusterApplyFileRequest, ClusterListRequest, ClusterReadinessInspectRequest,
+    ClusterReadinessInspectResult, ClusterReadinessUseCase, ClusterRemoveRequest,
+    ClusterSpecUseCase, ClusterValidateFileRequest, StdClusterReadinessUseCase, StdClusterUseCase,
 };
-use tentgent_kernel::features::model::infra::FileModelCatalogStore;
+use tentgent_kernel::features::model::infra::{
+    FileModelCapabilityProofStore, FileModelCatalogStore,
+};
 use tentgent_kernel::foundation::layout::{
-    LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver,
+    LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
 };
 
 use super::commands::ClusterCommands;
@@ -34,7 +42,7 @@ pub fn handle_cluster_command(action: ClusterCommands) -> Result<()> {
                 "Applied cluster `{}`",
                 result.inspection.definition.cluster_ref
             );
-            render_cluster_inspection(&result.inspection);
+            render_cluster_inspection(&result.inspection, None);
         }
         ClusterCommands::Validate { path, home, force } => {
             let result = cluster
@@ -46,7 +54,7 @@ pub fn handle_cluster_command(action: ClusterCommands) -> Result<()> {
                 })
                 .into_diagnostic()?;
             println!("Valid cluster `{}`", result.definition.cluster_ref);
-            render_cluster_routes(&result.definition.routes);
+            render_cluster_routes(&result.definition.routes, None);
         }
         ClusterCommands::Ls { home } => {
             let result = cluster
@@ -59,14 +67,8 @@ pub fn handle_cluster_command(action: ClusterCommands) -> Result<()> {
         }
         ClusterCommands::Inspect { cluster_ref, home } => {
             let cluster_ref = parse_cluster_ref(&cluster_ref)?;
-            let result = cluster
-                .usecase()
-                .inspect_cluster(ClusterInspectRequest {
-                    layout: runtime_layout_input(LayoutResolveMode::ReadOnly, home),
-                    cluster_ref,
-                })
-                .into_diagnostic()?;
-            render_cluster_inspection(&result.inspection);
+            let result = cluster.inspect_readiness(cluster_ref, home.as_deref())?;
+            render_cluster_inspection(&result.inspection, Some(&result.readiness));
         }
         ClusterCommands::Rm { cluster_ref, home } => {
             let cluster_ref = parse_cluster_ref(&cluster_ref)?;
@@ -92,6 +94,9 @@ struct CliClusterKernel {
     layout_initializer: StdClusterStoreLayoutInitializer,
     catalog: FileClusterCatalogStore,
     model_catalog: FileModelCatalogStore,
+    model_proofs: FileModelCapabilityProofStore,
+    auth_env_probe: StdAuthEnvSecretProbe,
+    auth_keychain_store: SystemKeychainAuthSecretStore,
 }
 
 impl CliClusterKernel {
@@ -101,6 +106,9 @@ impl CliClusterKernel {
             layout_initializer: StdClusterStoreLayoutInitializer,
             catalog: FileClusterCatalogStore,
             model_catalog: FileModelCatalogStore,
+            model_proofs: FileModelCapabilityProofStore,
+            auth_env_probe: StdAuthEnvSecretProbe,
+            auth_keychain_store: SystemKeychainAuthSecretStore::new(),
         }
     }
 
@@ -111,6 +119,41 @@ impl CliClusterKernel {
             &self.catalog,
             &self.model_catalog,
         )
+    }
+
+    fn inspect_readiness(
+        &self,
+        cluster_ref: ClusterRef,
+        home: Option<&std::path::Path>,
+    ) -> Result<ClusterReadinessInspectResult> {
+        let layout = self
+            .layout_resolver
+            .resolve(runtime_layout_input(
+                LayoutResolveMode::ReadOnly,
+                home.map(std::path::Path::to_path_buf),
+            ))
+            .into_diagnostic()?;
+        let auth_metadata_store = FileAuthMetadataStore::from_layout(&layout);
+        let auth_status = StdAuthStatusUseCase::new(
+            &self.auth_env_probe,
+            &self.auth_keychain_store,
+            &auth_metadata_store,
+        );
+        StdClusterReadinessUseCase::new(
+            &self.layout_resolver,
+            &self.catalog,
+            &self.model_catalog,
+            &self.model_proofs,
+            &auth_status,
+        )
+        .inspect_cluster_readiness(ClusterReadinessInspectRequest {
+            layout: runtime_layout_input(
+                LayoutResolveMode::ReadOnly,
+                home.map(std::path::Path::to_path_buf),
+            ),
+            cluster_ref,
+        })
+        .into_diagnostic()
     }
 }
 
@@ -135,7 +178,7 @@ fn render_cluster_list(clusters: &[tentgent_kernel::features::cluster::domain::C
         return;
     }
 
-    let mut table = Table::new();
+    let mut table = cluster_table();
     table.set_header(vec!["Cluster", "Routes"]);
     for cluster in clusters {
         table.add_row(vec![
@@ -146,8 +189,11 @@ fn render_cluster_list(clusters: &[tentgent_kernel::features::cluster::domain::C
     println!("{table}");
 }
 
-fn render_cluster_inspection(inspection: &ClusterInspection) {
-    let mut table = Table::new();
+fn render_cluster_inspection(
+    inspection: &ClusterInspection,
+    readiness: Option<&ClusterReadinessReport>,
+) {
+    let mut table = cluster_table();
     table.set_header(vec!["Field", "Value"]);
     table.add_row(vec![
         Cell::new("cluster_ref"),
@@ -161,6 +207,15 @@ fn render_cluster_inspection(inspection: &ClusterInspection) {
         Cell::new("definition_path"),
         Cell::new(inspection.definition_path.display().to_string()),
     ]);
+    if let Some(readiness) = readiness {
+        table.add_row(vec![
+            Cell::new("readiness"),
+            Cell::new(format!(
+                "{} ({} ready, {} attention)",
+                readiness.status, readiness.ready_route_count, readiness.attention_route_count
+            )),
+        ]);
+    }
     table.add_row(vec![
         Cell::new("routes"),
         Cell::new(route_keys_label(
@@ -173,16 +228,36 @@ fn render_cluster_inspection(inspection: &ClusterInspection) {
         )),
     ]);
     println!("{table}");
-    render_cluster_routes(&inspection.definition.routes);
+    render_cluster_routes(&inspection.definition.routes, readiness);
+    if let Some(readiness) = readiness {
+        render_cluster_readiness_details(readiness);
+    }
 }
 
-fn render_cluster_routes(routes: &std::collections::BTreeMap<ClusterRouteKey, ClusterRouteTarget>) {
+fn render_cluster_routes(
+    routes: &std::collections::BTreeMap<ClusterRouteKey, ClusterRouteTarget>,
+    readiness: Option<&ClusterReadinessReport>,
+) {
     if routes.is_empty() {
         return;
     }
-    let mut table = Table::new();
-    table.set_header(vec!["Route", "Kind", "Target", "Runtime Profile"]);
+    let mut table = cluster_table();
+    table.set_header(vec![
+        "Route",
+        "Kind",
+        "Target",
+        "Capability",
+        "Runtime Profile",
+        "Status",
+        "Next Action",
+    ]);
     for (route, target) in routes {
+        let route_readiness = readiness.and_then(|readiness| {
+            readiness
+                .routes
+                .iter()
+                .find(|route_readiness| route_readiness.route == *route)
+        });
         match target {
             ClusterRouteTarget::LocalModel {
                 model_ref,
@@ -191,12 +266,15 @@ fn render_cluster_routes(routes: &std::collections::BTreeMap<ClusterRouteKey, Cl
                 Cell::new(route.to_string()),
                 Cell::new("local-model"),
                 Cell::new(model_ref.to_string()),
+                Cell::new(route_readiness_capability(route, route_readiness)),
                 Cell::new(
-                    runtime_profile
-                        .as_ref()
-                        .map(|profile| profile.label())
+                    route_readiness
+                        .map(runtime_profile_label)
+                        .or_else(|| runtime_profile.as_ref().map(|profile| profile.label()))
                         .unwrap_or_else(|| "-".to_string()),
                 ),
+                Cell::new(route_readiness_status(route_readiness)),
+                Cell::new(route_readiness_next_action(route_readiness)),
             ]),
             ClusterRouteTarget::Provider {
                 provider,
@@ -205,11 +283,89 @@ fn render_cluster_routes(routes: &std::collections::BTreeMap<ClusterRouteKey, Cl
                 Cell::new(route.to_string()),
                 Cell::new("provider"),
                 Cell::new(format!("{provider}:{provider_model}")),
+                Cell::new(route_readiness_capability(route, route_readiness)),
                 Cell::new("-"),
+                Cell::new(route_readiness_status(route_readiness)),
+                Cell::new(route_readiness_next_action(route_readiness)),
             ]),
         };
     }
     println!("{table}");
+}
+
+fn route_readiness_capability(
+    route: &ClusterRouteKey,
+    readiness: Option<&ClusterRouteReadiness>,
+) -> String {
+    readiness
+        .map(|readiness| readiness.capability.as_str().to_string())
+        .unwrap_or_else(|| route.model_capability().as_str().to_string())
+}
+
+fn route_readiness_status(readiness: Option<&ClusterRouteReadiness>) -> String {
+    readiness
+        .map(|readiness| readiness.status.as_str().to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn route_readiness_next_action(readiness: Option<&ClusterRouteReadiness>) -> String {
+    readiness
+        .and_then(|readiness| readiness.next_actions.first())
+        .map(|action| action.label.clone())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn runtime_profile_label(readiness: &ClusterRouteReadiness) -> String {
+    let label = readiness
+        .runtime_profile
+        .effective
+        .as_ref()
+        .map(|profile| profile.label())
+        .unwrap_or_else(|| "-".to_string());
+    match readiness.runtime_profile.source.as_str() {
+        "configured" => format!("configured: {label}"),
+        "inferred" => format!("inferred: {label}"),
+        "unavailable" => "unavailable".to_string(),
+        _ => label,
+    }
+}
+
+fn render_cluster_readiness_details(readiness: &ClusterReadinessReport) {
+    let notable = readiness
+        .routes
+        .iter()
+        .filter(|route| {
+            route.status.needs_attention()
+                || route
+                    .flags
+                    .iter()
+                    .any(|flag| flag == "runtime-profile-inferred")
+        })
+        .collect::<Vec<_>>();
+    if notable.is_empty() {
+        return;
+    }
+
+    println!("Route details");
+    for route in notable {
+        println!(
+            "- {}: {}",
+            route.route,
+            route.reason.as_deref().unwrap_or(&route.description)
+        );
+        if !route.flags.is_empty() {
+            println!("  flags: {}", route.flags.join(", "));
+        }
+        for action in &route.next_actions {
+            println!("  next: {}", action.label);
+            if let Some(command) = action.command.as_deref() {
+                println!("    {command}");
+            }
+            if let Some(description) = action.description.as_deref() {
+                println!("    {description}");
+            }
+        }
+    }
 }
 
 fn route_keys_label(routes: &[ClusterRouteKey]) -> String {
@@ -221,4 +377,12 @@ fn route_keys_label(routes: &[ClusterRouteKey]) -> String {
         .map(|route| route.as_str())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn cluster_table() -> Table {
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL_CONDENSED)
+        .apply_modifier(UTF8_ROUND_CORNERS);
+    table
 }

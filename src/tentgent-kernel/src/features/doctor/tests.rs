@@ -15,8 +15,8 @@ use crate::foundation::platform::{
 
 use super::domain::{
     DoctorCheck, DoctorCheckCategory, DoctorCheckStatus, DoctorCommandCheck, DoctorExecutionMode,
-    DoctorPathCheck, DoctorPathExpectation, DoctorRepairIntent, DoctorRepairPlan, DoctorRepairStep,
-    DoctorReport, DoctorReportRequest,
+    DoctorNextAction, DoctorPathCheck, DoctorPathExpectation, DoctorRepairIntent, DoctorRepairPlan,
+    DoctorRepairStep, DoctorReport, DoctorReportRequest,
 };
 use super::ports::{
     DoctorCapabilityCheckMapper, DoctorCommandProbe, DoctorPathProbe, DoctorRepairPlanner,
@@ -41,6 +41,29 @@ fn doctor_report_status_aggregates_fail_then_warn() {
     assert_eq!(report.summary.warn, 1);
     assert_eq!(report.summary.fail, 1);
     assert_eq!(report.summary.skipped, 1);
+}
+
+#[test]
+fn cluster_doctor_category_and_next_action_codes_are_stable() {
+    let check = DoctorCheck::warn(
+        DoctorCheckCategory::Cluster,
+        "cluster readiness",
+        "1/1 cluster(s) need attention",
+    )
+    .with_description("1/1 cluster(s) need attention")
+    .with_next_action(
+        DoctorNextAction::command(
+            "Inspect cluster local-assistant",
+            "tentgent cluster inspect local-assistant",
+        )
+        .with_code("inspect-cluster"),
+    );
+
+    assert_eq!(DoctorCheckCategory::Cluster.as_str(), "cluster");
+    let value = serde_json::to_value(check).expect("serialize doctor check");
+    assert_eq!(value["category"], "cluster");
+    assert_eq!(value["description"], "1/1 cluster(s) need attention");
+    assert_eq!(value["next_actions"][0]["code"], "inspect-cluster");
 }
 
 #[test]

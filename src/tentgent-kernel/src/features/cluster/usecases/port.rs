@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 
 use crate::features::cluster::domain::{
-    ClusterDefinition, ClusterInspection, ClusterRef, ClusterRemoveOutcome, ClusterStoreLayout,
-    ClusterSummary,
+    ClusterDefinition, ClusterInspection, ClusterReadinessReport, ClusterRef, ClusterRemoveOutcome,
+    ClusterStoreLayout, ClusterSummary,
 };
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
@@ -82,6 +82,32 @@ pub struct ClusterRemoveResult {
     pub outcome: ClusterRemoveOutcome,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterReadinessInspectRequest {
+    pub layout: RuntimeLayoutInput,
+    pub cluster_ref: ClusterRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterReadinessInspectResult {
+    pub layout: RuntimeLayout,
+    pub store: ClusterStoreLayout,
+    pub inspection: ClusterInspection,
+    pub readiness: ClusterReadinessReport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterReadinessListRequest {
+    pub layout: RuntimeLayoutInput,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterReadinessListResult {
+    pub layout: RuntimeLayout,
+    pub store: ClusterStoreLayout,
+    pub clusters: Vec<ClusterReadinessInspectResult>,
+}
+
 /// Use-case boundary for stored cluster definitions.
 pub trait ClusterSpecUseCase {
     /// Lists stored clusters.
@@ -89,7 +115,7 @@ pub trait ClusterSpecUseCase {
 
     /// Inspects one stored cluster.
     fn inspect_cluster(&self, request: ClusterInspectRequest)
-        -> KernelResult<ClusterInspectResult>;
+    -> KernelResult<ClusterInspectResult>;
 
     /// Parses, validates, and stores a cluster definition file.
     fn apply_cluster_file(
@@ -111,4 +137,19 @@ pub trait ClusterSpecUseCase {
 
     /// Removes one stored cluster.
     fn remove_cluster(&self, request: ClusterRemoveRequest) -> KernelResult<ClusterRemoveResult>;
+}
+
+/// Use-case boundary for read-only cluster route readiness diagnostics.
+pub trait ClusterReadinessUseCase {
+    /// Inspects one stored cluster and computes route readiness without writing state.
+    fn inspect_cluster_readiness(
+        &self,
+        request: ClusterReadinessInspectRequest,
+    ) -> KernelResult<ClusterReadinessInspectResult>;
+
+    /// Lists stored clusters and computes compact readiness for doctor-style summaries.
+    fn list_cluster_readiness(
+        &self,
+        request: ClusterReadinessListRequest,
+    ) -> KernelResult<ClusterReadinessListResult>;
 }
