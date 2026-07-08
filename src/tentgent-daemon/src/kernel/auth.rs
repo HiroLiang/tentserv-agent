@@ -6,8 +6,8 @@ use tentgent_kernel::{
         },
         usecases::{
             AuthSecretResolution, AuthSecretResolutionRequest, AuthSecretResolverUseCase,
-            StdAuthSecretMutationUseCase, StdAuthSecretResolverUseCase,
-            StdAuthSecretValidationUseCase, StdAuthStatusUseCase,
+            AuthStatusReport, AuthStatusRequest, AuthStatusUseCase, StdAuthSecretMutationUseCase,
+            StdAuthSecretResolverUseCase, StdAuthSecretValidationUseCase, StdAuthStatusUseCase,
         },
     },
     foundation::{error::KernelResult, layout::RuntimeLayout},
@@ -60,5 +60,11 @@ impl AuthSecretResolverUseCase for AuthKernelComponent {
         request: AuthSecretResolutionRequest,
     ) -> KernelResult<AuthSecretResolution> {
         self.resolver_usecase().resolve_secret(request)
+    }
+}
+
+impl AuthStatusUseCase for AuthKernelComponent {
+    fn status(&self, request: AuthStatusRequest) -> KernelResult<AuthStatusReport> {
+        self.status_usecase().status(request)
     }
 }

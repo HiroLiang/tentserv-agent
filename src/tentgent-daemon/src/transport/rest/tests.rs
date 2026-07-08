@@ -11,6 +11,14 @@ use tentgent_kernel::{
         infra::FileJobWorkspaceStore,
         ports::{JobChunkPort, JobChunkWrite, JobResultPort, JobStreamKind, JobWorkspacePort},
     },
+    features::model::{
+        domain::{
+            ModelCapability, ModelCapabilityProof, ModelCapabilityProofSource,
+            ModelCapabilityProofStatus, ModelFormat, ModelRef,
+        },
+        infra::FileModelCapabilityProofStore,
+        ports::ModelCapabilityProofStore,
+    },
     foundation::layout::{
         LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
     },
@@ -200,6 +208,72 @@ async fn doctor_returns_observational_report() {
     ));
     assert!(body["summary"].is_object());
     assert!(body["checks"].is_array());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn doctor_includes_cluster_readiness_summary() {
+    let requested_home = unique_home("doctor-cluster-readiness");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "6".repeat(64);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["chat"]);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/v1/clusters/local-assistant")
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{
+                        "schema_version": 1,
+                        "cluster_ref": "local-assistant",
+                        "routes": {{
+                            "chat": {{
+                                "kind": "local-model",
+                                "model_ref": "{model_ref}"
+                            }}
+                        }}
+                    }}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .uri("/v1/doctor")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let cluster_check = body["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|check| check["category"] == "cluster")
+        .expect("cluster doctor check");
+    assert_eq!(cluster_check["name"], "cluster readiness");
+    assert_eq!(cluster_check["status"], "warn");
+    assert_eq!(
+        cluster_check["description"],
+        "1/1 cluster(s) need attention"
+    );
+    assert!(cluster_check["flags"]
+        .as_array()
+        .expect("flags")
+        .iter()
+        .any(|flag| flag == "has-cluster-attention"));
+    assert_eq!(cluster_check["next_actions"][0]["code"], "inspect-cluster");
 
     let _ = fs::remove_dir_all(home);
 }
@@ -4175,6 +4249,15 @@ async fn cluster_apply_inspect_and_remove_roundtrip() {
     let home = state.app().layout().home_dir.canonicalize().expect("home");
     let model_ref = "4".repeat(64);
     write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["chat", "embedding"]);
+    write_model_capability_proof(
+        &home,
+        &model_ref,
+        ModelCapability::Chat,
+        ModelCapabilityProofStatus::Verified,
+        "safetensors",
+        Some(("local-chat-transformers-peft", 1)),
+        None,
+    );
 
     let response = build_router(state.clone())
         .oneshot(
@@ -4212,6 +4295,8 @@ async fn cluster_apply_inspect_and_remove_roundtrip() {
     assert_eq!(routes[0]["route"], "chat");
     assert_eq!(routes[0]["kind"], "local-model");
     assert_eq!(routes[0]["model_ref"].as_str(), Some(model_ref.as_str()));
+    assert!(body["cluster"]["readiness"].is_null());
+    assert!(routes[0]["readiness"].is_null());
     assert_eq!(routes[1]["route"], "embedding");
     assert!(home
         .join("clusters")
@@ -4252,6 +4337,9 @@ async fn cluster_apply_inspect_and_remove_roundtrip() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["cluster"]["cluster_ref"], "local-assistant");
+    assert_eq!(body["cluster"]["readiness"]["status"], "partial");
+    assert_eq!(body["cluster"]["readiness"]["ready_route_count"], 1);
+    assert_eq!(body["cluster"]["readiness"]["attention_route_count"], 1);
     assert_eq!(
         body["cluster"]["definition_path"].as_str(),
         Some(
@@ -4263,6 +4351,19 @@ async fn cluster_apply_inspect_and_remove_roundtrip() {
             .as_str()
         )
     );
+    let routes = body["cluster"]["routes"].as_array().expect("routes");
+    assert_eq!(routes[0]["readiness"]["status"], "verified");
+    assert_eq!(routes[0]["runtime_profile_readiness"]["source"], "inferred");
+    assert_eq!(
+        routes[0]["runtime_profile_readiness"]["effective"]["profile_id"],
+        "local-chat-transformers-peft"
+    );
+    assert_eq!(routes[1]["readiness"]["status"], "unknown");
+    assert!(routes[1]["next_actions"]
+        .as_array()
+        .expect("next actions")
+        .iter()
+        .any(|action| action["code"] == "verify-model-capability"));
 
     let response = build_router(state.clone())
         .oneshot(
@@ -4826,6 +4927,41 @@ imported_at = "2026-05-01T00:00:00Z"
         ),
     )
     .expect("model metadata");
+}
+
+fn write_model_capability_proof(
+    home: &std::path::Path,
+    model_ref: &str,
+    capability: ModelCapability,
+    status: ModelCapabilityProofStatus,
+    backend: &str,
+    runtime_profile: Option<(&str, u32)>,
+    error: Option<&str>,
+) {
+    let store = FileModelCapabilityProofStore;
+    let layout = tentgent_kernel::features::model::domain::ModelStoreLayout::from_models_dir(
+        home.join("models"),
+    );
+    store
+        .save_capability_proof(
+            &layout,
+            &ModelCapabilityProof {
+                model_ref: ModelRef::parse(model_ref).expect("model ref"),
+                capability,
+                status,
+                source: ModelCapabilityProofSource::ManualProbe,
+                primary_format: ModelFormat::Safetensors,
+                mlx_runtime_family: None,
+                backend: backend.to_string(),
+                runtime_version: None,
+                runtime_profile: runtime_profile.map(|(profile_id, _)| profile_id.to_string()),
+                runtime_profile_version: runtime_profile.map(|(_, version)| version),
+                server_ref: None,
+                checked_at: "2026-07-08T00:00:00Z".to_string(),
+                error: error.map(str::to_string),
+            },
+        )
+        .expect("save capability proof");
 }
 
 fn write_model_variant_fixture(store_dir: &std::path::Path, format: &str, capabilities: &[&str]) {

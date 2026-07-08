@@ -1,10 +1,11 @@
 use tentgent_kernel::{
     features::{
+        auth::usecases::AuthStatusUseCase,
         cluster::{
             infra::{FileClusterCatalogStore, StdClusterStoreLayoutInitializer},
-            usecases::StdClusterUseCase,
+            usecases::{StdClusterReadinessUseCase, StdClusterUseCase},
         },
-        model::ports::ModelCatalogStore,
+        model::ports::{ModelCapabilityProofStore, ModelCatalogStore},
     },
     foundation::layout::StdRuntimeLayoutResolver,
 };
@@ -33,6 +34,21 @@ impl ClusterKernelComponent {
             &self.layout_initializer,
             &self.catalog,
             model_catalog,
+        )
+    }
+
+    pub fn readiness_usecase<'a>(
+        &'a self,
+        model_catalog: &'a dyn ModelCatalogStore,
+        model_proofs: &'a dyn ModelCapabilityProofStore,
+        auth_status: &'a dyn AuthStatusUseCase,
+    ) -> StdClusterReadinessUseCase<'a> {
+        StdClusterReadinessUseCase::new(
+            &self.layout_resolver,
+            &self.catalog,
+            model_catalog,
+            model_proofs,
+            auth_status,
         )
     }
 }

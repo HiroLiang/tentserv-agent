@@ -845,6 +845,24 @@ Daemon shutdown marks active daemon jobs `interrupted` and runs one
 retention-aware workspace sweep; fresh interrupted or just-completed
 workspaces are retained for inspection and result/recovery behavior.
 
+## Clusters
+
+| Method | Path | Body |
+| --- | --- | --- |
+| `GET` | `/v1/clusters` | None. |
+| `PUT` | `/v1/clusters/{cluster_ref}` | JSON cluster definition. |
+| `GET` | `/v1/clusters/{cluster_ref}` | None. |
+| `DELETE` | `/v1/clusters/{cluster_ref}` | None. |
+
+Clusters are named route definitions. `PUT` validates and stores a definition;
+it does not start runtimes, verify proofs, read provider secrets, or compute
+readiness. `GET /v1/clusters/{cluster_ref}` returns the stored definition plus
+read-only readiness fields such as aggregate `readiness.status`, per-route
+`readiness.status`, flags, details, and `next_actions[].code`.
+
+Cluster request routing is not exposed yet. Current route definitions are for
+inspection, diagnostics, and later native cluster routing work.
+
 ## Models
 
 | Method | Path | Body |

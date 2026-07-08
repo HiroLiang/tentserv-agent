@@ -133,6 +133,7 @@ pub enum DoctorCheckCategory {
     Runtime,
     Bootstrap,
     Capability,
+    Cluster,
     Auth,
     Daemon,
     Command,
@@ -147,6 +148,7 @@ impl DoctorCheckCategory {
             Self::Runtime => "runtime",
             Self::Bootstrap => "bootstrap",
             Self::Capability => "capability",
+            Self::Cluster => "cluster",
             Self::Auth => "auth",
             Self::Daemon => "daemon",
             Self::Command => "command",
@@ -165,14 +167,32 @@ pub struct DoctorCheck {
     pub name: String,
     pub category: DoctorCheckCategory,
     pub status: DoctorCheckStatus,
+    /// Legacy readable message field retained for compatibility. New structured
+    /// surfaces may prefer `description`.
     pub detail: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub details: Vec<DoctorCheckDetail>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub next_actions: Vec<DoctorNextAction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DoctorCheckDetail {
+    pub name: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DoctorNextAction {
     pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -183,6 +203,7 @@ impl DoctorNextAction {
     pub fn command(label: impl Into<String>, command: impl Into<String>) -> Self {
         Self {
             label: label.into(),
+            code: None,
             command: Some(command.into()),
             detail: None,
         }
@@ -190,6 +211,11 @@ impl DoctorNextAction {
 
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());
+        self
+    }
+
+    pub fn with_code(mut self, code: impl Into<String>) -> Self {
+        self.code = Some(code.into());
         self
     }
 }
@@ -206,8 +232,26 @@ impl DoctorCheck {
             category,
             status,
             detail: detail.into(),
+            description: None,
+            flags: Vec::new(),
+            details: Vec::new(),
             next_actions: Vec::new(),
         }
+    }
+
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn with_flags(mut self, flags: impl IntoIterator<Item = String>) -> Self {
+        self.flags.extend(flags);
+        self
+    }
+
+    pub fn with_details(mut self, details: impl IntoIterator<Item = DoctorCheckDetail>) -> Self {
+        self.details.extend(details);
+        self
     }
 
     pub fn with_next_action(mut self, action: DoctorNextAction) -> Self {

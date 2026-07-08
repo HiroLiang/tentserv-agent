@@ -1,13 +1,30 @@
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::features::cluster::domain::{ClusterRef, ClusterRouteKey};
-use crate::features::cluster::infra::{FileClusterCatalogStore, StdClusterStoreLayoutInitializer};
-use crate::features::cluster::usecases::{
-    ClusterApplyFileRequest, ClusterInspectRequest, ClusterSpecUseCase, StdClusterUseCase,
+use crate::features::auth::domain::{AuthKeyStatus, KeychainPresence, Provider};
+use crate::features::auth::usecases::{AuthStatusReport, AuthStatusRequest, AuthStatusUseCase};
+use crate::features::cluster::domain::{
+    ClusterDefinition, ClusterReadinessStatus, ClusterRef, ClusterRouteKey,
+    ClusterRouteReadinessStatus, ClusterRouteTarget, CLUSTER_SCHEMA_VERSION,
 };
-use crate::features::model::infra::FileModelCatalogStore;
-use crate::foundation::layout::{LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver};
+use crate::features::cluster::infra::{FileClusterCatalogStore, StdClusterStoreLayoutInitializer};
+use crate::features::cluster::ports::ClusterCatalogStore;
+use crate::features::cluster::usecases::{
+    ClusterApplyFileRequest, ClusterInspectRequest, ClusterReadinessInspectRequest,
+    ClusterReadinessUseCase, ClusterSpecUseCase, StdClusterReadinessUseCase, StdClusterUseCase,
+};
+use crate::features::model::domain::{
+    default_model_capability_source, ModelCapability, ModelCapabilityProof,
+    ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelFormat, ModelMetadata, ModelRef,
+    ModelSourceKind, ModelStoreLayout,
+};
+use crate::features::model::infra::{FileModelCapabilityProofStore, FileModelCatalogStore};
+use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
+use crate::features::server::domain::{CloudProvider, ServerRuntimeProfileSelection};
+use crate::foundation::error::KernelResult;
+use crate::foundation::layout::{
+    LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
+};
 
 #[test]
 fn cluster_ref_rejects_path_like_values() {
@@ -97,6 +114,219 @@ provider_model = "gpt-test"
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn readiness_reports_verified_local_route_with_inferred_profile() {
+    let root = unique_path("cluster-readiness-verified");
+    let model_ref = ModelRef::parse("a".repeat(64)).expect("model ref");
+    let profile = ServerRuntimeProfileSelection::new("local-chat-llama-cpp", 1);
+    let readiness = readiness_for(
+        &root,
+        ClusterRouteTarget::LocalModel {
+            model_ref: model_ref.clone(),
+            runtime_profile: None,
+        },
+        Some(metadata_fixture(
+            model_ref.clone(),
+            vec![ModelCapability::Chat],
+        )),
+        vec![proof_fixture(
+            model_ref,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Verified,
+            "gguf",
+            Some(profile),
+            None,
+        )],
+        FakeAuthStatus::default(),
+    );
+
+    assert_eq!(readiness.status, ClusterReadinessStatus::Ready);
+    let route = readiness.routes.first().expect("route readiness");
+    assert_eq!(route.status, ClusterRouteReadinessStatus::Verified);
+    assert_eq!(route.runtime_profile.source.as_str(), "inferred");
+    assert!(route
+        .flags
+        .contains(&"runtime-profile-inferred".to_string()));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn readiness_reports_unknown_local_route_without_proof() {
+    let root = unique_path("cluster-readiness-unknown");
+    let model_ref = ModelRef::parse("b".repeat(64)).expect("model ref");
+    let readiness = readiness_for(
+        &root,
+        ClusterRouteTarget::LocalModel {
+            model_ref: model_ref.clone(),
+            runtime_profile: Some(ServerRuntimeProfileSelection::new(
+                "local-chat-llama-cpp",
+                1,
+            )),
+        },
+        Some(metadata_fixture(model_ref, vec![ModelCapability::Chat])),
+        Vec::new(),
+        FakeAuthStatus::default(),
+    );
+
+    assert_eq!(readiness.status, ClusterReadinessStatus::Blocked);
+    let route = readiness.routes.first().expect("route readiness");
+    assert_eq!(route.status, ClusterRouteReadinessStatus::Unknown);
+    assert!(route
+        .next_actions
+        .iter()
+        .any(|action| action.code.as_str() == "verify-model-capability"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn readiness_reports_stale_local_proof() {
+    let root = unique_path("cluster-readiness-stale");
+    let model_ref = ModelRef::parse("c".repeat(64)).expect("model ref");
+    let readiness = readiness_for(
+        &root,
+        ClusterRouteTarget::LocalModel {
+            model_ref: model_ref.clone(),
+            runtime_profile: None,
+        },
+        Some(metadata_fixture(
+            model_ref.clone(),
+            vec![ModelCapability::Chat],
+        )),
+        vec![proof_fixture(
+            model_ref,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Verified,
+            "old-backend",
+            None,
+            None,
+        )],
+        FakeAuthStatus::default(),
+    );
+
+    let route = readiness.routes.first().expect("route readiness");
+    assert_eq!(route.status, ClusterRouteReadinessStatus::Stale);
+    assert!(route
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("backend changed")));
+    assert!(route.flags.contains(&"stale-proof".to_string()));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn readiness_reports_failed_local_proof_with_recovery_actions() {
+    let root = unique_path("cluster-readiness-failed");
+    let model_ref = ModelRef::parse("d".repeat(64)).expect("model ref");
+    let readiness = readiness_for(
+        &root,
+        ClusterRouteTarget::LocalModel {
+            model_ref: model_ref.clone(),
+            runtime_profile: Some(ServerRuntimeProfileSelection::new(
+                "local-chat-llama-cpp",
+                1,
+            )),
+        },
+        Some(metadata_fixture(
+            model_ref.clone(),
+            vec![ModelCapability::Chat],
+        )),
+        vec![proof_fixture(
+            model_ref,
+            ModelCapability::Chat,
+            ModelCapabilityProofStatus::Failed,
+            "gguf",
+            Some(ServerRuntimeProfileSelection::new(
+                "local-chat-llama-cpp",
+                1,
+            )),
+            Some("runtime failed to load model".to_string()),
+        )],
+        FakeAuthStatus::default(),
+    );
+
+    let route = readiness.routes.first().expect("route readiness");
+    assert_eq!(route.status, ClusterRouteReadinessStatus::Failed);
+    assert!(route
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("runtime failed")));
+    assert!(route
+        .next_actions
+        .iter()
+        .any(|action| action.code.as_str() == "clear-model-proof"));
+    assert!(route
+        .next_actions
+        .iter()
+        .any(|action| action.code.as_str() == "verify-model-capability"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn readiness_reports_unsupported_when_model_lacks_route_capability() {
+    let root = unique_path("cluster-readiness-unsupported");
+    let model_ref = ModelRef::parse("e".repeat(64)).expect("model ref");
+    let readiness = readiness_for(
+        &root,
+        ClusterRouteTarget::LocalModel {
+            model_ref: model_ref.clone(),
+            runtime_profile: None,
+        },
+        Some(metadata_fixture(
+            model_ref,
+            vec![ModelCapability::Embedding],
+        )),
+        Vec::new(),
+        FakeAuthStatus::default(),
+    );
+
+    let route = readiness.routes.first().expect("route readiness");
+    assert_eq!(route.status, ClusterRouteReadinessStatus::Unsupported);
+    assert!(route
+        .next_actions
+        .iter()
+        .any(|action| action.code.as_str() == "inspect-model"));
+    assert!(route
+        .next_actions
+        .iter()
+        .any(|action| action.code.as_str() == "choose-supported-route-target"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn readiness_reports_provider_auth_missing_without_secret_resolution() {
+    let root = unique_path("cluster-readiness-provider-auth");
+    let readiness = readiness_for(
+        &root,
+        ClusterRouteTarget::Provider {
+            provider: CloudProvider::OpenAI,
+            provider_model: "gpt-test".to_string(),
+        },
+        None,
+        Vec::new(),
+        FakeAuthStatus {
+            statuses: vec![AuthKeyStatus::local(
+                Provider::OpenAI,
+                false,
+                KeychainPresence::Unknown,
+            )],
+        },
+    );
+
+    let route = readiness.routes.first().expect("route readiness");
+    assert_eq!(route.status, ClusterRouteReadinessStatus::AuthMissing);
+    assert!(route
+        .next_actions
+        .iter()
+        .any(|action| action.code.as_str() == "set-provider-auth"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
 fn layout_input(home: &std::path::Path, mode: LayoutResolveMode) -> RuntimeLayoutInput {
     RuntimeLayoutInput {
         mode,
@@ -111,4 +341,122 @@ fn unique_path(label: &str) -> std::path::PathBuf {
         .expect("system time")
         .as_nanos();
     std::env::temp_dir().join(format!("tentgent-{label}-{nanos}"))
+}
+
+fn readiness_for(
+    root: &std::path::Path,
+    target: ClusterRouteTarget,
+    metadata: Option<ModelMetadata>,
+    proofs: Vec<ModelCapabilityProof>,
+    auth: FakeAuthStatus,
+) -> crate::features::cluster::domain::ClusterReadinessReport {
+    let home = root.join("home");
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let runtime_layout = layout_resolver
+        .resolve(layout_input(&home, LayoutResolveMode::Create))
+        .expect("runtime layout");
+    let model_layout = ModelStoreLayout::from_models_dir(runtime_layout.models_dir.clone());
+    let model_catalog = FileModelCatalogStore;
+    if let Some(metadata) = metadata {
+        model_catalog
+            .save_model_metadata(&model_layout, &metadata)
+            .expect("save model metadata");
+    }
+    let proof_store = FileModelCapabilityProofStore;
+    for proof in proofs {
+        proof_store
+            .save_capability_proof(&model_layout, &proof)
+            .expect("save proof");
+    }
+
+    let cluster_ref = ClusterRef::parse("local-assistant").expect("cluster ref");
+    let definition = ClusterDefinition {
+        schema_version: CLUSTER_SCHEMA_VERSION,
+        cluster_ref: cluster_ref.clone(),
+        routes: [(ClusterRouteKey::Chat, target)].into_iter().collect(),
+    };
+    let cluster_store =
+        crate::features::cluster::domain::ClusterStoreLayout::from_home_dir(home.clone());
+    let cluster_catalog = FileClusterCatalogStore;
+    cluster_catalog
+        .save_cluster(&cluster_store, &definition)
+        .expect("save cluster");
+
+    StdClusterReadinessUseCase::new(
+        &layout_resolver,
+        &cluster_catalog,
+        &model_catalog,
+        &proof_store,
+        &auth,
+    )
+    .inspect_cluster_readiness(ClusterReadinessInspectRequest {
+        layout: layout_input(&home, LayoutResolveMode::ReadOnly),
+        cluster_ref,
+    })
+    .expect("readiness")
+    .readiness
+}
+
+fn metadata_fixture(model_ref: ModelRef, capabilities: Vec<ModelCapability>) -> ModelMetadata {
+    ModelMetadata {
+        short_ref: model_ref.short_ref().to_string(),
+        model_ref,
+        source_kind: ModelSourceKind::Local,
+        source_repo: None,
+        source_revision: None,
+        source_path: Some("/tmp/source".to_string()),
+        primary_format: ModelFormat::Gguf,
+        detected_formats: vec![ModelFormat::Gguf],
+        mlx_runtime_family: None,
+        model_capabilities: capabilities,
+        model_capability_source: default_model_capability_source(),
+        file_count: 1,
+        total_bytes: 11,
+        imported_at: "2026-07-08T00:00:00Z".to_string(),
+    }
+}
+
+fn proof_fixture(
+    model_ref: ModelRef,
+    capability: ModelCapability,
+    status: ModelCapabilityProofStatus,
+    backend: impl Into<String>,
+    runtime_profile: Option<ServerRuntimeProfileSelection>,
+    error: Option<String>,
+) -> ModelCapabilityProof {
+    ModelCapabilityProof {
+        model_ref,
+        capability,
+        status,
+        source: ModelCapabilityProofSource::ManualProbe,
+        primary_format: ModelFormat::Gguf,
+        mlx_runtime_family: None,
+        backend: backend.into(),
+        runtime_version: None,
+        runtime_profile: runtime_profile
+            .as_ref()
+            .map(|profile| profile.profile_id.clone()),
+        runtime_profile_version: runtime_profile.map(|profile| profile.profile_version),
+        server_ref: None,
+        checked_at: "2026-07-08T00:00:00Z".to_string(),
+        error,
+    }
+}
+
+#[derive(Default)]
+struct FakeAuthStatus {
+    statuses: Vec<AuthKeyStatus>,
+}
+
+impl AuthStatusUseCase for FakeAuthStatus {
+    fn status(&self, request: AuthStatusRequest) -> KernelResult<AuthStatusReport> {
+        Ok(AuthStatusReport {
+            statuses: self
+                .statuses
+                .iter()
+                .filter(|status| request.providers.contains(&status.provider))
+                .cloned()
+                .collect(),
+        })
+    }
 }

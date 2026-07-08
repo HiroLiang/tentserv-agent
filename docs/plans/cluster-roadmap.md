@@ -172,9 +172,9 @@ longer enough.
   broker auth, cloud rerank, shared registries, and conversion automation remain
   later cluster extensions until these five slices are understood.
 
-## Active #115 Direction
+## Completed #115 Record
 
-The accepted direction for `#115` is Plan B:
+`#115` implemented Plan B:
 
 - `cluster` is the public object and public command/API name.
 - `target` or `route target` is an internal structure inside a cluster
@@ -226,6 +226,161 @@ pre-expanding one cluster route per adapter. `#115` should validate only the
 base route references needed to store the cluster safely. Adapter existence,
 compatibility, backend support, and execution support continue to be validated
 by the existing request-time server adapter path.
+
+## Completed #116 Record
+
+`#116` implemented diagnostics-only route readiness.
+
+`tentgent cluster apply <CLUSTER_TOML>` and REST cluster `PUT` should continue
+to answer only whether the definition is valid and stored. They should not run
+readiness checks, start runtimes, verify proofs, read secrets, or mutate proof
+state. Detailed route readiness belongs to `tentgent cluster inspect
+<cluster_ref>` and REST cluster inspect responses after the definition is
+stored.
+
+Cluster readiness should be computed from existing state at inspect/doctor
+time. It should not be written back into `cluster.toml`, and it should not add
+a separate cluster readiness cache. The resolver should read cluster
+definition, model metadata, capability metadata, runtime profile selection,
+stored model support proofs, provider support metadata, and non-invasive auth
+metadata.
+
+`cluster inspect` should show the cluster definition and route status together:
+
+- first a compact cluster summary with `cluster_ref`, `schema_version`,
+  aggregate readiness, configured route list, and definition path;
+- then a route table where each configured route shows route key, target kind,
+  target, capability, runtime profile, readiness status, and next action;
+- then a problem/details section only for routes that need attention.
+
+Partial clusters are valid. The main route table should list configured routes.
+Unconfigured capabilities may appear in a compact summary or reminder, but they
+should not be treated as warnings unless the user asks to run a missing route in
+a later routing slice.
+
+Runtime profile handling should be explicit but non-mutating. If a local route
+omits a runtime profile and the existing server/runtime-profile rules can infer
+one, inspect output should show both the configured value and the effective
+inferred value. The resolver must not rewrite the TOML automatically. It may
+attach a `runtime-profile-inferred` flag and a next action that suggests adding
+the inferred profile to the cluster definition for reproducibility.
+
+Provider route readiness must not trigger Keychain prompts, network calls, or
+secret reads. It may read auth preferences, environment/file presence, and
+cached metadata that are already safe for observational diagnostics. Missing
+provider auth should produce an auth-related warning and a next action, but
+invalid cloud credentials should not be proven by this slice.
+
+Auth checks should use the existing auth use-case separation instead of
+open-coded probing. `AuthStatusUseCase` is the non-secret status boundary and
+should be used for cluster readiness with keychain presence probing disabled by
+default. `AuthSecretResolverUseCase` and `AuthSecretValidationUseCase` are for
+secret reads, Keychain unlock behavior, and network validation; cluster
+readiness must not call them. Cluster readiness code should not receive secret
+material. If the existing status path reads environment or file secret material
+internally only to determine presence, keep that containment inside the auth
+boundary or introduce a presence-only auth summary adapter. If cluster
+readiness, CLI doctor, REST doctor, or auth status need the same auth summary
+shape, `#116` should consolidate that summary behind a shared kernel helper or
+use-case adapter rather than duplicating per-entrypoint logic.
+
+CLI `doctor` and REST `/v1/doctor` should be aligned. Both should include a
+cluster readiness summary, while detailed per-route state stays in cluster
+inspect. Doctor checks should be short and should point to
+`tentgent cluster inspect <cluster_ref>` or the corresponding REST cluster
+inspect resource for route-level detail.
+
+Doctor should add a first-class `cluster` category instead of folding cluster
+readiness into `capability` or `runtime`. CLI and REST doctor output should use
+that category consistently so users can distinguish environment capability
+checks from cluster route diagnostics.
+
+REST response shapes should be structured and additive. Cluster inspect should
+include an aggregate `readiness` object and per-route `readiness` plus
+`next_actions`. Doctor checks should keep the existing fields and may add
+structured fields such as:
+
+- `category`
+- `description`
+- `flags`
+- `details`
+- `next_actions[].code`
+
+If a new structured field overlaps an older field, keep the older field for
+backward compatibility and mark it deprecated in the relevant contract or DTO
+documentation. For example, if `description` becomes the canonical readable
+message, `detail` should remain populated as a legacy alias until a later major
+release removes it.
+
+Aggregate cluster readiness should use the first-version vocabulary:
+
+- `ready`: every configured route is ready enough to use;
+- `partial`: at least one configured route is ready and at least one route
+  needs attention;
+- `blocked`: every configured route needs attention or a configured route has a
+  blocking definition/readiness error;
+- `unknown`: readiness could not be computed because supporting state could not
+  be read.
+
+The first route-readiness next-action codes should be defined in `#116` rather
+than deferred to a later slice. Planned codes are:
+
+- `inspect-cluster`
+- `inspect-model`
+- `verify-model-capability`
+- `clear-model-proof`
+- `set-provider-auth`
+- `update-cluster-definition`
+- `choose-supported-route-target`
+
+Kernel readiness results should prefer structured action codes and route state.
+CLI commands can render those actions as copyable commands, while REST can
+return the action code, label, command, and description.
+
+`#116` implementation should keep CLI rendering thin. The readiness resolver,
+route summaries, aggregate status, flags, details, and action codes should live
+in kernel-owned types so CLI cluster inspect, CLI doctor, REST cluster inspect,
+and REST doctor all consume the same result model.
+
+Implementation order for `#116`:
+
+1. Define kernel route-readiness domain types and action-code vocabulary.
+2. Add a read-only cluster-readiness resolver that reuses existing cluster,
+   model, support-status, proof, runtime-profile, provider-support, and
+   non-secret auth-status boundaries.
+3. Extend cluster inspect use cases and REST cluster inspect DTOs with
+   aggregate and per-route readiness data.
+4. Render CLI `cluster inspect` as summary, route table, and problem details.
+5. Add cluster-category doctor summary checks to both CLI doctor and REST
+   `/v1/doctor`.
+6. Update cluster, HTTP daemon, doctor, and user command docs for the new
+   structured fields and any deprecated legacy aliases.
+7. Test local route states, provider auth/readiness states, doctor summary
+   alignment, and REST response shape.
+
+Implementation outcome for `#116`:
+
+- kernel-owned route-readiness status, aggregate status, flags, details, and
+  next-action codes;
+- read-only cluster readiness inspect/list use cases that reuse existing
+  cluster, model, proof, runtime-profile, provider-support, and non-secret auth
+  status boundaries;
+- CLI `cluster inspect` summary, route table, and problem details;
+- REST `GET /v1/clusters/{cluster_ref}` readiness fields while `PUT` remains
+  definition-only;
+- CLI doctor and REST `/v1/doctor` cluster-category summary checks;
+- contract and user docs aligned with the diagnostics-only boundary;
+- no cluster request routing, no cluster run/start lifecycle, no readiness
+  cache, no proof mutation, no secret read, and no runtime startup.
+
+The next active slice is `#117`:
+
+- implement native local cluster routing for configured `chat`, `embedding`,
+  `rerank`, `audio-transcription`, and `vision-chat` routes;
+- preserve existing direct single-model server behavior;
+- keep route failures scoped to the selected route;
+- return explicit missing-route, unsupported-route, or not-ready route errors
+  instead of hiding them behind fallback behavior.
 
 ## GitHub Issue And Branch Alignment
 

@@ -6,7 +6,10 @@ use std::path::PathBuf;
 
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::features::model::domain::{ModelCapability, ModelRef};
+use crate::features::model::{
+    domain::{ModelCapability, ModelRef},
+    support_status::{ModelSupportEvidenceKind, ModelSupportStatus},
+};
 use crate::features::server::domain::{
     CloudProvider, ServerCapability, ServerRuntimeProfileSelection,
 };
@@ -223,6 +226,200 @@ pub struct ClusterInspection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClusterRemoveOutcome {
     pub inspection: ClusterInspection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClusterReadinessStatus {
+    Ready,
+    Partial,
+    Blocked,
+    Unknown,
+}
+
+impl ClusterReadinessStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Partial => "partial",
+            Self::Blocked => "blocked",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for ClusterReadinessStatus {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClusterRouteReadinessStatus {
+    Ready,
+    Verified,
+    Supported,
+    Unknown,
+    Stale,
+    Failed,
+    Unsupported,
+    AuthMissing,
+    AuthAttention,
+    Unavailable,
+}
+
+impl ClusterRouteReadinessStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Verified => "verified",
+            Self::Supported => "supported",
+            Self::Unknown => "unknown",
+            Self::Stale => "stale",
+            Self::Failed => "failed",
+            Self::Unsupported => "unsupported",
+            Self::AuthMissing => "auth-missing",
+            Self::AuthAttention => "auth-attention",
+            Self::Unavailable => "unavailable",
+        }
+    }
+
+    pub const fn is_ready(self) -> bool {
+        matches!(self, Self::Ready | Self::Verified | Self::Supported)
+    }
+
+    pub const fn needs_attention(self) -> bool {
+        !self.is_ready()
+    }
+}
+
+impl fmt::Display for ClusterRouteReadinessStatus {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClusterRuntimeProfileSource {
+    Configured,
+    Inferred,
+    None,
+    Unavailable,
+}
+
+impl ClusterRuntimeProfileSource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Configured => "configured",
+            Self::Inferred => "inferred",
+            Self::None => "none",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+impl fmt::Display for ClusterRuntimeProfileSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterRuntimeProfileReadiness {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configured: Option<ServerRuntimeProfileSelection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective: Option<ServerRuntimeProfileSelection>,
+    pub source: ClusterRuntimeProfileSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClusterReadinessActionCode {
+    InspectCluster,
+    InspectModel,
+    VerifyModelCapability,
+    ClearModelProof,
+    SetProviderAuth,
+    UpdateClusterDefinition,
+    ChooseSupportedRouteTarget,
+}
+
+impl ClusterReadinessActionCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InspectCluster => "inspect-cluster",
+            Self::InspectModel => "inspect-model",
+            Self::VerifyModelCapability => "verify-model-capability",
+            Self::ClearModelProof => "clear-model-proof",
+            Self::SetProviderAuth => "set-provider-auth",
+            Self::UpdateClusterDefinition => "update-cluster-definition",
+            Self::ChooseSupportedRouteTarget => "choose-supported-route-target",
+        }
+    }
+}
+
+impl fmt::Display for ClusterReadinessActionCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterReadinessAction {
+    pub code: ClusterReadinessActionCode,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterReadinessDetail {
+    pub name: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterRouteReadiness {
+    pub route: ClusterRouteKey,
+    pub kind: String,
+    pub target: String,
+    pub capability: ModelCapability,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    pub runtime_profile: ClusterRuntimeProfileReadiness,
+    pub status: ClusterRouteReadinessStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_status: Option<ModelSupportStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<ModelSupportEvidenceKind>,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub details: Vec<ClusterReadinessDetail>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_actions: Vec<ClusterReadinessAction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterReadinessReport {
+    pub status: ClusterReadinessStatus,
+    pub ready_route_count: usize,
+    pub attention_route_count: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
+    pub routes: Vec<ClusterRouteReadiness>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub details: Vec<ClusterReadinessDetail>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

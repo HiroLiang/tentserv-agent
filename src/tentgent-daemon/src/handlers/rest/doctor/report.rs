@@ -1,18 +1,29 @@
-use axum::{extract::State, Json};
-use tentgent_kernel::features::{
-    doctor::{
-        domain::{DoctorCheck, DoctorNextAction, DoctorReport, DoctorReportRequest, DoctorSummary},
-        usecases::{
-            DoctorCapabilityReadPolicy, DoctorCommandCheckPolicy, DoctorReportUseCase,
-            DoctorReportUseCaseRequest,
+use axum::{Json, extract::State};
+use tentgent_kernel::{
+    features::{
+        cluster::usecases::{
+            ClusterReadinessListRequest, ClusterReadinessUseCase, cluster_readiness_doctor_checks,
         },
+        doctor::{
+            domain::{
+                DoctorCheck, DoctorCheckCategory, DoctorCheckDetail, DoctorNextAction,
+                DoctorReport, DoctorReportRequest, DoctorSummary,
+            },
+            usecases::{
+                DoctorCapabilityReadPolicy, DoctorCommandCheckPolicy, DoctorReportUseCase,
+                DoctorReportUseCaseRequest,
+            },
+        },
+        runtime::domain::PythonRuntimeResolutionInput,
     },
-    runtime::domain::PythonRuntimeResolutionInput,
+    foundation::layout::LayoutResolveMode,
 };
 
 use crate::transport::rest::{error::RestError, state::RestState};
 
-use super::dto::{DoctorCheckItem, DoctorNextActionItem, DoctorResponse, DoctorSummaryItem};
+use super::dto::{
+    DoctorCheckDetailItem, DoctorCheckItem, DoctorNextActionItem, DoctorResponse, DoctorSummaryItem,
+};
 
 pub async fn report(State(state): State<RestState>) -> Result<Json<DoctorResponse>, RestError> {
     let result = state
@@ -29,7 +40,43 @@ pub async fn report(State(state): State<RestState>) -> Result<Json<DoctorRespons
         })
         .map_err(|err| RestError::kernel("doctor_report_failed", err))?;
 
-    Ok(Json(doctor_response(result.report)))
+    Ok(Json(doctor_response(append_cluster_readiness_checks(
+        &state,
+        result.report,
+    ))))
+}
+
+fn append_cluster_readiness_checks(state: &RestState, report: DoctorReport) -> DoctorReport {
+    let mut checks = report.checks;
+    checks.extend(cluster_readiness_checks(state));
+    DoctorReport::from_checks(checks)
+}
+
+fn cluster_readiness_checks(state: &RestState) -> Vec<DoctorCheck> {
+    let result = match state
+        .app()
+        .services()
+        .kernel()
+        .cluster_readiness_usecase()
+        .list_cluster_readiness(ClusterReadinessListRequest {
+            layout: state.app().layout_input(LayoutResolveMode::ReadOnly),
+        }) {
+        Ok(result) => result,
+        Err(err) => {
+            return vec![DoctorCheck::warn(
+                DoctorCheckCategory::Cluster,
+                "cluster readiness",
+                format!("cluster readiness checks unavailable: {err}"),
+            )];
+        }
+    };
+
+    cluster_readiness_doctor_checks(result.clusters.iter().map(|cluster| {
+        (
+            &cluster.inspection.definition.cluster_ref,
+            &cluster.readiness,
+        )
+    }))
 }
 
 fn doctor_response(report: DoctorReport) -> DoctorResponse {
@@ -52,8 +99,16 @@ fn doctor_summary_item(summary: DoctorSummary) -> DoctorSummaryItem {
 fn doctor_check_item(check: DoctorCheck) -> DoctorCheckItem {
     DoctorCheckItem {
         name: check.name,
+        category: check.category.as_str().to_string(),
         status: check.status.as_str().to_string(),
+        description: check.description,
         detail: check.detail,
+        flags: check.flags,
+        details: check
+            .details
+            .into_iter()
+            .map(doctor_check_detail_item)
+            .collect(),
         next_actions: check
             .next_actions
             .into_iter()
@@ -62,9 +117,18 @@ fn doctor_check_item(check: DoctorCheck) -> DoctorCheckItem {
     }
 }
 
+fn doctor_check_detail_item(detail: DoctorCheckDetail) -> DoctorCheckDetailItem {
+    DoctorCheckDetailItem {
+        name: detail.name,
+        description: detail.description,
+        flags: detail.flags,
+    }
+}
+
 fn doctor_next_action_item(action: DoctorNextAction) -> DoctorNextActionItem {
     DoctorNextActionItem {
         label: action.label,
+        code: action.code,
         command: action.command,
         detail: action.detail,
     }

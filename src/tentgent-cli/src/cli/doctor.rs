@@ -1,7 +1,7 @@
 use std::io::IsTerminal;
 
 use console::style;
-use miette::{miette, IntoDiagnostic, Result};
+use miette::{IntoDiagnostic, Result, miette};
 use tentgent_kernel::{
     capabilities::{
         infra::{FileCapabilityStateStore, StdMachineCapabilitiesProbe},
@@ -14,6 +14,13 @@ use tentgent_kernel::{
             },
             infra::{FileAuthMetadataStore, StdAuthEnvSecretProbe, SystemKeychainAuthSecretStore},
             usecases::{AuthStatusRequest, AuthStatusUseCase, StdAuthStatusUseCase},
+        },
+        cluster::{
+            infra::FileClusterCatalogStore,
+            usecases::{
+                ClusterReadinessListRequest, ClusterReadinessUseCase, StdClusterReadinessUseCase,
+                cluster_readiness_doctor_checks,
+            },
         },
         doctor::{
             domain::{
@@ -62,10 +69,10 @@ use tentgent_kernel::{
 use super::{
     commands::DoctorCommand,
     model_support::{
-        model_support_next_action, model_support_recovery_guidance, model_support_summaries,
-        support_status_is_healthy, ModelSupportSummary,
+        ModelSupportSummary, model_support_next_action, model_support_recovery_guidance,
+        model_support_summaries, support_status_is_healthy,
     },
-    runtime_footprint::{collect_runtime_footprint_best_effort, FootprintEntry},
+    runtime_footprint::{FootprintEntry, collect_runtime_footprint_best_effort},
 };
 
 pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
@@ -83,6 +90,8 @@ pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
     };
     progress.step("checking local model support");
     let report = append_model_support_checks(&kernel, report);
+    progress.step("checking cluster readiness");
+    let report = append_cluster_readiness_checks(&kernel, report);
     progress.step("checking provider auth");
     let report = append_auth_checks(&kernel, report);
 
@@ -131,6 +140,7 @@ struct CliDoctorKernel {
     capability_probe: StdMachineCapabilitiesProbe,
     model_catalog: FileModelCatalogStore,
     model_proofs: FileModelCapabilityProofStore,
+    cluster_catalog: FileClusterCatalogStore,
     path_probe: StdDoctorPathProbe,
     command_probe: StdDoctorCommandProbe,
     runtime_mapper: StdDoctorRuntimeCheckMapper,
@@ -162,6 +172,7 @@ impl CliDoctorKernel {
             capability_probe: StdMachineCapabilitiesProbe,
             model_catalog: FileModelCatalogStore,
             model_proofs: FileModelCapabilityProofStore,
+            cluster_catalog: FileClusterCatalogStore,
             path_probe: StdDoctorPathProbe,
             command_probe: StdDoctorCommandProbe,
             runtime_mapper: StdDoctorRuntimeCheckMapper,
@@ -289,6 +300,50 @@ fn append_auth_checks(kernel: &CliDoctorKernel, report: DoctorReport) -> DoctorR
     DoctorReport::from_checks(checks)
 }
 
+fn append_cluster_readiness_checks(kernel: &CliDoctorKernel, report: DoctorReport) -> DoctorReport {
+    let mut checks = report.checks;
+    checks.extend(cluster_readiness_checks(kernel));
+    DoctorReport::from_checks(checks)
+}
+
+fn cluster_readiness_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
+    let auth = StdAuthStatusUseCase::new(
+        &kernel.auth_env_probe,
+        &kernel.auth_keychain_store,
+        &kernel.auth_metadata_store,
+    );
+    let readiness = StdClusterReadinessUseCase::new(
+        &kernel.layout_resolver,
+        &kernel.cluster_catalog,
+        &kernel.model_catalog,
+        &kernel.model_proofs,
+        &auth,
+    );
+    let result = match readiness.list_cluster_readiness(ClusterReadinessListRequest {
+        layout: RuntimeLayoutInput {
+            mode: LayoutResolveMode::ReadOnly,
+            home_dir: None,
+            data_root_dir: None,
+        },
+    }) {
+        Ok(result) => result,
+        Err(err) => {
+            return vec![DoctorCheck::warn(
+                DoctorCheckCategory::Cluster,
+                "cluster readiness",
+                format!("cluster readiness checks unavailable: {err}"),
+            )];
+        }
+    };
+
+    cluster_readiness_doctor_checks(result.clusters.iter().map(|cluster| {
+        (
+            &cluster.inspection.definition.cluster_ref,
+            &cluster.readiness,
+        )
+    }))
+}
+
 fn auth_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
     let auth = StdAuthStatusUseCase::new(
         &kernel.auth_env_probe,
@@ -297,15 +352,17 @@ fn auth_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
     );
     match auth.status(AuthStatusRequest::all(AuthEnvLoadPolicy::CwdDotenvOverride)) {
         Ok(report) => vec![provider_auth_check(&report.statuses)],
-        Err(err) => vec![DoctorCheck::warn(
-            DoctorCheckCategory::Auth,
-            "provider auth",
-            format!("provider auth status unavailable: {err}"),
-        )
-        .with_next_action(DoctorNextAction::command(
-            "Inspect provider auth",
-            "tentgent auth status",
-        ))],
+        Err(err) => vec![
+            DoctorCheck::warn(
+                DoctorCheckCategory::Auth,
+                "provider auth",
+                format!("provider auth status unavailable: {err}"),
+            )
+            .with_next_action(DoctorNextAction::command(
+                "Inspect provider auth",
+                "tentgent auth status",
+            )),
+        ],
     }
 }
 
@@ -852,11 +909,13 @@ mod tests {
             check.next_actions[0].command.as_deref(),
             Some("tentgent auth openai set")
         );
-        assert!(check.next_actions[0]
-            .detail
-            .as_deref()
-            .expect("detail")
-            .contains("OPENAI_API_KEY"));
+        assert!(
+            check.next_actions[0]
+                .detail
+                .as_deref()
+                .expect("detail")
+                .contains("OPENAI_API_KEY")
+        );
     }
 
     #[test]
