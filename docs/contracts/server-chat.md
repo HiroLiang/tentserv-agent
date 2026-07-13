@@ -4,6 +4,8 @@ This document defines the HTTP chat request contract for direct model-bound
 servers. Local model servers run through the Python model-runtime daemon.
 Cloud provider servers run as a Rust worker launched by `tentgent server run
 openai:<model>`, `anthropic:<model>`, `claude:<model>`, or `gemini:<model>`.
+Cluster servers launched by `tentgent cluster run <cluster-ref>` use this same
+local request contract after selecting `routes.chat`.
 
 ## Endpoint
 
@@ -27,6 +29,8 @@ For model-bound servers launched through `tentgent server run`, `model` and
 `model_kind` are intentionally omitted from the request. Rust bound the model
 when it started the server. Direct Python model-runtime callers that are not
 using a stored server may still send explicit runtime model fields.
+For cluster servers, the cluster definition binds the model. Caller `model`
+fields on provider-shaped chat routes do not override `routes.chat`.
 
 Non-streaming responses are JSON encoded as UTF-8. Non-ASCII text should remain
 readable in the response body rather than being escaped as `\uXXXX` sequences.

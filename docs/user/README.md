@@ -29,8 +29,8 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
   smoke expectations, and post-1.0 boundaries.
 - [commands.md](./commands.md)
   Common commands for auth, models, adapters, datasets, chat, media workflows,
-  servers, daemon, sessions, LoRA training, model support proofs, and proof
-  clearing after failed local server launches.
+  clusters, servers, daemon, sessions, LoRA training, model support proofs, and
+  proof clearing after failed local server launches.
 - [api.md](./api.md)
   User-facing daemon HTTP API reference, including request shapes, result
   routes, job behavior, multipart media upload semantics, and HTTP error

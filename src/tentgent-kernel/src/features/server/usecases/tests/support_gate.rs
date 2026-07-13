@@ -16,8 +16,10 @@ fn standard_server_usecase_allows_verified_local_support_status() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8790),
             lazy_load: false,
@@ -43,8 +45,10 @@ fn standard_server_usecase_allows_catalog_supported_local_status() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8791),
             lazy_load: false,
@@ -72,8 +76,10 @@ fn standard_server_usecase_rejects_failed_local_support_status() {
     let err = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8792),
             lazy_load: false,
@@ -101,8 +107,10 @@ fn standard_server_usecase_rejects_unsupported_local_support_status() {
     let err = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::AudioTranscription),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::AudioTranscription),
+            },
             host: None,
             port: Some(8798),
             lazy_load: false,
@@ -127,8 +135,10 @@ fn standard_server_usecase_rejects_unknown_support_without_override() {
     let err = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8793),
             lazy_load: false,
@@ -162,8 +172,10 @@ fn standard_server_usecase_rejects_missing_model_files_even_with_override() {
     let err = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8799),
             lazy_load: false,
@@ -188,8 +200,10 @@ fn standard_server_usecase_allows_unknown_support_with_override() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8794),
             lazy_load: false,
@@ -210,8 +224,10 @@ fn standard_server_usecase_rechecks_existing_specs_on_start() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8795),
             lazy_load: false,
@@ -249,8 +265,10 @@ fn standard_server_usecase_rejects_stale_support_without_override() {
     let err = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8796),
             lazy_load: false,
@@ -280,8 +298,10 @@ fn standard_server_usecase_allows_stale_support_with_override() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8797),
             lazy_load: false,

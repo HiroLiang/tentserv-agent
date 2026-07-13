@@ -1,7 +1,7 @@
 //! Server use case ports.
 
 use crate::features::server::domain::{
-    LaunchMode, ServerCapability, ServerInspection, ServerPrepareOutcome, ServerRef,
+    LaunchMode, ServerInspection, ServerPrepareOutcome, ServerPrepareTarget, ServerRef,
     ServerRefSelector, ServerRemoveOutcome, ServerStopOutcome, ServerStoreLayout, ServerSummary,
 };
 use crate::foundation::error::KernelResult;
@@ -11,8 +11,7 @@ use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerPrepareRequest {
     pub layout: RuntimeLayoutInput,
-    pub runtime_ref: String,
-    pub capability: Option<ServerCapability>,
+    pub target: ServerPrepareTarget,
     pub host: Option<String>,
     pub port: Option<u16>,
     pub lazy_load: bool,

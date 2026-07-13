@@ -9,7 +9,7 @@ use tentgent_kernel::features::cluster::domain::{
     ClusterRouteTarget,
 };
 use tentgent_kernel::features::cluster::infra::{
-    FileClusterCatalogStore, StdClusterStoreLayoutInitializer,
+    FileClusterCatalogStore, FileClusterServerReferenceProbe, StdClusterStoreLayoutInitializer,
 };
 use tentgent_kernel::features::cluster::usecases::{
     ClusterApplyFileRequest, ClusterListRequest, ClusterReadinessInspectRequest,
@@ -25,10 +25,11 @@ use tentgent_kernel::foundation::layout::{
 
 use super::commands::ClusterCommands;
 
-pub fn handle_cluster_command(action: ClusterCommands) -> Result<()> {
+pub async fn handle_cluster_command(action: ClusterCommands) -> Result<()> {
     let cluster = CliClusterKernel::new();
 
     match action {
+        ClusterCommands::Run(command) => super::server::run_cluster_server(command).await?,
         ClusterCommands::Apply { path, home, force } => {
             let result = cluster
                 .usecase()
@@ -97,6 +98,7 @@ struct CliClusterKernel {
     model_proofs: FileModelCapabilityProofStore,
     auth_env_probe: StdAuthEnvSecretProbe,
     auth_keychain_store: SystemKeychainAuthSecretStore,
+    server_refs: FileClusterServerReferenceProbe,
 }
 
 impl CliClusterKernel {
@@ -109,15 +111,17 @@ impl CliClusterKernel {
             model_proofs: FileModelCapabilityProofStore,
             auth_env_probe: StdAuthEnvSecretProbe,
             auth_keychain_store: SystemKeychainAuthSecretStore::new(),
+            server_refs: FileClusterServerReferenceProbe,
         }
     }
 
     fn usecase(&self) -> StdClusterUseCase<'_> {
-        StdClusterUseCase::new(
+        StdClusterUseCase::new_with_server_refs(
             &self.layout_resolver,
             &self.layout_initializer,
             &self.catalog,
             &self.model_catalog,
+            &self.server_refs,
         )
     }
 

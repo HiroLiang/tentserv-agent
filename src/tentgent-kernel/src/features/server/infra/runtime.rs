@@ -103,19 +103,15 @@ impl<'a> ServerRuntimeLauncher<'a> {
         request: &ServerRuntimeLaunchRequest,
         bound_port: u16,
     ) -> KernelResult<Command> {
-        let entrypoint = match request.inspection.spec.runtime_kind {
-            ServerRuntimeKind::Local => std::env::current_exe().map_err(|err| {
-                server_runtime_error(format!("failed to resolve current Rust executable: {err}"))
-            })?,
-            ServerRuntimeKind::Cloud => std::env::current_exe().map_err(|err| {
-                server_runtime_error(format!("failed to resolve current Rust executable: {err}"))
-            })?,
-        };
+        let entrypoint = std::env::current_exe().map_err(|err| {
+            server_runtime_error(format!("failed to resolve current Rust executable: {err}"))
+        })?;
         let parts = server_runtime_command_parts(
             &request.inspection.spec,
             &request.layout.home_dir,
             request.auth.as_ref(),
             bound_port,
+            request.allow_unverified,
         )?;
         let mut command = Command::new(entrypoint);
         command
@@ -140,6 +136,7 @@ pub struct ServerRuntimeLaunchRequest {
     pub runtime: PythonRuntimeLayout,
     pub inspection: ServerInspection,
     pub auth: Option<AuthSecretMaterial>,
+    pub allow_unverified: bool,
 }
 
 pub struct SpawnedForegroundServer {
@@ -173,6 +170,7 @@ pub(super) fn server_runtime_command_parts(
     home_dir: &std::path::Path,
     auth: Option<&AuthSecretMaterial>,
     bound_port: u16,
+    allow_unverified: bool,
 ) -> KernelResult<ServerRuntimeCommandParts> {
     let mut env = Vec::new();
     let env_remove = vec![DAEMON_TOKEN_ENV_VAR.to_string()];
@@ -181,6 +179,9 @@ pub(super) fn server_runtime_command_parts(
         ServerRuntimeKind::Local => local_model_runtime_command_args(spec, home_dir, bound_port)?,
         ServerRuntimeKind::Cloud => {
             cloud_server_runtime_command_args(spec, home_dir, auth, &mut env, bound_port)?
+        }
+        ServerRuntimeKind::Cluster => {
+            cluster_server_runtime_command_args(spec, home_dir, bound_port, allow_unverified)?
         }
     };
 
@@ -207,7 +208,15 @@ fn local_model_runtime_command_args(
         "--server-ref".to_string(),
         spec.server_ref.to_string(),
         "--capability".to_string(),
-        spec.capability.as_str().to_string(),
+        spec.capability
+            .ok_or_else(|| {
+                server_runtime_error(format!(
+                    "local server spec `{}` is missing capability metadata",
+                    spec.short_ref
+                ))
+            })?
+            .as_str()
+            .to_string(),
         "--host".to_string(),
         spec.host.clone(),
         "--port".to_string(),
@@ -228,6 +237,43 @@ fn local_model_runtime_command_args(
     }
     if let Some(idle_seconds) = spec.idle_seconds {
         args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
+    }
+    Ok(args)
+}
+
+fn cluster_server_runtime_command_args(
+    spec: &ServerSpec,
+    home_dir: &std::path::Path,
+    bound_port: u16,
+    allow_unverified: bool,
+) -> KernelResult<Vec<String>> {
+    let cluster_ref = spec.cluster_ref.as_ref().ok_or_else(|| {
+        server_runtime_error(format!(
+            "cluster server spec `{}` is missing cluster_ref",
+            spec.short_ref
+        ))
+    })?;
+    let mut args = vec![
+        "__cluster-server-runtime".to_string(),
+        "--server-ref".to_string(),
+        spec.server_ref.to_string(),
+        "--cluster-ref".to_string(),
+        cluster_ref.to_string(),
+        "--host".to_string(),
+        spec.host.clone(),
+        "--port".to_string(),
+        bound_port.to_string(),
+        "--home".to_string(),
+        home_dir.display().to_string(),
+    ];
+    if spec.lazy_load {
+        args.push("--lazy-load".to_string());
+    }
+    if let Some(idle_seconds) = spec.idle_seconds {
+        args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
+    }
+    if allow_unverified {
+        args.push("--allow-unverified".to_string());
     }
     Ok(args)
 }

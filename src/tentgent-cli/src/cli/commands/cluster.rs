@@ -1,9 +1,16 @@
 use std::path::PathBuf;
 
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
 #[derive(Debug, Subcommand)]
 pub enum ClusterCommands {
+    /// Create and launch a server backed by one stored cluster definition.
+    #[command(
+        name = "run",
+        about = "Create and launch a server backed by one stored cluster definition.",
+        long_about = "Create or reuse one stored server spec targeting a cluster and launch it immediately. The cluster must declare a local-model `routes.chat` target. Other configured routes are selected by HTTP endpoint family. The resulting process remains visible through `tentgent server ls`, `inspect`, `stop`, and `rm`."
+    )]
+    Run(ClusterRunCommand),
     /// Validate and replace one stored cluster definition from TOML.
     #[command(
         name = "apply",
@@ -82,4 +89,52 @@ pub enum ClusterCommands {
         #[arg(short = 'H', long, value_name = "HOME")]
         home: Option<PathBuf>,
     },
+}
+
+#[derive(Debug, Args)]
+pub struct ClusterRunCommand {
+    /// Stored cluster ref, for example `local-assistant`.
+    #[arg(value_name = "CLUSTER_REF")]
+    pub cluster_ref: String,
+    /// Optional Tentgent runtime home override for cluster and server state.
+    #[arg(short = 'H', long, value_name = "HOME")]
+    pub home: Option<PathBuf>,
+    /// Host interface for the cluster HTTP listener.
+    #[arg(short = 'a', long, value_name = "HOST")]
+    pub host: Option<String>,
+    /// Fixed TCP port. Omit to auto-scan from 8780.
+    #[arg(short = 'p', long, value_name = "PORT")]
+    pub port: Option<u16>,
+    /// Record the shared server lazy-load preference in the stored spec.
+    #[arg(short = 'l', long)]
+    pub lazy_load: bool,
+    /// Auto-release each loaded model runtime after N idle seconds.
+    #[arg(short = 'i', long = "idle-seconds", value_name = "N")]
+    pub idle_seconds: Option<u64>,
+    /// Allow unknown or stale local route support evidence for this launch.
+    #[arg(long)]
+    pub allow_unverified: bool,
+    /// Launch the initial cluster server process in background mode.
+    #[arg(short = 'd', long)]
+    pub detach: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ClusterServerRuntimeCommand {
+    #[arg(long, value_name = "SERVER_REF")]
+    pub server_ref: String,
+    #[arg(long, value_name = "CLUSTER_REF")]
+    pub cluster_ref: String,
+    #[arg(long, value_name = "HOST")]
+    pub host: String,
+    #[arg(long, value_name = "PORT")]
+    pub port: u16,
+    #[arg(long, value_name = "HOME")]
+    pub home: Option<PathBuf>,
+    #[arg(long)]
+    pub lazy_load: bool,
+    #[arg(long = "idle-seconds", value_name = "N")]
+    pub idle_seconds: Option<u64>,
+    #[arg(long)]
+    pub allow_unverified: bool,
 }

@@ -30,8 +30,9 @@ Use this directory for concise interface documents that define stable boundaries
   resources before deletion, rebinding, or capability mutation.
 - [cluster.md](./cluster.md)
   Cluster definition identity, TOML storage, route-target validation, CLI
-  commands, daemon REST CRUD, read-only route readiness diagnostics, and
-  first-slice resource protection.
+  commands, daemon REST CRUD, read-only route readiness diagnostics,
+  experimental local cluster server routing, hot reload, and resource
+  protection.
 - [model-support-status.md](./model-support-status.md)
   Support status vocabulary, evidence precedence, stale-proof rules, and
   transition rules for model/capability/backend tuples.

@@ -3,16 +3,16 @@ use std::path::{Component, Path};
 
 use crate::features::auth::domain::Provider;
 use crate::features::cloud::domain::{
-    CloudEndpointCapability, provider_capabilities, provider_supports,
+    provider_capabilities, provider_supports, CloudEndpointCapability,
 };
 use crate::features::cluster::domain::{
-    CLUSTER_SCHEMA_VERSION, ClusterDefinition, ClusterRef, ClusterRouteKey, ClusterRouteTarget,
-    ClusterStoreLayout, MAX_CLUSTER_DEFINITION_BYTES,
+    ClusterDefinition, ClusterRef, ClusterRouteKey, ClusterRouteTarget, ClusterStoreLayout,
+    CLUSTER_SCHEMA_VERSION, MAX_CLUSTER_DEFINITION_BYTES,
 };
 use crate::features::model::domain::{ModelFormat, ModelStoreLayout};
 use crate::features::model::ports::ModelCatalogStore;
 use crate::features::server::domain::{
-    CloudProvider, ServerCapability, ServerRuntimeBackend, ensure_server_model_capability,
+    ensure_server_model_capability, CloudProvider, ServerCapability, ServerRuntimeBackend,
 };
 use crate::features::server::profile::local_server_runtime_profile_for;
 use crate::foundation::error::{KernelError, KernelResult};

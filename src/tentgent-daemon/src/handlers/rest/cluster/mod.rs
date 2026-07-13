@@ -120,6 +120,16 @@ fn cluster_error(error: KernelError) -> RestError {
         KernelError::ServerStoreUnavailable(message) => {
             RestError::store_lookup("cluster_store_failed", message)
         }
+        KernelError::ResourceOperationBlocked {
+            operation,
+            resource,
+            blockers,
+        } => RestError::conflict(
+            "cluster_in_use",
+            format!(
+                "resource operation `{operation}` is blocked for cluster `{resource}`: {blockers}"
+            ),
+        ),
         other => RestError::kernel("cluster_failed", other),
     }
 }

@@ -1131,8 +1131,8 @@ paths; no redaction is promised in this slice.
 
 Cluster routes are stored definition state. The daemon validates and stores
 them, and inspect/doctor responses compute read-only route readiness from
-existing local state. The daemon does not route inference requests through a
-cluster yet.
+existing local state. Runnable cluster servers are created through the shared
+server lifecycle described below.
 
 ```text
 GET /v1/clusters
@@ -1272,6 +1272,10 @@ returns pre-removal metadata:
   }
 }
 ```
+
+Deletion returns `409 cluster_in_use` while any running or stopped server spec
+targets the cluster. Stop and remove those server specs first. Cluster deletion
+does not cascade into server specs or model resources.
 
 Cluster definition details are contracted in [cluster.md](./cluster.md).
 
@@ -1495,6 +1499,23 @@ server:
 }
 ```
 
+For a cluster target, use an explicit structured shape instead of encoding the
+cluster ref in `runtime_ref`:
+
+```json
+{
+  "runtime_kind": "cluster",
+  "cluster_ref": "local-assistant",
+  "host": "127.0.0.1",
+  "port": 8780,
+  "allow_unverified": false
+}
+```
+
+Cluster targets must not include `runtime_ref` or `capability`. Existing
+local/cloud requests may omit `runtime_kind`; when it is supplied, it must
+match the parsed `runtime_ref` target kind.
+
 Omit `port` to request automatic port selection. Auto-port specs keep
 `requested_port = 8780` and rescan from that default on every launch; they do
 not create a new server record just because a previous run had to bind a higher
@@ -1512,6 +1533,13 @@ An abbreviated response is:
     "model_ref": null,
     "provider": "openai",
     "provider_model": "gpt-4.1-mini",
+    "cluster_ref": null,
+    "target": {
+      "kind": "cloud-provider",
+      "provider": "openai",
+      "provider_model": "gpt-4.1-mini",
+      "capability": "chat"
+    },
     "host": "127.0.0.1",
     "port": 8780,
     "requested_port": 8780,
@@ -1552,6 +1580,33 @@ that capability/model runtime; an already-running shared runtime is reused with
 its existing policy. The local proxy does not keep a separate permanent Python
 process alive.
 
+Cluster server starts require a local `routes.chat` target. Only that required
+route gates process startup; optional route problems remain route-scoped.
+Cluster processes reuse the same process metadata, logs, health, start, stop,
+and remove endpoints as local/cloud servers. Their structured target is:
+
+```json
+{
+  "runtime_kind": "cluster",
+  "cluster_ref": "local-assistant",
+  "capability": null,
+  "model_ref": null,
+  "provider": null,
+  "provider_model": null,
+  "target": {
+    "kind": "cluster",
+    "cluster_ref": "local-assistant"
+  }
+}
+```
+
+The cluster runtime routes provider-shaped text chat, native chat, embedding,
+rerank, audio transcription, and vision chat endpoint families to the matching
+stored local route. Request `model` fields cannot override the definition.
+Provider route targets currently return `cluster_route_target_unsupported`.
+The full error and reload behavior is contracted in
+[cluster.md](./cluster.md).
+
 The body is optional. Omit it or send `{}` to preserve the original response
 shape. Send `wait_ready` to ask the daemon to poll the target server's
 `/healthz` after the process starts:
@@ -1559,11 +1614,13 @@ shape. Send `wait_ready` to ask the daemon to poll the target server's
 ```json
 {
   "wait_ready": true,
-  "timeout_seconds": 30
+  "timeout_seconds": 30,
+  "allow_unverified": false
 }
 ```
 
 `timeout_seconds` defaults to `30` and must be between `1` and `120`.
+`allow_unverified` is evaluated for that launch only and is not persisted.
 
 An abbreviated response is:
 

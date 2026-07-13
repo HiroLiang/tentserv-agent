@@ -3849,6 +3849,152 @@ async fn server_create_infers_capability_from_model_metadata() {
 }
 
 #[tokio::test]
+async fn server_create_accepts_structured_cluster_target_and_blocks_cluster_removal() {
+    let requested_home = unique_home("servers-create-cluster");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "9".repeat(64);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["chat"]);
+    write_cluster_fixture(&home, "local-assistant", &model_ref);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/servers")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"runtime_kind":"cluster","cluster_ref":"local-assistant","host":"127.0.0.1","port":8997,"allow_unverified":true}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    assert_eq!(body["server"]["runtime_kind"], "cluster");
+    assert_eq!(body["server"]["cluster_ref"], "local-assistant");
+    assert_eq!(body["server"]["capability"], Value::Null);
+    assert_eq!(body["server"]["model_ref"], Value::Null);
+    assert_eq!(body["server"]["target"]["kind"], "cluster");
+    assert_eq!(body["server"]["target"]["cluster_ref"], "local-assistant");
+    let server_ref = body["server"]["server_ref"]
+        .as_str()
+        .expect("server ref")
+        .to_string();
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/v1/servers")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let servers = body["servers"].as_array().expect("servers");
+    assert_eq!(servers.len(), 1);
+    assert_eq!(servers[0]["cluster_ref"], "local-assistant");
+    assert_eq!(servers[0]["capability"], Value::Null);
+    assert_eq!(servers[0]["target"]["kind"], "cluster");
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/servers/{}", &server_ref[..12]))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["server"]["runtime_kind"], "cluster");
+    assert_eq!(body["server"]["cluster_ref"], "local-assistant");
+    assert_eq!(body["server"]["target"]["cluster_ref"], "local-assistant");
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/v1/clusters/local-assistant")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "cluster_in_use");
+    assert!(body["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("server-spec")));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_create_rejects_mixed_cluster_and_runtime_ref_targets() {
+    let requested_home = unique_home("servers-create-cluster-mixed");
+    let state = rest_state_for_home(requested_home);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/servers")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"runtime_kind":"cluster","cluster_ref":"local-assistant","runtime_ref":"abc123"}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(body["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("must not include")));
+
+    let _ = fs::remove_dir_all(state.app().layout().home_dir.clone());
+}
+
+#[tokio::test]
+async fn server_create_rejects_invalid_cluster_ref_as_bad_request() {
+    let requested_home = unique_home("servers-create-cluster-invalid-ref");
+    let state = rest_state_for_home(requested_home);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/servers")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"runtime_kind":"cluster","cluster_ref":"../not-safe"}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "bad_request");
+    assert!(body["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("invalid cluster_ref")));
+
+    let _ = fs::remove_dir_all(state.app().layout().home_dir.clone());
+}
+
+#[tokio::test]
 async fn server_create_rejects_non_chat_model_for_chat_server() {
     let requested_home = unique_home("servers-create-non-chat");
     let state = rest_state_for_home(requested_home);
@@ -4855,6 +5001,24 @@ fn unique_home(label: &str) -> PathBuf {
 
 fn write_model_fixture(home: &std::path::Path, model_ref: &str) {
     write_model_fixture_with_capabilities(home, model_ref, &["chat", "embedding"]);
+}
+
+fn write_cluster_fixture(home: &std::path::Path, cluster_ref: &str, model_ref: &str) {
+    let cluster_dir = home.join("clusters").join(cluster_ref);
+    fs::create_dir_all(&cluster_dir).expect("cluster dir");
+    fs::write(
+        cluster_dir.join("cluster.toml"),
+        format!(
+            r#"schema_version = 1
+cluster_ref = "{cluster_ref}"
+
+[routes.chat]
+kind = "local-model"
+model_ref = "{model_ref}"
+"#
+        ),
+    )
+    .expect("cluster definition");
 }
 
 fn write_model_fixture_with_capabilities(

@@ -1,6 +1,7 @@
 use std::{net::TcpListener, path::PathBuf};
 
 use crate::features::auth::domain::{AuthSecretMaterial, AuthSecretSource, Provider};
+use crate::features::cluster::domain::ClusterRef;
 use crate::features::model::domain::ModelRef;
 use crate::features::server::domain::{
     CloudProvider, LaunchMode, ServerCapability, ServerRef, ServerRefSelector,
@@ -232,10 +233,11 @@ fn file_catalog_stores_specs_and_process_metadata() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref: server_ref.clone(),
         runtime_kind: super::super::domain::ServerRuntimeKind::Local,
-        capability: ServerCapability::Chat,
+        capability: Some(ServerCapability::Chat),
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        cluster_ref: None,
         runtime_profile: None,
         host: "127.0.0.1".to_string(),
         port: 8780,
@@ -285,10 +287,11 @@ fn local_runtime_args_use_rust_proxy_shape() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref,
         runtime_kind: ServerRuntimeKind::Local,
-        capability: ServerCapability::Chat,
+        capability: Some(ServerCapability::Chat),
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        cluster_ref: None,
         runtime_profile: Some(ServerRuntimeProfileSelection::new(
             "local-chat-transformers-peft",
             1,
@@ -301,9 +304,14 @@ fn local_runtime_args_use_rust_proxy_shape() {
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
-    let parts =
-        server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), None, 8780)
-            .expect("parts");
+    let parts = server_runtime_command_parts(
+        &spec,
+        &PathBuf::from("/tmp/tentgent-home"),
+        None,
+        8780,
+        false,
+    )
+    .expect("parts");
 
     assert_eq!(
         parts.args,
@@ -340,10 +348,11 @@ fn local_embedding_runtime_args_include_runtime_profile() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref,
         runtime_kind: ServerRuntimeKind::Local,
-        capability: ServerCapability::Embedding,
+        capability: Some(ServerCapability::Embedding),
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        cluster_ref: None,
         runtime_profile: Some(ServerRuntimeProfileSelection::new(
             "local-embedding-transformers-peft",
             1,
@@ -356,9 +365,14 @@ fn local_embedding_runtime_args_include_runtime_profile() {
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
-    let parts =
-        server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), None, 8781)
-            .expect("parts");
+    let parts = server_runtime_command_parts(
+        &spec,
+        &PathBuf::from("/tmp/tentgent-home"),
+        None,
+        8781,
+        false,
+    )
+    .expect("parts");
 
     assert!(parts
         .args
@@ -374,10 +388,11 @@ fn local_rerank_runtime_args_are_supported() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref,
         runtime_kind: ServerRuntimeKind::Local,
-        capability: ServerCapability::Rerank,
+        capability: Some(ServerCapability::Rerank),
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        cluster_ref: None,
         runtime_profile: None,
         host: "127.0.0.1".to_string(),
         port: 8782,
@@ -387,9 +402,14 @@ fn local_rerank_runtime_args_are_supported() {
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
-    let parts =
-        server_runtime_command_parts(&spec, &PathBuf::from("/tmp/tentgent-home"), None, 8782)
-            .expect("parts");
+    let parts = server_runtime_command_parts(
+        &spec,
+        &PathBuf::from("/tmp/tentgent-home"),
+        None,
+        8782,
+        false,
+    )
+    .expect("parts");
 
     assert!(parts
         .args
@@ -404,10 +424,11 @@ fn cloud_runtime_args_include_provider_auth_env() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref,
         runtime_kind: ServerRuntimeKind::Cloud,
-        capability: ServerCapability::Chat,
+        capability: Some(ServerCapability::Chat),
         model_ref: None,
         provider: Some(CloudProvider::OpenAI),
         provider_model: Some("gpt-4.1-mini".to_string()),
+        cluster_ref: None,
         runtime_profile: None,
         host: "127.0.0.1".to_string(),
         port: 8781,
@@ -423,6 +444,7 @@ fn cloud_runtime_args_include_provider_auth_env() {
         &PathBuf::from("/tmp/tentgent-home"),
         Some(&auth),
         8781,
+        false,
     )
     .expect("parts");
 
@@ -437,6 +459,55 @@ fn cloud_runtime_args_include_provider_auth_env() {
         "--provider-model".to_string(),
         "gpt-4.1-mini".to_string(),
     ]));
+}
+
+#[test]
+fn cluster_runtime_args_and_identity_use_cluster_ref_not_definition_content() {
+    let cluster_ref = ClusterRef::parse("local-assistant").expect("cluster ref");
+    let target = ServerRuntimeTarget::Cluster {
+        cluster_ref: cluster_ref.clone(),
+    };
+    let identity = StdServerIdentityGenerator;
+    let first = identity
+        .server_ref_for_target(&target, "127.0.0.1", 8780, true, true, Some(30))
+        .expect("cluster identity");
+    let second = identity
+        .server_ref_for_target(&target, "127.0.0.1", 8780, true, true, Some(30))
+        .expect("same cluster identity");
+    assert_eq!(first, second);
+
+    let spec = ServerSpec {
+        short_ref: first.short_ref().to_string(),
+        server_ref: first,
+        runtime_kind: ServerRuntimeKind::Cluster,
+        capability: None,
+        model_ref: None,
+        provider: None,
+        provider_model: None,
+        cluster_ref: Some(cluster_ref),
+        runtime_profile: None,
+        host: "127.0.0.1".to_string(),
+        port: 8780,
+        port_auto: true,
+        lazy_load: true,
+        idle_seconds: Some(30),
+        created_at: "2026-07-12T00:00:00Z".to_string(),
+    };
+    let parts = server_runtime_command_parts(
+        &spec,
+        &PathBuf::from("/tmp/tentgent-home"),
+        None,
+        8790,
+        true,
+    )
+    .expect("cluster command parts");
+
+    assert_eq!(parts.args[0], "__cluster-server-runtime");
+    assert!(parts
+        .args
+        .windows(2)
+        .any(|pair| pair == ["--cluster-ref", "local-assistant"]));
+    assert!(parts.args.contains(&"--allow-unverified".to_string()));
 }
 
 #[test]
@@ -489,10 +560,11 @@ fn local_chat_spec_for_port(port: u16, port_auto: bool) -> ServerSpec {
         short_ref: server_ref.short_ref().to_string(),
         server_ref,
         runtime_kind: ServerRuntimeKind::Local,
-        capability: ServerCapability::Chat,
+        capability: Some(ServerCapability::Chat),
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        cluster_ref: None,
         runtime_profile: Some(ServerRuntimeProfileSelection::new(
             "local-chat-transformers-peft",
             1,

@@ -23,6 +23,8 @@ use tentgent_kernel::features::auth::usecases::{
     AuthSecretResolutionRequest, AuthSecretResolverUseCase, AuthSecretValidationRequest,
     AuthSecretValidationUseCase, StdAuthSecretResolverUseCase, StdAuthSecretValidationUseCase,
 };
+use tentgent_kernel::features::cluster::domain::ClusterRef;
+use tentgent_kernel::features::cluster::infra::FileClusterCatalogStore;
 use tentgent_kernel::features::model::domain::{
     ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelRefSelector,
 };
@@ -42,8 +44,8 @@ use tentgent_kernel::features::runtime::usecases::{
     RuntimeResolutionRequest, RuntimeResolutionUseCase, StdRuntimeResolutionUseCase,
 };
 use tentgent_kernel::features::server::domain::{
-    CloudProvider, LaunchMode, ServerCapability, ServerInspection, ServerRefSelector,
-    ServerRuntimeKind, ServerSpec, ServerStopOutcome, ServerSummary,
+    CloudProvider, LaunchMode, ServerCapability, ServerInspection, ServerPrepareTarget,
+    ServerRefSelector, ServerRuntimeKind, ServerSpec, ServerStopOutcome, ServerSummary,
 };
 use tentgent_kernel::features::server::infra::{
     FileServerCatalogStore, ServerRuntimeLaunchRequest, ServerRuntimeLauncher,
@@ -62,7 +64,8 @@ use tentgent_kernel::foundation::layout::{
 
 use super::app::Cli;
 use super::commands::{
-    CloudServerRuntimeCommand, LocalServerRuntimeCommand, ServerCommands, ServerRunCommand,
+    CloudServerRuntimeCommand, ClusterRunCommand, ClusterServerRuntimeCommand,
+    LocalServerRuntimeCommand, ServerCommands, ServerRunCommand,
 };
 use super::model_support::{
     model_support_diagnostic_lines, model_support_summaries_with_runtime_profile,
@@ -143,9 +146,15 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
             if let Some(auth) = &auth {
                 render_cloud_auth_preflight(auth.provider, auth.source);
             }
-            let inspection =
-                launch_background_server(&kernel, &server, result.layout, result.inspection, auth)
-                    .await?;
+            let inspection = launch_background_server(
+                &kernel,
+                &server,
+                result.layout,
+                result.inspection,
+                auth,
+                allow_unverified,
+            )
+            .await?;
             render_server_started(&inspection, details);
         }
         ServerCommands::Stop {
@@ -231,6 +240,26 @@ pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> 
     .await
 }
 
+pub async fn handle_cluster_server_runtime(
+    command: ClusterServerRuntimeCommand,
+) -> miette::Result<()> {
+    let _ = command.lazy_load;
+    let cluster_ref = ClusterRef::parse(&command.cluster_ref)
+        .map_err(|err| miette!("invalid cluster ref: {err}"))?;
+    tentgent_daemon::server::cluster::run_cluster_server_runtime(
+        tentgent_daemon::server::cluster::ClusterServerRuntimeConfig {
+            server_ref: command.server_ref,
+            cluster_ref,
+            host: command.host,
+            port: command.port,
+            runtime_home: command.home,
+            idle_seconds: command.idle_seconds,
+            allow_unverified: command.allow_unverified,
+        },
+    )
+    .await
+}
+
 async fn run_server(
     command: ServerRunCommand,
     kernel: &CliServerKernel,
@@ -244,8 +273,10 @@ async fn run_server(
     let outcome = server
         .prepare_server(ServerPrepareRequest {
             layout: runtime_layout_input(LayoutResolveMode::Create, command.home.as_deref()),
-            runtime_ref: command.runtime_ref,
-            capability: command.capability,
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: command.runtime_ref,
+                capability: command.capability,
+            },
             host: command.host,
             port: command.port,
             lazy_load: command.lazy_load,
@@ -269,6 +300,7 @@ async fn run_server(
             outcome.layout,
             outcome.outcome.inspection,
             auth,
+            command.allow_unverified,
         )
         .await?;
         render_server_inspection("Server started", &inspection, None);
@@ -279,6 +311,51 @@ async fn run_server(
             outcome.layout,
             outcome.outcome.inspection,
             auth,
+            command.allow_unverified,
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+pub(super) async fn run_cluster_server(command: ClusterRunCommand) -> miette::Result<()> {
+    let cluster_ref = ClusterRef::parse(&command.cluster_ref)
+        .map_err(|err| miette!("invalid cluster ref: {err}"))?;
+    let kernel = CliServerKernel::new();
+    let server = kernel.server_usecase();
+    let outcome = server
+        .prepare_server(ServerPrepareRequest {
+            layout: runtime_layout_input(LayoutResolveMode::Create, command.home.as_deref()),
+            target: ServerPrepareTarget::Cluster { cluster_ref },
+            host: command.host,
+            port: command.port,
+            lazy_load: command.lazy_load,
+            idle_seconds: command.idle_seconds,
+            allow_unverified: command.allow_unverified,
+        })
+        .into_diagnostic()?;
+
+    render_server_spec_outcome(&outcome.outcome, command.detach);
+    if command.detach {
+        let inspection = launch_background_server(
+            &kernel,
+            &server,
+            outcome.layout,
+            outcome.outcome.inspection,
+            None,
+            command.allow_unverified,
+        )
+        .await?;
+        render_server_inspection("Cluster server started", &inspection, None);
+    } else {
+        launch_foreground_server(
+            &kernel,
+            &server,
+            outcome.layout,
+            outcome.outcome.inspection,
+            None,
+            command.allow_unverified,
         )
         .await?;
     }
@@ -292,6 +369,7 @@ async fn launch_foreground_server(
     layout: RuntimeLayout,
     inspection: ServerInspection,
     auth: Option<AuthSecretMaterial>,
+    allow_unverified: bool,
 ) -> miette::Result<()> {
     let runtime = kernel.resolve_runtime(&layout)?;
     let launcher = ServerRuntimeLauncher::new(&kernel.executable_resolver);
@@ -300,6 +378,7 @@ async fn launch_foreground_server(
         runtime,
         inspection: inspection.clone(),
         auth,
+        allow_unverified,
     }) {
         Ok(child) => child,
         Err(err) => {
@@ -360,6 +439,7 @@ async fn launch_background_server(
     layout: RuntimeLayout,
     inspection: ServerInspection,
     auth: Option<AuthSecretMaterial>,
+    allow_unverified: bool,
 ) -> miette::Result<ServerInspection> {
     let runtime = kernel.resolve_runtime(&layout)?;
     let launcher = ServerRuntimeLauncher::new(&kernel.executable_resolver);
@@ -368,6 +448,7 @@ async fn launch_background_server(
         runtime,
         inspection: inspection.clone(),
         auth,
+        allow_unverified,
     }) {
         Ok(pid) => pid,
         Err(err) => {
@@ -429,12 +510,18 @@ fn record_local_server_capability_proof(
     };
     let selector = ModelRefSelector::parse(model_ref.as_str())
         .map_err(|err| miette!("invalid model ref in server spec: {err}"))?;
+    let capability = inspection.spec.capability.ok_or_else(|| {
+        miette!(
+            "local server spec `{}` is missing capability metadata",
+            inspection.spec.short_ref
+        )
+    })?;
     kernel
         .model_capability_proof_usecase()
         .record_model_capability_proof(ModelCapabilityProofRecordRequest {
             layout: runtime_layout_input_from_layout(layout, LayoutResolveMode::Create),
             selector,
-            capability: inspection.spec.capability.required_model_capability(),
+            capability: capability.required_model_capability(),
             status,
             source: ModelCapabilityProofSource::ServerStart,
             server_ref: Some(inspection.spec.server_ref.to_string()),
@@ -526,7 +613,7 @@ async fn resolve_server_runtime_auth(
     layout: &RuntimeLayout,
     inspection: &ServerInspection,
 ) -> miette::Result<Option<AuthSecretMaterial>> {
-    if inspection.spec.runtime_kind == ServerRuntimeKind::Local {
+    if inspection.spec.runtime_kind != ServerRuntimeKind::Cloud {
         return Ok(None);
     }
 
@@ -717,6 +804,7 @@ struct CliServerKernel {
     model_catalog: FileModelCatalogStore,
     model_proofs: FileModelCapabilityProofStore,
     model_clock: SystemModelClock,
+    cluster_catalog: FileClusterCatalogStore,
 }
 
 impl CliServerKernel {
@@ -739,15 +827,17 @@ impl CliServerKernel {
             model_catalog: FileModelCatalogStore,
             model_proofs: FileModelCapabilityProofStore,
             model_clock: SystemModelClock,
+            cluster_catalog: FileClusterCatalogStore,
         }
     }
 
     fn server_usecase(&self) -> StdServerUseCase<'_> {
-        StdServerUseCase::new(
+        StdServerUseCase::new_with_cluster_catalog(
             &self.layout_resolver,
             &self.server_initializer,
             &self.model_catalog,
             &self.model_proofs,
+            &self.cluster_catalog,
             &self.server_identity,
             &self.server_catalog,
             &self.server_process_controller,
@@ -806,6 +896,7 @@ fn server_model_support_lines(
     inspection: &ServerInspection,
 ) -> Option<String> {
     let model_ref = inspection.spec.local_model_ref()?;
+    let capability = inspection.spec.capability?;
     let selector = match ModelRefSelector::parse(model_ref.as_str()) {
         Ok(selector) => selector,
         Err(err) => {
@@ -824,11 +915,7 @@ fn server_model_support_lines(
         Err(err) => {
             return Some(format!(
                 "capability: {}\nstatus: unavailable\nreason: model lookup failed: {err}",
-                inspection
-                    .spec
-                    .capability
-                    .required_model_capability()
-                    .as_str()
+                capability.required_model_capability().as_str()
             ));
         }
     };
@@ -843,16 +930,12 @@ fn server_model_support_lines(
         Err(err) => {
             return Some(format!(
                 "capability: {}\nstatus: unavailable\nreason: proof lookup failed: {err}",
-                inspection
-                    .spec
-                    .capability
-                    .required_model_capability()
-                    .as_str()
+                capability.required_model_capability().as_str()
             ));
         }
     };
 
-    let required_capability = inspection.spec.capability.required_model_capability();
+    let required_capability = capability.required_model_capability();
     let runtime_profile = inspection
         .spec
         .runtime_profile
@@ -923,6 +1006,12 @@ fn render_server_spec_outcome(
             "{} cloud provider auth will be verified before runtime launch.",
             style("checking").yellow().bold()
         );
+    } else if inspection.spec.is_cluster() {
+        println!(
+            "{} the cluster server proxy in {} mode.",
+            style("starting").green().bold(),
+            if detached { "background" } else { "foreground" }
+        );
     } else {
         println!(
             "{} the local server proxy in {} mode.",
@@ -957,7 +1046,7 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
             "runtime",
             "capability",
             "provider",
-            "model",
+            "target",
             "host",
             "port",
             "requested",
@@ -989,9 +1078,15 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
             Cell::new(if server.running { "running" } else { "stopped" }),
             Cell::new(mode),
             Cell::new(server.spec.runtime_kind.as_str()),
-            Cell::new(server.spec.capability.as_str()),
+            Cell::new(
+                server
+                    .spec
+                    .capability
+                    .map(ServerCapability::as_str)
+                    .unwrap_or("multi-route"),
+            ),
             Cell::new(server.spec.provider_label()),
-            Cell::new(server_list_model_label(&server.spec)),
+            Cell::new(server_list_target_label(&server.spec)),
             Cell::new(&server.spec.host),
             Cell::new(server.effective_port()),
             Cell::new(server_requested_port_label(&server.spec)),
@@ -1003,13 +1098,14 @@ fn render_server_list(title: &str, servers: &[ServerSummary]) {
     println!();
 }
 
-fn server_list_model_label(spec: &ServerSpec) -> String {
+fn server_list_target_label(spec: &ServerSpec) -> String {
     match spec.runtime_kind {
         ServerRuntimeKind::Local => spec
             .local_model_ref()
             .map(|model_ref| model_ref.short_ref().to_string())
             .unwrap_or_else(|| "(missing)".to_string()),
         ServerRuntimeKind::Cloud => spec.runtime_model_label(),
+        ServerRuntimeKind::Cluster => spec.runtime_model_label(),
     }
 }
 
@@ -1119,7 +1215,13 @@ fn render_server_table_with_model_support(
     ]);
     table.add_row(vec![
         Cell::new("capability"),
-        Cell::new(inspection.spec.capability.as_str()),
+        Cell::new(
+            inspection
+                .spec
+                .capability
+                .map(ServerCapability::as_str)
+                .unwrap_or("multi-route"),
+        ),
     ]);
     if inspection.spec.is_cloud() {
         table.add_row(vec![
@@ -1128,6 +1230,11 @@ fn render_server_table_with_model_support(
         ]);
         table.add_row(vec![
             Cell::new("provider_model"),
+            Cell::new(inspection.spec.runtime_model_label()),
+        ]);
+    } else if inspection.spec.is_cluster() {
+        table.add_row(vec![
+            Cell::new("cluster_ref"),
             Cell::new(inspection.spec.runtime_model_label()),
         ]);
     } else {
@@ -1318,17 +1425,24 @@ mod tests {
     use tentgent_kernel::features::server::domain::ServerRef;
 
     #[test]
-    fn server_list_model_label_shortens_local_model_refs() {
+    fn server_list_target_label_shortens_local_model_refs() {
         let spec = local_server_spec();
 
-        assert_eq!(server_list_model_label(&spec), "abcdefabcdef");
+        assert_eq!(server_list_target_label(&spec), "abcdefabcdef");
     }
 
     #[test]
-    fn server_list_model_label_keeps_cloud_provider_model_names() {
+    fn server_list_target_label_keeps_cloud_provider_model_names() {
         let spec = cloud_server_spec();
 
-        assert_eq!(server_list_model_label(&spec), "gpt-4o-mini");
+        assert_eq!(server_list_target_label(&spec), "gpt-4o-mini");
+    }
+
+    #[test]
+    fn server_list_target_label_uses_cluster_ref_for_cluster_targets() {
+        let spec = cluster_server_spec();
+
+        assert_eq!(server_list_target_label(&spec), "local-assistant");
     }
 
     fn local_server_spec() -> ServerSpec {
@@ -1340,10 +1454,11 @@ mod tests {
             server_ref: server_ref(),
             short_ref: "0123456789ab".to_string(),
             runtime_kind: ServerRuntimeKind::Local,
-            capability: ServerCapability::Chat,
+            capability: Some(ServerCapability::Chat),
             model_ref: Some(model_ref),
             provider: None,
             provider_model: None,
+            cluster_ref: None,
             runtime_profile: None,
             host: "127.0.0.1".to_string(),
             port: 8780,
@@ -1359,10 +1474,11 @@ mod tests {
             server_ref: server_ref(),
             short_ref: "0123456789ab".to_string(),
             runtime_kind: ServerRuntimeKind::Cloud,
-            capability: ServerCapability::Chat,
+            capability: Some(ServerCapability::Chat),
             model_ref: None,
             provider: Some(CloudProvider::OpenAI),
             provider_model: Some("gpt-4o-mini".to_string()),
+            cluster_ref: None,
             runtime_profile: None,
             host: "127.0.0.1".to_string(),
             port: 8780,
@@ -1370,6 +1486,26 @@ mod tests {
             lazy_load: false,
             idle_seconds: None,
             created_at: "2026-06-15T00:00:00Z".to_string(),
+        }
+    }
+
+    fn cluster_server_spec() -> ServerSpec {
+        ServerSpec {
+            server_ref: server_ref(),
+            short_ref: "0123456789ab".to_string(),
+            runtime_kind: ServerRuntimeKind::Cluster,
+            capability: None,
+            model_ref: None,
+            provider: None,
+            provider_model: None,
+            cluster_ref: Some(ClusterRef::parse("local-assistant").expect("cluster ref")),
+            runtime_profile: None,
+            host: "127.0.0.1".to_string(),
+            port: 8780,
+            port_auto: false,
+            lazy_load: false,
+            idle_seconds: None,
+            created_at: "2026-07-12T00:00:00Z".to_string(),
         }
     }
 

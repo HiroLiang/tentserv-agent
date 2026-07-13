@@ -1,5 +1,13 @@
 use std::path::PathBuf;
 
+use crate::features::cluster::{
+    domain::{
+        ClusterDefinition, ClusterRef, ClusterRouteKey, ClusterRouteTarget, ClusterStoreLayout,
+        CLUSTER_SCHEMA_VERSION,
+    },
+    infra::FileClusterCatalogStore,
+    ports::ClusterCatalogStore,
+};
 use crate::features::model::domain::{
     default_model_capabilities, default_model_capability_source, MlxRuntimeFamily, ModelCapability,
     ModelCapabilityProof, ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelFormat,
@@ -9,8 +17,8 @@ use crate::features::model::domain::{
 use crate::features::model::infra::{FileModelCapabilityProofStore, FileModelCatalogStore};
 use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
 use crate::features::server::domain::{
-    CloudProvider, LaunchMode, ServerCapability, ServerRef, ServerRefSelector, ServerRuntimeKind,
-    ServerSpec,
+    CloudProvider, LaunchMode, ServerCapability, ServerPrepareTarget, ServerRef, ServerRefSelector,
+    ServerRuntimeKind, ServerSpec,
 };
 use crate::features::server::infra::{
     FileServerCatalogStore, StdServerIdentityGenerator, StdServerStoreLayoutInitializer,
@@ -57,8 +65,10 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
     let first = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: "claude:claude-3-5-sonnet-latest".to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: "claude:claude-3-5-sonnet-latest".to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: Some("127.0.0.1".to_string()),
             port: Some(8780),
             lazy_load: false,
@@ -73,15 +83,17 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
     );
     assert_eq!(
         first.outcome.inspection.spec.capability,
-        ServerCapability::Chat
+        Some(ServerCapability::Chat)
     );
     assert!(first.outcome.inspection.spec.runtime_profile.is_none());
 
     let reused = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: "anthropic:claude-3-5-sonnet-latest".to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: "anthropic:claude-3-5-sonnet-latest".to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: Some("127.0.0.1".to_string()),
             port: Some(8780),
             lazy_load: false,
@@ -98,8 +110,10 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
     let embedding = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: "gemini:text-embedding-004".to_string(),
-            capability: Some(ServerCapability::Embedding),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: "gemini:text-embedding-004".to_string(),
+                capability: Some(ServerCapability::Embedding),
+            },
             host: Some("127.0.0.1".to_string()),
             port: Some(8781),
             lazy_load: false,
@@ -114,7 +128,7 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
     );
     assert_eq!(
         embedding.outcome.inspection.spec.capability,
-        ServerCapability::Embedding
+        Some(ServerCapability::Embedding)
     );
     assert!(embedding.outcome.inspection.spec.runtime_profile.is_none());
 
@@ -135,6 +149,89 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
         })
         .expect("remove cloud server");
     assert!(!removed.outcome.inspection.server_dir.exists());
+}
+
+#[test]
+fn standard_server_usecase_prepares_cluster_specs_with_stable_identity() {
+    let fixture = Fixture::new("cluster");
+    fixture.write_model_capabilities(vec![ModelCapability::Chat]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let cluster_catalog = FileClusterCatalogStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let layout = layout_resolver
+        .resolve(fixture.layout_input(LayoutResolveMode::Create))
+        .expect("layout");
+    let cluster_ref = ClusterRef::parse("local-assistant").expect("cluster ref");
+    let cluster_store = ClusterStoreLayout::from_home_dir(layout.home_dir.clone());
+    cluster_catalog
+        .save_cluster(
+            &cluster_store,
+            &cluster_definition(cluster_ref.clone(), fixture.model_ref.clone(), false),
+        )
+        .expect("save cluster");
+    let servers = StdServerUseCase::new_with_cluster_catalog(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &cluster_catalog,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let first = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::Cluster {
+                cluster_ref: cluster_ref.clone(),
+            },
+            host: None,
+            port: Some(8798),
+            lazy_load: true,
+            idle_seconds: Some(30),
+            allow_unverified: true,
+        })
+        .expect("prepare cluster server");
+    assert_eq!(
+        first.outcome.inspection.spec.runtime_kind,
+        ServerRuntimeKind::Cluster
+    );
+    assert_eq!(first.outcome.inspection.spec.capability, None);
+    assert_eq!(
+        first.outcome.inspection.spec.cluster_ref.as_ref(),
+        Some(&cluster_ref)
+    );
+
+    cluster_catalog
+        .save_cluster(
+            &cluster_store,
+            &cluster_definition(cluster_ref.clone(), fixture.model_ref.clone(), true),
+        )
+        .expect("replace cluster");
+    let reused = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::Cluster { cluster_ref },
+            host: None,
+            port: Some(8798),
+            lazy_load: true,
+            idle_seconds: Some(30),
+            allow_unverified: true,
+        })
+        .expect("reuse cluster server after definition update");
+    assert!(!reused.outcome.created);
+    assert_eq!(
+        first.outcome.inspection.spec.server_ref,
+        reused.outcome.inspection.spec.server_ref
+    );
 }
 
 #[test]
@@ -162,8 +259,10 @@ fn standard_server_usecase_rejects_cloud_capabilities_not_supported_by_provider(
     let err = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: "anthropic:claude-3-5-sonnet-latest".to_string(),
-            capability: Some(ServerCapability::Embedding),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: "anthropic:claude-3-5-sonnet-latest".to_string(),
+                capability: Some(ServerCapability::Embedding),
+            },
             host: None,
             port: None,
             lazy_load: false,
@@ -204,8 +303,10 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: Some(8781),
             lazy_load: true,
@@ -305,8 +406,10 @@ fn standard_server_usecase_uses_auto_default_port_when_port_is_omitted() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Chat),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
             host: None,
             port: None,
             lazy_load: false,
@@ -351,8 +454,10 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
         let err = servers
             .prepare_server(ServerPrepareRequest {
                 layout: fixture.layout_input(LayoutResolveMode::Create),
-                runtime_ref: fixture.model_ref.short_ref().to_string(),
-                capability: Some(ServerCapability::Chat),
+                target: ServerPrepareTarget::RuntimeRef {
+                    runtime_ref: fixture.model_ref.short_ref().to_string(),
+                    capability: Some(ServerCapability::Chat),
+                },
                 host: None,
                 port: Some(8781),
                 lazy_load: false,
@@ -401,8 +506,10 @@ fn standard_server_usecase_infers_capability_from_local_model_metadata() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: None,
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: None,
+            },
             host: None,
             port: Some(8781),
             lazy_load: false,
@@ -413,7 +520,7 @@ fn standard_server_usecase_infers_capability_from_local_model_metadata() {
 
     assert_eq!(
         prepared.outcome.inspection.spec.capability,
-        ServerCapability::VideoUnderstanding
+        Some(ServerCapability::VideoUnderstanding)
     );
 }
 
@@ -460,10 +567,11 @@ fn standard_server_usecase_rejects_embedding_stored_specs_without_runtime_profil
                 server_ref: server_ref.clone(),
                 short_ref: server_ref.short_ref().to_string(),
                 runtime_kind: ServerRuntimeKind::Local,
-                capability: ServerCapability::Embedding,
+                capability: Some(ServerCapability::Embedding),
                 model_ref: Some(fixture.model_ref.clone()),
                 provider: None,
                 provider_model: None,
+                cluster_ref: None,
                 runtime_profile: None,
                 host: "127.0.0.1".to_string(),
                 port: 8781,
@@ -514,8 +622,10 @@ fn standard_server_usecase_prepares_embedding_specs() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Embedding),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Embedding),
+            },
             host: None,
             port: Some(8781),
             lazy_load: false,
@@ -527,7 +637,7 @@ fn standard_server_usecase_prepares_embedding_specs() {
     assert!(prepared.outcome.created);
     assert_eq!(
         prepared.outcome.inspection.spec.capability,
-        ServerCapability::Embedding
+        Some(ServerCapability::Embedding)
     );
     assert_eq!(
         prepared.outcome.inspection.spec.model_ref.as_ref(),
@@ -572,8 +682,10 @@ fn standard_server_usecase_rejects_mlx_embedding_specs_without_profile() {
     let err = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Embedding),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Embedding),
+            },
             host: None,
             port: Some(8781),
             lazy_load: false,
@@ -614,8 +726,10 @@ fn standard_server_usecase_prepares_rerank_specs() {
     let prepared = servers
         .prepare_server(ServerPrepareRequest {
             layout: fixture.layout_input(LayoutResolveMode::Create),
-            runtime_ref: fixture.model_ref.short_ref().to_string(),
-            capability: Some(ServerCapability::Rerank),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Rerank),
+            },
             host: None,
             port: Some(8782),
             lazy_load: false,
@@ -627,7 +741,7 @@ fn standard_server_usecase_prepares_rerank_specs() {
     assert!(prepared.outcome.created);
     assert_eq!(
         prepared.outcome.inspection.spec.capability,
-        ServerCapability::Rerank
+        Some(ServerCapability::Rerank)
     );
     assert_eq!(
         prepared.outcome.inspection.spec.model_ref.as_ref(),
@@ -645,7 +759,7 @@ fn standard_server_usecase_prepares_rerank_specs() {
         .expect("rerank server runtime is implemented");
     assert_eq!(
         startable.inspection.spec.capability,
-        ServerCapability::Rerank
+        Some(ServerCapability::Rerank)
     );
 }
 
@@ -713,8 +827,10 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
         let prepared = servers
             .prepare_server(ServerPrepareRequest {
                 layout: fixture.layout_input(LayoutResolveMode::Create),
-                runtime_ref: fixture.model_ref.short_ref().to_string(),
-                capability: Some(server_capability),
+                target: ServerPrepareTarget::RuntimeRef {
+                    runtime_ref: fixture.model_ref.short_ref().to_string(),
+                    capability: Some(server_capability),
+                },
                 host: None,
                 port: Some(8782),
                 lazy_load: false,
@@ -726,7 +842,7 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
         assert!(prepared.outcome.created);
         assert_eq!(
             prepared.outcome.inspection.spec.capability,
-            server_capability
+            Some(server_capability)
         );
         if server_capability == ServerCapability::Embedding {
             assert_eq!(
@@ -751,7 +867,10 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
                 allow_unverified: true,
             })
             .expect("model runtime server is implemented");
-        assert_eq!(startable.inspection.spec.capability, server_capability);
+        assert_eq!(
+            startable.inspection.spec.capability,
+            Some(server_capability)
+        );
     }
 }
 
@@ -798,8 +917,10 @@ fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
         let err = servers
             .prepare_server(ServerPrepareRequest {
                 layout: fixture.layout_input(LayoutResolveMode::Create),
-                runtime_ref: fixture.model_ref.short_ref().to_string(),
-                capability: Some(server_capability),
+                target: ServerPrepareTarget::RuntimeRef {
+                    runtime_ref: fixture.model_ref.short_ref().to_string(),
+                    capability: Some(server_capability),
+                },
                 host: None,
                 port: Some(8782),
                 lazy_load: false,
@@ -1049,6 +1170,36 @@ impl Fixture {
                 },
             )
             .expect("save proof");
+    }
+}
+
+fn cluster_definition(
+    cluster_ref: ClusterRef,
+    model_ref: ModelRef,
+    include_optional_route: bool,
+) -> ClusterDefinition {
+    let mut routes = [(
+        ClusterRouteKey::Chat,
+        ClusterRouteTarget::LocalModel {
+            model_ref: model_ref.clone(),
+            runtime_profile: None,
+        },
+    )]
+    .into_iter()
+    .collect::<std::collections::BTreeMap<_, _>>();
+    if include_optional_route {
+        routes.insert(
+            ClusterRouteKey::Embedding,
+            ClusterRouteTarget::LocalModel {
+                model_ref,
+                runtime_profile: None,
+            },
+        );
+    }
+    ClusterDefinition {
+        schema_version: CLUSTER_SCHEMA_VERSION,
+        cluster_ref,
+        routes,
     }
 }
 

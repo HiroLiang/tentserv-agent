@@ -13,6 +13,7 @@ use tentgent_kernel::{
             ports::AuthSecretValidator,
             usecases::{AuthSecretResolutionRequest, AuthSecretResolverUseCase},
         },
+        cluster::domain::ClusterRef,
         model::{
             domain::{ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelRefSelector},
             usecases::{ModelCapabilityProofRecordRequest, ModelCapabilityProofUseCase},
@@ -23,7 +24,8 @@ use tentgent_kernel::{
         },
         server::{
             domain::{
-                CloudProvider, LaunchMode, ServerCapability, ServerInspection, ServerRuntimeKind,
+                parse_server_runtime_selection, CloudProvider, LaunchMode, ServerCapability,
+                ServerInspection, ServerPrepareTarget, ServerRuntimeKind, ServerRuntimeSelection,
             },
             infra::{ServerRuntimeLaunchRequest, ServerRuntimeLauncher},
             usecases::{
@@ -83,8 +85,7 @@ pub async fn create(
         .server_usecase()
         .prepare_server(ServerPrepareRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
-            runtime_ref: request.runtime_ref,
-            capability: request.capability,
+            target: server_prepare_target(&request)?,
             host: request.host,
             port: request.port,
             lazy_load: request.lazy_load.unwrap_or(false),
@@ -185,6 +186,7 @@ pub async fn start(
             inspection: result.inspection,
             runtime,
             auth,
+            allow_unverified: request.allow_unverified.unwrap_or(false),
         }
     };
     let ServerStartPlan {
@@ -192,6 +194,7 @@ pub async fn start(
         inspection,
         runtime,
         auth,
+        allow_unverified,
     } = plan;
     let auth = validate_server_runtime_auth(auth).await?;
     let recorded_inspection = {
@@ -202,6 +205,7 @@ pub async fn start(
                 runtime,
                 inspection: inspection.clone(),
                 auth,
+                allow_unverified,
             }) {
                 Ok(spawned) => spawned,
                 Err(err) => {
@@ -307,7 +311,18 @@ fn record_local_server_capability_proof(
         .record_model_capability_proof(ModelCapabilityProofRecordRequest {
             layout: layout_input_from_layout(layout, LayoutResolveMode::Create),
             selector,
-            capability: inspection.spec.capability.required_model_capability(),
+            capability: inspection
+                .spec
+                .capability
+                .ok_or_else(|| {
+                    tentgent_kernel::foundation::error::KernelError::ServerStoreUnavailable(
+                        format!(
+                            "local server spec `{}` is missing capability metadata",
+                            inspection.spec.short_ref
+                        ),
+                    )
+                })?
+                .required_model_capability(),
             status,
             source: ModelCapabilityProofSource::ServerStart,
             server_ref: Some(inspection.spec.server_ref.to_string()),
@@ -348,7 +363,9 @@ pub async fn stop(
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerCreateRequest {
-    pub runtime_ref: String,
+    pub runtime_kind: Option<ServerRuntimeKind>,
+    pub runtime_ref: Option<String>,
+    pub cluster_ref: Option<String>,
     pub capability: Option<ServerCapability>,
     pub host: Option<String>,
     pub port: Option<u16>,
@@ -370,6 +387,78 @@ struct ServerStartPlan {
     inspection: ServerInspection,
     runtime: PythonRuntimeLayout,
     auth: Option<AuthSecretMaterial>,
+    allow_unverified: bool,
+}
+
+fn server_prepare_target(request: &ServerCreateRequest) -> Result<ServerPrepareTarget, RestError> {
+    match request.runtime_kind {
+        Some(ServerRuntimeKind::Cluster) => {
+            if request.runtime_ref.is_some() || request.capability.is_some() {
+                return Err(RestError::bad_request(
+                    "bad_request",
+                    "cluster server creation accepts `cluster_ref` and must not include `runtime_ref` or `capability`",
+                ));
+            }
+            let cluster_ref = request.cluster_ref.as_deref().ok_or_else(|| {
+                RestError::bad_request(
+                    "bad_request",
+                    "cluster server creation requires `cluster_ref`",
+                )
+            })?;
+            let cluster_ref = ClusterRef::parse(cluster_ref).map_err(|err| {
+                RestError::bad_request("bad_request", format!("invalid cluster_ref: {err}"))
+            })?;
+            Ok(ServerPrepareTarget::Cluster { cluster_ref })
+        }
+        Some(expected @ (ServerRuntimeKind::Local | ServerRuntimeKind::Cloud)) => {
+            if request.cluster_ref.is_some() {
+                return Err(RestError::bad_request(
+                    "bad_request",
+                    "local/cloud server creation must not include `cluster_ref`",
+                ));
+            }
+            let runtime_ref = request.runtime_ref.clone().ok_or_else(|| {
+                RestError::bad_request(
+                    "bad_request",
+                    "local/cloud server creation requires `runtime_ref`",
+                )
+            })?;
+            let selection = parse_server_runtime_selection(&runtime_ref).map_err(|err| {
+                RestError::bad_request("bad_request", format!("invalid runtime_ref: {err}"))
+            })?;
+            let actual = match selection {
+                ServerRuntimeSelection::LocalModel { .. } => ServerRuntimeKind::Local,
+                ServerRuntimeSelection::CloudProvider { .. } => ServerRuntimeKind::Cloud,
+            };
+            if actual != expected {
+                return Err(RestError::bad_request(
+                    "bad_request",
+                    format!(
+                        "runtime_kind `{expected}` does not match runtime_ref target kind `{actual}`"
+                    ),
+                ));
+            }
+            Ok(ServerPrepareTarget::RuntimeRef {
+                runtime_ref,
+                capability: request.capability,
+            })
+        }
+        None => {
+            if request.cluster_ref.is_some() {
+                return Err(RestError::bad_request(
+                    "bad_request",
+                    "cluster server creation requires `runtime_kind: \"cluster\"`",
+                ));
+            }
+            let runtime_ref = request.runtime_ref.clone().ok_or_else(|| {
+                RestError::bad_request("bad_request", "server creation requires `runtime_ref`")
+            })?;
+            Ok(ServerPrepareTarget::RuntimeRef {
+                runtime_ref,
+                capability: request.capability,
+            })
+        }
+    }
 }
 
 fn validate_start_timeout(timeout_seconds: Option<u64>) -> Result<u64, RestError> {
@@ -399,7 +488,7 @@ fn resolve_server_runtime_auth(
     state: &RestState,
     inspection: &ServerInspection,
 ) -> Result<Option<AuthSecretMaterial>, RestError> {
-    if inspection.spec.runtime_kind == ServerRuntimeKind::Local {
+    if inspection.spec.runtime_kind != ServerRuntimeKind::Cloud {
         return Ok(None);
     }
 

@@ -5,6 +5,7 @@ use tentgent_kernel::features::adapter::{
     infra::FileAdapterCatalogStore,
     usecases::{AdapterCatalogReadUseCase, AdapterInspectRequest, StdAdapterCatalogReadUseCase},
 };
+use tentgent_kernel::features::cluster::infra::FileClusterCatalogStore;
 use tentgent_kernel::features::model::infra::{
     FileModelCapabilityProofStore, FileModelCatalogStore,
 };
@@ -47,6 +48,7 @@ pub(super) struct CliSessionKernel {
     model_catalog: FileModelCatalogStore,
     model_proofs: FileModelCapabilityProofStore,
     adapter_catalog: FileAdapterCatalogStore,
+    cluster_catalog: FileClusterCatalogStore,
 }
 
 impl CliSessionKernel {
@@ -65,6 +67,7 @@ impl CliSessionKernel {
             model_catalog: FileModelCatalogStore,
             model_proofs: FileModelCapabilityProofStore,
             adapter_catalog: FileAdapterCatalogStore,
+            cluster_catalog: FileClusterCatalogStore,
         }
     }
 
@@ -102,11 +105,12 @@ impl CliSessionKernel {
     }
 
     fn server_usecase(&self) -> StdServerUseCase<'_> {
-        StdServerUseCase::new(
+        StdServerUseCase::new_with_cluster_catalog(
             &self.layout_resolver,
             &self.server_initializer,
             &self.model_catalog,
             &self.model_proofs,
+            &self.cluster_catalog,
             &self.server_identity,
             &self.server_catalog,
             &self.server_process_controller,

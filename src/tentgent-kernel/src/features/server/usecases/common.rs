@@ -2,6 +2,10 @@ use crate::features::auth::domain::Provider;
 use crate::features::cloud::domain::{
     provider_capabilities, provider_supports, CloudEndpointCapability,
 };
+use crate::features::cluster::{
+    domain::{ClusterRouteKey, ClusterRouteTarget, ClusterStoreLayout},
+    ports::ClusterCatalogStore,
+};
 use crate::features::model::domain::{
     ModelCapability, ModelFormat, ModelRefSelector, ModelStoreLayout,
 };
@@ -12,9 +16,9 @@ use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore
 use crate::features::server::domain::{
     ensure_server_model_capability, infer_server_capability_from_model_capabilities,
     normalize_server_host, parse_server_runtime_selection, CloudProvider, ServerCapability,
-    ServerRef, ServerRuntimeBackend, ServerRuntimeKind, ServerRuntimeProfileSelection,
-    ServerRuntimeSelection, ServerRuntimeTarget, ServerSpec, ServerStoreLayout,
-    DEFAULT_SERVER_PORT,
+    ServerPrepareTarget, ServerRef, ServerRuntimeBackend, ServerRuntimeKind,
+    ServerRuntimeProfileSelection, ServerRuntimeSelection, ServerRuntimeTarget, ServerSpec,
+    ServerStoreLayout, DEFAULT_SERVER_PORT,
 };
 use crate::features::server::ports::ServerIdentityGenerator;
 use crate::features::server::profile::local_server_runtime_profile_for;
@@ -35,13 +39,33 @@ pub(super) fn model_store_layout(layout: &RuntimeLayout) -> ModelStoreLayout {
 }
 
 pub(super) fn resolve_server_runtime_target(
-    runtime_ref: &str,
-    capability: Option<ServerCapability>,
+    target: &ServerPrepareTarget,
     layout: &RuntimeLayout,
     model_catalog: &dyn ModelCatalogStore,
     model_proofs: &dyn ModelCapabilityProofStore,
+    cluster_catalog: &dyn ClusterCatalogStore,
     allow_unverified: bool,
 ) -> KernelResult<ServerRuntimeTarget> {
+    let (runtime_ref, capability) = match target {
+        ServerPrepareTarget::RuntimeRef {
+            runtime_ref,
+            capability,
+        } => (runtime_ref, *capability),
+        ServerPrepareTarget::Cluster { cluster_ref } => {
+            ensure_cluster_chat_launchable(
+                cluster_ref,
+                layout,
+                cluster_catalog,
+                model_catalog,
+                model_proofs,
+                allow_unverified,
+            )?;
+            return Ok(ServerRuntimeTarget::Cluster {
+                cluster_ref: cluster_ref.clone(),
+            });
+        }
+    };
+
     match parse_server_runtime_selection(runtime_ref)
         .map_err(|err| KernelError::UnsupportedTarget(err.to_string()))?
     {
@@ -114,6 +138,7 @@ pub(super) fn ensure_server_spec_launchable(
     layout: &RuntimeLayout,
     model_catalog: &dyn ModelCatalogStore,
     model_proofs: &dyn ModelCapabilityProofStore,
+    cluster_catalog: &dyn ClusterCatalogStore,
     allow_unverified: bool,
 ) -> KernelResult<()> {
     match spec.runtime_kind {
@@ -124,7 +149,7 @@ pub(super) fn ensure_server_spec_launchable(
                     spec.short_ref
                 ))
             })?;
-            ensure_cloud_server_capability_supported(provider, spec.capability)?;
+            ensure_cloud_server_capability_supported(provider, required_spec_capability(spec)?)?;
             Ok(())
         }
         ServerRuntimeKind::Local => {
@@ -138,33 +163,46 @@ pub(super) fn ensure_server_spec_launchable(
             let selector = ModelRefSelector::parse(model_ref.as_str())
                 .map_err(|err| KernelError::ServerStoreUnavailable(err.to_string()))?;
             let model = model_catalog.inspect_model(&model_store, &selector)?;
+            let capability = required_spec_capability(spec)?;
             ensure_model_compatible_with_server(
-                spec.capability,
+                capability,
                 &model.metadata.model_ref,
                 &model.metadata.model_capabilities,
             )?;
-            ensure_server_capability_implemented(spec.capability)?;
+            ensure_server_capability_implemented(capability)?;
             let backend =
-                server_runtime_backend_for_format(spec.capability, model.metadata.primary_format)?;
+                server_runtime_backend_for_format(capability, model.metadata.primary_format)?;
             ensure_local_server_runtime_profile_matches(
-                spec.capability,
+                capability,
                 backend,
                 spec.runtime_profile.as_ref(),
             )?;
-            ensure_model_files_allow_local_server_start(
-                &model_store,
-                &model.metadata,
-                spec.capability,
-            )?;
+            ensure_model_files_allow_local_server_start(&model_store, &model.metadata, capability)?;
             ensure_local_server_support_status_allows_start(
                 &model.metadata,
-                spec.capability,
+                capability,
                 layout,
                 model_proofs,
                 spec.runtime_profile.as_ref(),
                 allow_unverified,
             )?;
             Ok(())
+        }
+        ServerRuntimeKind::Cluster => {
+            let cluster_ref = spec.cluster_ref.as_ref().ok_or_else(|| {
+                KernelError::ServerStoreUnavailable(format!(
+                    "cluster server spec `{}` is missing cluster_ref",
+                    spec.short_ref
+                ))
+            })?;
+            ensure_cluster_chat_launchable(
+                cluster_ref,
+                layout,
+                cluster_catalog,
+                model_catalog,
+                model_proofs,
+                allow_unverified,
+            )
         }
     }
 }
@@ -217,10 +255,11 @@ fn spec_for_ref(
             server_ref,
             short_ref,
             runtime_kind: ServerRuntimeKind::Local,
-            capability,
+            capability: Some(capability),
             model_ref: Some(model_ref),
             provider: None,
             provider_model: None,
+            cluster_ref: None,
             runtime_profile,
             host,
             port,
@@ -237,10 +276,28 @@ fn spec_for_ref(
             server_ref,
             short_ref,
             runtime_kind: ServerRuntimeKind::Cloud,
-            capability,
+            capability: Some(capability),
             model_ref: None,
             provider: Some(provider),
             provider_model: Some(provider_model),
+            cluster_ref: None,
+            runtime_profile: None,
+            host,
+            port,
+            port_auto,
+            lazy_load,
+            idle_seconds,
+            created_at,
+        },
+        ServerRuntimeTarget::Cluster { cluster_ref } => ServerSpec {
+            server_ref,
+            short_ref,
+            runtime_kind: ServerRuntimeKind::Cluster,
+            capability: None,
+            model_ref: None,
+            provider: None,
+            provider_model: None,
+            cluster_ref: Some(cluster_ref),
             runtime_profile: None,
             host,
             port,
@@ -250,6 +307,71 @@ fn spec_for_ref(
             created_at,
         },
     }
+}
+
+fn required_spec_capability(spec: &ServerSpec) -> KernelResult<ServerCapability> {
+    spec.capability.ok_or_else(|| {
+        KernelError::ServerStoreUnavailable(format!(
+            "{} server spec `{}` is missing capability metadata",
+            spec.runtime_kind, spec.short_ref
+        ))
+    })
+}
+
+fn ensure_cluster_chat_launchable(
+    cluster_ref: &crate::features::cluster::domain::ClusterRef,
+    layout: &RuntimeLayout,
+    cluster_catalog: &dyn ClusterCatalogStore,
+    model_catalog: &dyn ModelCatalogStore,
+    model_proofs: &dyn ModelCapabilityProofStore,
+    allow_unverified: bool,
+) -> KernelResult<()> {
+    let cluster_store = ClusterStoreLayout::from_home_dir(layout.home_dir.clone());
+    let inspection = cluster_catalog.inspect_cluster(&cluster_store, cluster_ref)?;
+    let target = inspection
+        .definition
+        .routes
+        .get(&ClusterRouteKey::Chat)
+        .ok_or_else(|| {
+            KernelError::UnsupportedTarget(format!(
+                "cluster `{cluster_ref}` cannot run as a server without a `routes.chat` target"
+            ))
+        })?;
+    let ClusterRouteTarget::LocalModel {
+        model_ref,
+        runtime_profile,
+    } = target
+    else {
+        return Err(KernelError::UnsupportedTarget(format!(
+            "cluster `{cluster_ref}` route `chat` must use a local-model target in this release"
+        )));
+    };
+
+    let model_store = model_store_layout(layout);
+    let metadata = model_catalog.load_model_metadata(&model_store, model_ref)?;
+    let capability = ServerCapability::Chat;
+    ensure_model_compatible_with_server(
+        capability,
+        &metadata.model_ref,
+        &metadata.model_capabilities,
+    )?;
+    let backend = server_runtime_backend_for_format(capability, metadata.primary_format)?;
+    let effective_runtime_profile = match runtime_profile.as_ref() {
+        Some(profile) => {
+            ensure_local_server_runtime_profile_matches(capability, backend, Some(profile))?;
+            Some(profile.clone())
+        }
+        None => resolve_local_server_runtime_profile(capability, backend)?,
+    };
+    ensure_model_files_allow_local_server_start(&model_store, &metadata, capability)?;
+    ensure_local_server_support_status_allows_start(
+        &metadata,
+        capability,
+        layout,
+        model_proofs,
+        effective_runtime_profile.as_ref(),
+        allow_unverified,
+    )
 }
 
 fn ensure_model_files_allow_local_server_start(

@@ -12,9 +12,16 @@ It applies to:
   openai:<model>`, `anthropic:<model>`, `claude:<model>`, or `gemini:<model>`
 - provider-shaped local ingress adapters launched with
   `tentgent server run <model-ref>`
+- provider-shaped local ingress adapters reached through
+  `tentgent cluster run <cluster-ref>` after a local route is selected
 
 It does not apply to native local model-bound server routes except when those
 routes are implemented as provider-shaped ingress adapters.
+
+Cluster route-selection failures happen before provider payload validation and
+use the experimental `cluster_route_*` codes defined in
+[cluster.md](./cluster.md). Once a local route is selected, known unsupported
+provider fields and content retain the codes below.
 
 ## Error Shape
 

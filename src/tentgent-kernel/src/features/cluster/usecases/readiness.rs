@@ -303,7 +303,7 @@ fn resolve_route_readiness(
     }
 }
 
-fn resolve_local_route_readiness(
+pub(super) fn resolve_local_route_readiness(
     route: ClusterRouteKey,
     model_ref: String,
     configured_runtime_profile: &Option<

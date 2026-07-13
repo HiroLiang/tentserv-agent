@@ -12,7 +12,7 @@ use super::{
     RUNTIME_IMAGE_GENERATIONS_PATH,
 };
 
-pub(super) async fn proxy_request(
+pub(in crate::server) async fn proxy_request(
     State(state): State<LocalServerState>,
     request: AxumRequest,
 ) -> Result<Response, LocalServerError> {

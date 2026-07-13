@@ -21,7 +21,7 @@ use super::{
     LocalServerState, RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH,
 };
 
-pub(super) async fn claude_messages(
+pub(in crate::server) async fn claude_messages(
     State(state): State<LocalServerState>,
     Json(request): Json<LocalClaudeMessagesRequest>,
 ) -> Result<Response, LocalServerError> {
@@ -131,7 +131,7 @@ pub(super) async fn claude_stream_response_from_upstream(
 }
 
 #[derive(Debug, Deserialize)]
-pub(super) struct LocalClaudeMessagesRequest {
+pub(in crate::server) struct LocalClaudeMessagesRequest {
     model: String,
     messages: Vec<LocalClaudeMessage>,
     system: Option<LocalClaudeContent>,

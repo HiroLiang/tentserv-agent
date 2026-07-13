@@ -8,10 +8,10 @@ use serde_json::json;
 use crate::provider_compat::ProviderCompatRejection;
 
 #[derive(Debug)]
-pub(super) struct LocalServerError {
-    pub(super) status: StatusCode,
-    pub(super) code: &'static str,
-    pub(super) message: String,
+pub(in crate::server) struct LocalServerError {
+    pub(in crate::server) status: StatusCode,
+    pub(in crate::server) code: &'static str,
+    pub(in crate::server) message: String,
 }
 
 impl LocalServerError {

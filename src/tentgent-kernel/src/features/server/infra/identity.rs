@@ -145,6 +145,17 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
                 lazy_load,
                 idle_seconds,
             })?,
+            ServerRuntimeTarget::Cluster { cluster_ref } => {
+                compute_server_ref(ClusterServerIdentity {
+                    runtime_kind: ServerRuntimeKind::Cluster,
+                    cluster_ref: cluster_ref.as_str(),
+                    host,
+                    port,
+                    port_auto,
+                    lazy_load,
+                    idle_seconds,
+                })?
+            }
         };
 
         ServerRef::parse(server_ref).map_err(|err| server_store_error(err.to_string()))
@@ -240,6 +251,17 @@ struct CloudCapabilityAutoPortServerIdentity<'a> {
     provider: &'a str,
     provider_model: &'a str,
     capability: &'a str,
+    host: &'a str,
+    port: u16,
+    port_auto: bool,
+    lazy_load: bool,
+    idle_seconds: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct ClusterServerIdentity<'a> {
+    runtime_kind: ServerRuntimeKind,
+    cluster_ref: &'a str,
     host: &'a str,
     port: u16,
     port_auto: bool,
