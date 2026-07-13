@@ -15,7 +15,9 @@ use tentgent_kernel::{
 use super::{error::LocalServerError, LocalServerState};
 
 pub(super) fn record_runtime_execution_response(state: &LocalServerState, response: &Response) {
-    if response.status().is_server_error() {
+    if response.status().is_success() {
+        let _ = try_record_result(state, ModelCapabilityProofStatus::Verified, None);
+    } else if response.status().is_server_error() {
         record_failure(
             state,
             format!("model runtime returned HTTP {}", response.status()),
@@ -48,6 +50,14 @@ fn record_failure(state: &LocalServerState, error: String) {
 }
 
 fn try_record_failure(state: &LocalServerState, error: String) -> KernelResult<()> {
+    try_record_result(state, ModelCapabilityProofStatus::Failed, Some(error))
+}
+
+fn try_record_result(
+    state: &LocalServerState,
+    status: ModelCapabilityProofStatus,
+    error: Option<String>,
+) -> KernelResult<()> {
     let model_store = ModelStoreLayout::from_models_dir(state.layout.models_dir.clone());
     let selector = ModelRefSelector::parse(&state.config.model_ref).map_err(|err| {
         tentgent_kernel::foundation::error::KernelError::ModelStoreUnavailable(format!(
@@ -66,11 +76,11 @@ fn try_record_failure(state: &LocalServerState, error: String) -> KernelResult<(
         layout: state.layout.clone(),
         metadata: model.metadata,
         capability: state.config.capability.required_model_capability(),
-        status: ModelCapabilityProofStatus::Failed,
+        status,
         server_ref: Some(state.config.server_ref.clone()),
         runtime_profile,
         runtime_profile_version,
-        error: Some(error),
+        error,
     })?;
     Ok(())
 }
@@ -98,7 +108,8 @@ mod tests {
             model::{
                 domain::{
                     default_model_capability_source, ModelCapability, ModelCapabilityProofSource,
-                    ModelFormat, ModelMetadata, ModelRef, ModelSourceKind, ModelStoreLayout,
+                    ModelCapabilityProofStatus, ModelFormat, ModelMetadata, ModelRef,
+                    ModelSourceKind, ModelStoreLayout,
                 },
                 infra::{FileModelCapabilityProofStore, FileModelCatalogStore},
                 ports::{ModelCapabilityProofStore, ModelCatalogStore},
@@ -162,6 +173,36 @@ mod tests {
             .error
             .as_deref()
             .is_some_and(|error| error.contains("HTTP 502 Bad Gateway")));
+    }
+
+    #[test]
+    fn records_runtime_execution_success_for_success_response() {
+        let home = unique_home("local-server-runtime-evidence-success");
+        let layout = runtime_layout(&home);
+        let model_ref = model_ref();
+        let model_store = ModelStoreLayout::from_models_dir(layout.models_dir.clone());
+        let catalog = FileModelCatalogStore;
+        catalog
+            .save_model_metadata(&model_store, &model_metadata(&model_ref))
+            .expect("save model metadata");
+        let state = local_server_state(layout.clone(), &model_ref);
+        let response = axum::response::Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::empty())
+            .expect("response");
+
+        record_runtime_execution_response(&state, &response);
+
+        let proofs = FileModelCapabilityProofStore
+            .list_capability_proofs(&model_store, &model_ref)
+            .expect("proofs");
+        assert_eq!(proofs.len(), 1);
+        assert_eq!(proofs[0].status, ModelCapabilityProofStatus::Verified);
+        assert_eq!(
+            proofs[0].source,
+            ModelCapabilityProofSource::RuntimeExecution
+        );
+        assert!(proofs[0].error.is_none());
     }
 
     fn local_server_state(layout: RuntimeLayout, model_ref: &ModelRef) -> LocalServerState {

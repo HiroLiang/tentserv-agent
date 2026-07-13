@@ -383,6 +383,12 @@ async fn generate_summary(
                 provider_model,
             }
         }
+        tentgent_kernel::features::server::domain::ServerRuntimeKind::Cluster => {
+            return Err(RestError::conflict(
+                "session_compaction_required",
+                "session compaction does not resolve cluster server targets yet; select a local or cloud model server",
+            ));
+        }
     };
     let messages = requirement
         .input

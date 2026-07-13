@@ -77,4 +77,11 @@ pub enum KernelError {
 
     #[error("unsupported target: {0}")]
     UnsupportedTarget(String),
+
+    #[error("resource operation `{operation}` is blocked for `{resource}`: {blockers}")]
+    ResourceOperationBlocked {
+        operation: String,
+        resource: String,
+        blockers: String,
+    },
 }

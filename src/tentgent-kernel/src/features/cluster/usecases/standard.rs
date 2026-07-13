@@ -1,8 +1,10 @@
 //! Standard cluster definition orchestration.
 
-use crate::features::cluster::ports::{ClusterCatalogStore, ClusterStoreLayoutInitializer};
+use crate::features::cluster::ports::{
+    ClusterCatalogStore, ClusterServerReferenceProbe, ClusterStoreLayoutInitializer,
+};
 use crate::features::model::ports::ModelCatalogStore;
-use crate::foundation::error::KernelResult;
+use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayoutResolver;
 
 use super::common::{
@@ -21,6 +23,7 @@ pub struct StdClusterUseCase<'a> {
     layout_initializer: &'a dyn ClusterStoreLayoutInitializer,
     catalog: &'a dyn ClusterCatalogStore,
     model_catalog: &'a dyn ModelCatalogStore,
+    server_refs: &'a dyn ClusterServerReferenceProbe,
 }
 
 impl<'a> StdClusterUseCase<'a> {
@@ -30,11 +33,30 @@ impl<'a> StdClusterUseCase<'a> {
         catalog: &'a dyn ClusterCatalogStore,
         model_catalog: &'a dyn ModelCatalogStore,
     ) -> Self {
+        static SERVER_REFS: crate::features::cluster::infra::FileClusterServerReferenceProbe =
+            crate::features::cluster::infra::FileClusterServerReferenceProbe;
+        Self::new_with_server_refs(
+            layout_resolver,
+            layout_initializer,
+            catalog,
+            model_catalog,
+            &SERVER_REFS,
+        )
+    }
+
+    pub fn new_with_server_refs(
+        layout_resolver: &'a dyn RuntimeLayoutResolver,
+        layout_initializer: &'a dyn ClusterStoreLayoutInitializer,
+        catalog: &'a dyn ClusterCatalogStore,
+        model_catalog: &'a dyn ModelCatalogStore,
+        server_refs: &'a dyn ClusterServerReferenceProbe,
+    ) -> Self {
         Self {
             layout_resolver,
             layout_initializer,
             catalog,
             model_catalog,
+            server_refs,
         }
     }
 }
@@ -127,6 +149,16 @@ impl ClusterSpecUseCase for StdClusterUseCase<'_> {
     fn remove_cluster(&self, request: ClusterRemoveRequest) -> KernelResult<ClusterRemoveResult> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = cluster_store_layout(&layout);
+        let blockers = self
+            .server_refs
+            .server_refs_for_cluster(&layout, &request.cluster_ref)?;
+        if !blockers.is_empty() {
+            return Err(KernelError::ResourceOperationBlocked {
+                operation: "delete-cluster".to_string(),
+                resource: request.cluster_ref.to_string(),
+                blockers: blockers.join(", "),
+            });
+        }
         let outcome = self.catalog.remove_cluster(&store, &request.cluster_ref)?;
         Ok(ClusterRemoveResult {
             layout,

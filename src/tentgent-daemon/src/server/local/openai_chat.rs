@@ -24,7 +24,7 @@ use super::{
     LocalServerState, RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH,
 };
 
-pub(super) async fn openai_chat_completions(
+pub(in crate::server) async fn openai_chat_completions(
     State(state): State<LocalServerState>,
     Json(request): Json<LocalOpenAiChatCompletionRequest>,
 ) -> Result<Response, LocalServerError> {
@@ -134,7 +134,7 @@ pub(super) async fn openai_stream_response_from_upstream(
 }
 
 #[derive(Debug, Deserialize)]
-pub(super) struct LocalOpenAiChatCompletionRequest {
+pub(in crate::server) struct LocalOpenAiChatCompletionRequest {
     model: Option<String>,
     messages: Vec<OpenAiTextMessage>,
     max_tokens: Option<u32>,

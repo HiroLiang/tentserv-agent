@@ -1,6 +1,7 @@
 # Server Embedding
 
 This document defines the direct local model-server embedding request contract.
+Cluster servers use the same contract after selecting `routes.embedding`.
 
 ## Endpoint
 
@@ -50,7 +51,8 @@ embedding shape when a provider-style field is present:
 ```
 
 `model` is accepted for client compatibility and ignored as a route selector;
-the server uses the local model bound by `tentgent server run`.
+the server uses the local model bound by `tentgent server run` or the model in
+the cluster's `routes.embedding` target.
 `encoding_format` may be omitted or set to `float`.
 
 Unsupported OpenAI-compatible embedding fields return stable provider

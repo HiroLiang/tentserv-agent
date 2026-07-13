@@ -422,6 +422,51 @@ pub struct ClusterReadinessReport {
     pub details: Vec<ClusterReadinessDetail>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClusterRouteExecutionBlockerCode {
+    MissingRoute,
+    UnsupportedTarget,
+    NotReady,
+    ProofStale,
+    ProofFailed,
+    Unsupported,
+    Unavailable,
+}
+
+impl ClusterRouteExecutionBlockerCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingRoute => "cluster_route_missing",
+            Self::UnsupportedTarget => "cluster_route_target_unsupported",
+            Self::NotReady => "cluster_route_not_ready",
+            Self::ProofStale => "cluster_route_proof_stale",
+            Self::ProofFailed => "cluster_route_proof_failed",
+            Self::Unsupported => "cluster_route_unsupported",
+            Self::Unavailable => "cluster_route_unavailable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterLocalRouteExecutionTarget {
+    pub route: ClusterRouteKey,
+    pub model_ref: ModelRef,
+    pub capability: ServerCapability,
+    pub runtime_profile: Option<ServerRuntimeProfileSelection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClusterRouteExecutionDecision {
+    Ready(ClusterLocalRouteExecutionTarget),
+    Blocked {
+        route: ClusterRouteKey,
+        code: ClusterRouteExecutionBlockerCode,
+        status: Option<ClusterRouteReadinessStatus>,
+        description: String,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClusterStoreLayout {
     pub home_dir: PathBuf,

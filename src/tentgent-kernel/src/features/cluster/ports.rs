@@ -5,6 +5,7 @@ use crate::features::cluster::domain::{
     ClusterSummary,
 };
 use crate::foundation::error::KernelResult;
+use crate::foundation::layout::RuntimeLayout;
 
 /// Ensures the cluster-store root directories exist for mutating operations.
 pub trait ClusterStoreLayoutInitializer {
@@ -37,4 +38,14 @@ pub trait ClusterCatalogStore {
         layout: &ClusterStoreLayout,
         cluster_ref: &ClusterRef,
     ) -> KernelResult<ClusterRemoveOutcome>;
+}
+
+/// Finds stored server specs that reference a cluster before removal.
+pub trait ClusterServerReferenceProbe {
+    /// Returns stable server-spec blocker labels for one cluster.
+    fn server_refs_for_cluster(
+        &self,
+        layout: &RuntimeLayout,
+        cluster_ref: &ClusterRef,
+    ) -> KernelResult<Vec<String>>;
 }

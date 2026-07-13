@@ -426,7 +426,7 @@ See [docs/user/version.md](./docs/user/version.md) for version notes, feature li
 
 ## Full CLI Command Reference
 
-The README intentionally shows the shortest path. See [docs/user/commands.md](./docs/user/commands.md) for the complete CLI command reference covering auth, models, adapters, datasets, chat, servers, daemon, sessions, and LoRA training.
+The README intentionally shows the shortest path. See [docs/user/commands.md](./docs/user/commands.md) for the complete CLI command reference covering auth, models, adapters, datasets, chat, clusters, servers, daemon, sessions, and LoRA training.
 
 ## API And Contracts
 
@@ -441,6 +441,9 @@ this README stays easy to scan.
   shapes, and error mapping.
 - [docs/contracts/server-chat.md](./docs/contracts/server-chat.md)
   Model-bound server chat request shape and adapter validation rules.
+- [docs/contracts/cluster.md](./docs/contracts/cluster.md)
+  Cluster definitions, readiness, experimental local route serving, hot reload,
+  and resource protection.
 - [docs/contracts/session-store.md](./docs/contracts/session-store.md)
   Session metadata, message records, mutation rules, and bounded compaction.
 - [docs/contracts/runtime-home.md](./docs/contracts/runtime-home.md)
@@ -503,6 +506,8 @@ Included:
 - local HTTP daemon API for store, dataset, server, chat, training, diagnostics, and bounded session workflows
 - managed LoRA train plans, durable run records, metrics/log inspection, and runnable MLX / PEFT training loops
 - local sessions with bounded transcript compaction for short-term working context
+- stored cluster definitions with route readiness diagnostics and experimental
+  local multi-route server dispatch through the shared server lifecycle
 - installer-managed Python runtime bootstrap for direct installs and `tentgent runtime bootstrap` for package-manager installs
 
 Known limits:

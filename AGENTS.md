@@ -69,7 +69,8 @@ Key current documents:
   Model-store identity, deduplication, layout, and Hugging Face pull boundaries.
 - `docs/contracts/cluster.md`
   Cluster definition identity, canonical TOML storage, route-target validation,
-  CLI commands, daemon REST CRUD, and first-slice resource protection.
+  readiness diagnostics, local cluster server routing, daemon REST integration,
+  hot reload, and resource protection.
 - `docs/contracts/model-support-status.md`
   Support status vocabulary, evidence precedence, stale-proof rules, and
   transition rules for model/capability/backend tuples.

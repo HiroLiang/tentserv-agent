@@ -21,7 +21,7 @@ mod vision;
 pub use adapter::AdapterCommands;
 pub use auth::{AuthCommands, AuthProviderAction};
 pub use chat::ChatCommand;
-pub use cluster::ClusterCommands;
+pub use cluster::{ClusterCommands, ClusterRunCommand, ClusterServerRuntimeCommand};
 pub use daemon::{DaemonCommands, DaemonRunCommand, DaemonStartCommand};
 pub use dataset::DatasetCommands;
 pub use embed::EmbedCommand;
@@ -96,7 +96,7 @@ pub enum Commands {
     #[command(
         name = "cluster",
         about = "Inspect and manage cluster definitions.",
-        long_about = "Inspect and manage cluster definitions. Clusters are named local routing objects stored under TENTGENT_HOME/clusters/<cluster_ref>/cluster.toml. Current cluster commands validate stored definitions and compute read-only route readiness without starting a multi-route server."
+        long_about = "Inspect, validate, and run cluster definitions. Clusters are named local routing objects stored under TENTGENT_HOME/clusters/<cluster_ref>/cluster.toml. A cluster server reuses the normal server lifecycle and selects configured local model routes by HTTP endpoint family."
     )]
     Cluster {
         #[command(subcommand)]
@@ -227,6 +227,9 @@ pub enum Commands {
     /// Internal local server proxy runtime worker.
     #[command(name = "__local-server-runtime", hide = true)]
     LocalServerRuntime(LocalServerRuntimeCommand),
+    /// Internal cluster server proxy runtime worker.
+    #[command(name = "__cluster-server-runtime", hide = true)]
+    ClusterServerRuntime(ClusterServerRuntimeCommand),
     /// Inspect and manage local chat sessions.
     #[command(
         name = "session",

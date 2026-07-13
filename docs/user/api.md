@@ -860,8 +860,12 @@ readiness. `GET /v1/clusters/{cluster_ref}` returns the stored definition plus
 read-only readiness fields such as aggregate `readiness.status`, per-route
 `readiness.status`, flags, details, and `next_actions[].code`.
 
-Cluster request routing is not exposed yet. Current route definitions are for
-inspection, diagnostics, and later native cluster routing work.
+Cluster definitions can be launched through the managed server API described
+below. Inference requests go to the resulting cluster server port, not to the
+daemon's `/v1/clusters` management routes. The first experimental runtime
+dispatches local `chat`, `embedding`, `rerank`, `audio-transcription`, and
+`vision-chat` routes; provider targets return an explicit unsupported-target
+error.
 
 ## Models
 
@@ -966,10 +970,10 @@ For ControlNet-style image control adapters, set `target_capability` to
 | Method | Path | Body |
 | --- | --- | --- |
 | `GET` | `/v1/servers` | None. |
-| `POST` | `/v1/servers` | `{"runtime_ref":"<model-or-cloud-ref>","capability":"optional chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation","host":"optional","port":8780,"lazy_load":true,"idle_seconds":60}` |
+| `POST` | `/v1/servers` | Local/cloud: `{"runtime_ref":"<model-or-cloud-ref>","capability":"optional chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation","host":"optional","port":8780,"lazy_load":true,"idle_seconds":60}`. Cluster: `{"runtime_kind":"cluster","cluster_ref":"<cluster-ref>","host":"optional","port":8780,"allow_unverified":false}`. |
 | `GET` | `/v1/servers/{reference}` | None. |
 | `DELETE` | `/v1/servers/{reference}` | Removes a stopped server spec. |
-| `POST` | `/v1/servers/{reference}/start` | `{"wait_ready":true,"timeout_seconds":30}` |
+| `POST` | `/v1/servers/{reference}/start` | `{"wait_ready":true,"timeout_seconds":30,"allow_unverified":false}` |
 | `POST` | `/v1/servers/{reference}/stop` | None. |
 | `GET` | `/v1/servers/{reference}/health` | Probe server process health. |
 | `GET` | `/v1/servers/{reference}/logs` | Server log metadata. |
@@ -979,10 +983,17 @@ For ControlNet-style image control adapters, set `target_capability` to
 Direct model-server ports are separate from the daemon port. A server exposes
 only the endpoint family selected by its `capability`, such as `/v1/chat`,
 `/v1/embeddings`, `/v1/rerank`, audio, vision, video, or image routes.
+Cluster server specs have no single capability. Their endpoint family selects
+the matching stored cluster route, and caller `model` fields cannot replace the
+configured target. Cluster creation requires `runtime_kind: "cluster"` and
+`cluster_ref`; it rejects mixed `runtime_ref` or `capability` fields.
 Omitting `port` creates an auto-port server spec that starts scanning at `8780`
 on every launch. Explicit `port` values are fixed. Server responses expose
 `requested_port`, `port_auto`, and the running process `bound_port`; the top-level
-`port` is the effective port clients should call.
+`port` is the effective port clients should call. List, inspect, and create
+responses also expose a structured `target`; cluster targets use
+`{"kind":"cluster","cluster_ref":"<cluster-ref>"}` while existing flat fields
+remain present.
 Unsupported endpoint families on that direct server should return `404` or an
 endpoint-specific error.
 

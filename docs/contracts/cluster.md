@@ -1,9 +1,9 @@
 # Cluster Definitions
 
-This contract defines the first cluster definition boundary. A cluster is a
-named user-facing routing object that owns internal route targets. This slice
-stores and validates definitions only; it does not start a multi-route runtime
-or route inference requests through a cluster.
+This contract defines cluster definitions, readiness, and the first local
+cluster server routing boundary. A cluster is a named user-facing routing
+object that owns internal route targets. A cluster server reuses the stored
+server lifecycle while selecting a local model target by HTTP endpoint family.
 
 ## Scope
 
@@ -11,18 +11,21 @@ In scope:
 
 - one public `cluster_ref`
 - canonical TOML storage under `TENTGENT_HOME`
-- CLI file apply, validation, list, inspect, and remove operations
+- CLI file apply, validation, list, inspect, run, and remove operations
 - daemon REST JSON CRUD for stored definitions
 - model/provider reference validation for declared routes
 - read-only route readiness diagnostics during inspect and doctor checks
 - model delete and capability mutation protection for stored local cluster
   routes
+- local cluster server routing for `chat`, `embedding`, `rerank`,
+  `audio-transcription`, and `vision-chat`
+- stored server lifecycle, health, logs, and removal protection for cluster
+  servers
 
 Out of scope:
 
-- cluster request routing
-- cluster start/stop lifecycle
 - active runtime ownership
+- provider target execution through cluster servers
 - route variants such as `chat.fast` and `chat.quality`
 - fixed `model + adapter` cluster targets
 - YAML input
@@ -87,8 +90,8 @@ Supported target kinds:
 
 | Kind | Fields | Meaning |
 | --- | --- | --- |
-| `local-model` | `model_ref`, optional `runtime_profile` | Route requests to one managed local model in a later routing slice. `model_ref` is the full canonical model ref, not a short selector. |
-| `provider` | `provider`, `provider_model` | Route requests to a supported cloud provider in a later routing slice. |
+| `local-model` | `model_ref`, optional `runtime_profile` | Route cluster server requests to one managed local model. `model_ref` is the full canonical model ref, not a short selector. |
+| `provider` | `provider`, `provider_model` | Valid definition and readiness target. Cluster server execution returns `cluster_route_target_unsupported` until provider orchestration is added. |
 
 `runtime_profile` uses the same stored shape as server runtime profiles:
 
@@ -117,8 +120,9 @@ A definition is accepted only when:
 - the selected provider supports the route family
 
 Partial clusters are valid. A cluster with only `chat` promises only `chat`.
-Unconfigured routes should later fail with missing-route errors rather than
-making the whole cluster invalid.
+Unconfigured server routes fail with `cluster_route_missing` rather than
+falling back to chat or making the stored definition invalid. Running a cluster
+as a server requires `routes.chat` to exist and use a local model target.
 
 ## Adapter Behavior
 
@@ -139,8 +143,11 @@ is computed on demand from existing local state during:
 - `tentgent doctor`
 - `GET /v1/doctor`
 
-Readiness is not written back to `cluster.toml`, and there is no readiness
-cache. `apply` and REST `PUT` only parse, validate, and store the definition.
+Readiness is not written back to `cluster.toml`, and there is no persisted
+readiness cache. `apply` and REST `PUT` only parse, validate, and store the
+definition. A running cluster server separately caches the parsed definition
+for request routing; that runtime cache does not store readiness or change the
+canonical TOML.
 
 Aggregate readiness status:
 
@@ -186,6 +193,7 @@ tentgent cluster apply <CLUSTER_TOML>
 tentgent cluster validate <CLUSTER_TOML>
 tentgent cluster ls
 tentgent cluster inspect <cluster-ref>
+tentgent cluster run <cluster-ref> [--host <host>] [--port <port>] [--detach]
 tentgent cluster rm <cluster-ref>
 ```
 
@@ -199,6 +207,51 @@ does not bypass schema or reference validation.
 summary, route table, problem flags, and next actions. It should not run model
 verification, provider auth validation, or runtime startup.
 
+`cluster run` creates or reuses a normal stored server spec with
+`runtime_kind = "cluster"` and launches it. `--allow-unverified` allows
+`unknown` or `stale` local support evidence for that launch; it never allows
+`failed`, `unsupported`, or unavailable routes. The option is launch state and
+is not persisted in `server.toml`. Use `tentgent server ls`, `server inspect`,
+`server start`, `server stop`, and `server rm` for the resulting server ref.
+
+## Cluster Server Runtime
+
+Endpoint families select fixed cluster route keys:
+
+| Ingress | Cluster route |
+| --- | --- |
+| `/v1/chat`, `/v1/chat/stream`, `/v1/chat/completions`, `/v1/messages`, `/v1beta/models/{operation}` | `chat` |
+| `/v1/embeddings` | `embedding` |
+| `/v1/rerank` | `rerank` |
+| `/v1/audio/transcriptions` | `audio-transcription` |
+| `/v1/vision/chat` | `vision-chat` |
+
+Provider-shaped `model` fields and Gemini path model names are compatibility
+inputs only. They do not override the target stored in `cluster.toml`.
+Provider-shaped request validation, response conversion, streaming, and local
+runtime evidence reuse the existing local model server adapters. Unknown paths
+are not forwarded to the Python runtime.
+
+Route execution uses these error codes:
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `cluster_route_missing` | `400` | The endpoint family has no configured route. |
+| `cluster_route_target_unsupported` | `400` | The route currently selects a provider target. |
+| `cluster_route_not_ready` | `409` | Current support evidence does not allow execution. |
+| `cluster_route_proof_stale` | `409` | Tuple evidence is stale and the launch did not allow it. |
+| `cluster_route_proof_failed` | `409` | Current tuple evidence records a failed runtime attempt. |
+| `cluster_route_unsupported` | `404` or `409` | The path or selected model tuple is unsupported. |
+| `cluster_route_unavailable` | `503` | Required local model state cannot be loaded. |
+| `cluster_definition_reload_failed` | `503` | The stored definition changed but could not be safely reloaded. |
+
+The server keeps one parsed definition snapshot. Requests perform a cheap file
+revision check; changed definitions are reloaded and assigned a SHA-256
+definition hash. Reload failures stop request routing until the definition is
+valid again. The server never silently uses the previous target after a failed
+reload. `/healthz` exposes the cluster ref, current definition hash, and route
+keys without loading model runtimes.
+
 ## Daemon REST Surface
 
 ```text
@@ -211,6 +264,37 @@ DELETE /v1/clusters/{cluster_ref}
 REST apply accepts a JSON version of the same definition structure and stores
 the canonical TOML file. The daemon does not read arbitrary client-local files
 for REST apply.
+
+Cluster server specs are created through the existing server registry route:
+
+```json
+POST /v1/servers
+{
+  "runtime_kind": "cluster",
+  "cluster_ref": "local-assistant",
+  "host": "127.0.0.1",
+  "port": 8780,
+  "allow_unverified": false
+}
+```
+
+Cluster requests must not include `runtime_ref` or a single `capability`.
+Server responses retain legacy flat target fields and add a structured target:
+
+```json
+{
+  "runtime_kind": "cluster",
+  "cluster_ref": "local-assistant",
+  "capability": null,
+  "model_ref": null,
+  "provider": null,
+  "provider_model": null,
+  "target": {
+    "kind": "cluster",
+    "cluster_ref": "local-assistant"
+  }
+}
+```
 
 Apply responses return stored definition details only:
 
@@ -316,3 +400,8 @@ cannot be removed from that model's capability metadata.
 The current implementation reports these blockers in the existing model-store
 error path. The shared structured blocker shape is defined in
 [resource-blockers.md](./resource-blockers.md).
+
+Cluster removal is also blocked while any running or stopped server spec
+targets that cluster. Stop a running server, remove its stored server spec, and
+then remove the cluster. `cluster rm` never cascades into server specs, models,
+adapters, or runtime profiles. REST reports this conflict as `cluster_in_use`.

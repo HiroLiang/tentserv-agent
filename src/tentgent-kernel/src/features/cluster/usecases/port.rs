@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::features::cluster::domain::{
     ClusterDefinition, ClusterInspection, ClusterReadinessReport, ClusterRef, ClusterRemoveOutcome,
-    ClusterStoreLayout, ClusterSummary,
+    ClusterRouteExecutionDecision, ClusterRouteKey, ClusterStoreLayout, ClusterSummary,
 };
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
@@ -108,6 +108,20 @@ pub struct ClusterReadinessListResult {
     pub clusters: Vec<ClusterReadinessInspectResult>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterRouteResolveRequest {
+    pub layout: RuntimeLayoutInput,
+    pub definition: ClusterDefinition,
+    pub route: ClusterRouteKey,
+    pub allow_unverified: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClusterRouteResolveResult {
+    pub layout: RuntimeLayout,
+    pub decision: ClusterRouteExecutionDecision,
+}
+
 /// Use-case boundary for stored cluster definitions.
 pub trait ClusterSpecUseCase {
     /// Lists stored clusters.
@@ -115,7 +129,7 @@ pub trait ClusterSpecUseCase {
 
     /// Inspects one stored cluster.
     fn inspect_cluster(&self, request: ClusterInspectRequest)
-    -> KernelResult<ClusterInspectResult>;
+        -> KernelResult<ClusterInspectResult>;
 
     /// Parses, validates, and stores a cluster definition file.
     fn apply_cluster_file(
@@ -152,4 +166,12 @@ pub trait ClusterReadinessUseCase {
         &self,
         request: ClusterReadinessListRequest,
     ) -> KernelResult<ClusterReadinessListResult>;
+}
+
+/// Use-case boundary for resolving one cluster route before runtime execution.
+pub trait ClusterRouteExecutionUseCase {
+    fn resolve_cluster_route(
+        &self,
+        request: ClusterRouteResolveRequest,
+    ) -> KernelResult<ClusterRouteResolveResult>;
 }

@@ -1,6 +1,7 @@
 # Server Rerank
 
 This document defines the direct local model-server rerank request contract.
+Cluster servers use the same contract after selecting `routes.rerank`.
 
 ## Endpoint
 

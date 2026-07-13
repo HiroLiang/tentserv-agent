@@ -66,6 +66,13 @@ __local-server-runtime ... --runtime-profile local-embedding-transformers-peft-v
 The local server runtime exposes the value in `/healthz` as
 `runtime_profile`.
 
+Cluster server specs do not store one server-level runtime profile because one
+cluster can route to multiple capabilities and models. Each local route uses
+its configured or inferred profile from `cluster.toml` and route readiness.
+Changing a route profile updates the mutable cluster definition without
+changing the cluster server ref; subsequent requests use the reloaded route
+definition.
+
 ## Parameter Metadata
 
 Runtime profile records may list accepted and rejected request parameters and

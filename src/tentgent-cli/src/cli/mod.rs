@@ -46,7 +46,7 @@ pub async fn run() -> miette::Result<()> {
         Commands::Adapter { action } => adapter::handle_adapter_command(action)?,
         Commands::Auth { subject } => auth::handle_auth_command(subject).await?,
         Commands::Chat(command) => chat::handle_chat_command(command).await?,
-        Commands::Cluster { action } => cluster::handle_cluster_command(action)?,
+        Commands::Cluster { action } => cluster::handle_cluster_command(action).await?,
         Commands::Dataset { action } => dataset::handle_dataset_command(action).await?,
         Commands::Model { action } => model::handle_model_command(action)?,
         Commands::Embed(command) => embed::handle_embed_command(command).await?,
@@ -62,6 +62,9 @@ pub async fn run() -> miette::Result<()> {
         }
         Commands::LocalServerRuntime(command) => {
             server::handle_local_server_runtime(command).await?
+        }
+        Commands::ClusterServerRuntime(command) => {
+            server::handle_cluster_server_runtime(command).await?
         }
         Commands::Session { action } => session::handle_session_command(action).await?,
         Commands::Store { action } => store::handle_store_command(action)?,
@@ -81,7 +84,9 @@ mod tests {
 
     use super::{
         app::Cli,
-        commands::{AuthCommands, Commands, DaemonCommands, ServerCommands, StoreCommands},
+        commands::{
+            AuthCommands, ClusterCommands, Commands, DaemonCommands, ServerCommands, StoreCommands,
+        },
     };
 
     #[test]
@@ -728,6 +733,71 @@ mod tests {
                 action: ServerCommands::Run(command),
             } => {
                 assert_eq!(command.capability, Some(ServerCapability::VisionChat));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_cluster_run_server_options() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "cluster",
+            "run",
+            "local-assistant",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8790",
+            "--lazy-load",
+            "--idle-seconds",
+            "30",
+            "--allow-unverified",
+            "--detach",
+        ])
+        .expect("parse cluster run");
+
+        match cli.command {
+            Commands::Cluster {
+                action: ClusterCommands::Run(command),
+            } => {
+                assert_eq!(command.cluster_ref, "local-assistant");
+                assert_eq!(command.host.as_deref(), Some("127.0.0.1"));
+                assert_eq!(command.port, Some(8790));
+                assert!(command.lazy_load);
+                assert_eq!(command.idle_seconds, Some(30));
+                assert!(command.allow_unverified);
+                assert!(command.detach);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_hidden_cluster_server_runtime() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "__cluster-server-runtime",
+            "--server-ref",
+            "abc123",
+            "--cluster-ref",
+            "local-assistant",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8790",
+            "--home",
+            "/tmp/tentgent",
+            "--allow-unverified",
+        ])
+        .expect("parse hidden cluster server runtime");
+
+        match cli.command {
+            Commands::ClusterServerRuntime(command) => {
+                assert_eq!(command.server_ref, "abc123");
+                assert_eq!(command.cluster_ref, "local-assistant");
+                assert_eq!(command.port, 8790);
+                assert!(command.allow_unverified);
             }
             other => panic!("unexpected command: {other:?}"),
         }

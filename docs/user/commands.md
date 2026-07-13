@@ -818,6 +818,7 @@ tentgent cluster validate <cluster-definition.toml>
 tentgent cluster apply <cluster-definition.toml>
 tentgent cluster ls
 tentgent cluster inspect <cluster-ref>
+tentgent cluster run <cluster-ref> --port <port> --detach
 tentgent cluster rm <cluster-ref>
 ```
 
@@ -843,16 +844,34 @@ provider_model = "<provider-model>"
 
 `<chat-model-ref>` is a full managed local model ref. `<provider-model>` is the
 provider's model name, such as the OpenAI model you intend the route to use.
-The first cluster definition slice validates and stores routes; it does not
-route inference requests through the cluster yet.
+Provider targets can be validated and inspected but are not executed by the
+first cluster server MVP.
 
 `cluster apply` and REST `PUT` only validate and replace the stored definition.
 They do not start runtimes, read provider secrets, or write route readiness
 state. Use `cluster inspect <cluster-ref>` to compute readiness from existing
 local state. Inspect shows the aggregate status, each configured route's
 capability/backend/runtime profile, support or auth status, problem flags, and
-next action. Omitted routes are allowed and are not warnings until a later
-routing slice attempts to use them.
+next action. Omitted routes are allowed; a request for one returns
+`cluster_route_missing`.
+
+`cluster run` requires a local `routes.chat` target and creates a normal stored
+server spec. The optional `--allow-unverified` launch flag permits unknown or
+stale local evidence while still rejecting failed or unsupported tuples. Use
+the returned server ref with the existing lifecycle commands:
+
+```bash
+tentgent server ls
+tentgent server inspect <server-ref>
+tentgent server stop <server-ref>
+tentgent server start <server-ref> --allow-unverified
+tentgent server rm <server-ref>
+```
+
+The running cluster server selects routes by endpoint family. Caller-supplied
+provider `model` fields do not change the stored target. Changes applied to the
+same cluster ref are detected by the running server and reloaded without
+changing its server ref.
 
 Daemon REST exposes matching definition CRUD:
 
@@ -875,10 +894,24 @@ curl -sS http://127.0.0.1:8790/v1/clusters/<cluster-ref> \
   }'
 curl -sS http://127.0.0.1:8790/v1/clusters/<cluster-ref> \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
+curl -sS http://127.0.0.1:8790/v1/servers \
+  -X POST \
+  -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "runtime_kind": "cluster",
+    "cluster_ref": "<cluster-ref>",
+    "port": <port>,
+    "allow_unverified": false
+  }'
 curl -sS http://127.0.0.1:8790/v1/clusters/<cluster-ref> \
   -X DELETE \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 ```
+
+`cluster rm` is blocked while any running or stopped server spec targets that
+cluster. Stop and remove the server spec first; cluster removal never deletes
+the server or its bound model resources automatically.
 
 ## Server
 
@@ -895,8 +928,9 @@ port is recorded as the running process `bound_port`; `server ls`, `server ps`,
 and daemon health calls use that actual port. When `--port` is provided, that
 port is fixed and startup fails if it is unavailable.
 `server ls` keeps local model rows compact by showing the model `short_ref` in
-the `model` column. Use `server inspect <server-ref>` when the full bound
-`model_ref` is needed.
+the `target` column. Cloud rows show the provider model name and cluster rows
+show the `cluster_ref`. Use `server inspect <server-ref>` when full target
+details are needed.
 
 Local model-bound server creation checks the selected capability, runtime
 profile availability, and effective support status before saving or launching

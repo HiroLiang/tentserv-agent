@@ -1,5 +1,6 @@
 use tentgent_kernel::{
     features::{
+        cluster::infra::FileClusterCatalogStore,
         model::ports::{ModelCapabilityProofStore, ModelCatalogStore},
         server::{
             infra::{
@@ -19,6 +20,7 @@ pub struct ServerKernelComponent {
     catalog: FileServerCatalogStore,
     process_controller: StdServerProcessController,
     clock: SystemServerClock,
+    cluster_catalog: FileClusterCatalogStore,
 }
 
 impl ServerKernelComponent {
@@ -30,6 +32,7 @@ impl ServerKernelComponent {
             catalog: FileServerCatalogStore::default(),
             process_controller: StdServerProcessController::default(),
             clock: SystemServerClock,
+            cluster_catalog: FileClusterCatalogStore,
         }
     }
 
@@ -38,11 +41,12 @@ impl ServerKernelComponent {
         model_catalog: &'a dyn ModelCatalogStore,
         model_proofs: &'a dyn ModelCapabilityProofStore,
     ) -> StdServerUseCase<'a> {
-        StdServerUseCase::new(
+        StdServerUseCase::new_with_cluster_catalog(
             &self.layout_resolver,
             &self.layout_initializer,
             model_catalog,
             model_proofs,
+            &self.cluster_catalog,
             &self.identity,
             &self.catalog,
             &self.process_controller,

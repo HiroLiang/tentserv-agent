@@ -21,7 +21,7 @@ use super::{
     LocalServerState, RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH,
 };
 
-pub(super) async fn gemini_generate_content(
+pub(in crate::server) async fn gemini_generate_content(
     State(state): State<LocalServerState>,
     Path(operation): Path<String>,
     Json(request): Json<LocalGeminiGenerateContentRequest>,
@@ -127,7 +127,7 @@ pub(super) async fn gemini_stream_response_from_upstream(
 }
 
 #[derive(Debug, Deserialize)]
-pub(super) struct LocalGeminiGenerateContentRequest {
+pub(in crate::server) struct LocalGeminiGenerateContentRequest {
     contents: Vec<LocalGeminiContent>,
     #[serde(alias = "systemInstruction")]
     system_instruction: Option<LocalGeminiContent>,

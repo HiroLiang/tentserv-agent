@@ -54,10 +54,12 @@ pub struct ServerSummaryItem {
     pub server_ref: String,
     pub short_ref: String,
     pub runtime_kind: String,
-    pub capability: String,
+    pub capability: Option<String>,
     pub model_ref: Option<String>,
     pub provider: Option<String>,
     pub provider_model: Option<String>,
+    pub cluster_ref: Option<String>,
+    pub target: ServerTargetItem,
     pub host: String,
     pub port: u16,
     pub requested_port: u16,
@@ -75,10 +77,12 @@ pub struct ServerInspectionItem {
     pub server_ref: String,
     pub short_ref: String,
     pub runtime_kind: String,
-    pub capability: String,
+    pub capability: Option<String>,
     pub model_ref: Option<String>,
     pub provider: Option<String>,
     pub provider_model: Option<String>,
+    pub cluster_ref: Option<String>,
+    pub target: ServerTargetItem,
     pub host: String,
     pub port: u16,
     pub requested_port: u16,
@@ -103,6 +107,25 @@ pub struct ServerProcessItem {
     pub launch_mode: String,
     pub started_at: String,
     pub bound_port: Option<u16>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ServerTargetItem {
+    LocalModel {
+        model_ref: String,
+        capability: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        runtime_profile: Option<String>,
+    },
+    CloudProvider {
+        provider: String,
+        provider_model: String,
+        capability: String,
+    },
+    Cluster {
+        cluster_ref: String,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -190,6 +213,8 @@ pub fn server_summary_item(summary: ServerSummary) -> ServerSummaryItem {
         model_ref: fields.model_ref,
         provider: fields.provider,
         provider_model: fields.provider_model,
+        cluster_ref: fields.cluster_ref,
+        target: fields.target,
         host: fields.host,
         port,
         requested_port: fields.port,
@@ -215,6 +240,8 @@ pub fn server_inspection_item(inspection: ServerInspection) -> ServerInspectionI
         model_ref: fields.model_ref,
         provider: fields.provider,
         provider_model: fields.provider_model,
+        cluster_ref: fields.cluster_ref,
+        target: fields.target,
         host: fields.host,
         port,
         requested_port: fields.port,
@@ -266,10 +293,12 @@ struct ServerFields {
     server_ref: String,
     short_ref: String,
     runtime_kind: String,
-    capability: String,
+    capability: Option<String>,
     model_ref: Option<String>,
     provider: Option<String>,
     provider_model: Option<String>,
+    cluster_ref: Option<String>,
+    target: ServerTargetItem,
     host: String,
     port: u16,
     port_auto: bool,
@@ -279,14 +308,59 @@ struct ServerFields {
 }
 
 fn server_fields(spec: ServerSpec) -> ServerFields {
+    let target = match spec.runtime_kind {
+        tentgent_kernel::features::server::domain::ServerRuntimeKind::Local => {
+            ServerTargetItem::LocalModel {
+                model_ref: spec
+                    .model_ref
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "(missing)".to_string()),
+                capability: spec
+                    .capability
+                    .map(|capability| capability.to_string())
+                    .unwrap_or_else(|| "(missing)".to_string()),
+                runtime_profile: spec.runtime_profile.as_ref().map(|profile| profile.label()),
+            }
+        }
+        tentgent_kernel::features::server::domain::ServerRuntimeKind::Cloud => {
+            ServerTargetItem::CloudProvider {
+                provider: spec
+                    .provider
+                    .map(|provider| provider.to_string())
+                    .unwrap_or_else(|| "(missing)".to_string()),
+                provider_model: spec
+                    .provider_model
+                    .clone()
+                    .unwrap_or_else(|| "(missing)".to_string()),
+                capability: spec
+                    .capability
+                    .map(|capability| capability.to_string())
+                    .unwrap_or_else(|| "(missing)".to_string()),
+            }
+        }
+        tentgent_kernel::features::server::domain::ServerRuntimeKind::Cluster => {
+            ServerTargetItem::Cluster {
+                cluster_ref: spec
+                    .cluster_ref
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "(missing)".to_string()),
+            }
+        }
+    };
     ServerFields {
         server_ref: spec.server_ref.into_string(),
         short_ref: spec.short_ref,
         runtime_kind: spec.runtime_kind.to_string(),
-        capability: spec.capability.to_string(),
+        capability: spec.capability.map(|capability| capability.to_string()),
         model_ref: spec.model_ref.map(|model_ref| model_ref.into_string()),
         provider: spec.provider.map(|provider| provider.to_string()),
         provider_model: spec.provider_model,
+        cluster_ref: spec
+            .cluster_ref
+            .map(|cluster_ref| cluster_ref.into_string()),
+        target,
         host: spec.host,
         port: spec.port,
         port_auto: spec.port_auto,

@@ -24,26 +24,27 @@ use tentgent_kernel::{
 };
 
 mod capability;
-mod claude_messages;
-mod error;
+pub(super) mod claude_messages;
+pub(super) mod error;
 mod evidence;
-mod gemini_generate;
+pub(super) mod gemini_generate;
 mod native;
-mod openai_chat;
-mod openai_embeddings;
+pub(super) mod openai_chat;
+pub(super) mod openai_embeddings;
 mod openai_images;
-mod proxy;
+pub(super) mod proxy;
 mod sse;
 
 #[cfg(test)]
 mod tests;
 
-use claude_messages::claude_messages;
-use gemini_generate::gemini_generate_content;
-use openai_chat::openai_chat_completions;
-use openai_embeddings::openai_embeddings;
+pub(super) use claude_messages::{claude_messages, LocalClaudeMessagesRequest};
+pub(super) use error::LocalServerError;
+pub(super) use gemini_generate::{gemini_generate_content, LocalGeminiGenerateContentRequest};
+pub(super) use openai_chat::{openai_chat_completions, LocalOpenAiChatCompletionRequest};
+pub(super) use openai_embeddings::openai_embeddings;
 use openai_images::image_generations;
-use proxy::proxy_request;
+pub(super) use proxy::proxy_request;
 
 pub(super) const PROXY_BODY_LIMIT_BYTES: usize = 256 * 1024 * 1024;
 pub(super) const RUNTIME_CHAT_PATH: &str = "/v1/chat";

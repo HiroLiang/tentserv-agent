@@ -4,19 +4,23 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::features::auth::domain::{AuthKeyStatus, KeychainPresence, Provider};
 use crate::features::auth::usecases::{AuthStatusReport, AuthStatusRequest, AuthStatusUseCase};
 use crate::features::cluster::domain::{
-    ClusterDefinition, ClusterReadinessStatus, ClusterRef, ClusterRouteKey,
-    ClusterRouteReadinessStatus, ClusterRouteTarget, CLUSTER_SCHEMA_VERSION,
+    ClusterDefinition, ClusterReadinessStatus, ClusterRef, ClusterRouteExecutionBlockerCode,
+    ClusterRouteExecutionDecision, ClusterRouteKey, ClusterRouteReadinessStatus,
+    ClusterRouteTarget, CLUSTER_SCHEMA_VERSION,
 };
 use crate::features::cluster::infra::{FileClusterCatalogStore, StdClusterStoreLayoutInitializer};
 use crate::features::cluster::ports::ClusterCatalogStore;
 use crate::features::cluster::usecases::{
     ClusterApplyFileRequest, ClusterInspectRequest, ClusterReadinessInspectRequest,
-    ClusterReadinessUseCase, ClusterSpecUseCase, StdClusterReadinessUseCase, StdClusterUseCase,
+    ClusterReadinessUseCase, ClusterRemoveRequest, ClusterRouteExecutionUseCase,
+    ClusterRouteResolveRequest, ClusterSpecUseCase, StdClusterReadinessUseCase,
+    StdClusterRouteExecutionUseCase, StdClusterUseCase,
 };
 use crate::features::model::domain::{
     default_model_capability_source, ModelCapability, ModelCapabilityProof,
-    ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelFormat, ModelMetadata, ModelRef,
-    ModelSourceKind, ModelStoreLayout,
+    ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelFormat, ModelImportMethod,
+    ModelMetadata, ModelRef, ModelSourceKind, ModelStoreLayout, ModelVariantMetadata,
+    ModelVariantStatus, SOURCE_DIRNAME,
 };
 use crate::features::model::infra::{FileModelCapabilityProofStore, FileModelCatalogStore};
 use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
@@ -111,6 +115,65 @@ provider_model = "gpt-test"
         applied.inspection.definition
     );
 
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn remove_cluster_is_blocked_by_stored_cluster_server_spec() {
+    let root = unique_path("cluster-remove-server-blocker");
+    let home = root.join("home");
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let layout = layout_resolver
+        .resolve(layout_input(&home, LayoutResolveMode::Create))
+        .expect("layout");
+    let cluster_ref = ClusterRef::parse("local-assistant").expect("cluster ref");
+    let cluster_store =
+        crate::features::cluster::domain::ClusterStoreLayout::from_home_dir(home.clone());
+    let cluster_catalog = FileClusterCatalogStore;
+    cluster_catalog
+        .save_cluster(
+            &cluster_store,
+            &ClusterDefinition {
+                schema_version: CLUSTER_SCHEMA_VERSION,
+                cluster_ref: cluster_ref.clone(),
+                routes: [(
+                    ClusterRouteKey::Chat,
+                    ClusterRouteTarget::Provider {
+                        provider: CloudProvider::OpenAI,
+                        provider_model: "gpt-test".to_string(),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            },
+        )
+        .expect("save cluster");
+    let server_dir = layout.servers_dir.join("server-ref");
+    fs::create_dir_all(&server_dir).expect("server dir");
+    fs::write(
+        server_dir.join("server.toml"),
+        "short_ref = \"abc123\"\ncluster_ref = \"local-assistant\"\n",
+    )
+    .expect("server spec");
+    let usecase = StdClusterUseCase::new(
+        &layout_resolver,
+        &StdClusterStoreLayoutInitializer,
+        &cluster_catalog,
+        &FileModelCatalogStore,
+    );
+
+    let error = usecase
+        .remove_cluster(ClusterRemoveRequest {
+            layout: layout_input(&home, LayoutResolveMode::Create),
+            cluster_ref,
+        })
+        .expect_err("stored server spec must block cluster removal");
+
+    assert!(error.to_string().contains("delete-cluster"));
+    assert!(error.to_string().contains("server-spec abc123"));
+    assert!(cluster_store
+        .cluster_definition_path("local-assistant")
+        .exists());
     let _ = fs::remove_dir_all(root);
 }
 
@@ -324,6 +387,148 @@ fn readiness_reports_provider_auth_missing_without_secret_resolution() {
         .iter()
         .any(|action| action.code.as_str() == "set-provider-auth"));
 
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn route_execution_allows_unknown_only_with_explicit_override() {
+    let root = unique_path("cluster-route-execution-unknown");
+    let home = root.join("home");
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let runtime_layout = layout_resolver
+        .resolve(layout_input(&home, LayoutResolveMode::Create))
+        .expect("runtime layout");
+    let model_ref = ModelRef::parse("f".repeat(64)).expect("model ref");
+    let model_store = ModelStoreLayout::from_models_dir(runtime_layout.models_dir.clone());
+    let model_catalog = FileModelCatalogStore;
+    model_catalog
+        .save_model_metadata(
+            &model_store,
+            &metadata_fixture(model_ref.clone(), vec![ModelCapability::Chat]),
+        )
+        .expect("save model metadata");
+    model_catalog
+        .save_variant_metadata(
+            &model_store,
+            &model_ref,
+            &ModelVariantMetadata {
+                format: ModelFormat::Gguf,
+                status: ModelVariantStatus::Imported,
+                import_method: ModelImportMethod::Add,
+                relative_source_path: SOURCE_DIRNAME.to_string(),
+            },
+        )
+        .expect("save variant metadata");
+    let source = model_store.variant_source_dir(&model_ref, ModelFormat::Gguf);
+    fs::create_dir_all(&source).expect("source dir");
+    fs::write(source.join("model.gguf"), "fixture").expect("gguf fixture");
+    let definition = ClusterDefinition {
+        schema_version: CLUSTER_SCHEMA_VERSION,
+        cluster_ref: ClusterRef::parse("local-assistant").expect("cluster ref"),
+        routes: [(
+            ClusterRouteKey::Chat,
+            ClusterRouteTarget::LocalModel {
+                model_ref,
+                runtime_profile: None,
+            },
+        )]
+        .into_iter()
+        .collect(),
+    };
+    let resolver = StdClusterRouteExecutionUseCase::new(
+        &layout_resolver,
+        &model_catalog,
+        &FileModelCapabilityProofStore,
+    );
+
+    let blocked = resolver
+        .resolve_cluster_route(ClusterRouteResolveRequest {
+            layout: layout_input(&home, LayoutResolveMode::ReadOnly),
+            definition: definition.clone(),
+            route: ClusterRouteKey::Chat,
+            allow_unverified: false,
+        })
+        .expect("blocked decision");
+    assert!(matches!(
+        blocked.decision,
+        ClusterRouteExecutionDecision::Blocked {
+            code: ClusterRouteExecutionBlockerCode::NotReady,
+            ..
+        }
+    ));
+
+    let allowed = resolver
+        .resolve_cluster_route(ClusterRouteResolveRequest {
+            layout: layout_input(&home, LayoutResolveMode::ReadOnly),
+            definition,
+            route: ClusterRouteKey::Chat,
+            allow_unverified: true,
+        })
+        .expect("ready decision");
+    assert!(matches!(
+        allowed.decision,
+        ClusterRouteExecutionDecision::Ready(_)
+    ));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn route_execution_reports_missing_and_provider_targets_without_fallback() {
+    let root = unique_path("cluster-route-execution-blockers");
+    let home = root.join("home");
+    let resolver = StdClusterRouteExecutionUseCase::new(
+        &StdRuntimeLayoutResolver,
+        &FileModelCatalogStore,
+        &FileModelCapabilityProofStore,
+    );
+    let cluster_ref = ClusterRef::parse("local-assistant").expect("cluster ref");
+    let missing = resolver
+        .resolve_cluster_route(ClusterRouteResolveRequest {
+            layout: layout_input(&home, LayoutResolveMode::ReadOnly),
+            definition: ClusterDefinition {
+                schema_version: CLUSTER_SCHEMA_VERSION,
+                cluster_ref: cluster_ref.clone(),
+                routes: Default::default(),
+            },
+            route: ClusterRouteKey::Embedding,
+            allow_unverified: true,
+        })
+        .expect("missing decision");
+    assert!(matches!(
+        missing.decision,
+        ClusterRouteExecutionDecision::Blocked {
+            code: ClusterRouteExecutionBlockerCode::MissingRoute,
+            ..
+        }
+    ));
+
+    let provider = resolver
+        .resolve_cluster_route(ClusterRouteResolveRequest {
+            layout: layout_input(&home, LayoutResolveMode::ReadOnly),
+            definition: ClusterDefinition {
+                schema_version: CLUSTER_SCHEMA_VERSION,
+                cluster_ref,
+                routes: [(
+                    ClusterRouteKey::Embedding,
+                    ClusterRouteTarget::Provider {
+                        provider: CloudProvider::OpenAI,
+                        provider_model: "text-embedding-test".to_string(),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            },
+            route: ClusterRouteKey::Embedding,
+            allow_unverified: true,
+        })
+        .expect("provider decision");
+    assert!(matches!(
+        provider.decision,
+        ClusterRouteExecutionDecision::Blocked {
+            code: ClusterRouteExecutionBlockerCode::UnsupportedTarget,
+            ..
+        }
+    ));
     let _ = fs::remove_dir_all(root);
 }
 

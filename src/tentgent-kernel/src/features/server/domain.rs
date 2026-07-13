@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::features::cluster::domain::ClusterRef;
 use crate::features::model::domain::{ModelCapability, ModelFormat, ModelRef, ModelRefSelector};
 
 pub const DEFAULT_SERVER_HOST: &str = "127.0.0.1";
@@ -163,6 +164,8 @@ pub enum ServerRuntimeKind {
     Local,
     #[serde(rename = "cloud")]
     Cloud,
+    #[serde(rename = "cluster")]
+    Cluster,
 }
 
 impl Default for ServerRuntimeKind {
@@ -176,6 +179,7 @@ impl ServerRuntimeKind {
         match self {
             Self::Local => "local",
             Self::Cloud => "cloud",
+            Self::Cluster => "cluster",
         }
     }
 }
@@ -453,6 +457,17 @@ pub enum ServerRuntimeSelection {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServerPrepareTarget {
+    RuntimeRef {
+        runtime_ref: String,
+        capability: Option<ServerCapability>,
+    },
+    Cluster {
+        cluster_ref: ClusterRef,
+    },
+}
+
 pub fn parse_server_runtime_selection(
     runtime_ref: impl AsRef<str>,
 ) -> Result<ServerRuntimeSelection, ServerRuntimeSelectionError> {
@@ -519,22 +534,27 @@ pub enum ServerRuntimeTarget {
         provider_model: String,
         capability: ServerCapability,
     },
+    Cluster {
+        cluster_ref: ClusterRef,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ServerSpec {
     pub server_ref: ServerRef,
     pub short_ref: String,
     #[serde(default)]
     pub runtime_kind: ServerRuntimeKind,
-    #[serde(default = "default_server_capability")]
-    pub capability: ServerCapability,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability: Option<ServerCapability>,
     #[serde(default)]
     pub model_ref: Option<ModelRef>,
     #[serde(default)]
     pub provider: Option<CloudProvider>,
     #[serde(default)]
     pub provider_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_ref: Option<ClusterRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_profile: Option<ServerRuntimeProfileSelection>,
     pub host: String,
@@ -546,9 +566,110 @@ pub struct ServerSpec {
     pub created_at: String,
 }
 
+impl<'de> Deserialize<'de> for ServerSpec {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct StoredServerSpec {
+            server_ref: ServerRef,
+            short_ref: String,
+            #[serde(default)]
+            runtime_kind: ServerRuntimeKind,
+            #[serde(default)]
+            capability: Option<ServerCapability>,
+            #[serde(default)]
+            model_ref: Option<ModelRef>,
+            #[serde(default)]
+            provider: Option<CloudProvider>,
+            #[serde(default)]
+            provider_model: Option<String>,
+            #[serde(default)]
+            cluster_ref: Option<ClusterRef>,
+            #[serde(default)]
+            runtime_profile: Option<ServerRuntimeProfileSelection>,
+            host: String,
+            port: u16,
+            #[serde(default)]
+            port_auto: bool,
+            lazy_load: bool,
+            idle_seconds: Option<u64>,
+            created_at: String,
+        }
+
+        let stored = StoredServerSpec::deserialize(deserializer)?;
+        let capability = match (stored.runtime_kind, stored.capability) {
+            (ServerRuntimeKind::Local | ServerRuntimeKind::Cloud, None) => {
+                default_server_capability_option()
+            }
+            (_, capability) => capability,
+        };
+        let spec = Self {
+            server_ref: stored.server_ref,
+            short_ref: stored.short_ref,
+            runtime_kind: stored.runtime_kind,
+            capability,
+            model_ref: stored.model_ref,
+            provider: stored.provider,
+            provider_model: stored.provider_model,
+            cluster_ref: stored.cluster_ref,
+            runtime_profile: stored.runtime_profile,
+            host: stored.host,
+            port: stored.port,
+            port_auto: stored.port_auto,
+            lazy_load: stored.lazy_load,
+            idle_seconds: stored.idle_seconds,
+            created_at: stored.created_at,
+        };
+        spec.validate_target_shape().map_err(de::Error::custom)?;
+        Ok(spec)
+    }
+}
+
 impl ServerSpec {
+    pub fn validate_target_shape(&self) -> Result<(), String> {
+        let valid = match self.runtime_kind {
+            ServerRuntimeKind::Local => {
+                self.capability.is_some()
+                    && self.model_ref.is_some()
+                    && self.provider.is_none()
+                    && self.provider_model.is_none()
+                    && self.cluster_ref.is_none()
+            }
+            ServerRuntimeKind::Cloud => {
+                self.capability.is_some()
+                    && self.model_ref.is_none()
+                    && self.provider.is_some()
+                    && self.provider_model.is_some()
+                    && self.cluster_ref.is_none()
+                    && self.runtime_profile.is_none()
+            }
+            ServerRuntimeKind::Cluster => {
+                self.capability.is_none()
+                    && self.model_ref.is_none()
+                    && self.provider.is_none()
+                    && self.provider_model.is_none()
+                    && self.cluster_ref.is_some()
+                    && self.runtime_profile.is_none()
+            }
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(format!(
+                "server spec `{}` has inconsistent `{}` target fields",
+                self.short_ref, self.runtime_kind
+            ))
+        }
+    }
+
     pub fn is_cloud(&self) -> bool {
         self.runtime_kind == ServerRuntimeKind::Cloud
+    }
+
+    pub fn is_cluster(&self) -> bool {
+        self.runtime_kind == ServerRuntimeKind::Cluster
     }
 
     pub fn local_model_ref(&self) -> Option<&ModelRef> {
@@ -570,12 +691,21 @@ impl ServerSpec {
                 .provider_model
                 .clone()
                 .unwrap_or_else(|| "(missing)".to_string()),
+            ServerRuntimeKind::Cluster => self
+                .cluster_ref
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "(missing)".to_string()),
         }
     }
 
     pub fn provider_label(&self) -> &'static str {
         self.provider.map(CloudProvider::as_str).unwrap_or("-")
     }
+}
+
+pub const fn default_server_capability_option() -> Option<ServerCapability> {
+    Some(ServerCapability::Chat)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

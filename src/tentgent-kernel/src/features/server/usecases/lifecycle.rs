@@ -1,5 +1,6 @@
 //! Standard server spec and lifecycle orchestration.
 
+use crate::features::cluster::ports::ClusterCatalogStore;
 use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
 use crate::features::server::domain::{ServerPrepareOutcome, ServerStopOutcome};
 use crate::features::server::ports::{
@@ -26,6 +27,7 @@ pub struct StdServerUseCase<'a> {
     layout_initializer: &'a dyn ServerStoreLayoutInitializer,
     model_catalog: &'a dyn ModelCatalogStore,
     model_proofs: &'a dyn ModelCapabilityProofStore,
+    cluster_catalog: &'a dyn ClusterCatalogStore,
     identity: &'a dyn ServerIdentityGenerator,
     catalog: &'a dyn ServerCatalogStore,
     process_controller: &'a dyn ServerProcessController,
@@ -44,11 +46,39 @@ impl<'a> StdServerUseCase<'a> {
         process_controller: &'a dyn ServerProcessController,
         clock: &'a dyn ServerClock,
     ) -> Self {
+        static CLUSTER_CATALOG: crate::features::cluster::infra::FileClusterCatalogStore =
+            crate::features::cluster::infra::FileClusterCatalogStore;
+        Self::new_with_cluster_catalog(
+            layout_resolver,
+            layout_initializer,
+            model_catalog,
+            model_proofs,
+            &CLUSTER_CATALOG,
+            identity,
+            catalog,
+            process_controller,
+            clock,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_cluster_catalog(
+        layout_resolver: &'a dyn RuntimeLayoutResolver,
+        layout_initializer: &'a dyn ServerStoreLayoutInitializer,
+        model_catalog: &'a dyn ModelCatalogStore,
+        model_proofs: &'a dyn ModelCapabilityProofStore,
+        cluster_catalog: &'a dyn ClusterCatalogStore,
+        identity: &'a dyn ServerIdentityGenerator,
+        catalog: &'a dyn ServerCatalogStore,
+        process_controller: &'a dyn ServerProcessController,
+        clock: &'a dyn ServerClock,
+    ) -> Self {
         Self {
             layout_resolver,
             layout_initializer,
             model_catalog,
             model_proofs,
+            cluster_catalog,
             identity,
             catalog,
             process_controller,
@@ -62,11 +92,11 @@ impl ServerSpecUseCase for StdServerUseCase<'_> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = server_store_layout(&layout);
         let target = resolve_server_runtime_target(
-            &request.runtime_ref,
-            request.capability,
+            &request.target,
             &layout,
             self.model_catalog,
             self.model_proofs,
+            self.cluster_catalog,
             request.allow_unverified,
         )?;
         let spec = build_server_spec(
@@ -89,6 +119,7 @@ impl ServerSpecUseCase for StdServerUseCase<'_> {
                 &layout,
                 self.model_catalog,
                 self.model_proofs,
+                self.cluster_catalog,
                 request.allow_unverified,
             )?;
             return Ok(ServerPrepareResult {
@@ -174,6 +205,7 @@ impl ServerLifecycleUseCase for StdServerUseCase<'_> {
             &result.layout,
             self.model_catalog,
             self.model_proofs,
+            self.cluster_catalog,
             request.allow_unverified,
         )?;
         if result.inspection.running {

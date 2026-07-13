@@ -19,7 +19,7 @@ use super::{
     LocalServerState, RUNTIME_EMBEDDINGS_PATH,
 };
 
-pub(super) async fn openai_embeddings(
+pub(in crate::server) async fn openai_embeddings(
     State(state): State<LocalServerState>,
     Json(request): Json<Value>,
 ) -> Result<Response, LocalServerError> {

@@ -5,11 +5,13 @@ use tentgent_daemon::{
     bootstrap_daemon_app,
     server::{
         cloud::{run_cloud_server_runtime, CloudServerRuntimeConfig},
+        cluster::{run_cluster_server_runtime, ClusterServerRuntimeConfig},
         local::{run_local_server_runtime, LocalServerRuntimeConfig},
     },
     DaemonBootstrapConfig, LoggingConfig, RestConfig,
 };
 use tentgent_kernel::features::auth::domain::Provider;
+use tentgent_kernel::features::cluster::domain::ClusterRef;
 use tentgent_kernel::features::server::domain::ServerCapability;
 
 #[derive(Debug, Parser)]
@@ -80,6 +82,27 @@ struct LocalServerArgs {
     idle_seconds: Option<u64>,
 }
 
+#[derive(Debug, Parser)]
+#[command(name = "__cluster-server-runtime", hide = true)]
+struct ClusterServerArgs {
+    #[arg(long)]
+    server_ref: String,
+    #[arg(long)]
+    cluster_ref: String,
+    #[arg(long)]
+    host: String,
+    #[arg(long)]
+    port: u16,
+    #[arg(long)]
+    home: Option<PathBuf>,
+    #[arg(long)]
+    lazy_load: bool,
+    #[arg(long = "idle-seconds")]
+    idle_seconds: Option<u64>,
+    #[arg(long)]
+    allow_unverified: bool,
+}
+
 #[tokio::main]
 async fn main() -> miette::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("__cloud-server-runtime") {
@@ -123,6 +146,26 @@ async fn main() -> miette::Result<()> {
             port: args.port,
             runtime_home: args.home,
             idle_seconds: args.idle_seconds,
+        })
+        .await;
+    }
+    if std::env::args().nth(1).as_deref() == Some("__cluster-server-runtime") {
+        let args = ClusterServerArgs::parse_from(
+            std::env::args_os()
+                .enumerate()
+                .filter_map(|(index, value)| (index != 1).then_some(value)),
+        );
+        let _ = args.lazy_load;
+        let cluster_ref = ClusterRef::parse(&args.cluster_ref)
+            .map_err(|err| miette::miette!("invalid cluster ref: {err}"))?;
+        return run_cluster_server_runtime(ClusterServerRuntimeConfig {
+            server_ref: args.server_ref,
+            cluster_ref,
+            host: args.host,
+            port: args.port,
+            runtime_home: args.home,
+            idle_seconds: args.idle_seconds,
+            allow_unverified: args.allow_unverified,
         })
         .await;
     }

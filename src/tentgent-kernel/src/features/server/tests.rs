@@ -132,10 +132,11 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
         short_ref: server_ref.short_ref().to_string(),
         server_ref,
         runtime_kind: ServerRuntimeKind::Local,
-        capability: ServerCapability::Chat,
+        capability: Some(ServerCapability::Chat),
         model_ref: Some(model_ref),
         provider: None,
         provider_model: None,
+        cluster_ref: None,
         runtime_profile: Some(ServerRuntimeProfileSelection::new(
             "local-chat-transformers-peft",
             1,
@@ -172,7 +173,7 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
         .collect::<Vec<_>>()
         .join("\n");
     let parsed_legacy_spec: ServerSpec = toml::from_str(&legacy_body).expect("parse legacy spec");
-    assert_eq!(parsed_legacy_spec.capability, ServerCapability::Chat);
+    assert_eq!(parsed_legacy_spec.capability, Some(ServerCapability::Chat));
     assert!(parsed_legacy_spec.runtime_profile.is_none());
     assert!(!parsed_legacy_spec.port_auto);
 
@@ -191,4 +192,29 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
     let parsed_legacy_process: ServerProcessMetadata =
         toml::from_str(&legacy_process_body).expect("parse legacy process");
     assert_eq!(parsed_legacy_process.bound_port, None);
+}
+
+#[test]
+fn legacy_cloud_spec_defaults_missing_capability_to_chat() {
+    let server_ref = "e".repeat(SERVER_REF_HEX_LENGTH);
+    let body = format!(
+        r#"server_ref = "{server_ref}"
+short_ref = "{}"
+runtime_kind = "cloud"
+provider = "openai"
+provider_model = "gpt-test"
+host = "127.0.0.1"
+port = 8780
+lazy_load = false
+created_at = "2026-07-12T00:00:00Z"
+"#,
+        &server_ref[..SHORT_SERVER_REF_LENGTH]
+    );
+
+    let spec: ServerSpec = toml::from_str(&body).expect("parse legacy cloud spec");
+
+    assert_eq!(spec.runtime_kind, ServerRuntimeKind::Cloud);
+    assert_eq!(spec.capability, Some(ServerCapability::Chat));
+    assert_eq!(spec.provider, Some(CloudProvider::OpenAI));
+    assert_eq!(spec.provider_model.as_deref(), Some("gpt-test"));
 }
