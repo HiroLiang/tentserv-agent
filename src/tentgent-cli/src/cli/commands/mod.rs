@@ -32,7 +32,9 @@ pub use image::{
 pub use model::{ModelCapabilityCommands, ModelCapabilityProofCommands, ModelCommands};
 pub use rerank::RerankCommand;
 pub use runtime::RuntimeBootstrapProfile;
-pub use runtime::{RuntimeBootstrapCommand, RuntimeCommands, RuntimeStatusCommand};
+pub use runtime::{
+    RuntimeBootstrapCommand, RuntimeCommands, RuntimeReconcileCommand, RuntimeStatusCommand,
+};
 pub use server::{
     CloudServerRuntimeCommand, LocalServerRuntimeCommand, ServerCommands, ServerRunCommand,
 };

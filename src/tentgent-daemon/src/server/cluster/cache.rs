@@ -56,6 +56,13 @@ impl ClusterDefinitionCache {
     }
 
     pub(super) fn current(&self) -> Result<ClusterDefinitionSnapshot, ClusterServerError> {
+        self.refresh(false)
+    }
+
+    pub(super) fn refresh(
+        &self,
+        force_hash: bool,
+    ) -> Result<ClusterDefinitionSnapshot, ClusterServerError> {
         let definition_path = self
             .store
             .cluster_definition_path(self.cluster_ref.as_str());
@@ -66,12 +73,20 @@ impl ClusterDefinitionCache {
                     "cluster definition cache lock is poisoned".to_string(),
                 )
             })?;
-            if cached.stamp == stamp {
+            if cached.stamp == stamp && !force_hash {
                 return Ok(cached.snapshot.clone());
             }
         }
 
         let loaded = load_definition(&self.store, &self.cluster_ref)?;
+        {
+            let cached = self.state.lock().map_err(|_| {
+                ClusterServerError::definition_reload_failed(
+                    "cluster definition cache lock is poisoned".to_string(),
+                )
+            })?;
+            validate_reload_policy(&cached.snapshot.definition, &loaded.snapshot.definition)?;
+        }
         let snapshot = loaded.snapshot.clone();
         *self.state.lock().map_err(|_| {
             ClusterServerError::definition_reload_failed(
@@ -80,6 +95,30 @@ impl ClusterDefinitionCache {
         })? = loaded;
         Ok(snapshot)
     }
+}
+
+fn validate_reload_policy(
+    current: &ClusterDefinition,
+    next: &ClusterDefinition,
+) -> Result<(), ClusterServerError> {
+    if current.routes == next.routes {
+        return Ok(());
+    }
+    if current.route_update_policy
+        == tentgent_kernel::features::cluster::domain::ClusterRouteUpdatePolicy::Block
+    {
+        let detail = if next.route_update_policy
+            == tentgent_kernel::features::cluster::domain::ClusterRouteUpdatePolicy::Drain
+        {
+            "switch route_update_policy from block to drain in a policy-only apply before changing routes"
+        } else {
+            "stored route_update_policy is block; route targets cannot change while this worker is running"
+        };
+        return Err(ClusterServerError::definition_reload_failed(
+            detail.to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn load_definition(

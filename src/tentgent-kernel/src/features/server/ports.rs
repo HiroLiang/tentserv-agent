@@ -1,10 +1,10 @@
 //! Server feature package ports.
 
-use crate::foundation::error::KernelResult;
+use crate::foundation::{error::KernelResult, layout::RuntimeLayout};
 
 use super::domain::{
-    LaunchMode, ServerInspection, ServerRef, ServerRefSelector, ServerRemoveOutcome,
-    ServerRuntimeTarget, ServerSpec, ServerStoreLayout, ServerSummary,
+    LaunchMode, ServerInspection, ServerProcessIdentityStatus, ServerRef, ServerRefSelector,
+    ServerRemoveOutcome, ServerRuntimeTarget, ServerSpec, ServerStoreLayout, ServerSummary,
 };
 
 /// Ensures the server-store directory exists for mutating server operations.
@@ -37,6 +37,17 @@ pub trait ServerClock {
 pub trait ServerProcessProbe {
     /// Returns true when the operating system reports the process is still running.
     fn is_process_running(&self, pid: u32) -> KernelResult<bool>;
+}
+
+/// Verifies that a stored server process still owns its health endpoint.
+pub trait ServerProcessIdentityProbe: Send + Sync {
+    fn probe_process_identity(
+        &self,
+        layout: &RuntimeLayout,
+        server_ref: &str,
+        expected_pid: u32,
+        expected_token: &str,
+    ) -> KernelResult<ServerProcessIdentityStatus>;
 }
 
 /// Controls local server processes.
@@ -83,6 +94,7 @@ pub trait ServerCatalogStore {
         layout: &ServerStoreLayout,
         server_ref: &ServerRef,
         pid: u32,
+        process_token: Option<String>,
         bound_port: u16,
         launch_mode: LaunchMode,
         started_at: String,

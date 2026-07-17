@@ -1,5 +1,7 @@
 //! Training-run adapter import use case.
 
+use std::sync::Arc;
+
 use crate::features::adapter::domain::AdapterSourceKind;
 use crate::features::adapter::ports::{
     AdapterBaseIndexStore, AdapterCatalogStore, AdapterContentStore, AdapterIdentityGenerator,
@@ -7,6 +9,7 @@ use crate::features::adapter::ports::{
     AdapterSourceStager, AdapterStoreLayoutInitializer,
 };
 use crate::features::model::ports::ModelCatalogStore;
+use crate::features::resource_coordination::{infra::FileResourceCoordinator, ResourceCoordinator};
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayoutResolver;
 
@@ -30,6 +33,7 @@ pub struct StdAdapterTrainRunImportUseCase<'a> {
     base_indexes: &'a dyn AdapterBaseIndexStore,
     content: &'a dyn AdapterContentStore,
     model_catalog: &'a dyn ModelCatalogStore,
+    coordinator: Arc<dyn ResourceCoordinator>,
 }
 
 impl<'a> StdAdapterTrainRunImportUseCase<'a> {
@@ -59,7 +63,13 @@ impl<'a> StdAdapterTrainRunImportUseCase<'a> {
             base_indexes,
             content,
             model_catalog,
+            coordinator: Arc::new(FileResourceCoordinator),
         }
+    }
+
+    pub fn with_coordinator(mut self, coordinator: Arc<dyn ResourceCoordinator>) -> Self {
+        self.coordinator = coordinator;
+        self
     }
 }
 
@@ -86,6 +96,7 @@ impl AdapterTrainRunImportUseCase for StdAdapterTrainRunImportUseCase<'_> {
             .copy_local_source(&request.output_path, &staged)?;
         let outcome = self.finalizer().finalize(
             &store,
+            &layout,
             &staged,
             AdapterImportSource::TrainRun {
                 output_path: request.output_path,
@@ -116,6 +127,8 @@ impl StdAdapterTrainRunImportUseCase<'_> {
             source_indexes: self.source_indexes,
             base_indexes: self.base_indexes,
             content: self.content,
+            model_catalog: self.model_catalog,
+            coordinator: self.coordinator.as_ref(),
         }
     }
 }

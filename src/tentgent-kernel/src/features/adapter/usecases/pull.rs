@@ -1,6 +1,6 @@
 //! Hugging Face adapter pull use case.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use crate::features::adapter::domain::{AdapterSourceKind, HfAdapterPullProgress};
 use crate::features::adapter::ports::{
@@ -12,6 +12,7 @@ use crate::features::adapter::ports::{
 use crate::features::auth::domain::Provider;
 use crate::features::auth::usecases::AuthSecretResolverUseCase;
 use crate::features::model::ports::ModelCatalogStore;
+use crate::features::resource_coordination::{infra::FileResourceCoordinator, ResourceCoordinator};
 use crate::features::runtime::ports::PythonRuntimeResolver;
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayoutResolver;
@@ -38,6 +39,7 @@ pub struct StdAdapterHfPullUseCase<'a> {
     base_indexes: &'a dyn AdapterBaseIndexStore,
     content: &'a dyn AdapterContentStore,
     model_catalog: &'a dyn ModelCatalogStore,
+    coordinator: Arc<dyn ResourceCoordinator>,
 }
 
 impl<'a> StdAdapterHfPullUseCase<'a> {
@@ -73,7 +75,13 @@ impl<'a> StdAdapterHfPullUseCase<'a> {
             base_indexes,
             content,
             model_catalog,
+            coordinator: Arc::new(FileResourceCoordinator),
         }
+    }
+
+    pub fn with_coordinator(mut self, coordinator: Arc<dyn ResourceCoordinator>) -> Self {
+        self.coordinator = coordinator;
+        self
     }
 }
 
@@ -140,6 +148,7 @@ impl AdapterHfPullUseCase for StdAdapterHfPullUseCase<'_> {
 
         let outcome = self.finalizer().finalize(
             &store,
+            &layout,
             &staged,
             AdapterImportSource::HuggingFace {
                 repo_id: snapshot.repo_id,
@@ -169,6 +178,8 @@ impl StdAdapterHfPullUseCase<'_> {
             source_indexes: self.source_indexes,
             base_indexes: self.base_indexes,
             content: self.content,
+            model_catalog: self.model_catalog,
+            coordinator: self.coordinator.as_ref(),
         }
     }
 }

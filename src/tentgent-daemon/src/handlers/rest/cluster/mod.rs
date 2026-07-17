@@ -12,6 +12,7 @@ use tentgent_kernel::{
             ClusterReadinessUseCase, ClusterRemoveRequest, ClusterSpecUseCase,
         },
     },
+    features::runtime_ownership::{RuntimeOwnershipScope, StdRuntimeOwnershipUseCase},
     foundation::{error::KernelError, layout::LayoutResolveMode},
 };
 
@@ -57,11 +58,20 @@ pub async fn inspect(
             cluster_ref,
         })
         .map_err(cluster_error)?;
+    let ownership = StdRuntimeOwnershipUseCase::default()
+        .inspect_runtime_ownership_scope(
+            &result.layout,
+            RuntimeOwnershipScope::Cluster {
+                cluster_ref: result.inspection.definition.cluster_ref.clone(),
+            },
+        )
+        .map_err(cluster_error)?;
 
     Ok(Json(ClusterResponse {
-        cluster: dto::cluster_inspection_item_with_readiness(
+        cluster: dto::cluster_inspection_item_with_readiness_and_ownership(
             result.inspection,
             Some(result.readiness),
+            Some(ownership),
         ),
     }))
 }
@@ -77,12 +87,13 @@ pub async fn apply(
         .services()
         .kernel()
         .cluster_usecase()
-        .apply_cluster_definition(ClusterApplyDefinitionRequest {
+        .apply_cluster_definition_guarded(ClusterApplyDefinitionRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             cluster_ref,
             definition,
         })
         .map_err(cluster_error)?;
+    let result = RestError::guarded(result)?;
 
     Ok(Json(ClusterResponse {
         cluster: cluster_inspection_item(result.inspection),
@@ -99,11 +110,12 @@ pub async fn remove(
         .services()
         .kernel()
         .cluster_usecase()
-        .remove_cluster(ClusterRemoveRequest {
+        .remove_cluster_guarded(ClusterRemoveRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             cluster_ref,
         })
         .map_err(cluster_error)?;
+    let result = RestError::guarded(result)?;
 
     Ok(Json(cluster_remove_response(result.outcome)))
 }

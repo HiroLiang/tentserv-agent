@@ -60,13 +60,15 @@ partial, planned, or unsupported through Tentgent.
 
 When the Rust local-server proxy asks the supervisor to start this daemon for a
 model-bound server request, it passes `--server-ref`, `--model-ref`, `--home`,
-and one capability value. In that mode, the matching direct server endpoints
-may omit the full `model` record and `model_kind`; Python resolves the managed
-model from
-`TENTGENT_HOME/models/store` and infers the runtime kind from the stored primary
-format. Explicit direct-runtime requests may still pass `model` and
-`model_kind`. If a model-bound request includes a different explicit model, the
-runtime rejects the request instead of silently switching resources.
+one capability value, and the resolved data root through
+`TENTGENT_DATA_ROOT`. In that mode, the matching direct server endpoints may
+omit the full `model` record and `model_kind`; Python resolves the managed model
+from `TENTGENT_DATA_ROOT/models/store`, falling back to
+`TENTGENT_HOME/models/store` when no separate data root is configured, and
+infers the runtime kind from the stored primary format. Explicit direct-runtime
+requests may still pass `model` and `model_kind`. If a model-bound request
+includes a different explicit model, the runtime rejects the request instead
+of silently switching resources.
 
 Fixed backend-kind inference is available for chat, embedding, rerank, audio,
 vision chat, and video understanding. Image generation infers the backend kind
@@ -221,6 +223,8 @@ Response fields include:
 
 - `status`: `ok`, `closing`, or `shutdown`
 - `pid`
+- internal `process_token`, which must match the opaque token supplied by the
+  Rust launcher before PID-based process identity is trusted
 - top-level `server_ref` and `runtime_home` for daemon/CLI launch verification
 - `server.host`, `server.port`, and optional `server.server_ref`; `server.port`
   is the actual bound port passed by Rust after auto-port selection
@@ -247,3 +251,11 @@ Behavior:
 This endpoint is local to one Python runtime process. Rust daemon process
 shutdown remains `POST /v1/daemon/shutdown`; daemon job and server management
 remain under `/v1/jobs` and `/v1/servers`.
+
+Rust records a profile-aware physical runtime generation as `starting`,
+`ready`, or `closing`. The first spawner's idle policy remains effective for
+that generation. Later callers reuse the same generation and may receive an
+idle-policy mismatch diagnostic. A closing generation has a 5-second barrier,
+and replacement cannot start until PID plus process token prove termination.
+These records are internal lifecycle state described in
+[runtime-ownership.md](./runtime-ownership.md).

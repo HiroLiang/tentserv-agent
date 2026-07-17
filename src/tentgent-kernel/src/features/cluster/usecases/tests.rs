@@ -136,6 +136,7 @@ fn remove_cluster_is_blocked_by_stored_cluster_server_spec() {
             &ClusterDefinition {
                 schema_version: CLUSTER_SCHEMA_VERSION,
                 cluster_ref: cluster_ref.clone(),
+                route_update_policy: Default::default(),
                 routes: [(
                     ClusterRouteKey::Chat,
                     ClusterRouteTarget::Provider {
@@ -425,6 +426,7 @@ fn route_execution_allows_unknown_only_with_explicit_override() {
     let definition = ClusterDefinition {
         schema_version: CLUSTER_SCHEMA_VERSION,
         cluster_ref: ClusterRef::parse("local-assistant").expect("cluster ref"),
+        route_update_policy: Default::default(),
         routes: [(
             ClusterRouteKey::Chat,
             ClusterRouteTarget::LocalModel {
@@ -488,6 +490,7 @@ fn route_execution_reports_missing_and_provider_targets_without_fallback() {
             definition: ClusterDefinition {
                 schema_version: CLUSTER_SCHEMA_VERSION,
                 cluster_ref: cluster_ref.clone(),
+                route_update_policy: Default::default(),
                 routes: Default::default(),
             },
             route: ClusterRouteKey::Embedding,
@@ -508,6 +511,7 @@ fn route_execution_reports_missing_and_provider_targets_without_fallback() {
             definition: ClusterDefinition {
                 schema_version: CLUSTER_SCHEMA_VERSION,
                 cluster_ref,
+                route_update_policy: Default::default(),
                 routes: [(
                     ClusterRouteKey::Embedding,
                     ClusterRouteTarget::Provider {
@@ -578,6 +582,7 @@ fn readiness_for(
     let definition = ClusterDefinition {
         schema_version: CLUSTER_SCHEMA_VERSION,
         cluster_ref: cluster_ref.clone(),
+        route_update_policy: Default::default(),
         routes: [(ClusterRouteKey::Chat, target)].into_iter().collect(),
     };
     let cluster_store =

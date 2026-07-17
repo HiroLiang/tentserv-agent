@@ -61,6 +61,7 @@ class RuntimeLifecycleState:
         self._bound_model = bound_model
         self._request_shutdown = request_shutdown
         self._pid = os.getpid()
+        self._process_token = os.environ.get("TENTGENT_RUNTIME_PROCESS_TOKEN")
         self._started_at = datetime.now(UTC)
         self._started_monotonic = monotonic()
         self._watcher: asyncio.Task[None] | None = None
@@ -88,6 +89,7 @@ class RuntimeLifecycleState:
             "status": status,
             "version": __version__,
             "pid": self._pid,
+            "process_token": self._process_token,
             "server_ref": self._config.server_ref,
             "runtime_home": (
                 str(self._config.home)

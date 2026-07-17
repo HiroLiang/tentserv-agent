@@ -13,10 +13,9 @@ use tentgent_kernel::{
             HfAdapterPullProgress, LoraScale,
         },
         usecases::{
-            AdapterBindRequest, AdapterBindUseCase, AdapterCatalogReadUseCase,
-            AdapterHfPullRequest, AdapterHfPullUseCase, AdapterImportOptions,
-            AdapterInspectRequest, AdapterListRequest, AdapterLocalImportRequest,
-            AdapterLocalImportUseCase, AdapterRemoveRequest, AdapterRemoveUseCase,
+            AdapterBindRequest, AdapterCatalogReadUseCase, AdapterHfPullRequest,
+            AdapterHfPullUseCase, AdapterImportOptions, AdapterInspectRequest, AdapterListRequest,
+            AdapterLocalImportRequest, AdapterLocalImportUseCase, AdapterRemoveRequest,
         },
     },
     features::auth::{
@@ -109,11 +108,12 @@ pub async fn remove(
         .kernel()
         .adapters()
         .remove_usecase()
-        .remove_adapter(AdapterRemoveRequest {
+        .remove_adapter_guarded(AdapterRemoveRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             selector,
         })
         .map_err(adapter_remove_error)?;
+    let result = RestError::guarded(result)?;
 
     Ok(Json(AdapterResponse {
         adapter: adapter_removal_item(result.outcome),
@@ -209,12 +209,13 @@ pub async fn bind(
         .kernel()
         .adapters()
         .bind_usecase(state.app().services().kernel().models().catalog_store())
-        .bind_adapter(AdapterBindRequest {
+        .bind_adapter_guarded(AdapterBindRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             adapter_selector,
             base_model_selector,
         })
         .map_err(adapter_mutation_error)?;
+    let result = RestError::guarded(result)?;
 
     Ok(Json(adapter_bind_response(result.outcome)))
 }

@@ -26,13 +26,16 @@ Use this directory for concise interface documents that define stable boundaries
 - [model-store.md](./model-store.md)
   Model identity, deduplication, managed layout, and Hugging Face pull boundaries.
 - [resource-blockers.md](./resource-blockers.md)
-  Structured blocker and guard-validator model for protecting referenced
-  resources before deletion, rebinding, or capability mutation.
+  Cross-process transition locks and structured guard-validator rules for
+  protecting referenced resources before mutation.
+- [runtime-ownership.md](./runtime-ownership.md)
+  Durable cluster route claims, physical runtime generations, safe shutdown,
+  inspection, and stale-state reconciliation.
 - [cluster.md](./cluster.md)
   Cluster definition identity, TOML storage, route-target validation, CLI
   commands, daemon REST CRUD, read-only route readiness diagnostics,
-  experimental local cluster server routing, hot reload, and resource
-  protection.
+  experimental local cluster server routing, guarded hot reload, runtime
+  ownership, and shutdown protection.
 - [model-support-status.md](./model-support-status.md)
   Support status vocabulary, evidence precedence, stale-proof rules, and
   transition rules for model/capability/backend tuples.

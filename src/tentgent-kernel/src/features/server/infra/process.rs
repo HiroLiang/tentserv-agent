@@ -9,6 +9,9 @@ use crate::foundation::error::KernelResult;
 
 use super::error::server_runtime_error;
 
+const TERMINATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const TERMINATION_WAIT_ATTEMPTS: usize = 320;
+
 /// Operating-system process liveness probe.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct StdServerProcessProbe;
@@ -89,15 +92,15 @@ where
                 )));
             }
 
-            for _ in 0..30 {
+            for _ in 0..TERMINATION_WAIT_ATTEMPTS {
                 if !self.process_probe.is_process_running(pid)? {
                     return Ok(());
                 }
-                thread::sleep(Duration::from_millis(100));
+                thread::sleep(TERMINATION_POLL_INTERVAL);
             }
 
             Err(server_runtime_error(format!(
-                "pid {pid} did not exit after TERM"
+                "pid {pid} did not exit within the bounded shutdown window after TERM"
             )))
         }
 

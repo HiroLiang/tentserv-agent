@@ -104,6 +104,12 @@ When `adapter_ref` is present, the server must validate the adapter before gener
 - the adapter `backend_support` includes the server backend
 - the runtime has implemented request-time adapter execution for that backend
 
+`adapter_ref` always resolves through the managed adapter catalog. Public
+native or provider-shaped requests must not supply an internal adapter path or
+an `adapter` object containing trusted local source fields. Rust constructs the
+internal runtime adapter record only after managed lookup and compatibility
+validation.
+
 Compatibility is considered proven when:
 
 - `base_model_ref` matches the server model, or

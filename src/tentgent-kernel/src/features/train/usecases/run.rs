@@ -1,5 +1,12 @@
 //! LoRA train run record use case.
 
+use std::sync::Arc;
+
+use crate::features::resource_coordination::{
+    infra::FileResourceCoordinator, stabilize_resource_transition, ResourceCoordinator,
+    ResourceKey, ResourceKind, ResourceLockMode, ResourceLockRequest, ResourcePermit,
+    ResourceTransitionAuthorization, StableResourceTransition,
+};
 use crate::features::train::domain::{
     LoraTrainRun, LoraTrainRunStatus, TrainPlanStatus, LORA_TRAIN_SCHEMA_VERSION,
 };
@@ -7,10 +14,17 @@ use crate::features::train::ports::{
     LoraTrainPlanStore, LoraTrainRunRefGenerator, LoraTrainRunStore, TrainClock,
     TrainStoreLayoutInitializer,
 };
+use crate::features::{
+    adapter::ports::AdapterCatalogStore, dataset::ports::DatasetCatalogStore,
+    model::ports::ModelCatalogStore,
+};
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayoutResolver;
 
 use super::common::train_store_layout;
+use super::dependencies::{
+    busy_error, inspect_train_dependencies, train_dependency_locks, TrainDependencySnapshot,
+};
 use super::port::{
     LoraTrainMetricsTailRequest, LoraTrainRawLogMetadataRequest, LoraTrainRawLogTailRequest,
     LoraTrainRunFinishRequest, LoraTrainRunInspectRequest, LoraTrainRunInspectResult,
@@ -27,6 +41,16 @@ pub struct StdLoraTrainRunUseCase<'a> {
     run_store: &'a dyn LoraTrainRunStore,
     clock: &'a dyn TrainClock,
     run_refs: &'a dyn LoraTrainRunRefGenerator,
+    model_catalog: &'a dyn ModelCatalogStore,
+    dataset_catalog: &'a dyn DatasetCatalogStore,
+    adapter_catalog: &'a dyn AdapterCatalogStore,
+    coordinator: Arc<dyn ResourceCoordinator>,
+}
+
+pub struct LoraTrainRunDependencyCatalogs<'a> {
+    pub model: &'a dyn ModelCatalogStore,
+    pub dataset: &'a dyn DatasetCatalogStore,
+    pub adapter: &'a dyn AdapterCatalogStore,
 }
 
 impl<'a> StdLoraTrainRunUseCase<'a> {
@@ -37,6 +61,30 @@ impl<'a> StdLoraTrainRunUseCase<'a> {
         run_store: &'a dyn LoraTrainRunStore,
         clock: &'a dyn TrainClock,
         run_refs: &'a dyn LoraTrainRunRefGenerator,
+        dependencies: LoraTrainRunDependencyCatalogs<'a>,
+    ) -> Self {
+        Self::new_with_coordinator(
+            layout_resolver,
+            layout_initializer,
+            plan_store,
+            run_store,
+            clock,
+            run_refs,
+            dependencies,
+            Arc::new(FileResourceCoordinator),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_coordinator(
+        layout_resolver: &'a dyn RuntimeLayoutResolver,
+        layout_initializer: &'a dyn TrainStoreLayoutInitializer,
+        plan_store: &'a dyn LoraTrainPlanStore,
+        run_store: &'a dyn LoraTrainRunStore,
+        clock: &'a dyn TrainClock,
+        run_refs: &'a dyn LoraTrainRunRefGenerator,
+        dependencies: LoraTrainRunDependencyCatalogs<'a>,
+        coordinator: Arc<dyn ResourceCoordinator>,
     ) -> Self {
         Self {
             layout_resolver,
@@ -45,6 +93,10 @@ impl<'a> StdLoraTrainRunUseCase<'a> {
             run_store,
             clock,
             run_refs,
+            model_catalog: dependencies.model,
+            dataset_catalog: dependencies.dataset,
+            adapter_catalog: dependencies.adapter,
+            coordinator,
         }
     }
 }
@@ -58,6 +110,64 @@ impl LoraTrainRunUseCase for StdLoraTrainRunUseCase<'_> {
         let store = train_store_layout(&layout);
         self.layout_initializer.ensure_train_store_layout(&store)?;
 
+        let created_at = self.clock.now_rfc3339()?;
+        let transition = stabilize_resource_transition(
+            "start-train-run",
+            || {
+                let plan = self
+                    .plan_store
+                    .inspect_plan(&store, &request.plan_selector)?
+                    .plan;
+                let dependencies = inspect_train_dependencies(
+                    &layout,
+                    &plan,
+                    self.model_catalog,
+                    self.dataset_catalog,
+                    self.adapter_catalog,
+                )?;
+                let run_ref = self
+                    .run_refs
+                    .generate_run_ref(&plan.plan_ref, &created_at)?;
+                let mut locks = train_dependency_locks(&plan, ResourceLockMode::Shared);
+                locks.push((
+                    ResourceKey::new(ResourceKind::TrainingSlot, "lora"),
+                    ResourceLockMode::Exclusive,
+                ));
+                locks.push((
+                    ResourceKey::new(ResourceKind::TrainRun, &run_ref),
+                    ResourceLockMode::Exclusive,
+                ));
+                Ok((
+                    TrainRunDependencyToken {
+                        plan: plan.clone(),
+                        dependencies,
+                        run_ref: run_ref.clone(),
+                        locks: locks.clone(),
+                    },
+                    TrainRunStartState {
+                        plan,
+                        run_ref,
+                        locks,
+                    },
+                ))
+            },
+            |state| {
+                Ok(match self.coordinator.acquire(
+                    &layout,
+                    ResourceLockRequest::new("start-train-run", state.locks.clone()),
+                )? {
+                    Ok(permit) => ResourceTransitionAuthorization::<_, std::convert::Infallible>::Permitted(permit),
+                    Err(busy) => ResourceTransitionAuthorization::Busy(busy),
+                })
+            },
+            |state| ResourceKey::new(ResourceKind::TrainPlan, &state.plan.plan_ref),
+        )?;
+        let (state, _permit) = match transition {
+            StableResourceTransition::Stable { state, permit } => (state, permit),
+            StableResourceTransition::Busy(busy) => return Err(busy_error(busy)),
+            StableResourceTransition::Rejected(never) => match never {},
+        };
+
         if let Some(run) = self.live_running_run(&store)? {
             return Err(KernelError::TrainRuntimeUnavailable(format!(
                 "another LoRA train run is already running: {}",
@@ -65,10 +175,7 @@ impl LoraTrainRunUseCase for StdLoraTrainRunUseCase<'_> {
             )));
         }
 
-        let inspection = self
-            .plan_store
-            .inspect_plan(&store, &request.plan_selector)?;
-        let plan = inspection.plan;
+        let TrainRunStartState { plan, run_ref, .. } = state;
         if plan.status == TrainPlanStatus::Blocked {
             return Err(KernelError::TrainStoreUnavailable(format!(
                 "LoRA train plan `{}` is blocked: {}",
@@ -77,10 +184,6 @@ impl LoraTrainRunUseCase for StdLoraTrainRunUseCase<'_> {
             )));
         }
 
-        let created_at = self.clock.now_rfc3339()?;
-        let run_ref = self
-            .run_refs
-            .generate_run_ref(&plan.plan_ref, &created_at)?;
         let short_ref = run_ref.chars().take(12).collect::<String>();
         let artifacts =
             self.run_store
@@ -136,6 +239,11 @@ impl LoraTrainRunUseCase for StdLoraTrainRunUseCase<'_> {
     ) -> KernelResult<LoraTrainRun> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = train_store_layout(&layout);
+        let preflight = self
+            .run_store
+            .inspect_run(&store, &request.run_selector)?
+            .run;
+        let _permit = self.acquire_run_write_permit(&layout, &store, &preflight)?;
         let mut run = self
             .run_store
             .inspect_run(&store, &request.run_selector)?
@@ -154,6 +262,7 @@ impl LoraTrainRunUseCase for StdLoraTrainRunUseCase<'_> {
     fn write_run(&self, request: LoraTrainRunWriteRequest) -> KernelResult<()> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = train_store_layout(&layout);
+        let _permit = self.acquire_run_write_permit(&layout, &store, &request.run)?;
         self.run_store.save_run(&store, &request.run)
     }
 
@@ -161,6 +270,7 @@ impl LoraTrainRunUseCase for StdLoraTrainRunUseCase<'_> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = train_store_layout(&layout);
         let mut run = request.run;
+        let _permit = self.acquire_run_write_permit(&layout, &store, &run)?;
         run.status = request.status;
         run.phase = Some(
             match request.status {
@@ -183,6 +293,11 @@ impl LoraTrainRunUseCase for StdLoraTrainRunUseCase<'_> {
     ) -> KernelResult<LoraTrainRun> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = train_store_layout(&layout);
+        let preflight = self
+            .run_store
+            .inspect_run(&store, &request.run_selector)?
+            .run;
+        let _permit = self.acquire_run_write_permit(&layout, &store, &preflight)?;
         let mut run = self
             .run_store
             .inspect_run(&store, &request.run_selector)?
@@ -265,15 +380,74 @@ impl LoraTrainRunUseCase for StdLoraTrainRunUseCase<'_> {
 }
 
 impl StdLoraTrainRunUseCase<'_> {
+    fn acquire_run_write_permit(
+        &self,
+        layout: &crate::foundation::layout::RuntimeLayout,
+        store: &crate::features::train::domain::TrainStoreLayout,
+        run: &LoraTrainRun,
+    ) -> KernelResult<ResourcePermit> {
+        let permit = match self.coordinator.acquire(
+            layout,
+            ResourceLockRequest::new(
+                "write-train-run",
+                vec![
+                    (ResourceKey::maintenance(), ResourceLockMode::Shared),
+                    (
+                        ResourceKey::new(ResourceKind::TrainPlan, &run.plan_ref),
+                        ResourceLockMode::Shared,
+                    ),
+                    (
+                        ResourceKey::new(ResourceKind::TrainRun, &run.run_ref),
+                        ResourceLockMode::Exclusive,
+                    ),
+                ],
+            ),
+        )? {
+            Ok(permit) => permit,
+            Err(busy) => {
+                return Err(KernelError::ResourceCoordinationUnavailable(format!(
+                    "{}; retry after {} ms",
+                    busy.description, busy.retry_after_millis
+                )));
+            }
+        };
+        let selector = crate::features::train::domain::TrainRefSelector::parse(&run.plan_ref)
+            .map_err(|error| KernelError::TrainStoreUnavailable(error.to_string()))?;
+        self.plan_store.inspect_plan(store, &selector)?;
+        Ok(permit)
+    }
+
     fn live_running_run(
         &self,
         store: &crate::features::train::domain::TrainStoreLayout,
     ) -> KernelResult<Option<LoraTrainRun>> {
         for inspection in self.run_store.list_runs(store)? {
-            if inspection.run.status.is_live() && inspection.process_running {
-                return Ok(Some(inspection.run));
+            match inspection.run.status {
+                LoraTrainRunStatus::Starting => return Ok(Some(inspection.run)),
+                LoraTrainRunStatus::Running
+                    if inspection.run.pid.is_none() || inspection.process_running =>
+                {
+                    return Ok(Some(inspection.run));
+                }
+                LoraTrainRunStatus::Running
+                | LoraTrainRunStatus::Succeeded
+                | LoraTrainRunStatus::Failed => {}
             }
         }
         Ok(None)
     }
+}
+
+#[derive(PartialEq)]
+struct TrainRunDependencyToken {
+    plan: crate::features::train::domain::LoraTrainPlan,
+    dependencies: TrainDependencySnapshot,
+    run_ref: String,
+    locks: Vec<(ResourceKey, ResourceLockMode)>,
+}
+
+struct TrainRunStartState {
+    plan: crate::features::train::domain::LoraTrainPlan,
+    run_ref: String,
+    locks: Vec<(ResourceKey, ResourceLockMode)>,
 }

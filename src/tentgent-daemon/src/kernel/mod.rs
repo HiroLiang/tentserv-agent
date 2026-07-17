@@ -263,12 +263,19 @@ impl KernelComponents {
     }
 
     pub fn train_plan_usecase(&self) -> StdLoraTrainPlanUseCase<'_> {
-        self.training
-            .plan_usecase(self.models.catalog_store(), self.datasets.catalog_store())
+        self.training.plan_usecase(
+            self.models.catalog_store(),
+            self.datasets.catalog_store(),
+            self.adapters.catalog_store(),
+        )
     }
 
     pub fn train_run_usecase(&self) -> StdLoraTrainRunUseCase<'_> {
-        self.training.run_usecase()
+        self.training.run_usecase(
+            self.models.catalog_store(),
+            self.datasets.catalog_store(),
+            self.adapters.catalog_store(),
+        )
     }
 
     pub fn doctor_report_usecase(&self) -> StdDoctorReportUseCase<'_> {

@@ -43,12 +43,23 @@ pub(super) struct NativeLocalChatRequest {
     pub(super) max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) adapter: Option<NativeAdapterRecordPayload>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(super) struct NativeLocalChatMessage {
     pub(super) role: String,
     pub(super) content: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct NativeAdapterRecordPayload {
+    pub(super) adapter_ref: String,
+    pub(super) source_path: String,
+    pub(super) adapter_format: String,
+    pub(super) adapter_type: &'static str,
+    pub(super) short_ref: String,
 }
 
 impl From<ProviderChatTextMessage> for NativeLocalChatMessage {

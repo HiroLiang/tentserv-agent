@@ -1,5 +1,6 @@
 use tentgent_kernel::{
     features::{
+        adapter::ports::AdapterCatalogStore,
         dataset::ports::DatasetCatalogStore,
         model::ports::ModelCatalogStore,
         train::{
@@ -7,7 +8,9 @@ use tentgent_kernel::{
                 FileLoraTrainPlanStore, FileLoraTrainRunStore, ShellLoraTrainWorkerLauncher,
                 StdLoraTrainRunRefGenerator, StdTrainStoreLayoutInitializer, SystemTrainClock,
             },
-            usecases::{StdLoraTrainPlanUseCase, StdLoraTrainRunUseCase},
+            usecases::{
+                LoraTrainRunDependencyCatalogs, StdLoraTrainPlanUseCase, StdLoraTrainRunUseCase,
+            },
         },
     },
     foundation::{layout::StdRuntimeLayoutResolver, platform::StdPlatformProbe},
@@ -42,6 +45,7 @@ impl TrainKernelComponent {
         &'a self,
         model_catalog: &'a dyn ModelCatalogStore,
         dataset_catalog: &'a dyn DatasetCatalogStore,
+        adapter_catalog: &'a dyn AdapterCatalogStore,
     ) -> StdLoraTrainPlanUseCase<'a> {
         StdLoraTrainPlanUseCase::new(
             &self.layout_resolver,
@@ -49,12 +53,18 @@ impl TrainKernelComponent {
             &self.layout_initializer,
             model_catalog,
             dataset_catalog,
+            adapter_catalog,
             &self.plan_store,
             &self.clock,
         )
     }
 
-    pub fn run_usecase(&self) -> StdLoraTrainRunUseCase<'_> {
+    pub fn run_usecase<'a>(
+        &'a self,
+        model_catalog: &'a dyn ModelCatalogStore,
+        dataset_catalog: &'a dyn DatasetCatalogStore,
+        adapter_catalog: &'a dyn AdapterCatalogStore,
+    ) -> StdLoraTrainRunUseCase<'a> {
         StdLoraTrainRunUseCase::new(
             &self.layout_resolver,
             &self.layout_initializer,
@@ -62,6 +72,11 @@ impl TrainKernelComponent {
             &self.run_store,
             &self.clock,
             &self.run_refs,
+            LoraTrainRunDependencyCatalogs {
+                model: model_catalog,
+                dataset: dataset_catalog,
+                adapter: adapter_catalog,
+            },
         )
     }
 

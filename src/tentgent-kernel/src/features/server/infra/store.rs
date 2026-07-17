@@ -1,5 +1,4 @@
-use std::fs;
-use std::path::Path;
+use std::{fs, io::Write, path::Path};
 
 use crate::features::server::domain::{
     LaunchMode, ServerInspection, ServerProcessMetadata, ServerRef, ServerRefSelector,
@@ -112,6 +111,7 @@ where
         layout: &ServerStoreLayout,
         server_ref: &ServerRef,
         pid: u32,
+        process_token: Option<String>,
         bound_port: u16,
         launch_mode: LaunchMode,
         started_at: String,
@@ -127,6 +127,7 @@ where
 
         let metadata = ServerProcessMetadata {
             pid,
+            process_token,
             launch_mode,
             started_at,
             bound_port: Some(bound_port),
@@ -293,7 +294,32 @@ fn write_process_metadata(path: &Path, metadata: &ServerProcessMetadata) -> Kern
     let body = toml::to_string_pretty(metadata).map_err(|err| {
         server_store_error(format!("serialize server process metadata failed: {err}"))
     })?;
-    fs::write(path, body).map_err(|err| path_error("write server process metadata", path, err))
+    let parent = path
+        .parent()
+        .ok_or_else(|| server_store_error("server process metadata path has no parent"))?;
+    let tmp = parent.join(format!(
+        ".{}.{}.tmp",
+        path.file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("process.toml"),
+        crate::features::resource_coordination::new_operation_id()
+    ));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|err| path_error("create server process metadata", &tmp, err))?;
+    file.write_all(body.as_bytes())
+        .map_err(|err| path_error("write server process metadata", &tmp, err))?;
+    file.sync_all()
+        .map_err(|err| path_error("sync server process metadata", &tmp, err))?;
+    fs::rename(&tmp, path)
+        .map_err(|err| path_error("replace server process metadata", path, err))?;
+    #[cfg(unix)]
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|err| path_error("sync server process metadata directory", parent, err))?;
+    Ok(())
 }
 
 fn read_process_metadata(path: &Path) -> KernelResult<ServerProcessMetadata> {

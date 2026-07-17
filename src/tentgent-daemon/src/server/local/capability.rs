@@ -1,6 +1,6 @@
 use tentgent_kernel::features::{
-    runtime::infra::{ModelRuntimeCapability, ModelRuntimeDaemonEndpoint},
-    server::domain::ServerCapability,
+    runtime::infra::{ModelRuntimeBinding, ModelRuntimeCapability, ModelRuntimeDaemonEndpoint},
+    server::domain::{ServerCapability, ServerRuntimeProfileSelection},
 };
 
 use crate::provider_compat::ProviderCompatRejection;
@@ -11,14 +11,24 @@ pub(super) async fn ensure_model_endpoint(
     state: &LocalServerState,
 ) -> Result<ModelRuntimeDaemonEndpoint, LocalServerError> {
     let capability = model_runtime_capability(state.config.capability);
+    let runtime_profile = state
+        .config
+        .runtime_profile
+        .as_deref()
+        .map(ServerRuntimeProfileSelection::parse_label)
+        .transpose()
+        .map_err(LocalServerError::internal)?;
     state
         .supervisor
-        .ensure_model_bound_with_policy(
+        .ensure_model_bound_with_profile_and_policy(
             &state.layout,
             &state.runtime,
             &state.executable_resolver,
-            capability,
-            &state.config.model_ref,
+            ModelRuntimeBinding {
+                capability,
+                model_ref: &state.config.model_ref,
+                runtime_profile: runtime_profile.as_ref(),
+            },
             &state.launch_policy,
         )
         .await

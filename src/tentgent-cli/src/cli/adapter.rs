@@ -10,11 +10,11 @@ use tentgent_kernel::features::adapter::infra::{
     StdAdapterStoreLayoutInitializer, StdHfAdapterSnapshotFetcher,
 };
 use tentgent_kernel::features::adapter::usecases::{
-    AdapterBindRequest, AdapterBindUseCase, AdapterCatalogReadUseCase, AdapterHfPullRequest,
-    AdapterHfPullUseCase, AdapterImportOptions, AdapterInspectRequest, AdapterListRequest,
-    AdapterLocalImportRequest, AdapterLocalImportUseCase, AdapterRemoveRequest,
-    AdapterRemoveUseCase, StdAdapterBindUseCase, StdAdapterCatalogReadUseCase,
-    StdAdapterHfPullUseCase, StdAdapterLocalImportUseCase, StdAdapterRemoveUseCase,
+    AdapterBindRequest, AdapterCatalogReadUseCase, AdapterHfPullRequest, AdapterHfPullUseCase,
+    AdapterImportOptions, AdapterInspectRequest, AdapterListRequest, AdapterLocalImportRequest,
+    AdapterLocalImportUseCase, AdapterRemoveRequest, StdAdapterBindUseCase,
+    StdAdapterCatalogReadUseCase, StdAdapterHfPullUseCase, StdAdapterLocalImportUseCase,
+    StdAdapterRemoveUseCase,
 };
 use tentgent_kernel::features::auth::domain::{AuthEnvLoadPolicy, Provider};
 use tentgent_kernel::features::auth::infra::{
@@ -40,6 +40,7 @@ use super::adapter_render::{
 };
 use super::app::Cli;
 use super::commands::AdapterCommands;
+use super::resource_mutation::project_resource_mutation;
 
 pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
     let adapter = CliAdapterKernel::new();
@@ -184,12 +185,14 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
             let adapter_selector = parse_adapter_selector("bind", "ADAPTER_REF", &adapter_ref)?;
             let base_model_selector =
                 parse_model_selector("bind", "MODEL_REF", base_model_ref.as_str())?;
-            let outcome = match adapter.bind_usecase().bind_adapter(AdapterBindRequest {
-                layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
-                adapter_selector,
-                base_model_selector,
-            }) {
-                Ok(result) => result.outcome,
+            let outcome = match adapter
+                .bind_usecase()
+                .bind_adapter_guarded(AdapterBindRequest {
+                    layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
+                    adapter_selector,
+                    base_model_selector,
+                }) {
+                Ok(result) => project_resource_mutation(result)?.outcome,
                 Err(err) => return Err(explain_adapter_lookup_error("bind", "ADAPTER_REF", err)),
             };
             render_bind_outcome(&outcome);
@@ -201,15 +204,16 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
             }
 
             let selector = parse_adapter_selector("rm", "ADAPTER_REF", &reference)?;
-            let outcome = match adapter
-                .remove_usecase()
-                .remove_adapter(AdapterRemoveRequest {
-                    layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
-                    selector,
-                }) {
-                Ok(result) => result.outcome,
-                Err(err) => return Err(explain_adapter_lookup_error("rm", "ADAPTER_REF", err)),
-            };
+            let outcome =
+                match adapter
+                    .remove_usecase()
+                    .remove_adapter_guarded(AdapterRemoveRequest {
+                        layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
+                        selector,
+                    }) {
+                    Ok(result) => project_resource_mutation(result)?.outcome,
+                    Err(err) => return Err(explain_adapter_lookup_error("rm", "ADAPTER_REF", err)),
+                };
             render_removal_outcome(&outcome);
         }
     }

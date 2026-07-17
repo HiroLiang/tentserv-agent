@@ -1,8 +1,9 @@
 # Cluster Roadmap
 
-Status: active focused sub-roadmap under
-[v1.x-roadmap.md](./v1.x-roadmap.md). GitHub issues `#113`-`#118`
-track the selected `v1.1.0` cluster slices.
+Status: final slice `#118`, including remediation findings `R1`-`R17`, is
+implemented and passes the local full-suite verification matrix. Native
+Windows CI remains pending under [v1.x-roadmap.md](./v1.x-roadmap.md), so
+parent tracking issue `#113` closeout and archival remain blocked.
 
 This plan keeps the selected `v1.1.0` cluster slices aligned while leaving
 later cluster-related candidates visible without turning every related
@@ -24,6 +25,22 @@ the matching configured route.
 The first cluster milestone should be small and should start with state safety:
 bound resources must be visible, protected from accidental removal, and
 inspectable before Tentgent adds multi-route serving behavior.
+
+## Implementation Status
+
+| Issue | Slice | Status |
+| --- | --- | --- |
+| `#114` | Capability and resource state safety contract | completed |
+| `#115` | Cluster definition and validation | completed |
+| `#116` | Route readiness and diagnostics | completed |
+| `#117` | Native local cluster routing MVP | completed |
+| `#118` | Runtime ownership and shutdown safety | all remediation and tracking alignment pass; Windows CI pending |
+
+The next action is to pass the remaining verification gates in
+[cluster-runtime-ownership-remediation.md](./cluster-runtime-ownership-remediation.md),
+then repeat the combined cluster MVP review. Parent `#113` closeout and plan
+archival must not begin before those completion gates pass. No sixth cluster
+implementation slice is implied by this remediation.
 
 ## Candidate Groups
 
@@ -132,9 +149,9 @@ without mixing unrelated cluster features.
 
 | Slice | Scope | Completion Checks |
 | --- | --- | --- |
-| 1. Capability And Resource State Safety | Define how models, adapters, capability metadata, runtime profile references, and cluster route bindings are written, read back, and protected. Establish default delete/remove behavior before cluster routing exists. | A bound model or adapter cannot be deleted or removed by accident; list/inspect reflects writes immediately; explicit unbind or force behavior is documented and tested; current server specs and cluster route bindings use the same protection rule. |
+| 1. Capability And Resource State Safety | Define how models, adapters, capability metadata, runtime profile references, and cluster route bindings are written, read back, and protected. Establish default delete/remove behavior before cluster routing exists. | A bound model or adapter cannot be deleted or removed by accident; list/inspect reflects writes immediately; blockers identify the references that must be stopped or removed; current server specs and cluster route bindings use the same protection rule. |
 | 2. Cluster Definition And Validation | Add the first cluster shape and internal route-target validation rules without starting a multi-model server yet. A cluster can name routes such as `chat`, `embedding`, `rerank`, `audio-transcription`, and `vision-chat` and bind each route to a model/provider reference. | Create/update/list/inspect can show the cluster definition; invalid route names, missing models, missing capabilities, and invalid runtime profile references fail with clear errors; no request routing is required yet. |
-| 3. Route Readiness And Diagnostics | Group compatibility proof, tuple-aware model/LoRA checks, runtime profile visibility, and route-level next actions into the cluster inspection path. | Each configured route reports capability, backend/runtime profile, support status, proof state, and next action; one failed or stale route is visible without hiding the rest of the cluster; `doctor` or inspect output can point to the route that needs action. |
+| 3. Route Readiness And Diagnostics | Group existing model support evidence, runtime profile visibility, and route-level next actions into the cluster inspection path. Tuple-aware LoRA gates remain later 1.x work. | Each configured route reports capability, backend/runtime profile, support status, proof state, and next action; one failed or stale route is visible without hiding the rest of the cluster; `doctor` or inspect output can point to the route that needs action. |
 | 4. Cluster Server Routing MVP | Start the first useful cluster server path for native local `chat`, `embedding`, `rerank`, `audio-transcription`, and `vision-chat` routes. Keep provider-compatible multimodal, tools, and automatic context assembly out of scope. | Requests sent to a cluster server reach the configured local route; unsupported or missing routes fail predictably; route failures are scoped to the route; existing direct single-model server behavior remains unchanged. |
 | 5. Runtime Ownership And Shutdown Safety | Add the runtime ownership rules needed once a cluster can run multiple routes. This covers active route ownership, cancellation, shutdown, and cleanup boundaries. | Active cluster routes keep their model/runtime resources from being removed underneath them; shutdown and cancellation release ownership cleanly; cleanup does not delete retained artifacts or bound resources that still have an active owner. |
 
@@ -147,7 +164,7 @@ per slice after the issue order is accepted.
 | Order | Issue Title | Description | Labels |
 | --- | --- | --- | --- |
 | Parent | `v1.1.0 Cluster MVP` | Track the first `v1.1.0` feature milestone for named clusters. The milestone should deliver a small local multi-route foundation without automatic multimodal context assembly, provider tool orchestration, shared registries, or conversion automation. | `enhancement`, `type:tracking`, `area:roadmap` |
-| 1 | `Define Cluster Capability And Resource State Safety` | Define how models, adapters, capability metadata, runtime profile references, server specs, and cluster route bindings are written, read back, and protected. The default behavior should reject accidental deletion of bound resources and require an explicit unbind or separately designed force behavior. | `enhancement`, `type:implementation`, `area:gating`, `area:model-support` |
+| 1 | `Define Cluster Capability And Resource State Safety` | Define how models, adapters, capability metadata, runtime profile references, server specs, and cluster route bindings are written, read back, and protected. The default behavior rejects accidental deletion of bound resources and reports the references that must be stopped or removed first; force does not bypass active ownership. | `enhancement`, `type:implementation`, `area:gating`, `area:model-support` |
 | 2 | `Add Cluster Definition And Validation` | Add the first cluster definition shape and validation path without request routing. Route targets are internal cluster fields rather than independent public refs. Clusters may be partial, but declared routes must validate route names, model/provider references, capabilities, and runtime profile references before they are stored. | `enhancement`, `type:implementation`, `area:api`, `area:gating` |
 | 3 | `Add Cluster Route Readiness Diagnostics` | Show per-route readiness in cluster inspection, including capability, backend/runtime profile, support status, proof state, stale/failed reason, and next action. One failed or stale route must stay visible without hiding the rest of the cluster. | `enhancement`, `type:implementation`, `area:diagnostics`, `area:model-support`, `area:runtime-profile` |
 | 4 | `Implement Native Local Cluster Routing MVP` | Add the first cluster server path so native local `chat`, `embedding`, `rerank`, `audio-transcription`, and `vision-chat` HTTP requests sent to that server are dispatched through configured cluster routes. Missing, unsupported, or unverified routes should fail with explicit route-scoped errors, and existing direct single-model server behavior must remain unchanged. | `enhancement`, `type:implementation`, `area:api`, `area:gating` |
@@ -162,9 +179,9 @@ longer enough.
 
 - Slice 1 is first because cluster routing should not be built on top of
   ambiguous model, adapter, capability, or binding state.
-- Durable compatibility proof, tuple-aware LoRA checks, and runtime failure
-  evidence are grouped into Slice 3 unless Slice 2 validation proves that part
-  of the proof model must exist earlier.
+- Existing compatibility proof and runtime failure evidence feed Slice 3.
+  Durable proof migration and tuple-aware LoRA enforcement remain separate
+  later 1.x work.
 - Minimal resource gates appear in Slice 1 for delete/remove protection and in
   Slice 5 for active runtime ownership. They should not become a broad scheduler
   before the routing MVP exists.
@@ -399,24 +416,23 @@ Implementation outcome for `#116`:
 - no SQLite migration, fixed adapter target, automatic fallback, or broad
   provider-compatible multimodal promise was added.
 
-## Active #118 Direction
+## #118 Implementation And Remediation Record
 
-The next slice owns active runtime resource safety after cluster routing exists:
+`#118` has implemented active route claims, profile-aware physical runtime
+generations, cross-process transition locks, typed resource guards, safe
+drain/block reload, bounded shutdown, managed adapter resolution, ownership
+inspect/doctor output, and stale-state reconciliation. A post-implementation
+audit found lifecycle, mutation stabilization, platform replacement, lock
+metadata, and focused-inspection gaps. The approved design and decisions remain in
+[cluster-runtime-ownership-plan.md](./cluster-runtime-ownership-plan.md), with
+module boundaries in
+[cluster-runtime-coordination-architecture.md](./cluster-runtime-coordination-architecture.md)
+and active fixes in
+[cluster-runtime-ownership-remediation.md](./cluster-runtime-ownership-remediation.md).
 
-- represent which cluster server and route currently owns each local runtime
-  resource;
-- block unsafe model, capability, runtime-profile, or related resource mutation
-  while an active route owns it;
-- define cancellation, stop, shutdown, stale-process recovery, and ownership
-  release behavior for multiple routes;
-- keep cleanup from deleting retained artifacts or resources with active
-  owners;
-- integrate these checks with the structured resource-guard contract instead
-  of adding cluster-only policy in entrypoint handlers.
-
-SQLite remains optional for this slice. Introduce indexed persistence only if
-the ownership state requires durability across process restarts; do not migrate
-unrelated stores as part of #118.
+SQLite remains a later isolated state-family migration. Provider cluster target
+execution, fixed adapter targets, automatic route fallback, and a general
+scheduler remain outside the v1.1 cluster MVP and this remediation.
 
 ## GitHub Issue And Branch Alignment
 

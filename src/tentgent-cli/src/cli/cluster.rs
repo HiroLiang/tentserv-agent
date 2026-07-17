@@ -19,11 +19,15 @@ use tentgent_kernel::features::cluster::usecases::{
 use tentgent_kernel::features::model::infra::{
     FileModelCapabilityProofStore, FileModelCatalogStore,
 };
+use tentgent_kernel::features::runtime_ownership::{
+    RuntimeOwnershipScope, StdRuntimeOwnershipUseCase,
+};
 use tentgent_kernel::foundation::layout::{
     LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
 };
 
 use super::commands::ClusterCommands;
+use super::resource_mutation::project_resource_mutation;
 
 pub async fn handle_cluster_command(action: ClusterCommands) -> Result<()> {
     let cluster = CliClusterKernel::new();
@@ -33,12 +37,13 @@ pub async fn handle_cluster_command(action: ClusterCommands) -> Result<()> {
         ClusterCommands::Apply { path, home, force } => {
             let result = cluster
                 .usecase()
-                .apply_cluster_file(ClusterApplyFileRequest {
+                .apply_cluster_file_guarded(ClusterApplyFileRequest {
                     layout: runtime_layout_input(LayoutResolveMode::Create, home),
                     source_path: path,
                     force_unsafe_source: force,
                 })
                 .into_diagnostic()?;
+            let result = project_resource_mutation(result)?;
             println!(
                 "Applied cluster `{}`",
                 result.inspection.definition.cluster_ref
@@ -70,16 +75,26 @@ pub async fn handle_cluster_command(action: ClusterCommands) -> Result<()> {
             let cluster_ref = parse_cluster_ref(&cluster_ref)?;
             let result = cluster.inspect_readiness(cluster_ref, home.as_deref())?;
             render_cluster_inspection(&result.inspection, Some(&result.readiness));
+            let ownership = StdRuntimeOwnershipUseCase::default()
+                .inspect_runtime_ownership_scope(
+                    &result.layout,
+                    RuntimeOwnershipScope::Cluster {
+                        cluster_ref: result.inspection.definition.cluster_ref.clone(),
+                    },
+                )
+                .into_diagnostic()?;
+            super::runtime_ownership::render_runtime_ownership(&ownership);
         }
         ClusterCommands::Rm { cluster_ref, home } => {
             let cluster_ref = parse_cluster_ref(&cluster_ref)?;
             let result = cluster
                 .usecase()
-                .remove_cluster(ClusterRemoveRequest {
+                .remove_cluster_guarded(ClusterRemoveRequest {
                     layout: runtime_layout_input(LayoutResolveMode::ReadOnly, home),
                     cluster_ref,
                 })
                 .into_diagnostic()?;
+            let result = project_resource_mutation(result)?;
             println!(
                 "Removed cluster `{}`",
                 result.outcome.inspection.definition.cluster_ref
@@ -206,6 +221,10 @@ fn render_cluster_inspection(
     table.add_row(vec![
         Cell::new("schema_version"),
         Cell::new(inspection.definition.schema_version.to_string()),
+    ]);
+    table.add_row(vec![
+        Cell::new("route_update_policy"),
+        Cell::new(inspection.definition.route_update_policy.as_str()),
     ]);
     table.add_row(vec![
         Cell::new("definition_path"),

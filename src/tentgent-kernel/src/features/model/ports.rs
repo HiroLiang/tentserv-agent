@@ -82,7 +82,7 @@ pub trait ModelIdentityGenerator {
 }
 
 /// Reads and writes model catalog metadata.
-pub trait ModelCatalogStore {
+pub trait ModelCatalogStore: Send + Sync {
     /// Lists stored model metadata summaries sorted for stable display.
     fn list_models(&self, layout: &ModelStoreLayout) -> KernelResult<Vec<ModelSummary>>;
 

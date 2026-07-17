@@ -25,7 +25,7 @@ These routes are exposed by `tentgent daemon`.
 | --- | --- | --- |
 | `stable` | `GET /healthz`, `GET /v1/status` | Process liveness, runtime-home summary, and daemon warning records. |
 | `stable` | `GET /v1/auth`, `GET /v1/auth/{provider}` | Provider credential presence without secret disclosure. |
-| `experimental` | `GET /v1/doctor` | Public diagnostic route. Output remains compact and actionable; warning coverage may expand additively. |
+| `experimental` | `GET /v1/doctor` | Public diagnostic route. Output remains compact and actionable; warning coverage, including runtime ownership, may expand additively. |
 | `stable` | `GET /v1/daemon/logs`, `GET /v1/daemon/logs/stdout`, `GET /v1/daemon/logs/stderr` | Local log diagnostics. Tail query behavior may gain additional guards. |
 | `experimental` | `POST /v1/daemon/shutdown` | Public local shutdown request. Active daemon jobs are interrupted before shutdown; workspace cleanup is retention-aware and best-effort. |
 | `stable` | `POST /v1/chat`, `POST /v1/embeddings`, `POST /v1/rerank`, `POST /v1/vision/chat` | Native synchronous local inference routes. Backend availability and support gates are capability-specific. |
@@ -47,7 +47,7 @@ These routes are exposed by `tentgent daemon`.
 | `experimental` | `GET /v1/train/lora/plans`, `POST /v1/train/lora/plans/preview`, `POST /v1/train/lora/plans`, `GET /v1/train/lora/plans/{reference}`, `DELETE /v1/train/lora/plans/{reference}` | Managed LoRA plan surface. Plan identity is contracted; training readiness remains model/backend dependent. |
 | `experimental` | `POST /v1/train/lora/plans/{reference}/runs`, `GET /v1/train/lora/plans/{reference}/runs`, `GET /v1/train/lora/runs`, `GET /v1/train/lora/runs/{reference}`, `GET /v1/train/lora/runs/{reference}/metrics`, `GET /v1/train/lora/runs/{reference}/logs`, `GET /v1/train/lora/runs/{reference}/logs/raw` | Managed LoRA run surface. Plan identity is contracted; run execution, stale process handling, and diagnostics remain experimental. |
 | `stable` | `GET /v1/servers`, `POST /v1/servers`, `GET /v1/servers/{reference}`, `DELETE /v1/servers/{reference}`, `POST /v1/servers/{reference}/start`, `POST /v1/servers/{reference}/stop`, `GET /v1/servers/{reference}/health`, `GET /v1/servers/{reference}/logs`, `GET /v1/servers/{reference}/logs/stdout`, `GET /v1/servers/{reference}/logs/stderr` | Stored server registry and lifecycle route names. Existing local/cloud target behavior remains stable; the additive `runtime_kind: "cluster"` target is experimental. |
-| `experimental` | `GET /v1/clusters`, `PUT /v1/clusters/{cluster_ref}`, `GET /v1/clusters/{cluster_ref}`, `DELETE /v1/clusters/{cluster_ref}` | Stored cluster definition CRUD, read-only readiness, and removal protection for referenced cluster server specs. |
+| `experimental` | `GET /v1/clusters`, `PUT /v1/clusters/{cluster_ref}`, `GET /v1/clusters/{cluster_ref}`, `DELETE /v1/clusters/{cluster_ref}` | Stored cluster definition CRUD, read-only readiness and ownership summaries, guarded replacement, and removal protection. |
 | `stable` | `GET /v1/sessions`, `POST /v1/sessions`, `GET /v1/sessions/{reference}`, `PATCH /v1/sessions/{reference}`, `DELETE /v1/sessions/{reference}`, `GET /v1/sessions/{reference}/messages`, `POST /v1/sessions/{reference}/messages`, `POST /v1/sessions/{reference}/compact` | Local session metadata and transcript management surface. Compaction is explicit and destructive. |
 
 ## Local Model-Bound Server Surface
@@ -78,8 +78,8 @@ These routes are exposed by `tentgent cluster run <cluster-ref>`.
 
 | Tier | Routes | Notes |
 | --- | --- | --- |
-| `experimental` | `GET /healthz` | Cluster proxy process health, definition hash, and configured route keys. |
-| `experimental` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1beta/models/{*operation}`, `POST /v1/embeddings`, `POST /v1/rerank`, `POST /v1/audio/transcriptions`, `POST /v1/vision/chat` | Endpoint families select declared local cluster routes. Provider targets, cross-route fallback, and broader provider-shaped multimodal routing are not supported yet. |
+| `experimental` | `GET /healthz` | Cluster proxy process health, definition hash, configured route keys, guarded hot reload, and bounded shutdown drain. |
+| `experimental` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1beta/models/{*operation}`, `POST /v1/embeddings`, `POST /v1/rerank`, `POST /v1/audio/transcriptions`, `POST /v1/vision/chat` | Endpoint families select declared local cluster routes and create internal route ownership on first use. Provider targets, cross-route fallback, and broader provider-shaped multimodal routing are not supported yet. |
 
 ## Python Model Runtime Surface
 
@@ -106,6 +106,7 @@ listed as hidden or deprecated below.
 | Tier | Commands | Notes |
 | --- | --- | --- |
 | `stable` | `tentgent doctor`, `tentgent runtime bootstrap`, `tentgent runtime status` | Runtime and diagnostic commands. Doctor coverage may expand additively. |
+| `experimental` | `tentgent runtime reconcile` | Dry-run/apply recovery for proven-stale runtime ownership records. Quarantine behavior and diagnostics may tighten additively. |
 | `stable` | `tentgent model add`, `model pull`, `model catalog`, `model ls`, `model rm`, `model inspect`, `model capability show/set/add/remove` | Model management and declared capability commands. |
 | `experimental` | `tentgent model capability proofs`, `model capability verify`, `model capability proof clear` | Public support-proof commands. Retry and stale-state recovery behavior is documented by the model-support contracts. |
 | `deprecated` | `tentgent model set-capability` | Hidden legacy compatibility command. Prefer `tentgent model capability set`. |
@@ -115,7 +116,7 @@ listed as hidden or deprecated below.
 | `experimental` | `tentgent train lora plan create/ls/inspect/rm`, `tentgent train lora run` | Public LoRA training commands. Plan identity is contracted; run behavior and stale recovery remain experimental. |
 | `internal` | `tentgent train lora run-worker` | Hidden detached worker command. |
 | `stable` | `tentgent daemon run/start/status/stop`, `tentgent server run/ls/ps/inspect/start/stop/rm`, `tentgent session ls/inspect/messages/create/update/append/compact/rm`, `tentgent auth status/mode/hf/openai/anthropic/gemini set/rm` | Daemon lifecycle, server registry, session management, and provider auth commands. |
-| `experimental` | `tentgent cluster apply/validate/ls/inspect/run/rm` | Stored cluster definitions, route readiness, and first local cluster server routing surface. |
+| `experimental` | `tentgent cluster apply/validate/ls/inspect/run/rm` | Stored cluster definitions, route readiness and ownership, guarded hot reload, and local cluster server routing surface. |
 | `internal` | `tentgent __cloud-server-runtime`, `tentgent __local-server-runtime`, `tentgent __cluster-server-runtime` | Hidden worker entry points for managed server processes. |
 
 Visible aliases such as `embed` / `embedding`, `model catalog` /

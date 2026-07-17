@@ -74,6 +74,10 @@ impl AdapterKernelComponent {
         StdAdapterCatalogReadUseCase::new(&self.layout_resolver, &self.catalog)
     }
 
+    pub(crate) fn catalog_store(&self) -> &FileAdapterCatalogStore {
+        &self.catalog
+    }
+
     pub fn local_import_usecase<'a>(
         &'a self,
         model_catalog: &'a dyn ModelCatalogStore,

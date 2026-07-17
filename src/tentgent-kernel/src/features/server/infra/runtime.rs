@@ -5,6 +5,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use crate::features::auth::domain::{AuthSecretMaterial, Provider};
 use crate::features::runtime::domain::PythonRuntimeLayout;
 use crate::features::runtime::ports::RuntimeExecutableResolver;
+use crate::features::runtime_ownership::new_process_token;
 use crate::features::server::domain::{
     CloudProvider, ServerInspection, ServerRuntimeKind, ServerSpec,
 };
@@ -14,6 +15,7 @@ use crate::foundation::layout::RuntimeLayout;
 use super::error::server_runtime_error;
 
 const DAEMON_TOKEN_ENV_VAR: &str = "TENTGENT_DAEMON_TOKEN";
+pub const SERVER_PROCESS_TOKEN_ENV_VAR: &str = "TENTGENT_SERVER_PROCESS_TOKEN";
 const AUTO_SERVER_PORT_SCAN_LIMIT: u16 = 100;
 
 /// Builds and launches local model and cloud server runtime entrypoints.
@@ -33,7 +35,8 @@ impl<'a> ServerRuntimeLauncher<'a> {
         request: ServerRuntimeLaunchRequest,
     ) -> KernelResult<SpawnedForegroundServer> {
         let bound_port = allocate_bind_port_for_spec(&request.inspection.spec)?;
-        let mut command = self.command_for_request(&request, bound_port)?;
+        let process_token = new_process_token();
+        let mut command = self.command_for_request(&request, bound_port, &process_token)?;
         command
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
@@ -47,6 +50,7 @@ impl<'a> ServerRuntimeLauncher<'a> {
         Ok(SpawnedForegroundServer {
             pid,
             bound_port,
+            process_token,
             child,
         })
     }
@@ -56,6 +60,7 @@ impl<'a> ServerRuntimeLauncher<'a> {
         request: ServerRuntimeLaunchRequest,
     ) -> KernelResult<SpawnedBackgroundServer> {
         let bound_port = allocate_bind_port_for_spec(&request.inspection.spec)?;
+        let process_token = new_process_token();
         let stdout = OpenOptions::new()
             .create(true)
             .append(true)
@@ -77,7 +82,7 @@ impl<'a> ServerRuntimeLauncher<'a> {
                 ))
             })?;
 
-        let mut command = self.command_for_request(&request, bound_port)?;
+        let mut command = self.command_for_request(&request, bound_port, &process_token)?;
         command
             .stdin(Stdio::null())
             .stdout(Stdio::from(stdout))
@@ -95,6 +100,7 @@ impl<'a> ServerRuntimeLauncher<'a> {
         Ok(SpawnedBackgroundServer {
             pid: child.id(),
             bound_port,
+            process_token,
         })
     }
 
@@ -102,6 +108,7 @@ impl<'a> ServerRuntimeLauncher<'a> {
         &self,
         request: &ServerRuntimeLaunchRequest,
         bound_port: u16,
+        process_token: &str,
     ) -> KernelResult<Command> {
         let entrypoint = std::env::current_exe().map_err(|err| {
             server_runtime_error(format!("failed to resolve current Rust executable: {err}"))
@@ -116,7 +123,8 @@ impl<'a> ServerRuntimeLauncher<'a> {
         let mut command = Command::new(entrypoint);
         command
             .current_dir(&request.runtime.project_dir)
-            .env("TENTGENT_HOME", &request.layout.home_dir);
+            .env("TENTGENT_HOME", &request.layout.home_dir)
+            .env(SERVER_PROCESS_TOKEN_ENV_VAR, process_token);
 
         for name in parts.env_remove {
             command.env_remove(name);
@@ -142,6 +150,7 @@ pub struct ServerRuntimeLaunchRequest {
 pub struct SpawnedForegroundServer {
     pub pid: u32,
     pub bound_port: u16,
+    pub process_token: String,
     child: Child,
 }
 
@@ -151,11 +160,28 @@ impl SpawnedForegroundServer {
             server_runtime_error(format!("failed to wait for server runtime: {err}"))
         })
     }
+
+    pub fn terminate(&mut self) -> KernelResult<()> {
+        self.child.kill().map_err(|err| {
+            server_runtime_error(format!(
+                "failed to terminate untracked server runtime: {err}"
+            ))
+        })?;
+        let _ = self.child.wait();
+        Ok(())
+    }
 }
 
 pub struct SpawnedBackgroundServer {
     pub pid: u32,
     pub bound_port: u16,
+    pub process_token: String,
+}
+
+pub fn server_process_token_from_env() -> Option<String> {
+    std::env::var(SERVER_PROCESS_TOKEN_ENV_VAR)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

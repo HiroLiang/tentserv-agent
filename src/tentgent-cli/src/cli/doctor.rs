@@ -1,7 +1,7 @@
 use std::io::IsTerminal;
 
 use console::style;
-use miette::{IntoDiagnostic, Result, miette};
+use miette::{miette, IntoDiagnostic, Result};
 use tentgent_kernel::{
     capabilities::{
         infra::{FileCapabilityStateStore, StdMachineCapabilitiesProbe},
@@ -18,8 +18,8 @@ use tentgent_kernel::{
         cluster::{
             infra::FileClusterCatalogStore,
             usecases::{
-                ClusterReadinessListRequest, ClusterReadinessUseCase, StdClusterReadinessUseCase,
-                cluster_readiness_doctor_checks,
+                cluster_readiness_doctor_checks, ClusterReadinessListRequest,
+                ClusterReadinessUseCase, StdClusterReadinessUseCase,
             },
         },
         doctor::{
@@ -57,6 +57,9 @@ use tentgent_kernel::{
                 RuntimeBootstrapResult, StdRuntimeBootstrapUseCase, StdRuntimeStateUseCase,
             },
         },
+        runtime_ownership::{
+            RuntimeOwnershipStatus, RuntimeOwnershipSummary, StdRuntimeOwnershipUseCase,
+        },
     },
     foundation::{
         layout::{
@@ -69,10 +72,10 @@ use tentgent_kernel::{
 use super::{
     commands::DoctorCommand,
     model_support::{
-        ModelSupportSummary, model_support_next_action, model_support_recovery_guidance,
-        model_support_summaries, support_status_is_healthy,
+        model_support_next_action, model_support_recovery_guidance, model_support_summaries,
+        support_status_is_healthy, ModelSupportSummary,
     },
-    runtime_footprint::{FootprintEntry, collect_runtime_footprint_best_effort},
+    runtime_footprint::{collect_runtime_footprint_best_effort, FootprintEntry},
 };
 
 pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
@@ -92,6 +95,8 @@ pub fn handle_doctor_command(command: DoctorCommand) -> Result<()> {
     let report = append_model_support_checks(&kernel, report);
     progress.step("checking cluster readiness");
     let report = append_cluster_readiness_checks(&kernel, report);
+    progress.step("checking runtime ownership");
+    let report = append_runtime_ownership_checks(&kernel, report);
     progress.step("checking provider auth");
     let report = append_auth_checks(&kernel, report);
 
@@ -306,6 +311,72 @@ fn append_cluster_readiness_checks(kernel: &CliDoctorKernel, report: DoctorRepor
     DoctorReport::from_checks(checks)
 }
 
+fn append_runtime_ownership_checks(kernel: &CliDoctorKernel, report: DoctorReport) -> DoctorReport {
+    let mut checks = report.checks;
+    checks.push(runtime_ownership_check(kernel));
+    DoctorReport::from_checks(checks)
+}
+
+fn runtime_ownership_check(kernel: &CliDoctorKernel) -> DoctorCheck {
+    let layout = match kernel.layout_resolver.resolve(RuntimeLayoutInput {
+        mode: LayoutResolveMode::ReadOnly,
+        home_dir: None,
+        data_root_dir: None,
+    }) {
+        Ok(layout) => layout,
+        Err(error) => {
+            return DoctorCheck::warn(
+                DoctorCheckCategory::RuntimeOwnership,
+                "runtime ownership",
+                format!("runtime ownership check unavailable: {error}"),
+            )
+        }
+    };
+    match StdRuntimeOwnershipUseCase::default().summarize_runtime_ownership(&layout) {
+        Ok(inspection) => runtime_ownership_summary_check(&inspection.summary),
+        Err(error) => DoctorCheck::warn(
+            DoctorCheckCategory::RuntimeOwnership,
+            "runtime ownership",
+            format!("runtime ownership check unavailable: {error}"),
+        ),
+    }
+}
+
+fn runtime_ownership_summary_check(summary: &RuntimeOwnershipSummary) -> DoctorCheck {
+    let detail = format!(
+        "{} route claim(s), {} active generation(s), {} stale record(s), {} malformed record(s)",
+        summary.route_claim_count,
+        summary.active_generation_count,
+        summary.stale_record_count,
+        summary.malformed_record_count
+    );
+    match summary.status {
+        RuntimeOwnershipStatus::Healthy => DoctorCheck::pass(
+            DoctorCheckCategory::RuntimeOwnership,
+            "runtime ownership",
+            detail,
+        ),
+        RuntimeOwnershipStatus::Attention => DoctorCheck::warn(
+            DoctorCheckCategory::RuntimeOwnership,
+            "runtime ownership",
+            detail,
+        )
+        .with_next_action(DoctorNextAction::command(
+            "Inspect stale ownership",
+            "tentgent runtime reconcile",
+        )),
+        RuntimeOwnershipStatus::Blocked => DoctorCheck::fail(
+            DoctorCheckCategory::RuntimeOwnership,
+            "runtime ownership",
+            detail,
+        )
+        .with_next_action(DoctorNextAction::command(
+            "Inspect ownership recovery",
+            "tentgent runtime reconcile",
+        )),
+    }
+}
+
 fn cluster_readiness_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
     let auth = StdAuthStatusUseCase::new(
         &kernel.auth_env_probe,
@@ -352,17 +423,15 @@ fn auth_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
     );
     match auth.status(AuthStatusRequest::all(AuthEnvLoadPolicy::CwdDotenvOverride)) {
         Ok(report) => vec![provider_auth_check(&report.statuses)],
-        Err(err) => vec![
-            DoctorCheck::warn(
-                DoctorCheckCategory::Auth,
-                "provider auth",
-                format!("provider auth status unavailable: {err}"),
-            )
-            .with_next_action(DoctorNextAction::command(
-                "Inspect provider auth",
-                "tentgent auth status",
-            )),
-        ],
+        Err(err) => vec![DoctorCheck::warn(
+            DoctorCheckCategory::Auth,
+            "provider auth",
+            format!("provider auth status unavailable: {err}"),
+        )
+        .with_next_action(DoctorNextAction::command(
+            "Inspect provider auth",
+            "tentgent auth status",
+        ))],
     }
 }
 
@@ -778,6 +847,26 @@ mod tests {
     }
 
     #[test]
+    fn runtime_ownership_summary_reports_stale_recovery_action() {
+        let check = runtime_ownership_summary_check(&RuntimeOwnershipSummary {
+            route_claim_count: 2,
+            active_generation_count: 1,
+            active_operation_count: 0,
+            stale_record_count: 1,
+            malformed_record_count: 0,
+            status: RuntimeOwnershipStatus::Attention,
+        });
+
+        assert_eq!(check.category, DoctorCheckCategory::RuntimeOwnership);
+        assert_eq!(check.status, DoctorCheckStatus::Warn);
+        assert!(check.detail.contains("1 stale record(s)"));
+        assert_eq!(
+            check.next_actions[0].command.as_deref(),
+            Some("tentgent runtime reconcile")
+        );
+    }
+
+    #[test]
     fn model_file_diagnostic_warning_check_reports_next_action() {
         let check = model_file_diagnostic_warning_check(
             "abc123abc123",
@@ -909,13 +998,11 @@ mod tests {
             check.next_actions[0].command.as_deref(),
             Some("tentgent auth openai set")
         );
-        assert!(
-            check.next_actions[0]
-                .detail
-                .as_deref()
-                .expect("detail")
-                .contains("OPENAI_API_KEY")
-        );
+        assert!(check.next_actions[0]
+            .detail
+            .as_deref()
+            .expect("detail")
+            .contains("OPENAI_API_KEY"));
     }
 
     #[test]

@@ -1,0 +1,42 @@
+name: Runtime ownership Windows
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/runtime-ownership-windows.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "src/tentgent-kernel/**"
+      - "src/tentgent-platform-fs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-ownership:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.81.0"
+      - uses: Swatinem/rust-cache@v2
+      - name: Test atomic replacement repeatedly
+        shell: pwsh
+        run: |
+          1..3 | ForEach-Object {
+            cargo test -p tentgent-kernel repeated_atomic_write_replaces_existing_file_without_temp_leaks -- --test-threads=1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Test resource coordination
+        run: cargo test -p tentgent-kernel resource_coordination
+      - name: Test runtime ownership transitions
+        shell: pwsh
+        run: |
+          1..3 | ForEach-Object {
+            cargo test -p tentgent-kernel runtime_ownership -- --test-threads=1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Test model runtime process ownership
+        run: cargo test -p tentgent-kernel model_daemon

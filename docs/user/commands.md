@@ -128,6 +128,24 @@ tentgent runtime bootstrap --print-plan
 tentgent runtime bootstrap --profile local-model --dry-run
 ```
 
+Inspect stale runtime ownership without changing files:
+
+```bash
+tentgent runtime reconcile
+```
+
+After stopping the server, daemon, or runtime named by the report, apply only
+repairs that can be proven stale:
+
+```bash
+tentgent runtime reconcile --apply
+tentgent runtime reconcile --apply --purge-quarantine
+```
+
+`--purge-quarantine` requires `--apply` and removes only records quarantined
+before the current invocation. Reconcile never removes managed models,
+adapters, datasets, clusters, or server specs.
+
 Direct release installers run this bootstrap by default. Use this command when
 you install from a package manager, intentionally skipped installer bootstrap,
 or need to resync Python dependencies after an upgrade.
@@ -831,6 +849,7 @@ Example shape:
 ```toml
 schema_version = 1
 cluster_ref = "local-assistant"
+route_update_policy = "drain"
 
 [routes.chat]
 kind = "local-model"
@@ -847,13 +866,19 @@ provider's model name, such as the OpenAI model you intend the route to use.
 Provider targets can be validated and inspected but are not executed by the
 first cluster server MVP.
 
+`route_update_policy` defaults to `drain`. With `drain`, new requests switch to
+the new target while existing requests finish on the old route generation.
+With `block`, a target-changing apply is rejected. Change `block` to `drain` in
+a policy-only apply before changing a route target.
+
 `cluster apply` and REST `PUT` only validate and replace the stored definition.
 They do not start runtimes, read provider secrets, or write route readiness
 state. Use `cluster inspect <cluster-ref>` to compute readiness from existing
 local state. Inspect shows the aggregate status, each configured route's
 capability/backend/runtime profile, support or auth status, problem flags, and
-next action. Omitted routes are allowed; a request for one returns
-`cluster_route_missing`.
+next action. It also shows the safe runtime ownership summary for claims,
+physical generations, and stale records. Omitted routes are allowed; a request
+for one returns `cluster_route_missing`.
 
 `cluster run` requires a local `routes.chat` target and creates a normal stored
 server spec. The optional `--allow-unverified` launch flag permits unknown or
@@ -871,7 +896,9 @@ tentgent server rm <server-ref>
 The running cluster server selects routes by endpoint family. Caller-supplied
 provider `model` fields do not change the stored target. Changes applied to the
 same cluster ref are detected by the running server and reloaded without
-changing its server ref.
+changing its server ref. Cluster stop waits up to 30 seconds for admitted Rust
+requests to drain. A timeout leaves ownership records for reconciliation and
+does not kill shared Python work.
 
 Daemon REST exposes matching definition CRUD:
 
@@ -910,8 +937,14 @@ curl -sS http://127.0.0.1:8790/v1/clusters/<cluster-ref> \
 ```
 
 `cluster rm` is blocked while any running or stopped server spec targets that
-cluster. Stop and remove the server spec first; cluster removal never deletes
-the server or its bound model resources automatically.
+cluster or a route claim remains active. Stop and remove the server spec first,
+then let active requests drain; cluster removal never deletes the server or its
+bound model resources automatically.
+
+Guarded remove, capability, bind, and cluster-apply commands report a stable
+blocked or busy code followed by the protected operation/resource, individual
+blockers, and deduplicated recovery actions. A blocked or busy mutation exits
+with status `1`; malformed command usage remains status `2`.
 
 ## Server
 
@@ -969,6 +1002,9 @@ Runtime profiles are server execution metadata, not dependency bootstrap
 profiles; see [server-runtime-profile.md](../contracts/server-runtime-profile.md).
 Cloud provider servers do not show local model support because they are bound
 to provider-hosted models rather than records in the local model store.
+
+`server inspect` also shows a safe runtime ownership summary. It does not expose
+process-instance tokens, lock paths, or internal request lease ids.
 
 Use `doctor` when you want the same support diagnostics across all stored local
 models and stored clusters. `doctor` keeps the main check list compact and
@@ -1619,7 +1655,8 @@ curl -sS -X DELETE http://127.0.0.1:8790/v1/train/lora/plans/<plan-ref>
 
 If `TENTGENT_DAEMON_TOKEN` is enabled, add
 `-H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"`. HTTP deletion only removes
-plans with zero run records.
+plans whose runs are terminal or proven stale. A live or unverifiable run
+blocks deletion and reports what must stop before retrying.
 
 Start and monitor a run through the daemon:
 

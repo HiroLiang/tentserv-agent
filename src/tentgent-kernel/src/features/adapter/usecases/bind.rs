@@ -1,10 +1,16 @@
 //! Adapter base-model binding use case.
 
+use std::sync::Arc;
+
 use crate::features::adapter::domain::AdapterBindOutcome;
 use crate::features::adapter::ports::{
     AdapterBaseIndexStore, AdapterCatalogStore, AdapterSourceMetadataReader,
 };
 use crate::features::model::ports::ModelCatalogStore;
+use crate::features::resource_guard::{
+    authorize_stable_resource_mutation, ResourceGuardUseCase, ResourceMutationOutcome,
+    ResourceOperation, StableMutationAuthorization, StableMutationSnapshot, StdResourceGuard,
+};
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayoutResolver;
 
@@ -21,6 +27,7 @@ pub struct StdAdapterBindUseCase<'a> {
     source_metadata_reader: &'a dyn AdapterSourceMetadataReader,
     base_indexes: &'a dyn AdapterBaseIndexStore,
     model_catalog: &'a dyn ModelCatalogStore,
+    guard: Arc<dyn ResourceGuardUseCase>,
 }
 
 impl<'a> StdAdapterBindUseCase<'a> {
@@ -31,39 +38,97 @@ impl<'a> StdAdapterBindUseCase<'a> {
         base_indexes: &'a dyn AdapterBaseIndexStore,
         model_catalog: &'a dyn ModelCatalogStore,
     ) -> Self {
+        Self::new_with_guard(
+            layout_resolver,
+            adapter_catalog,
+            source_metadata_reader,
+            base_indexes,
+            model_catalog,
+            Arc::new(StdResourceGuard::default()),
+        )
+    }
+
+    pub fn new_with_guard(
+        layout_resolver: &'a dyn RuntimeLayoutResolver,
+        adapter_catalog: &'a dyn AdapterCatalogStore,
+        source_metadata_reader: &'a dyn AdapterSourceMetadataReader,
+        base_indexes: &'a dyn AdapterBaseIndexStore,
+        model_catalog: &'a dyn ModelCatalogStore,
+        guard: Arc<dyn ResourceGuardUseCase>,
+    ) -> Self {
         Self {
             layout_resolver,
             adapter_catalog,
             source_metadata_reader,
             base_indexes,
             model_catalog,
+            guard,
         }
     }
-}
 
-impl AdapterBindUseCase for StdAdapterBindUseCase<'_> {
-    fn bind_adapter(&self, request: AdapterBindRequest) -> KernelResult<AdapterBindResult> {
+    pub fn bind_adapter_guarded(
+        &self,
+        request: AdapterBindRequest,
+    ) -> KernelResult<ResourceMutationOutcome<AdapterBindResult>> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = adapter_store_layout(&layout);
         let model_store = model_store_layout(&layout);
-        let inspection = self
-            .adapter_catalog
-            .inspect_adapter(&store, &request.adapter_selector)?;
-        let base_model = self
-            .model_catalog
-            .inspect_model(&model_store, &request.base_model_selector)?
-            .metadata;
-        let source_metadata = self
-            .source_metadata_reader
-            .read_source_metadata(&inspection.source_path)?;
-        validate_source_metadata(&source_metadata, Some(&base_model))?;
-
+        let authorization =
+            authorize_stable_resource_mutation(&layout, self.guard.as_ref(), || {
+                let inspection = self
+                    .adapter_catalog
+                    .inspect_adapter(&store, &request.adapter_selector)?;
+                let base_model = self
+                    .model_catalog
+                    .inspect_model(&model_store, &request.base_model_selector)?
+                    .metadata;
+                let source_metadata = self
+                    .source_metadata_reader
+                    .read_source_metadata(&inspection.source_path)?;
+                validate_source_metadata(&source_metadata, Some(&base_model))?;
+                Ok(StableMutationSnapshot {
+                    token: AdapterBindDependencyToken {
+                        adapter_metadata: inspection.metadata.clone(),
+                        source_path: inspection.source_path.clone(),
+                        base_model: base_model.clone(),
+                        source_metadata: source_metadata.clone(),
+                    },
+                    operation: ResourceOperation::RebindAdapter {
+                        adapter_ref: inspection.metadata.adapter_ref.to_string(),
+                        old_base_model_ref: inspection
+                            .metadata
+                            .base_model_ref
+                            .as_ref()
+                            .map(ToString::to_string),
+                        new_base_model_ref: Some(base_model.model_ref.to_string()),
+                        capability: inspection.metadata.target_capability,
+                    },
+                    state: AdapterBindState {
+                        inspection,
+                        base_model,
+                        source_metadata,
+                    },
+                })
+            })?;
+        let (state, _permit) = match authorization {
+            StableMutationAuthorization::Permitted { state, permit } => (state, permit),
+            StableMutationAuthorization::Rejected(rejection) => {
+                return Ok(ResourceMutationOutcome::Blocked(rejection));
+            }
+            StableMutationAuthorization::Busy(busy) => {
+                return Ok(ResourceMutationOutcome::Busy(busy));
+            }
+        };
+        let AdapterBindState {
+            inspection,
+            base_model,
+            source_metadata,
+        } = state;
         let mut metadata = inspection.metadata;
         let previous_base_model_ref = metadata.base_model_ref.clone();
         apply_base_metadata(&mut metadata, &source_metadata, Some(&base_model));
         self.adapter_catalog
             .save_adapter_metadata(&store, &metadata)?;
-
         let removed_base_index_path =
             match (previous_base_model_ref, metadata.base_model_ref.clone()) {
                 (Some(previous), Some(current)) if previous != current => {
@@ -78,8 +143,7 @@ impl AdapterBindUseCase for StdAdapterBindUseCase<'_> {
             &store,
             &base_index_for_metadata(&metadata, base_model.model_ref),
         )?;
-
-        Ok(AdapterBindResult {
+        Ok(ResourceMutationOutcome::Applied(AdapterBindResult {
             layout,
             store,
             outcome: AdapterBindOutcome {
@@ -88,6 +152,26 @@ impl AdapterBindUseCase for StdAdapterBindUseCase<'_> {
                 base_index_path,
                 removed_base_index_path,
             },
-        })
+        }))
+    }
+}
+
+#[derive(PartialEq, Eq)]
+struct AdapterBindDependencyToken {
+    adapter_metadata: crate::features::adapter::domain::AdapterMetadata,
+    source_path: std::path::PathBuf,
+    base_model: crate::features::model::domain::ModelMetadata,
+    source_metadata: crate::features::adapter::ports::AdapterSourceMetadata,
+}
+
+struct AdapterBindState {
+    inspection: crate::features::adapter::domain::AdapterInspection,
+    base_model: crate::features::model::domain::ModelMetadata,
+    source_metadata: crate::features::adapter::ports::AdapterSourceMetadata,
+}
+
+impl AdapterBindUseCase for StdAdapterBindUseCase<'_> {
+    fn bind_adapter(&self, request: AdapterBindRequest) -> KernelResult<AdapterBindResult> {
+        self.bind_adapter_guarded(request)?.into_compat_result()
     }
 }

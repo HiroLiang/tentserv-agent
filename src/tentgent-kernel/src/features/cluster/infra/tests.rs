@@ -29,6 +29,7 @@ fn cluster_store_roundtrips_definition() {
     let definition = ClusterDefinition {
         schema_version: CLUSTER_SCHEMA_VERSION,
         cluster_ref: cluster_ref.clone(),
+        route_update_policy: Default::default(),
         routes,
     };
 

@@ -95,6 +95,11 @@ local-model = [
 tentgent-model-runtime-daemon = "tentgent.runtime.cli.daemon:main"
 tentgent-hf-snapshot = "tentgent.runtime.tools.hf_snapshot:main"
 
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+]
+
 [tool.uv]
 package = true
 

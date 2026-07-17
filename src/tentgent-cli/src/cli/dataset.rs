@@ -42,13 +42,13 @@ use tentgent_kernel::{
                 DatasetDiffUseCase, DatasetEvaluateRequest, DatasetEvaluationInputSelection,
                 DatasetEvaluationUseCase, DatasetExportRequest, DatasetExportUseCase,
                 DatasetInspectRequest, DatasetListRequest, DatasetLocalImportRequest,
-                DatasetLocalImportUseCase, DatasetRemoveRequest, DatasetRemoveUseCase,
-                DatasetSynthPromptRenderRequest, DatasetSynthesisUseCase, DatasetSynthesizeRequest,
-                DatasetTemplateRenderRequest, DatasetTemplateUseCase, DatasetValidateRequest,
-                DatasetValidationTargetSelection, DatasetValidationUseCase,
-                StdDatasetCatalogReadUseCase, StdDatasetDiffUseCase, StdDatasetEvaluationUseCase,
-                StdDatasetExportUseCase, StdDatasetLocalImportUseCase, StdDatasetRemoveUseCase,
-                StdDatasetSynthesisUseCase, StdDatasetTemplateUseCase, StdDatasetValidationUseCase,
+                DatasetLocalImportUseCase, DatasetRemoveRequest, DatasetSynthPromptRenderRequest,
+                DatasetSynthesisUseCase, DatasetSynthesizeRequest, DatasetTemplateRenderRequest,
+                DatasetTemplateUseCase, DatasetValidateRequest, DatasetValidationTargetSelection,
+                DatasetValidationUseCase, StdDatasetCatalogReadUseCase, StdDatasetDiffUseCase,
+                StdDatasetEvaluationUseCase, StdDatasetExportUseCase, StdDatasetLocalImportUseCase,
+                StdDatasetRemoveUseCase, StdDatasetSynthesisUseCase, StdDatasetTemplateUseCase,
+                StdDatasetValidationUseCase,
             },
         },
         runtime::{
@@ -67,6 +67,7 @@ use tentgent_kernel::{
 use super::app::Cli;
 use super::commands::DatasetCommands;
 use super::display::{format_bytes, format_size_transition};
+use super::resource_mutation::project_resource_mutation;
 
 pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
     let dataset = CliDatasetKernel::new();
@@ -388,15 +389,16 @@ pub async fn handle_dataset_command(action: DatasetCommands) -> Result<()> {
             }
 
             let selector = parse_dataset_selector("rm", "DATASET_REF", &reference)?;
-            let outcome = match dataset
-                .remove_usecase()
-                .remove_dataset(DatasetRemoveRequest {
-                    layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
-                    selector,
-                }) {
-                Ok(result) => result.outcome,
-                Err(err) => return Err(explain_dataset_lookup_error("rm", err)),
-            };
+            let outcome =
+                match dataset
+                    .remove_usecase()
+                    .remove_dataset_guarded(DatasetRemoveRequest {
+                        layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
+                        selector,
+                    }) {
+                    Ok(result) => project_resource_mutation(result)?.outcome,
+                    Err(err) => return Err(explain_dataset_lookup_error("rm", err)),
+                };
             render_removal_outcome(&outcome);
         }
     }

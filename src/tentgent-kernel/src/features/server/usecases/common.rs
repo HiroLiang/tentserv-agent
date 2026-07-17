@@ -523,7 +523,7 @@ fn ensure_server_capability_implemented(capability: ServerCapability) -> KernelR
     }
 }
 
-fn server_runtime_backend_for_format(
+pub(crate) fn server_runtime_backend_for_format(
     capability: ServerCapability,
     format: ModelFormat,
 ) -> KernelResult<super::super::domain::ServerRuntimeBackend> {

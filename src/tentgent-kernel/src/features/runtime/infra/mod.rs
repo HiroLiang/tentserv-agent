@@ -11,8 +11,9 @@ mod state;
 pub use bootstrap::{StdRuntimeBootstrapExecutor, StdRuntimeBootstrapPlanner};
 pub use executable::StdRuntimeExecutableResolver;
 pub use model_daemon::{
-    http_error_detail, ModelRuntimeCapability, ModelRuntimeDaemonEndpoint,
+    http_error_detail, ModelRuntimeBinding, ModelRuntimeCapability, ModelRuntimeDaemonEndpoint,
     ModelRuntimeDaemonLaunchPolicy, ModelRuntimeDaemonSupervisor,
+    ModelRuntimeDaemonSupervisorDependencies,
 };
 pub use resolver::StdPythonRuntimeResolver;
 pub use state::StdRuntimeStateProbe;

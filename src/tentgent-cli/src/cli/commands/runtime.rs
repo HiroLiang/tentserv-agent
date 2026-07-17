@@ -18,6 +18,26 @@ pub enum RuntimeCommands {
         long_about = "Show managed Python runtime status, including resolved runtime-home paths, Python environment presence, Python version, and bootstrap profile readiness."
     )]
     Status(RuntimeStatusCommand),
+    /// Inspect or repair stale runtime ownership records.
+    #[command(
+        name = "reconcile",
+        about = "Inspect or repair stale runtime ownership records.",
+        long_about = "Inspect runtime route claims and physical generation records. The command is dry-run by default. Add --apply to remove only records proven stale or quarantine malformed records after live-process exclusion."
+    )]
+    Reconcile(RuntimeReconcileCommand),
+}
+
+#[derive(Debug, Args)]
+pub struct RuntimeReconcileCommand {
+    /// Optional Tentgent runtime home override.
+    #[arg(short = 'H', long, value_name = "HOME")]
+    pub home: Option<PathBuf>,
+    /// Apply proven-stale repairs. Without this flag the command is read-only.
+    #[arg(long)]
+    pub apply: bool,
+    /// Purge records quarantined before this invocation. Requires --apply.
+    #[arg(long, requires = "apply")]
+    pub purge_quarantine: bool,
 }
 
 #[derive(Debug, Args)]

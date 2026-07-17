@@ -208,6 +208,7 @@ impl LocalGeminiGenerateContentRequest {
             messages,
             max_tokens: generation_config.max_output_tokens,
             temperature: generation_config.temperature,
+            adapter: None,
         })
     }
 

@@ -18,6 +18,19 @@ pub enum KernelError {
     #[error("runtime state is unavailable: {0}")]
     RuntimeStateUnavailable(String),
 
+    #[error("resource coordination is unavailable: {0}")]
+    ResourceCoordinationUnavailable(String),
+
+    #[error("resource state is unstable for `{resource}`: {description}; retry after {retry_after_millis} ms")]
+    ResourceStateUnstable {
+        resource: String,
+        description: String,
+        retry_after_millis: u64,
+    },
+
+    #[error("runtime ownership is unavailable: {0}")]
+    RuntimeOwnershipUnavailable(String),
+
     #[error("model store is unavailable: {0}")]
     ModelStoreUnavailable(String),
 

@@ -19,6 +19,29 @@ pub const CLUSTER_DEFINITION_FILENAME: &str = "cluster.toml";
 pub const CLUSTER_SCHEMA_VERSION: u32 = 1;
 pub const MAX_CLUSTER_DEFINITION_BYTES: u64 = 1024 * 1024;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClusterRouteUpdatePolicy {
+    #[default]
+    Drain,
+    Block,
+}
+
+impl ClusterRouteUpdatePolicy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Drain => "drain",
+            Self::Block => "block",
+        }
+    }
+}
+
+impl fmt::Display for ClusterRouteUpdatePolicy {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ClusterRef(String);
 
@@ -205,6 +228,8 @@ pub enum ClusterRouteTarget {
 pub struct ClusterDefinition {
     pub schema_version: u32,
     pub cluster_ref: ClusterRef,
+    #[serde(default)]
+    pub route_update_policy: ClusterRouteUpdatePolicy,
     #[serde(default)]
     pub routes: BTreeMap<ClusterRouteKey, ClusterRouteTarget>,
 }

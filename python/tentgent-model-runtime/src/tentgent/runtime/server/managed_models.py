@@ -320,8 +320,15 @@ def runtime_home(home: Path | None) -> Path:
     )
 
 
+def runtime_data_root(home: Path | None) -> Path:
+    raw_data_root = os.environ.get("TENTGENT_DATA_ROOT")
+    if raw_data_root:
+        return Path(raw_data_root).expanduser().resolve()
+    return runtime_home(home)
+
+
 def _resolve_model_dir(model_ref: str, *, home: Path | None) -> Path:
-    store_dir = runtime_home(home) / "models" / "store"
+    store_dir = runtime_data_root(home) / "models" / "store"
     exact = store_dir / model_ref
     if exact.is_dir():
         return exact

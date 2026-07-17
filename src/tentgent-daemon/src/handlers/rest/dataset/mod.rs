@@ -14,10 +14,9 @@ use tentgent_kernel::{
             DatasetDiffUseCase, DatasetEvaluateRequest, DatasetEvaluationInputSelection,
             DatasetEvaluationUseCase, DatasetExportRequest, DatasetExportUseCase,
             DatasetInspectRequest, DatasetListRequest, DatasetLocalImportRequest,
-            DatasetLocalImportUseCase, DatasetRemoveRequest, DatasetRemoveUseCase,
-            DatasetSynthesisUseCase, DatasetSynthesizeRequest, DatasetTemplateRenderRequest,
-            DatasetTemplateUseCase, DatasetValidateRequest, DatasetValidationTargetSelection,
-            DatasetValidationUseCase,
+            DatasetLocalImportUseCase, DatasetRemoveRequest, DatasetSynthesisUseCase,
+            DatasetSynthesizeRequest, DatasetTemplateRenderRequest, DatasetTemplateUseCase,
+            DatasetValidateRequest, DatasetValidationTargetSelection, DatasetValidationUseCase,
         },
     },
     features::runtime::domain::PythonRuntimeResolutionInput,
@@ -108,11 +107,12 @@ pub async fn remove(
         .kernel()
         .datasets()
         .remove_usecase()
-        .remove_dataset(DatasetRemoveRequest {
+        .remove_dataset_guarded(DatasetRemoveRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             selector,
         })
         .map_err(dataset_remove_error)?;
+    let result = RestError::guarded(result)?;
 
     Ok(Json(DatasetResponse {
         dataset: dataset_removal_item(result.outcome),

@@ -16,8 +16,10 @@ mod image;
 mod model;
 mod model_support;
 mod rerank;
+mod resource_mutation;
 mod runtime;
 mod runtime_footprint;
+mod runtime_ownership;
 mod server;
 mod session;
 mod session_kernel;
@@ -984,5 +986,42 @@ mod tests {
             },
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_runtime_reconcile_apply_and_purge_options() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "runtime",
+            "reconcile",
+            "--home",
+            "/tmp/tentgent-home",
+            "--apply",
+            "--purge-quarantine",
+        ])
+        .expect("parse runtime reconcile");
+
+        match cli.command {
+            Commands::Runtime { action } => match action {
+                super::commands::RuntimeCommands::Reconcile(command) => {
+                    assert_eq!(
+                        command.home.as_deref(),
+                        Some(std::path::Path::new("/tmp/tentgent-home"))
+                    );
+                    assert!(command.apply);
+                    assert!(command.purge_quarantine);
+                }
+                other => panic!("unexpected runtime command: {other:?}"),
+            },
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn runtime_reconcile_purge_requires_apply() {
+        let result =
+            Cli::try_parse_from(["tentgent", "runtime", "reconcile", "--purge-quarantine"]);
+
+        assert!(result.is_err());
     }
 }

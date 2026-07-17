@@ -33,12 +33,11 @@ use tentgent_kernel::features::model::support_catalog::{
 use tentgent_kernel::features::model::usecases::{
     ModelCapabilityMutation, ModelCapabilityProofClearRequest, ModelCapabilityProofClearResult,
     ModelCapabilityProofListRequest, ModelCapabilityProofUseCase, ModelCapabilityUpdateRequest,
-    ModelCapabilityUpdateResult, ModelCapabilityUpdateUseCase, ModelCapabilityVerifyRequest,
-    ModelCatalogReadUseCase, ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest,
-    ModelListRequest, ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
-    ModelRemoveUseCase, StdModelCapabilityProofUseCase, StdModelCapabilityUpdateUseCase,
-    StdModelCatalogReadUseCase, StdModelHfPullUseCase, StdModelLocalImportUseCase,
-    StdModelRemoveUseCase,
+    ModelCapabilityUpdateResult, ModelCapabilityVerifyRequest, ModelCatalogReadUseCase,
+    ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest, ModelListRequest,
+    ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
+    StdModelCapabilityProofUseCase, StdModelCapabilityUpdateUseCase, StdModelCatalogReadUseCase,
+    StdModelHfPullUseCase, StdModelLocalImportUseCase, StdModelRemoveUseCase,
 };
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::StdPythonRuntimeResolver;
@@ -53,6 +52,7 @@ use super::display::format_bytes;
 use super::model_support::{
     model_support_diagnostic_lines, model_support_list_label, model_support_summaries,
 };
+use super::resource_mutation::project_resource_mutation;
 
 pub fn handle_model_command(action: ModelCommands) -> Result<()> {
     let model = CliModelKernel::new();
@@ -137,11 +137,13 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
             }
 
             let selector = parse_model_selector("rm", "HASH", &hash)?;
-            let outcome = match model.remove_usecase().remove_model(ModelRemoveRequest {
-                layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
-                selector,
-            }) {
-                Ok(outcome) => outcome,
+            let outcome = match model
+                .remove_usecase()
+                .remove_model_guarded(ModelRemoveRequest {
+                    layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
+                    selector,
+                }) {
+                Ok(outcome) => project_resource_mutation(outcome)?,
                 Err(err) => return Err(explain_model_lookup_error("rm", "HASH", err)),
             };
             render_model_removal(&outcome.outcome);
@@ -184,14 +186,14 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
             }
 
             let selector = parse_model_selector("set-capability", "REF", &reference)?;
-            let result = match model.capability_update_usecase().update_model_capability(
-                ModelCapabilityUpdateRequest {
+            let result = match model
+                .capability_update_usecase()
+                .update_model_capability_guarded(ModelCapabilityUpdateRequest {
                     layout: runtime_layout_input(LayoutResolveMode::Create),
                     selector,
                     mutation: ModelCapabilityMutation::Set(vec![capability]),
-                },
-            ) {
-                Ok(result) => result,
+                }) {
+                Ok(result) => project_resource_mutation(result)?,
                 Err(err) => return Err(explain_model_lookup_error("set-capability", "REF", err)),
             };
             render_model_capability_update(&result);
@@ -368,14 +370,14 @@ fn update_model_capabilities(
     }
 
     let selector = parse_model_selector(command, "REF", &reference)?;
-    let result = match model.capability_update_usecase().update_model_capability(
-        ModelCapabilityUpdateRequest {
+    let result = match model
+        .capability_update_usecase()
+        .update_model_capability_guarded(ModelCapabilityUpdateRequest {
             layout: runtime_layout_input(LayoutResolveMode::Create),
             selector,
             mutation,
-        },
-    ) {
-        Ok(result) => result,
+        }) {
+        Ok(result) => project_resource_mutation(result)?,
         Err(err) => return Err(explain_model_lookup_error(command, "REF", err)),
     };
     render_model_capability_update(&result);

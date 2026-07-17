@@ -22,12 +22,16 @@ use tentgent_kernel::{
             domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput},
             usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase},
         },
+        runtime_ownership::StdRuntimeOwnershipUseCase,
         server::{
             domain::{
                 parse_server_runtime_selection, CloudProvider, LaunchMode, ServerCapability,
                 ServerInspection, ServerPrepareTarget, ServerRuntimeKind, ServerRuntimeSelection,
             },
-            infra::{ServerRuntimeLaunchRequest, ServerRuntimeLauncher},
+            infra::{
+                ServerRuntimeLaunchRequest, ServerRuntimeLauncher, StdServerProcessController,
+            },
+            ports::ServerProcessController,
             usecases::{
                 ServerInspectRequest, ServerLifecycleUseCase, ServerListRequest,
                 ServerPrepareRequest, ServerRecordProcessStartRequest, ServerRemoveRequest,
@@ -43,8 +47,9 @@ use crate::transport::rest::{error::RestError, state::RestState};
 use super::{
     common::{layout_input_from_layout, parse_server_selector},
     dto::{
-        server_inspection_item, server_remove_response, server_stop_response, server_summary_item,
-        ServerCreateResponse, ServerResponse, ServerStartResponse, ServersResponse,
+        server_inspection_item, server_inspection_item_with_ownership, server_remove_response,
+        server_stop_response, server_summary_item, ServerCreateResponse, ServerResponse,
+        ServerStartResponse, ServersResponse,
     },
     error::{auth_error, server_error},
     health::wait_for_server_ready,
@@ -123,9 +128,19 @@ pub async fn inspect(
             selector,
         })
         .map_err(server_error)?;
+    let ownership_scope = state
+        .app()
+        .services()
+        .kernel()
+        .server_usecase()
+        .runtime_ownership_scope_for_server(&result.layout, &result.inspection.spec)
+        .map_err(server_error)?;
+    let ownership = StdRuntimeOwnershipUseCase::default()
+        .inspect_runtime_ownership_scope(&result.layout, ownership_scope)
+        .map_err(server_error)?;
 
     Ok(Json(ServerResponse {
-        server: server_inspection_item(result.inspection),
+        server: server_inspection_item_with_ownership(result.inspection, Some(ownership)),
     }))
 }
 
@@ -139,11 +154,12 @@ pub async fn remove(
         .services()
         .kernel()
         .server_usecase()
-        .remove_server(ServerRemoveRequest {
+        .remove_server_guarded(ServerRemoveRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             selector,
         })
         .map_err(server_error)?;
+    let result = RestError::guarded(result)?;
 
     Ok(Json(server_remove_response(result.outcome)))
 }
@@ -197,6 +213,19 @@ pub async fn start(
         allow_unverified,
     } = plan;
     let auth = validate_server_runtime_auth(auth).await?;
+    let start = state
+        .app()
+        .services()
+        .kernel()
+        .server_usecase()
+        .resolve_for_start_guarded(ServerResolveForStartRequest {
+            layout: layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
+            selector: parse_server_selector(inspection.spec.server_ref.as_str())?,
+            allow_unverified,
+        })
+        .map_err(server_error)?;
+    let inspection = start.result.inspection;
+    let start_permit = start.permit;
     let recorded_inspection = {
         let spawned = {
             let launcher = ServerRuntimeLauncher::new(state.app().services().kernel().runtime());
@@ -230,11 +259,13 @@ pub async fn start(
                 layout: layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
                 server_ref: inspection.spec.server_ref.clone(),
                 pid: spawned.pid,
+                process_token: Some(spawned.process_token.clone()),
                 bound_port: spawned.bound_port,
                 launch_mode: LaunchMode::Background,
             }) {
             Ok(result) => result.inspection,
             Err(err) => {
+                let _ = StdServerProcessController::default().terminate_process(spawned.pid);
                 let message = err.to_string();
                 let _ = record_local_server_capability_proof(
                     &state,
@@ -247,6 +278,7 @@ pub async fn start(
             }
         }
     };
+    drop(start_permit);
 
     let readiness = if wait_ready {
         let readiness = wait_for_server_ready(&recorded_inspection, timeout_seconds).await;

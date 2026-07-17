@@ -174,6 +174,7 @@ impl LocalOpenAiChatCompletionRequest {
             messages,
             max_tokens,
             temperature: self.temperature,
+            adapter: None,
         })
     }
 }

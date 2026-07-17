@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "src/tentgent-platform-fs",
     "src/tentgent-kernel",
     "src/tentgent-cli",
     "src/tentgent-daemon",
@@ -21,9 +22,12 @@ console = "0.16"
 directories = "6"
 dotenvy = "0.15"
 futures-util = "0.3"
+fs2 = "0.4"
 hex = "0.4"
+http-body = "1"
 indicatif = "0.18"
 keyring = { version = "3.6", default-features = false }
+nix = { version = "0.29", features = ["process", "signal"] }
 miette = { version = "7", features = ["fancy"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
 rpassword = "7"
@@ -42,6 +46,10 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2"
 zeroize = "1"
+
+[workspace.dependencies.windows-sys]
+version = "0.59"
+features = ["Win32_Storage_FileSystem"]
 
 [workspace.metadata.tentgent]
 app_slug = "tentgent"
