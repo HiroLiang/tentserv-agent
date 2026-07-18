@@ -1,9 +1,9 @@
 # Cluster Runtime Ownership And Resource Guard Plan
 
-Status: lifecycle, closeout, and completion-smoke findings `R1`-`R17` are implemented
-and pass the local full-suite verification matrix for GitHub issue `#118` on
-`feature/118-cluster-runtime-ownership`. Native Windows CI remains pending, so
-parent `#113` closeout is blocked.
+Status: findings `R1`-`R18` are implemented and pass the local full-suite and
+Rust 1.81 verification matrices for GitHub issue `#118` on
+`feature/118-cluster-runtime-ownership`. Native Windows CI rerun remains
+pending, so parent `#113` closeout is blocked.
 
 Parent plans:
 

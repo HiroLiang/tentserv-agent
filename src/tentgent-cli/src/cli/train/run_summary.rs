@@ -49,7 +49,7 @@ impl RunSummary {
             return;
         };
 
-        if self.best_eval_loss.is_none_or(|best| loss < best) {
+        if self.best_eval_loss.map_or(true, |best| loss < best) {
             self.best_eval_loss = Some(loss);
             self.best_eval_step = event.get("step").and_then(Value::as_u64);
         }

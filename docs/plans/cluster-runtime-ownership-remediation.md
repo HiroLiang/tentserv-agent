@@ -1,9 +1,8 @@
 # Cluster Runtime Ownership Remediation
 
-Status: lifecycle remediation `R1`-`R8`, closeout remediation `R9`-`R14`, and
-completion-smoke findings `R15`-`R17`
-are implemented and pass the final local verification matrix for GitHub issue
-`#118` on `feature/118-cluster-runtime-ownership`. Native Windows CI remains
+Status: findings `R1`-`R18` are implemented and pass the final local
+verification matrix for GitHub issue `#118` on
+`feature/118-cluster-runtime-ownership`. Native Windows CI rerun remains
 pending. Parent `#113` closeout is blocked.
 
 Parent records:
@@ -66,6 +65,7 @@ post-spawn cleanup, cross-process mutation drift, or Windows record replacement.
 | `R15` | P1 | remediated; Python regression and real smoke pass | Rust route validation honors a separate `TENTGENT_DATA_ROOT`, but a spawned Python worker previously resolved managed models from the control home and failed after successful cluster validation. | Propagate the resolved data root to every spawned worker and make Python managed-model lookup honor it without changing the default home-equals-data-root layout. |
 | `R16` | P1 | remediated; lock regression and real stop pass | Cluster stop holds the server transition lock while waiting for the proxy, but route-claim release previously requested the same server key and could leave all claims stale after an otherwise clean stop. | Keep full dependency locks on claim creation, but let retire/release lock only maintenance plus the claim being removed so shutdown can drain and release claims without weakening reference creation. |
 | `R17` | P2 | remediated; busy-release regression and real smoke pass | A hot-reload or drain release that returned `resource-busy` could still remove its in-process route entry, leaving the durable claim without a retry owner until manual reconciliation. | Remove in-process route state only after durable release succeeds; retain busy claims for bounded drain retry or later stop/reconciliation. |
+| `R18` | P1 | remediated; Rust 1.81 local matrix passes; native Windows rerun pending | PR `#123` native Windows verification stopped before running ownership tests because the committed dependency graph had drifted beyond the workspace's declared Rust 1.81 minimum. The CLI also used `Option::is_none_or`, which was not stable in Rust 1.81. | Lock direct and transitive dependencies to Rust 1.81-compatible releases, use an equivalent stable CLI expression, and verify the full workspace plus the Windows filesystem adapter with Rust 1.81 before rerunning native Windows CI. |
 
 Decision `27` is clarified as follows: LoRA plan/run `model_ref` is a
 model-deletion dependency because current LoRA records do not persist a
@@ -325,8 +325,9 @@ logging.
 - ownership, daemon metadata, and holder metadata use one atomic-write utility;
   Windows replacement is isolated behind `tentgent-platform-fs` and compiles
   for `x86_64-pc-windows-msvc`;
-- `.github/workflows/runtime-ownership-windows.yml` runs repeated native
-  Windows replacement and ownership-transition tests on pull requests;
+- `.github/workflows/runtime-ownership-windows.yml` verifies the locked
+  workspace with Rust 1.81 before running repeated native Windows replacement
+  and ownership-transition tests on pull requests;
 - cluster/server inspect use kernel-scoped safe projections, REST keeps legacy
   summary fields, CLI rendering consumes the projection, and doctor remains on
   the global compact summary.
@@ -358,6 +359,10 @@ logging.
   ownership, policy hot reload, zero active request leases, clean route-claim
   release, and stale generation recovery without provider auth or Keychain
   access.
+- the dependency graph now honors the workspace's declared Rust 1.81 minimum;
+  direct dependency bounds prevent known edition-2024 drift, the lockfile pins
+  compatible transitive releases, and CLI optional filters use an equivalent
+  Rust 1.81 expression.
 
 The final local verification matrix passes:
 
@@ -367,8 +372,12 @@ The final local verification matrix passes:
   suites, and the helper passes when launched by its parent test;
 - `uv run --project python/tentgent-model-runtime pytest`: `27/27` passed;
 - `cargo check --workspace` passed;
+- `cargo +1.81.0 check --workspace` and `cargo +1.81.0 test --workspace`
+  passed;
 - `cargo check -p tentgent-platform-fs --target x86_64-pc-windows-msvc`
   passed;
+- `cargo +1.81.0 check -p tentgent-platform-fs --target
+  x86_64-pc-windows-msvc` passed;
 - focused resource coordination, resource guard, runtime ownership,
   model-daemon, adapter, train, cluster server, REST, and CLI tests passed;
 - remediation code introduces no new strict-Clippy warning; the repository
@@ -380,10 +389,10 @@ The final local verification matrix passes:
   `git diff --check` passed. The repository-wide formatter still reports only
   that pre-existing probe baseline.
 
-Both remediation groups pass the final local behavior and structure matrix,
-and GitHub tracking matches the active closeout state. The native Windows
-workflow remains the final closeout gate. This document and `#118` must not be
-marked complete before it passes.
+All remediation findings pass the final local behavior, structure, and Rust
+1.81 compatibility matrix. The native Windows workflow rerun remains the final
+closeout gate. This document and `#118` must not be marked complete before it
+passes.
 
 ## Completion Gates
 
@@ -392,6 +401,8 @@ marked complete before it passes.
 - [x] Closeout findings `R9`-`R14` are implemented and locally verified.
 - [x] Completion-smoke findings `R15`-`R17` are remediated and covered by
   focused regressions plus a real five-route local smoke.
+- [x] MSRV finding `R18` is remediated and the full workspace compiles and
+  tests with Rust 1.81 locally.
 - [x] Existing direct local/cloud server and one-shot runtime behavior remains
   unchanged under the workspace suite.
 - [x] `cargo test --workspace` and all Python runtime tests pass.

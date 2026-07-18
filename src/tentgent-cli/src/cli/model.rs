@@ -840,12 +840,14 @@ fn filter_model_catalog_entries(
     entries
         .into_iter()
         .filter(|entry| {
-            capability.is_none_or(|capability| entry.capabilities.contains(&capability))
+            capability.map_or(true, |capability| entry.capabilities.contains(&capability))
         })
         .filter(|entry| {
-            publisher.is_none_or(|publisher| contains_case_insensitive(&entry.publisher, publisher))
+            publisher.map_or(true, |publisher| {
+                contains_case_insensitive(&entry.publisher, publisher)
+            })
         })
-        .filter(|entry| support_level.is_none_or(|level| entry.support_level == level))
+        .filter(|entry| support_level.map_or(true, |level| entry.support_level == level))
         .filter(|entry| {
             !local
                 || matches!(
@@ -854,7 +856,7 @@ fn filter_model_catalog_entries(
                         | ModelSupportCatalogLevel::LocalRuntimeSupported
                 )
         })
-        .filter(|entry| query.is_none_or(|query| catalog_entry_matches_query(entry, query)))
+        .filter(|entry| query.map_or(true, |query| catalog_entry_matches_query(entry, query)))
         .collect()
 }
 

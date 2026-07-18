@@ -1,9 +1,10 @@
 # Cluster Roadmap
 
-Status: final slice `#118`, including remediation findings `R1`-`R17`, is
-implemented and passes the local full-suite verification matrix. Native
-Windows CI remains pending under [v1.x-roadmap.md](./v1.x-roadmap.md), so
-parent tracking issue `#113` closeout and archival remain blocked.
+Status: final slice `#118`, including remediation findings `R1`-`R18`, is
+implemented and passes the local full-suite and Rust 1.81 verification
+matrices. Native Windows CI rerun remains pending under
+[v1.x-roadmap.md](./v1.x-roadmap.md), so parent tracking issue `#113` closeout
+and archival remain blocked.
 
 This plan keeps the selected `v1.1.0` cluster slices aligned while leaving
 later cluster-related candidates visible without turning every related
@@ -34,7 +35,7 @@ inspectable before Tentgent adds multi-route serving behavior.
 | `#115` | Cluster definition and validation | completed |
 | `#116` | Route readiness and diagnostics | completed |
 | `#117` | Native local cluster routing MVP | completed |
-| `#118` | Runtime ownership and shutdown safety | all remediation and tracking alignment pass; Windows CI pending |
+| `#118` | Runtime ownership and shutdown safety | all remediation and tracking alignment pass; Windows CI rerun pending |
 
 The next action is to pass the remaining verification gates in
 [cluster-runtime-ownership-remediation.md](./cluster-runtime-ownership-remediation.md),

@@ -22,6 +22,8 @@ jobs:
         with:
           toolchain: "1.81.0"
       - uses: Swatinem/rust-cache@v2
+      - name: Check workspace MSRV
+        run: cargo check --workspace --locked
       - name: Test atomic replacement repeatedly
         shell: pwsh
         run: |
