@@ -155,33 +155,14 @@ pub async fn remove_plan(
 ) -> Result<Json<RemoveTrainPlanResponse>, RestError> {
     let selector = parse_train_ref(&reference, "train plan reference")?;
     let layout = state.app().layout_input(LayoutResolveMode::Create);
-    let inspection = state
-        .app()
-        .services()
-        .kernel()
-        .train_plan_usecase()
-        .inspect_plan(LoraTrainPlanInspectRequest {
-            layout: layout.clone(),
-            selector: selector.clone(),
-        })
-        .map_err(train_plan_error)?;
-    if inspection.inspection.run_count > 0 {
-        return Err(RestError::conflict(
-            "in_use",
-            format!(
-                "LoRA train plan `{}` has {} run record(s); remove runs before deleting the plan",
-                inspection.inspection.plan.short_ref, inspection.inspection.run_count
-            ),
-        ));
-    }
-
     let outcome = state
         .app()
         .services()
         .kernel()
         .train_plan_usecase()
-        .remove_plan(LoraTrainPlanRemoveRequest { layout, selector })
+        .remove_plan_guarded(LoraTrainPlanRemoveRequest { layout, selector })
         .map_err(train_plan_error)?;
+    let outcome = RestError::guarded(outcome)?;
 
     Ok(Json(remove_train_plan_response(outcome.outcome)))
 }

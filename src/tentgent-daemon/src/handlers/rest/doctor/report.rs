@@ -1,8 +1,8 @@
-use axum::{Json, extract::State};
+use axum::{extract::State, Json};
 use tentgent_kernel::{
     features::{
         cluster::usecases::{
-            ClusterReadinessListRequest, ClusterReadinessUseCase, cluster_readiness_doctor_checks,
+            cluster_readiness_doctor_checks, ClusterReadinessListRequest, ClusterReadinessUseCase,
         },
         doctor::{
             domain::{
@@ -15,6 +15,7 @@ use tentgent_kernel::{
             },
         },
         runtime::domain::PythonRuntimeResolutionInput,
+        runtime_ownership::{RuntimeOwnershipStatus, StdRuntimeOwnershipUseCase},
     },
     foundation::layout::LayoutResolveMode,
 };
@@ -40,10 +41,51 @@ pub async fn report(State(state): State<RestState>) -> Result<Json<DoctorRespons
         })
         .map_err(|err| RestError::kernel("doctor_report_failed", err))?;
 
-    Ok(Json(doctor_response(append_cluster_readiness_checks(
-        &state,
-        result.report,
+    let report = append_cluster_readiness_checks(&state, result.report);
+    Ok(Json(doctor_response(append_runtime_ownership_check(
+        &state, report,
     ))))
+}
+
+fn append_runtime_ownership_check(state: &RestState, report: DoctorReport) -> DoctorReport {
+    let mut checks = report.checks;
+    let check = match StdRuntimeOwnershipUseCase::default()
+        .summarize_runtime_ownership(state.app().layout())
+    {
+        Ok(inspection) => {
+            let detail = format!(
+                "{} route claim(s), {} active generation(s), {} stale record(s), {} malformed record(s)",
+                inspection.summary.route_claim_count,
+                inspection.summary.active_generation_count,
+                inspection.summary.stale_record_count,
+                inspection.summary.malformed_record_count
+            );
+            match inspection.summary.status {
+                RuntimeOwnershipStatus::Healthy => DoctorCheck::pass(
+                    DoctorCheckCategory::RuntimeOwnership,
+                    "runtime ownership",
+                    detail,
+                ),
+                RuntimeOwnershipStatus::Attention => DoctorCheck::warn(
+                    DoctorCheckCategory::RuntimeOwnership,
+                    "runtime ownership",
+                    detail,
+                ),
+                RuntimeOwnershipStatus::Blocked => DoctorCheck::fail(
+                    DoctorCheckCategory::RuntimeOwnership,
+                    "runtime ownership",
+                    detail,
+                ),
+            }
+        }
+        Err(error) => DoctorCheck::warn(
+            DoctorCheckCategory::RuntimeOwnership,
+            "runtime ownership",
+            format!("runtime ownership check unavailable: {error}"),
+        ),
+    };
+    checks.push(check);
+    DoctorReport::from_checks(checks)
 }
 
 fn append_cluster_readiness_checks(state: &RestState, report: DoctorReport) -> DoctorReport {

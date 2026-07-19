@@ -20,6 +20,7 @@ use tentgent_kernel::{
 
 use crate::server::local::{LocalServerRuntimeConfig, LocalServerState};
 
+use super::leases::{RouteGenerationManager, RouteRequestLease};
 use super::{cache::ClusterDefinitionCache, error::ClusterServerError};
 
 #[derive(Debug, Clone)]
@@ -43,22 +44,30 @@ pub(super) struct ClusterServerState {
     pub(super) client: reqwest::Client,
     pub(super) launch_policy: ModelRuntimeDaemonLaunchPolicy,
     pub(super) definitions: ClusterDefinitionCache,
+    pub(super) routes: RouteGenerationManager,
+}
+
+pub(super) struct ResolvedClusterRoute {
+    pub(super) local: LocalServerState,
+    pub(super) lease: RouteRequestLease,
 }
 
 impl ClusterServerState {
     pub(super) fn resolve_local_state(
         &self,
         route: ClusterRouteKey,
-    ) -> Result<LocalServerState, ClusterServerError> {
+    ) -> Result<ResolvedClusterRoute, ClusterServerError> {
         let snapshot = self.definitions.current()?;
-        self.resolve_local_state_from_definition(route, snapshot.definition)
+        self.routes.reconcile_definition(&snapshot.hash);
+        self.resolve_local_state_from_definition(route, snapshot.definition, snapshot.hash)
     }
 
     fn resolve_local_state_from_definition(
         &self,
         route: ClusterRouteKey,
         definition: ClusterDefinition,
-    ) -> Result<LocalServerState, ClusterServerError> {
+        definition_hash: String,
+    ) -> Result<ResolvedClusterRoute, ClusterServerError> {
         let catalog = FileModelCatalogStore;
         let proofs = FileModelCapabilityProofStore;
         let resolver = StdClusterRouteExecutionUseCase::new(
@@ -82,23 +91,35 @@ impl ClusterServerState {
             return Err(ClusterServerError::from_decision(result.decision));
         };
 
-        Ok(LocalServerState {
-            config: LocalServerRuntimeConfig {
-                server_ref: self.config.server_ref.clone(),
-                capability: target.capability,
-                model_ref: target.model_ref.to_string(),
-                runtime_profile: target.runtime_profile.map(|profile| profile.label()),
-                host: self.config.host.clone(),
-                port: self.config.port,
-                runtime_home: Some(self.layout.home_dir.clone()),
-                idle_seconds: self.config.idle_seconds,
+        let identity = tentgent_kernel::features::runtime_ownership::RuntimeExecutionIdentity::model_bound(
+            target.model_ref.to_string(),
+            tentgent_kernel::features::runtime::infra::ModelRuntimeCapability::from_model_capability(
+                target.capability.required_model_capability(),
+            ),
+            target.runtime_profile.as_ref(),
+        );
+        let lease = self.routes.acquire(route, &definition_hash, identity)?;
+
+        Ok(ResolvedClusterRoute {
+            local: LocalServerState {
+                config: LocalServerRuntimeConfig {
+                    server_ref: self.config.server_ref.clone(),
+                    capability: target.capability,
+                    model_ref: target.model_ref.to_string(),
+                    runtime_profile: target.runtime_profile.map(|profile| profile.label()),
+                    host: self.config.host.clone(),
+                    port: self.config.port,
+                    runtime_home: Some(self.layout.home_dir.clone()),
+                    idle_seconds: self.config.idle_seconds,
+                },
+                layout: self.layout.clone(),
+                runtime: self.runtime.clone(),
+                executable_resolver: self.executable_resolver,
+                supervisor: self.supervisor.clone(),
+                client: self.client.clone(),
+                launch_policy: self.launch_policy.clone(),
             },
-            layout: self.layout.clone(),
-            runtime: self.runtime.clone(),
-            executable_resolver: self.executable_resolver,
-            supervisor: self.supervisor.clone(),
-            client: self.client.clone(),
-            launch_policy: self.launch_policy.clone(),
+            lease,
         })
     }
 }

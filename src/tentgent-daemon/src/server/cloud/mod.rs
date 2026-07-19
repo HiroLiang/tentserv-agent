@@ -80,6 +80,7 @@ async fn healthz(State(state): State<CloudServerState>) -> Json<serde_json::Valu
         "ok": true,
         "runtime_kind": "cloud",
         "server_ref": state.config.server_ref,
+        "process_token": tentgent_kernel::features::server::infra::server_process_token_from_env(),
         "runtime_home": state.config.runtime_home,
         "provider": state.config.provider.cli_name(),
         "model": state.config.provider_model,

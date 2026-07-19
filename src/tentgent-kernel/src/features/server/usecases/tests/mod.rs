@@ -347,6 +347,7 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
             layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
             server_ref: prepared.outcome.inspection.spec.server_ref.clone(),
             pid: 42,
+            process_token: None,
             bound_port: 8781,
             launch_mode: LaunchMode::Background,
         })
@@ -1199,6 +1200,7 @@ fn cluster_definition(
     ClusterDefinition {
         schema_version: CLUSTER_SCHEMA_VERSION,
         cluster_ref,
+        route_update_policy: Default::default(),
         routes,
     }
 }

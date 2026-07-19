@@ -16,10 +16,9 @@ use tentgent_kernel::{
         usecases::{
             ModelCapabilityMutation, ModelCapabilityProofClearRequest,
             ModelCapabilityProofListRequest, ModelCapabilityProofUseCase,
-            ModelCapabilityUpdateRequest, ModelCapabilityUpdateUseCase,
-            ModelCapabilityVerifyRequest, ModelCatalogReadUseCase, ModelHfPullRequest,
-            ModelHfPullUseCase, ModelInspectRequest, ModelListRequest, ModelLocalImportRequest,
-            ModelLocalImportUseCase, ModelRemoveRequest, ModelRemoveUseCase,
+            ModelCapabilityUpdateRequest, ModelCapabilityVerifyRequest, ModelCatalogReadUseCase,
+            ModelHfPullRequest, ModelHfPullUseCase, ModelInspectRequest, ModelListRequest,
+            ModelLocalImportRequest, ModelLocalImportUseCase, ModelRemoveRequest,
         },
     },
     features::runtime::domain::PythonRuntimeResolutionInput,
@@ -105,11 +104,12 @@ pub async fn remove(
         .kernel()
         .models()
         .remove_usecase()
-        .remove_model(ModelRemoveRequest {
+        .remove_model_guarded(ModelRemoveRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             selector,
         })
         .map_err(model_remove_error)?;
+    let result = RestError::guarded(result)?;
 
     Ok(Json(ModelResponse {
         model: model_removal_item(result.outcome),
@@ -230,12 +230,13 @@ async fn update_capabilities_with_mutation(
         .kernel()
         .models()
         .capability_update_usecase()
-        .update_model_capability(ModelCapabilityUpdateRequest {
+        .update_model_capability_guarded(ModelCapabilityUpdateRequest {
             layout: state.app().layout_input(LayoutResolveMode::Create),
             selector,
             mutation,
         })
         .map_err(model_capability_error)?;
+    let result = RestError::guarded(result)?;
 
     Ok(Json(model_capability_update_response(result)))
 }

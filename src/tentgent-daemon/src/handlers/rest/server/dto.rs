@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use serde::Serialize;
+use tentgent_kernel::features::runtime_ownership::RuntimeOwnershipView;
 use tentgent_kernel::features::server::domain::{
     ServerInspection, ServerProcessMetadata, ServerRemoveOutcome, ServerSpec, ServerStopOutcome,
     ServerSummary,
@@ -93,6 +94,8 @@ pub struct ServerInspectionItem {
     pub created_at: String,
     pub running: bool,
     pub process: Option<ServerProcessItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ownership: Option<RuntimeOwnershipView>,
     pub home_dir: String,
     pub server_dir: String,
     pub spec_path: String,
@@ -229,6 +232,13 @@ pub fn server_summary_item(summary: ServerSummary) -> ServerSummaryItem {
 }
 
 pub fn server_inspection_item(inspection: ServerInspection) -> ServerInspectionItem {
+    server_inspection_item_with_ownership(inspection, None)
+}
+
+pub fn server_inspection_item_with_ownership(
+    inspection: ServerInspection,
+    ownership: Option<RuntimeOwnershipView>,
+) -> ServerInspectionItem {
     let port = inspection.effective_port();
     let bound_port = inspection.bound_port();
     let fields = server_fields(inspection.spec);
@@ -252,6 +262,7 @@ pub fn server_inspection_item(inspection: ServerInspection) -> ServerInspectionI
         created_at: fields.created_at,
         running: inspection.running,
         process: inspection.process.map(server_process_item),
+        ownership,
         home_dir: path_string(&inspection.home_dir),
         server_dir: path_string(&inspection.server_dir),
         spec_path: path_string(&inspection.spec_path),

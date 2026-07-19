@@ -12,8 +12,11 @@ use tentgent_kernel::features::runtime::usecases::{
     RuntimeBootstrapRequest, RuntimeBootstrapUseCase, RuntimeStateRequest, RuntimeStateUseCase,
     StdRuntimeBootstrapUseCase, StdRuntimeStateUseCase,
 };
+use tentgent_kernel::features::runtime_ownership::{
+    RuntimeReconcileRequest, RuntimeReconcileResult, StdRuntimeOwnershipUseCase,
+};
 use tentgent_kernel::foundation::layout::{
-    LayoutResolveMode, RuntimeLayoutInput, StdRuntimeLayoutResolver,
+    LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
 };
 use tentgent_kernel::foundation::platform::StdPlatformProbe;
 
@@ -29,7 +32,80 @@ pub fn handle_runtime_command(action: RuntimeCommands) -> Result<()> {
     match action {
         RuntimeCommands::Bootstrap(command) => handle_bootstrap(&runtime, command),
         RuntimeCommands::Status(command) => handle_status(&runtime, command),
+        RuntimeCommands::Reconcile(command) => handle_reconcile(command),
     }
+}
+
+fn handle_reconcile(command: super::commands::RuntimeReconcileCommand) -> Result<()> {
+    let layout = StdRuntimeLayoutResolver
+        .resolve(RuntimeLayoutInput {
+            mode: if command.apply {
+                LayoutResolveMode::Create
+            } else {
+                LayoutResolveMode::ReadOnly
+            },
+            home_dir: command.home,
+            data_root_dir: None,
+        })
+        .into_diagnostic()?;
+    let result = StdRuntimeOwnershipUseCase::default()
+        .reconcile_runtime_ownership(
+            &layout,
+            RuntimeReconcileRequest {
+                apply: command.apply,
+                purge_quarantine: command.purge_quarantine,
+            },
+        )
+        .into_diagnostic()?;
+    for line in runtime_reconcile_lines(&result, command.apply) {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+fn runtime_reconcile_lines(result: &RuntimeReconcileResult, apply: bool) -> Vec<String> {
+    let mut lines = vec![
+        format!(
+            "{} {}",
+            style("==>").cyan().bold(),
+            style(if apply {
+                "Runtime ownership reconciliation"
+            } else {
+                "Runtime ownership reconciliation (dry-run)"
+            })
+            .bold()
+        ),
+        format!("status_before: {}", result.before.status),
+        format!("route_claims: {}", result.before.route_claim_count),
+        format!(
+            "runtime_generations: {}",
+            result.before.active_generation_count
+        ),
+        format!(
+            "active_operations: {}",
+            result.before.active_operation_count
+        ),
+        format!("stale_records: {}", result.before.stale_record_count),
+        format!(
+            "malformed_records: {}",
+            result.before.malformed_record_count
+        ),
+    ];
+    if result.actions.is_empty() {
+        lines.push("actions: none".to_string());
+    } else {
+        lines.push("actions:".to_string());
+        lines.extend(result.actions.iter().map(|action| {
+            format!(
+                "  - {} {}: {}{}",
+                action.kind,
+                action.record,
+                action.description,
+                if action.applied { " [applied]" } else { "" }
+            )
+        }));
+    }
+    lines
 }
 
 struct CliRuntimeKernel {
@@ -377,7 +453,51 @@ fn bootstrap_profile(profile: RuntimeBootstrapProfile) -> BootstrapProfile {
 
 #[cfg(test)]
 mod tests {
+    use tentgent_kernel::features::runtime_ownership::{
+        RuntimeOwnershipStatus, RuntimeOwnershipSummary, RuntimeReconcileAction,
+    };
+
     use super::*;
+
+    #[test]
+    fn runtime_reconcile_projection_distinguishes_dry_run_and_applied_actions() {
+        let result = RuntimeReconcileResult {
+            before: RuntimeOwnershipSummary {
+                status: RuntimeOwnershipStatus::Attention,
+                route_claim_count: 1,
+                active_generation_count: 1,
+                active_operation_count: 0,
+                stale_record_count: 1,
+                malformed_record_count: 0,
+            },
+            after: RuntimeOwnershipSummary {
+                status: RuntimeOwnershipStatus::Healthy,
+                route_claim_count: 0,
+                active_generation_count: 0,
+                active_operation_count: 0,
+                stale_record_count: 0,
+                malformed_record_count: 0,
+            },
+            actions: vec![RuntimeReconcileAction {
+                kind: "generation".to_string(),
+                record: "chat-model".to_string(),
+                action: "remove-stale-generation".to_string(),
+                applied: false,
+                description: "remove a proven-stale runtime generation".to_string(),
+            }],
+        };
+        let dry_run = runtime_reconcile_lines(&result, false).join("\n");
+        assert!(dry_run.contains("Runtime ownership reconciliation (dry-run)"));
+        assert!(dry_run.contains("stale_records: 1"));
+        assert!(!dry_run.contains("[applied]"));
+
+        let mut applied = result;
+        applied.actions[0].applied = true;
+        let applied = runtime_reconcile_lines(&applied, true).join("\n");
+        assert!(applied.contains("Runtime ownership reconciliation"));
+        assert!(!applied.contains("(dry-run)"));
+        assert!(applied.contains("[applied]"));
+    }
 
     #[test]
     fn runtime_bootstrap_profile_maps_to_kernel_profile() {

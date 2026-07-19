@@ -43,6 +43,7 @@ use tentgent_kernel::features::runtime::infra::{
 use tentgent_kernel::features::runtime::usecases::{
     RuntimeResolutionRequest, RuntimeResolutionUseCase, StdRuntimeResolutionUseCase,
 };
+use tentgent_kernel::features::runtime_ownership::StdRuntimeOwnershipUseCase;
 use tentgent_kernel::features::server::domain::{
     CloudProvider, LaunchMode, ServerCapability, ServerInspection, ServerPrepareTarget,
     ServerRefSelector, ServerRuntimeKind, ServerSpec, ServerStopOutcome, ServerSummary,
@@ -52,6 +53,7 @@ use tentgent_kernel::features::server::infra::{
     StdServerIdentityGenerator, StdServerProcessController, StdServerStoreLayoutInitializer,
     SystemServerClock,
 };
+use tentgent_kernel::features::server::ports::ServerProcessController;
 use tentgent_kernel::features::server::usecases::{
     ServerClearProcessRequest, ServerInspectRequest, ServerLifecycleUseCase, ServerListRequest,
     ServerPrepareRequest, ServerRecordProcessStartRequest, ServerRemoveRequest,
@@ -70,6 +72,7 @@ use super::commands::{
 use super::model_support::{
     model_support_diagnostic_lines, model_support_summaries_with_runtime_profile,
 };
+use super::resource_mutation::project_resource_mutation;
 
 const BACKGROUND_HEALTH_STABLE: Duration = Duration::from_secs(2);
 const BACKGROUND_START_OBSERVATION: Duration = Duration::from_secs(10);
@@ -121,6 +124,15 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
                 &result.inspection,
                 model_support.as_deref(),
             );
+            let ownership = StdRuntimeOwnershipUseCase::default()
+                .inspect_runtime_ownership_scope(
+                    &result.layout,
+                    server
+                        .runtime_ownership_scope_for_server(&result.layout, &result.inspection.spec)
+                        .into_diagnostic()?,
+                )
+                .into_diagnostic()?;
+            super::runtime_ownership::render_runtime_ownership(&ownership);
         }
         ServerCommands::Start {
             reference,
@@ -188,11 +200,12 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
 
             let selector = parse_server_selector("rm", "SERVER_REF", &reference)?;
             let outcome = server
-                .remove_server(ServerRemoveRequest {
+                .remove_server_guarded(ServerRemoveRequest {
                     layout: runtime_layout_input(LayoutResolveMode::ReadOnly, home.as_deref()),
                     selector,
                 })
                 .into_diagnostic()?;
+            let outcome = project_resource_mutation(outcome)?;
             render_server_removed(&outcome.outcome.inspection, details);
         }
     }
@@ -371,6 +384,16 @@ async fn launch_foreground_server(
     auth: Option<AuthSecretMaterial>,
     allow_unverified: bool,
 ) -> miette::Result<()> {
+    let start = server
+        .resolve_for_start_guarded(ServerResolveForStartRequest {
+            layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
+            selector: ServerRefSelector::parse(inspection.spec.server_ref.as_str())
+                .map_err(|error| miette!("invalid server ref before launch: {error}"))?,
+            allow_unverified,
+        })
+        .into_diagnostic()?;
+    let inspection = start.result.inspection;
+    let start_permit = start.permit;
     let runtime = kernel.resolve_runtime(&layout)?;
     let launcher = ServerRuntimeLauncher::new(&kernel.executable_resolver);
     let mut child = match launcher.spawn_foreground(ServerRuntimeLaunchRequest {
@@ -393,15 +416,18 @@ async fn launch_foreground_server(
             return Err(err).into_diagnostic();
         }
     };
-    server
-        .record_process_start(ServerRecordProcessStartRequest {
-            layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
-            server_ref: inspection.spec.server_ref.clone(),
-            pid: child.pid,
-            bound_port: child.bound_port,
-            launch_mode: LaunchMode::Foreground,
-        })
-        .into_diagnostic()?;
+    if let Err(error) = server.record_process_start(ServerRecordProcessStartRequest {
+        layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
+        server_ref: inspection.spec.server_ref.clone(),
+        pid: child.pid,
+        process_token: Some(child.process_token.clone()),
+        bound_port: child.bound_port,
+        launch_mode: LaunchMode::Foreground,
+    }) {
+        let _ = child.terminate();
+        return Err(error).into_diagnostic();
+    }
+    drop(start_permit);
     let _ = record_local_server_capability_proof(
         kernel,
         &layout,
@@ -441,6 +467,16 @@ async fn launch_background_server(
     auth: Option<AuthSecretMaterial>,
     allow_unverified: bool,
 ) -> miette::Result<ServerInspection> {
+    let start = server
+        .resolve_for_start_guarded(ServerResolveForStartRequest {
+            layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
+            selector: ServerRefSelector::parse(inspection.spec.server_ref.as_str())
+                .map_err(|error| miette!("invalid server ref before launch: {error}"))?,
+            allow_unverified,
+        })
+        .into_diagnostic()?;
+    let inspection = start.result.inspection;
+    let start_permit = start.permit;
     let runtime = kernel.resolve_runtime(&layout)?;
     let launcher = ServerRuntimeLauncher::new(&kernel.executable_resolver);
     let spawned = match launcher.spawn_background(ServerRuntimeLaunchRequest {
@@ -463,15 +499,23 @@ async fn launch_background_server(
             return Err(err).into_diagnostic();
         }
     };
-    let recorded = server
-        .record_process_start(ServerRecordProcessStartRequest {
-            layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
-            server_ref: inspection.spec.server_ref.clone(),
-            pid: spawned.pid,
-            bound_port: spawned.bound_port,
-            launch_mode: LaunchMode::Background,
-        })
-        .into_diagnostic()?;
+    let recorded = match server.record_process_start(ServerRecordProcessStartRequest {
+        layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
+        server_ref: inspection.spec.server_ref.clone(),
+        pid: spawned.pid,
+        process_token: Some(spawned.process_token.clone()),
+        bound_port: spawned.bound_port,
+        launch_mode: LaunchMode::Background,
+    }) {
+        Ok(recorded) => recorded,
+        Err(error) => {
+            let _ = kernel
+                .server_process_controller
+                .terminate_process(spawned.pid);
+            return Err(error).into_diagnostic();
+        }
+    };
+    drop(start_permit);
 
     match verify_background_launch(server, &layout, &recorded.inspection, spawned.pid).await {
         Ok(checked) => {

@@ -5,6 +5,7 @@ use tentgent_kernel::features::cluster::domain::{
     ClusterInspection, ClusterReadinessAction, ClusterReadinessDetail, ClusterReadinessReport,
     ClusterRouteReadiness, ClusterRouteTarget, ClusterRuntimeProfileReadiness, ClusterSummary,
 };
+use tentgent_kernel::features::runtime_ownership::RuntimeOwnershipView;
 use tentgent_kernel::features::server::domain::ServerRuntimeProfileSelection;
 
 #[derive(Debug, Serialize)]
@@ -33,8 +34,11 @@ pub struct ClusterSummaryItem {
 pub struct ClusterInspectionItem {
     pub cluster_ref: String,
     pub schema_version: u32,
+    pub route_update_policy: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub readiness: Option<ClusterReadinessItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ownership: Option<RuntimeOwnershipView>,
     pub routes: Vec<ClusterRouteItem>,
     pub home_dir: String,
     pub cluster_dir: String,
@@ -146,10 +150,24 @@ pub fn cluster_inspection_item_with_readiness(
     inspection: ClusterInspection,
     readiness: Option<ClusterReadinessReport>,
 ) -> ClusterInspectionItem {
+    cluster_inspection_item_with_readiness_and_ownership(inspection, readiness, None)
+}
+
+pub fn cluster_inspection_item_with_readiness_and_ownership(
+    inspection: ClusterInspection,
+    readiness: Option<ClusterReadinessReport>,
+    ownership: Option<RuntimeOwnershipView>,
+) -> ClusterInspectionItem {
     ClusterInspectionItem {
         cluster_ref: inspection.definition.cluster_ref.to_string(),
         schema_version: inspection.definition.schema_version,
+        route_update_policy: inspection
+            .definition
+            .route_update_policy
+            .as_str()
+            .to_string(),
         readiness: readiness.as_ref().map(cluster_readiness_item),
+        ownership,
         routes: inspection
             .definition
             .routes

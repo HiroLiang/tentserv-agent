@@ -5,6 +5,7 @@
 //! workflows.
 
 pub mod error;
+pub mod fs;
 pub mod layout;
 pub mod net;
 pub mod platform;

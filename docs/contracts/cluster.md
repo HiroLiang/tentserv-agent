@@ -19,12 +19,14 @@ In scope:
   routes
 - local cluster server routing for `chat`, `embedding`, `rerank`,
   `audio-transcription`, and `vision-chat`
+- configurable drain-or-block route replacement
+- durable route-generation claims and bounded request draining
+- runtime ownership summaries and stale-state recovery guidance
 - stored server lifecycle, health, logs, and removal protection for cluster
   servers
 
 Out of scope:
 
-- active runtime ownership
 - provider target execution through cluster servers
 - route variants such as `chat.fast` and `chat.quality`
 - fixed `model + adapter` cluster targets
@@ -67,6 +69,7 @@ is unbound from stored state.
 ```toml
 schema_version = 1
 cluster_ref = "local-assistant"
+route_update_policy = "drain"
 
 [routes.chat]
 kind = "local-model"
@@ -104,6 +107,16 @@ profile_version = 1
 If `runtime_profile` is present, validation checks that it matches the known
 profile for the selected route/backend tuple. If omitted, validation does not
 block on profile selection.
+
+`route_update_policy` accepts `drain` or `block` and defaults to `drain`,
+including for legacy stored definitions. The currently stored policy governs
+replacement:
+
+- `drain` permits old and new route generations to coexist until active old
+  requests finish;
+- `block` rejects target-changing apply while the policy remains active;
+- switching from `block` to `drain` must be a policy-only apply before a later
+  target change.
 
 ## Validation Rules
 
@@ -203,9 +216,10 @@ special files, oversized files, and obvious secret-bearing paths unless
 `--force` is passed. `--force` only bypasses the source-location warning; it
 does not bypass schema or reference validation.
 
-`cluster inspect` renders the stored definition plus read-only readiness:
-summary, route table, problem flags, and next actions. It should not run model
-verification, provider auth validation, or runtime startup.
+`cluster inspect` renders the stored definition plus read-only readiness and a
+safe runtime ownership summary: summary, route table, problem flags, claims,
+and next actions. It does not run model verification, provider auth validation,
+or runtime startup.
 
 `cluster run` creates or reuses a normal stored server spec with
 `runtime_kind = "cluster"` and launches it. `--allow-unverified` allows
@@ -245,12 +259,24 @@ Route execution uses these error codes:
 | `cluster_route_unavailable` | `503` | Required local model state cannot be loaded. |
 | `cluster_definition_reload_failed` | `503` | The stored definition changed but could not be safely reloaded. |
 
-The server keeps one parsed definition snapshot. Requests perform a cheap file
-revision check; changed definitions are reloaded and assigned a SHA-256
-definition hash. Reload failures stop request routing until the definition is
-valid again. The server never silently uses the previous target after a failed
-reload. `/healthz` exposes the cluster ref, current definition hash, and route
-keys without loading model runtimes.
+The server keeps one parsed definition snapshot. A cancellable watcher checks
+file metadata every second, hashes after detected changes, and performs a
+forced hash every 30 seconds. Requests and health checks also perform an
+immediate revision check. Changed definitions are reloaded and assigned a
+SHA-256 definition hash. Reload failures stop request routing until the
+definition is valid again. The server never silently uses the previous target
+after a failed reload. `/healthz` exposes the cluster ref, current definition
+hash, and route keys without loading model runtimes.
+
+On first use, each server/route/definition/target generation creates one
+durable route claim. Requests reuse that claim and hold only an in-process RAII
+lease. A reload directs new requests to the new generation and retires the old
+claim after its leases reach zero. Server stop closes admission and drains
+leases while continuing to poll accepted HTTP connections for up to 30
+seconds. The response body retains the lease through streaming data and
+trailers. A timeout drops the proxy, leaves unresolved claims for
+reconciliation, and does not terminate shared Python work. See
+[runtime-ownership.md](./runtime-ownership.md).
 
 ## Daemon REST Surface
 
@@ -303,6 +329,7 @@ Apply responses return stored definition details only:
   "cluster": {
     "cluster_ref": "local-assistant",
     "schema_version": 1,
+    "route_update_policy": "drain",
     "routes": [
       {
         "route": "chat",
@@ -329,6 +356,21 @@ Inspect responses add read-only readiness fields:
       "ready_route_count": 1,
       "attention_route_count": 1,
       "flags": ["partial-cluster"]
+    },
+    "ownership": {
+      "route_claim_count": 1,
+      "active_generation_count": 1,
+      "active_operation_count": 0,
+      "stale_record_count": 0,
+      "malformed_record_count": 0,
+      "status": "healthy",
+      "scope": {
+        "kind": "cluster",
+        "reference": "local-assistant"
+      },
+      "claims": [],
+      "generations": [],
+      "issues": []
     },
     "routes": [
       {
@@ -401,7 +443,12 @@ The current implementation reports these blockers in the existing model-store
 error path. The shared structured blocker shape is defined in
 [resource-blockers.md](./resource-blockers.md).
 
-Cluster removal is also blocked while any running or stopped server spec
-targets that cluster. Stop a running server, remove its stored server spec, and
-then remove the cluster. `cluster rm` never cascades into server specs, models,
-adapters, or runtime profiles. REST reports this conflict as `cluster_in_use`.
+Cluster replacement and removal also participate in the shared resource guard.
+An active route claim blocks removal, and stored `route_update_policy =
+"block"` blocks target-changing replacement. Cluster removal remains blocked
+while any running or stopped server spec targets that cluster. Stop the server,
+remove its stored server spec, let route claims retire, and then remove the
+cluster. `cluster rm` never cascades into server specs, models, adapters, or
+runtime profiles. REST preserves `cluster_in_use` and adds a sorted `blockers`
+array. CLI `cluster apply` and `cluster rm` consume the same typed mutation
+outcome and show the stable code, blocker rows, and deduplicated next actions.

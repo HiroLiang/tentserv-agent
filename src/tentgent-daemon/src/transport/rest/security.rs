@@ -114,6 +114,7 @@ pub fn error_response(
         Json(ErrorResponse {
             error: code.into(),
             message: message.into(),
+            blockers: Vec::new(),
         }),
     )
         .into_response()

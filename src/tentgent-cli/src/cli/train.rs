@@ -28,8 +28,8 @@ use tentgent_kernel::features::train::infra::{
 };
 use tentgent_kernel::features::train::usecases::{
     LoraTrainPlanBuildRequest, LoraTrainPlanInspectRequest, LoraTrainPlanListRequest,
-    LoraTrainPlanRemoveRequest, LoraTrainPlanUseCase, StdLoraTrainPlanUseCase,
-    StdLoraTrainRunUseCase,
+    LoraTrainPlanRemoveRequest, LoraTrainPlanUseCase, LoraTrainRunDependencyCatalogs,
+    StdLoraTrainPlanUseCase, StdLoraTrainRunUseCase,
 };
 use tentgent_kernel::foundation::error::KernelError;
 use tentgent_kernel::foundation::layout::{
@@ -46,6 +46,7 @@ use self::{
     run::run_lora_plan,
 };
 use super::commands::{TrainCommands, TrainLoraCommands, TrainLoraPlanCommands};
+use super::resource_mutation::project_resource_mutation;
 
 pub fn handle_train_command(action: TrainCommands) -> Result<()> {
     let train = CliTrainKernel::new();
@@ -150,11 +151,11 @@ fn handle_lora_plan_command(action: TrainLoraPlanCommands, train: &CliTrainKerne
         }
         TrainLoraPlanCommands::Rm { reference } => {
             let selector = parse_train_selector("plan rm", "PLAN_REF", &reference)?;
-            let result = match plans.remove_plan(LoraTrainPlanRemoveRequest {
+            let result = match plans.remove_plan_guarded(LoraTrainPlanRemoveRequest {
                 layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
                 selector,
             }) {
-                Ok(result) => result,
+                Ok(result) => project_resource_mutation(result)?,
                 Err(err) => return Err(explain_train_lookup_error("plan rm", "PLAN_REF", err)),
             };
             render_plan_removal(&result.outcome);
@@ -222,6 +223,7 @@ impl CliTrainKernel {
             &self.train_initializer,
             &self.model_catalog,
             &self.dataset_catalog,
+            &self.adapter_catalog,
             &self.plan_store,
             &self.clock,
         )
@@ -235,6 +237,11 @@ impl CliTrainKernel {
             &self.run_store,
             &self.clock,
             &self.run_refs,
+            LoraTrainRunDependencyCatalogs {
+                model: &self.model_catalog,
+                dataset: &self.dataset_catalog,
+                adapter: &self.adapter_catalog,
+            },
         )
     }
 

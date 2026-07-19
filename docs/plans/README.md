@@ -37,7 +37,19 @@ or too cross-cutting to track only in GitHub issues.
   foundations, tuple-aware model and LoRA gates, resource coordination, and
   later 1.x capabilities.
   - [cluster-roadmap.md](./cluster-roadmap.md)
-    Focused sub-roadmap for the selected `v1.1.0` cluster issue slices.
+    Active implementation roadmap for selected `v1.1.0` cluster slices;
+    `#118` remediation passes locally, while native Windows CI still blocks
+    parent `#113` closeout.
+    - [cluster-runtime-ownership-plan.md](./cluster-runtime-ownership-plan.md)
+      Approved implementation plan and decision register for final cluster
+      slice `#118`, with all local remediation verified and native Windows CI
+      pending.
+      - [cluster-runtime-coordination-architecture.md](./cluster-runtime-coordination-architecture.md)
+        Implemented baseline module, supervisor, lock, and platform polling
+        architecture for the shared `#118` coordination system.
+      - [cluster-runtime-ownership-remediation.md](./cluster-runtime-ownership-remediation.md)
+        P1/P2 audit findings, confirmed decisions, completion-smoke fixes,
+        implementation evidence, and the remaining Windows gate for `#118`.
 - [bugfix-maintenance-plan.md](./bugfix-maintenance-plan.md)
   Active maintenance queue for post-`v1.0.0` bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.

@@ -28,6 +28,7 @@ pub(super) mod claude_messages;
 pub(super) mod error;
 mod evidence;
 pub(super) mod gemini_generate;
+mod managed_adapter;
 mod native;
 pub(super) mod openai_chat;
 pub(super) mod openai_embeddings;
@@ -41,6 +42,9 @@ mod tests;
 pub(super) use claude_messages::{claude_messages, LocalClaudeMessagesRequest};
 pub(super) use error::LocalServerError;
 pub(super) use gemini_generate::{gemini_generate_content, LocalGeminiGenerateContentRequest};
+pub(super) use managed_adapter::{
+    managed_native_chat, managed_native_chat_stream, ManagedNativeChatRequest,
+};
 pub(super) use openai_chat::{openai_chat_completions, LocalOpenAiChatCompletionRequest};
 pub(super) use openai_embeddings::openai_embeddings;
 use openai_images::image_generations;
@@ -104,6 +108,8 @@ pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miett
     let router = Router::new()
         .route("/healthz", get(healthz))
         .route("/v1/chat/completions", post(openai_chat_completions))
+        .route("/v1/chat", post(managed_native_chat))
+        .route("/v1/chat/stream", post(managed_native_chat_stream))
         .route("/v1/messages", post(claude_messages))
         .route("/v1beta/models/{*operation}", post(gemini_generate_content))
         .route("/v1/embeddings", post(openai_embeddings))
@@ -123,6 +129,7 @@ async fn healthz(State(state): State<LocalServerState>) -> Json<serde_json::Valu
         "ok": true,
         "runtime_kind": "local-proxy",
         "server_ref": state.config.server_ref,
+        "process_token": tentgent_kernel::features::server::infra::server_process_token_from_env(),
         "runtime_home": state.config.runtime_home.as_ref().map(|path| path.display().to_string()),
         "capability": state.config.capability.as_str(),
         "model_ref": state.config.model_ref,

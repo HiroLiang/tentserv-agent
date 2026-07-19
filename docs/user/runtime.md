@@ -39,6 +39,11 @@ Runtime directories include:
 - `runtime/`
 - `logs/`
 
+Runtime coordination and ownership state lives below
+`locks/resource-coordination/` and `runtime/ownership/`. Do not edit those
+records manually; use inspect and reconcile commands so live process identity
+is checked first.
+
 Supported path overrides:
 
 - `TENTGENT_HOME`
@@ -188,6 +193,9 @@ adapter, or dataset content under `store/<ref>`; use the specific `model rm`,
 - `tentgent doctor` also summarizes stored cluster readiness when clusters
   exist and points to `tentgent cluster inspect <cluster-ref>` for route-level
   status, flags, and next actions.
+- `tentgent doctor` includes one compact runtime-ownership check. Stale or
+  quarantined records point to `tentgent runtime reconcile`; doctor never
+  repairs them.
 - `tentgent doctor` checks provider auth from local environment values and
   cached Keychain metadata only. It does not validate provider keys over the
   network; run the provider-specific `tentgent auth <provider>` command when
@@ -313,6 +321,30 @@ tentgent server ps
 tentgent server inspect <server-ref>
 tentgent server stop <server-ref>
 ```
+
+Cluster routes and shared Python runtimes also retain durable ownership records
+so another process cannot remove their model or capability during a lifecycle
+transition. Inspect recovery actions without changing state:
+
+```bash
+tentgent runtime reconcile
+```
+
+`tentgent cluster inspect <cluster-ref>` and
+`tentgent server inspect <server-ref>` show safe ownership details scoped to
+that object. They omit process ids, process tokens, local ownership paths, and
+internal generation ids. Doctor remains a compact global summary.
+
+Stop the owner named by the report before applying recovery. Then use:
+
+```bash
+tentgent runtime reconcile --apply
+```
+
+Malformed state is quarantined only when no live process can own it. A later
+`tentgent runtime reconcile --apply --purge-quarantine` removes records that
+were quarantined before that invocation. Unreadable or unverifiable state
+remains blocked instead of being deleted.
 
 ## Keychain Prompts
 

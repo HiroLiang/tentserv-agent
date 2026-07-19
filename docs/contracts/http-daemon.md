@@ -56,6 +56,35 @@ Error responses use this shape:
 }
 ```
 
+Guarded mutation conflicts retain their existing top-level error code and
+message and add a deterministically sorted `blockers` array:
+
+```json
+{
+  "error": "cluster_in_use",
+  "message": "cluster cannot be removed while referenced",
+  "blockers": [
+    {
+      "kind": "server-spec",
+      "code": "cluster-in-use",
+      "reference": "<server-ref>",
+      "reason": "server spec targets this cluster",
+      "resource_ref": "<cluster-ref>",
+      "operation": "delete-cluster"
+    }
+  ]
+}
+```
+
+`blockers` is omitted or empty for errors that are not resource-guard
+rejections. Its field contract is defined in
+[resource-blockers.md](./resource-blockers.md).
+
+If a reference-changing mutation changes repeatedly during its bounded
+post-lock revalidation, REST returns `409 resource-state-unstable` with retry
+guidance. This is a retryable coordination result, not an empty blocker list or
+an internal server error.
+
 Rules:
 
 - daemon-owned success and error responses must use
@@ -270,6 +299,16 @@ repair, or delete anything:
           "command": "tentgent cluster inspect local-assistant"
         }
       ]
+    },
+    {
+      "name": "runtime ownership",
+      "category": "runtime-ownership",
+      "status": "pass",
+      "description": "runtime ownership records are healthy",
+      "detail": "runtime ownership records are healthy",
+      "flags": [],
+      "details": [],
+      "next_actions": []
     }
   ]
 }
@@ -1057,9 +1096,10 @@ and then `plan_ref` ascending:
 ```
 
 `GET /v1/train/lora/plans/{plan_ref}` returns the full plan, run count, plan
-path, and runs path. `DELETE` succeeds only for plans with zero runs and returns
-pre-removal metadata. Plans with run records return `409 in_use`; callers should
-use future run cleanup APIs before deleting those plans.
+path, and runs path. `DELETE` uses the shared train-plan guard. A verified live
+run or a run whose process state cannot be verified returns `409
+train_plan_in_use` with blockers. Terminal and proven-stale runs may be removed
+consistently with the plan, and the response returns pre-removal metadata.
 
 ## LoRA Train Runs
 
@@ -1164,6 +1204,7 @@ the stored TOML definition atomically:
 {
   "schema_version": 1,
   "cluster_ref": "local-assistant",
+  "route_update_policy": "drain",
   "routes": {
     "chat": {
       "kind": "local-model",
@@ -1184,6 +1225,12 @@ supported providers. The current route keys are `chat`, `embedding`, `rerank`,
 `audio-transcription`, and `vision-chat`. Local `model_ref` values in cluster
 definitions are full canonical model refs, not short selectors.
 
+`route_update_policy` accepts `drain` or `block` and defaults to `drain`.
+The stored policy governs replacement. A stored `block` policy rejects a
+target-changing apply with `409 cluster_in_use` and a `cluster-policy` blocker.
+Switching from `block` to `drain` must be a policy-only apply before changing a
+target.
+
 Successful `PUT` returns stored definition details only:
 
 ```json
@@ -1191,6 +1238,7 @@ Successful `PUT` returns stored definition details only:
   "cluster": {
     "cluster_ref": "local-assistant",
     "schema_version": 1,
+    "route_update_policy": "drain",
     "routes": [
       {
         "route": "chat",
@@ -1206,18 +1254,34 @@ Successful `PUT` returns stored definition details only:
 ```
 
 `GET /v1/clusters/{cluster_ref}` returns the same definition details plus
-additive readiness fields:
+additive readiness and safe ownership summary fields:
 
 ```json
 {
   "cluster": {
     "cluster_ref": "local-assistant",
     "schema_version": 1,
+    "route_update_policy": "drain",
     "readiness": {
       "status": "blocked",
       "ready_route_count": 0,
       "attention_route_count": 1,
       "flags": ["unknown-support", "has-attention-route"]
+    },
+    "ownership": {
+      "route_claim_count": 0,
+      "active_generation_count": 0,
+      "active_operation_count": 0,
+      "stale_record_count": 0,
+      "malformed_record_count": 0,
+      "status": "healthy",
+      "scope": {
+        "kind": "cluster",
+        "reference": "local-assistant"
+      },
+      "claims": [],
+      "generations": [],
+      "issues": []
     },
     "routes": [
       {
@@ -1274,8 +1338,9 @@ returns pre-removal metadata:
 ```
 
 Deletion returns `409 cluster_in_use` while any running or stopped server spec
-targets the cluster. Stop and remove those server specs first. Cluster deletion
-does not cascade into server specs or model resources.
+or active route claim targets the cluster. Stop and remove those server specs
+and allow claims to retire first. Cluster deletion does not cascade into server
+specs or model resources. Guard conflicts include sorted `blockers`.
 
 Cluster definition details are contracted in [cluster.md](./cluster.md).
 
@@ -1441,14 +1506,15 @@ Adapters and datasets use typed `adapter_ref` and `dataset_ref` fields in the
 }
 ```
 
-Model and adapter removal return JSON `409 in_use` when existing server specs
-still reference them. Stop and remove those server specs first. Server removal
-does not stop running processes; running servers return `409 already_running`,
-so callers should use `POST /v1/servers/{server_ref}/stop` before `DELETE`.
-
-Dataset removal only enforces protections currently tracked by core. Future
-train-plan or train-run registries may make dataset deletion return
-`409 in_use` when references are tracked.
+Model, adapter, and dataset removal use the shared resource guard. Server
+specs, cluster routes, adapter bindings, LoRA plans/runs, route claims, and
+physical runtime generations are checked where they can own the resource.
+Conflicts preserve operation-specific codes such as `model_in_use`,
+`adapter_in_use`, and `dataset_in_use`, with additive `blockers`. Server removal
+uses `server_in_use`; coordination contention uses `resource-busy` or
+`resource-state-unstable`. These values are serialized from typed kernel enums
+and remain HTTP `409`. Server removal does not stop running processes; use
+`POST /v1/servers/{server_ref}/stop` before `DELETE`.
 
 Model removal and model capability mutation also inspect stored cluster routes.
 A local model referenced by a cluster route cannot be deleted normally, and a
@@ -1479,6 +1545,14 @@ endpoint:
   "error": null
 }
 ```
+
+`GET /v1/servers/{server_ref}` also includes the same safe scoped `ownership`
+view used by cluster inspect. Existing summary fields remain present;
+`scope`, `claims`, `generations`, and `issues` are additive. Direct local
+servers resolve their effective runtime identity, cluster servers filter route
+claims by server ref, and cloud servers return an empty runtime view. It never
+exposes PIDs, process-instance tokens, owner or generation ids, raw record
+paths, raw lock paths, or internal lease ids.
 
 ## Server Lifecycle
 

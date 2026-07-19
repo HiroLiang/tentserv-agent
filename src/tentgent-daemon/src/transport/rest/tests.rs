@@ -208,6 +208,11 @@ async fn doctor_returns_observational_report() {
     ));
     assert!(body["summary"].is_object());
     assert!(body["checks"].is_array());
+    assert!(body["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .any(|check| check["category"] == "runtime-ownership"));
 
     let _ = fs::remove_dir_all(home);
 }
@@ -2682,6 +2687,9 @@ async fn model_capabilities_post_rejects_removing_cluster_route_capability() {
         .as_str()
         .expect("message")
         .contains("cluster-route local-assistant:chat"));
+    assert_eq!(body["blockers"][0]["kind"], "cluster-route");
+    assert_eq!(body["blockers"][0]["code"], "capability-in-use");
+    assert_eq!(body["blockers"][0]["route"], "chat");
 
     let _ = fs::remove_dir_all(home);
 }
@@ -3800,6 +3808,25 @@ async fn server_list_and_inspect_read_kernel_catalog() {
         server["process_path"].as_str(),
         Some(expected_process_path.as_str())
     );
+    assert_eq!(server["ownership"]["scope"]["kind"], "server");
+    assert_eq!(
+        server["ownership"]["scope"]["reference"].as_str(),
+        Some(server_ref.as_str())
+    );
+    assert_eq!(server["ownership"]["claims"], serde_json::json!([]));
+    assert_eq!(server["ownership"]["generations"], serde_json::json!([]));
+    assert_eq!(server["ownership"]["issues"], serde_json::json!([]));
+    let serialized_ownership = serde_json::to_string(&server["ownership"]).unwrap();
+    for private_field in [
+        "pid",
+        "process_token",
+        "owner_id",
+        "runtime_key",
+        "generation_id",
+        "record",
+    ] {
+        assert!(!serialized_ownership.contains(&format!("\"{private_field}\":")));
+    }
 
     let _ = fs::remove_dir_all(home);
 }
@@ -3932,6 +3959,9 @@ async fn server_create_accepts_structured_cluster_target_and_blocks_cluster_remo
     assert!(body["message"]
         .as_str()
         .is_some_and(|message| message.contains("server-spec")));
+    assert_eq!(body["blockers"][0]["kind"], "server-spec");
+    assert_eq!(body["blockers"][0]["code"], "cluster-in-use");
+    assert_eq!(body["blockers"][0]["resource_ref"], "local-assistant");
 
     let _ = fs::remove_dir_all(home);
 }
@@ -4436,6 +4466,7 @@ async fn cluster_apply_inspect_and_remove_roundtrip() {
     let body = json_body(response).await;
     assert_eq!(body["cluster"]["cluster_ref"], "local-assistant");
     assert_eq!(body["cluster"]["schema_version"], 1);
+    assert_eq!(body["cluster"]["route_update_policy"], "drain");
     let routes = body["cluster"]["routes"].as_array().expect("routes");
     assert_eq!(routes.len(), 2);
     assert_eq!(routes[0]["route"], "chat");
@@ -4483,6 +4514,26 @@ async fn cluster_apply_inspect_and_remove_roundtrip() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["cluster"]["cluster_ref"], "local-assistant");
+    assert_eq!(body["cluster"]["route_update_policy"], "drain");
+    assert_eq!(body["cluster"]["ownership"]["status"], "healthy");
+    assert_eq!(body["cluster"]["ownership"]["route_claim_count"], 0);
+    assert_eq!(body["cluster"]["ownership"]["scope"]["kind"], "cluster");
+    assert_eq!(
+        body["cluster"]["ownership"]["scope"]["reference"],
+        "local-assistant"
+    );
+    assert_eq!(
+        body["cluster"]["ownership"]["claims"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        body["cluster"]["ownership"]["generations"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        body["cluster"]["ownership"]["issues"],
+        serde_json::json!([])
+    );
     assert_eq!(body["cluster"]["readiness"]["status"], "partial");
     assert_eq!(body["cluster"]["readiness"]["ready_route_count"], 1);
     assert_eq!(body["cluster"]["readiness"]["attention_route_count"], 1);
@@ -4510,6 +4561,55 @@ async fn cluster_apply_inspect_and_remove_roundtrip() {
         .expect("next actions")
         .iter()
         .any(|action| action["code"] == "verify-model-capability"));
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/v1/clusters/local-assistant")
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{
+                        "schema_version": 1,
+                        "cluster_ref": "local-assistant",
+                        "route_update_policy": "block",
+                        "routes": {{
+                            "chat": {{"kind": "local-model", "model_ref": "{model_ref}"}},
+                            "embedding": {{"kind": "local-model", "model_ref": "{model_ref}"}}
+                        }}
+                    }}"#
+                )))
+                .expect("policy-only request"),
+        )
+        .await
+        .expect("policy-only response");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = build_router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/v1/clusters/local-assistant")
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{
+                        "schema_version": 1,
+                        "cluster_ref": "local-assistant",
+                        "route_update_policy": "drain",
+                        "routes": {{
+                            "chat": {{"kind": "local-model", "model_ref": "{model_ref}"}}
+                        }}
+                    }}"#
+                )))
+                .expect("blocked route update request"),
+        )
+        .await
+        .expect("blocked route update response");
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "cluster_in_use");
+    assert_eq!(body["blockers"][0]["code"], "cluster-route-update-blocked");
+    assert_eq!(body["blockers"][0]["field"], "route_update_policy");
 
     let response = build_router(state.clone())
         .oneshot(

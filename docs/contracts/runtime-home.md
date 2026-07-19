@@ -28,6 +28,7 @@ Resolve paths in this order:
 Environment variables:
 
 - `TENTGENT_HOME`
+- `TENTGENT_DATA_ROOT`
 - `TENTGENT_MODELS_DIR`
 - `TENTGENT_ADAPTERS_DIR`
 - `TENTGENT_DATASETS_DIR`
@@ -37,6 +38,11 @@ Environment variables:
 - `TENTGENT_LOG_DIR`
 - `TENTGENT_PYTHON_DIR`
 - `TENTGENT_PYTHON_ENV_DIR`
+
+`TENTGENT_DATA_ROOT` separates managed model, adapter, dataset, train, and
+cache content from control state under `TENTGENT_HOME`. Rust must pass the
+resolved data root to spawned Python workers so validation and execution read
+the same managed content.
 
 ## Standard Subdirectories
 

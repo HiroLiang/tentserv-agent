@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "src/tentgent-platform-fs",
     "src/tentgent-kernel",
     "src/tentgent-cli",
     "src/tentgent-daemon",
@@ -15,24 +16,27 @@ license = "Apache-2.0"
 
 [workspace.dependencies]
 axum = { version = "0.8", features = ["multipart"] }
-clap = { version = "4.5", features = ["derive"] }
-comfy-table = "7"
+clap = { version = "=4.5.54", features = ["derive"] }
+comfy-table = "=7.1.4"
 console = "0.16"
 directories = "6"
 dotenvy = "0.15"
 futures-util = "0.3"
+fs2 = "0.4"
 hex = "0.4"
+http-body = "1"
 indicatif = "0.18"
 keyring = { version = "3.6", default-features = false }
+nix = { version = "0.29", features = ["process", "signal"] }
 miette = { version = "7", features = ["fancy"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
 rpassword = "7"
-security-framework = { version = "3.7", features = ["OSX_10_15"] }
+security-framework = { version = "=3.5.1", features = ["OSX_10_15"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
-time = { version = "0.3", features = ["formatting", "parsing"] }
+time = { version = "=0.3.44", features = ["formatting", "parsing"] }
 toml = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "signal", "net", "fs", "io-util", "sync", "time"] }
 tower = "0.5"
@@ -42,6 +46,10 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2"
 zeroize = "1"
+
+[workspace.dependencies.windows-sys]
+version = "0.59"
+features = ["Win32_Storage_FileSystem"]
 
 [workspace.metadata.tentgent]
 app_slug = "tentgent"

@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -77,6 +78,31 @@ class ManagedModelRecordTests(unittest.TestCase):
         self.assertEqual(record.source_path, source_path.resolve())
         self.assertEqual(record.primary_format, ModelFormat.MLX)
         self.assertEqual(record.capabilities, frozenset({ModelCapability.CHAT}))
+
+    def test_loads_managed_model_from_separate_data_root(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as control_tmp,
+            tempfile.TemporaryDirectory() as data_tmp,
+        ):
+            home = Path(control_tmp)
+            data_root = Path(data_tmp)
+            model_ref = "f" * 64
+            source_path = _write_model(
+                data_root,
+                model_ref=model_ref,
+                format_=ModelFormat.SAFETENSORS,
+                capability=ModelCapability.CHAT,
+            )
+
+            with patch.dict(
+                "os.environ",
+                {"TENTGENT_DATA_ROOT": str(data_root)},
+                clear=False,
+            ):
+                record = load_managed_model_record(model_ref, home=home)
+
+        self.assertEqual(record.model_ref, model_ref)
+        self.assertEqual(record.source_path, source_path.resolve())
 
 
 class ServerBoundRouteTests(unittest.TestCase):
@@ -358,6 +384,25 @@ class ServerBoundRouteTests(unittest.TestCase):
 
 
 class RuntimeRouteMountTests(unittest.TestCase):
+    def test_health_snapshot_returns_launcher_process_token(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"TENTGENT_RUNTIME_PROCESS_TOKEN": "runtime-instance-token"},
+        ):
+            app = create_app(
+                RuntimeServerConfig(
+                    host="127.0.0.1",
+                    port=0,
+                    capability=RuntimeCapability.CHAT,
+                    server_ref="server-ref",
+                )
+            )
+            snapshot = app.state.lifecycle.snapshot()
+            app.state.task_manager.shutdown()
+
+        self.assertEqual(snapshot["process_token"], "runtime-instance-token")
+        self.assertEqual(snapshot["server_ref"], "server-ref")
+
     def test_runtime_routes_expose_internal_aliases_and_legacy_paths(self) -> None:
         app = create_app(
             RuntimeServerConfig(

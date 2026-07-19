@@ -1,6 +1,7 @@
 //! Training use case implementations.
 
 mod common;
+mod dependencies;
 mod plan;
 mod port;
 mod run;
@@ -19,4 +20,4 @@ pub use port::{
     LoraTrainRunStartResult, LoraTrainRunUseCase, LoraTrainRunWorkerStartedRequest,
     LoraTrainRunWriteRequest,
 };
-pub use run::StdLoraTrainRunUseCase;
+pub use run::{LoraTrainRunDependencyCatalogs, StdLoraTrainRunUseCase};

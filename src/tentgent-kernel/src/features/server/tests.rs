@@ -150,6 +150,7 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
     };
     let process = ServerProcessMetadata {
         pid: 42,
+        process_token: Some("process-token".to_string()),
         launch_mode: LaunchMode::Background,
         started_at: "2026-05-17T00:00:01Z".to_string(),
         bound_port: Some(DEFAULT_SERVER_PORT),
@@ -186,12 +187,13 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
 
     let legacy_process_body = process_body
         .lines()
-        .filter(|line| !line.starts_with("bound_port = "))
+        .filter(|line| !line.starts_with("bound_port = ") && !line.starts_with("process_token = "))
         .collect::<Vec<_>>()
         .join("\n");
     let parsed_legacy_process: ServerProcessMetadata =
         toml::from_str(&legacy_process_body).expect("parse legacy process");
     assert_eq!(parsed_legacy_process.bound_port, None);
+    assert_eq!(parsed_legacy_process.process_token, None);
 }
 
 #[test]

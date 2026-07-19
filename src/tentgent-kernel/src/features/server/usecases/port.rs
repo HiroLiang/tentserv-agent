@@ -1,5 +1,6 @@
 //! Server use case ports.
 
+use crate::features::resource_coordination::ResourcePermit;
 use crate::features::server::domain::{
     LaunchMode, ServerInspection, ServerPrepareOutcome, ServerPrepareTarget, ServerRef,
     ServerRefSelector, ServerRemoveOutcome, ServerStopOutcome, ServerStoreLayout, ServerSummary,
@@ -65,12 +66,19 @@ pub struct ServerResolveForStartRequest {
     pub allow_unverified: bool,
 }
 
+#[derive(Debug)]
+pub struct ServerStartAuthorization {
+    pub result: ServerInspectResult,
+    pub permit: ResourcePermit,
+}
+
 /// Request for recording a spawned process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerRecordProcessStartRequest {
     pub layout: RuntimeLayoutInput,
     pub server_ref: ServerRef,
     pub pid: u32,
+    pub process_token: Option<String>,
     pub bound_port: u16,
     pub launch_mode: LaunchMode,
 }

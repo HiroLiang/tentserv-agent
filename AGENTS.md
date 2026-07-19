@@ -24,6 +24,9 @@ If the current task is about agent workflows, role selection, or role-specific w
 - `src/tentgent-kernel/`
   Shared Rust domain, infrastructure ports, runtime layout, machine capability
   state, and feature use cases.
+- `src/tentgent-platform-fs/`
+  Small safe Rust boundary around platform filesystem replacement primitives
+  that require operating-system FFI outside the unsafe-free kernel crate.
 - `src/tentgent-cli/`
   Rust CLI entry point.
 - `src/tentgent-daemon/`
@@ -67,10 +70,16 @@ Key current documents:
   Provider-secret resolution order and keychain usage rules.
 - `docs/contracts/model-store.md`
   Model-store identity, deduplication, layout, and Hugging Face pull boundaries.
+- `docs/contracts/resource-blockers.md`
+  Cross-process transition coordination and structured resource-mutation
+  blocker rules.
+- `docs/contracts/runtime-ownership.md`
+  Durable route claims, physical runtime generations, guarded shutdown, and
+  stale-state reconciliation.
 - `docs/contracts/cluster.md`
   Cluster definition identity, canonical TOML storage, route-target validation,
   readiness diagnostics, local cluster server routing, daemon REST integration,
-  hot reload, and resource protection.
+  guarded hot reload, runtime ownership, and resource protection.
 - `docs/contracts/model-support-status.md`
   Support status vocabulary, evidence precedence, stale-proof rules, and
   transition rules for model/capability/backend tuples.
@@ -134,7 +143,18 @@ Key current documents:
   foundations, tuple-aware model and LoRA gates, resource coordination, and
   later 1.x capabilities.
 - `docs/plans/cluster-roadmap.md`
-  Focused `v1.x` sub-roadmap for the selected `v1.1.0` cluster issue slices.
+  Active `v1.x` implementation roadmap for selected `v1.1.0` cluster slices;
+  final `#118` remediation blocks parent `#113` closeout.
+- `docs/plans/cluster-runtime-ownership-plan.md`
+  Approved `#118` implementation record for structured runtime ownership,
+  resource guards, shared-runtime shutdown safety, and its decision register.
+- `docs/plans/cluster-runtime-coordination-architecture.md`
+  Implemented baseline `#118` companion architecture for reusable resource
+  locks, route claims, physical runtime generations, supervisor wiring, and
+  platform-aware cluster definition polling.
+- `docs/plans/cluster-runtime-ownership-remediation.md`
+  `#118` P1/P2 findings, confirmed remediation decisions, implementation
+  evidence, and remaining verification gates before parent `#113` closeout.
 - `docs/plans/bugfix-maintenance-plan.md`
   Active post-`v1.0.0` maintenance plan for bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.

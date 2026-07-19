@@ -1,7 +1,19 @@
 //! LoRA train plan use case.
 
+use std::sync::Arc;
+
+use crate::features::adapter::ports::AdapterCatalogStore;
 use crate::features::dataset::ports::DatasetCatalogStore;
 use crate::features::model::ports::ModelCatalogStore;
+use crate::features::resource_coordination::{
+    infra::FileResourceCoordinator, stabilize_resource_transition, ResourceCoordinator,
+    ResourceKey, ResourceKind, ResourceLockMode, ResourceLockRequest,
+    ResourceTransitionAuthorization, StableResourceTransition,
+};
+use crate::features::resource_guard::{
+    ResourceGuardUseCase, ResourceMutationAuthorization, ResourceMutationOutcome,
+    ResourceOperation, StdResourceGuard,
+};
 use crate::features::train::domain::{
     LoraTrainPlanCreateOutcome, LoraTrainPlanPreviewOutcome, LoraTrainPlanRemovalOutcome,
 };
@@ -13,6 +25,9 @@ use crate::foundation::platform::PlatformProbe;
 use super::common::{
     build_lora_train_plan, dataset_store_layout, finalize_plan_identity, model_store_layout,
     train_store_layout,
+};
+use super::dependencies::{
+    busy_error, inspect_train_dependencies, train_dependency_locks, TrainDependencySnapshot,
 };
 use super::port::{
     LoraTrainPlanBuildRequest, LoraTrainPlanInspectRequest, LoraTrainPlanInspectResult,
@@ -27,8 +42,11 @@ pub struct StdLoraTrainPlanUseCase<'a> {
     layout_initializer: &'a dyn TrainStoreLayoutInitializer,
     model_catalog: &'a dyn ModelCatalogStore,
     dataset_catalog: &'a dyn DatasetCatalogStore,
+    adapter_catalog: &'a dyn AdapterCatalogStore,
     plan_store: &'a dyn LoraTrainPlanStore,
     clock: &'a dyn TrainClock,
+    coordinator: Arc<dyn ResourceCoordinator>,
+    guard: Arc<dyn ResourceGuardUseCase>,
 }
 
 impl<'a> StdLoraTrainPlanUseCase<'a> {
@@ -39,8 +57,36 @@ impl<'a> StdLoraTrainPlanUseCase<'a> {
         layout_initializer: &'a dyn TrainStoreLayoutInitializer,
         model_catalog: &'a dyn ModelCatalogStore,
         dataset_catalog: &'a dyn DatasetCatalogStore,
+        adapter_catalog: &'a dyn AdapterCatalogStore,
         plan_store: &'a dyn LoraTrainPlanStore,
         clock: &'a dyn TrainClock,
+    ) -> Self {
+        Self::new_with_dependencies(
+            layout_resolver,
+            platform_probe,
+            layout_initializer,
+            model_catalog,
+            dataset_catalog,
+            adapter_catalog,
+            plan_store,
+            clock,
+            Arc::new(FileResourceCoordinator),
+            Arc::new(StdResourceGuard::default()),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_dependencies(
+        layout_resolver: &'a dyn RuntimeLayoutResolver,
+        platform_probe: &'a dyn PlatformProbe,
+        layout_initializer: &'a dyn TrainStoreLayoutInitializer,
+        model_catalog: &'a dyn ModelCatalogStore,
+        dataset_catalog: &'a dyn DatasetCatalogStore,
+        adapter_catalog: &'a dyn AdapterCatalogStore,
+        plan_store: &'a dyn LoraTrainPlanStore,
+        clock: &'a dyn TrainClock,
+        coordinator: Arc<dyn ResourceCoordinator>,
+        guard: Arc<dyn ResourceGuardUseCase>,
     ) -> Self {
         Self {
             layout_resolver,
@@ -48,9 +94,51 @@ impl<'a> StdLoraTrainPlanUseCase<'a> {
             layout_initializer,
             model_catalog,
             dataset_catalog,
+            adapter_catalog,
             plan_store,
             clock,
+            coordinator,
+            guard,
         }
+    }
+
+    pub fn remove_plan_guarded(
+        &self,
+        request: LoraTrainPlanRemoveRequest,
+    ) -> KernelResult<ResourceMutationOutcome<LoraTrainPlanRemoveResult>> {
+        let layout = self.layout_resolver.resolve(request.layout)?;
+        let store = train_store_layout(&layout);
+        let inspection = self.plan_store.inspect_plan(&store, &request.selector)?;
+        let authorization = self.guard.authorize(
+            &layout,
+            ResourceOperation::DeleteTrainPlan {
+                plan_ref: inspection.plan.plan_ref.clone(),
+            },
+        )?;
+        let _permit = match authorization {
+            ResourceMutationAuthorization::Permitted(permit) => permit,
+            ResourceMutationAuthorization::Rejected(rejection) => {
+                return Ok(ResourceMutationOutcome::Blocked(rejection));
+            }
+            ResourceMutationAuthorization::Busy(busy) => {
+                return Ok(ResourceMutationOutcome::Busy(busy));
+            }
+        };
+        let inspection = self.plan_store.inspect_plan(&store, &request.selector)?;
+        let outcome = LoraTrainPlanRemovalOutcome {
+            plan: inspection.plan.clone(),
+            plan_dir: inspection.plan_dir.clone(),
+            run_count: inspection.run_count,
+        };
+        self.plan_store
+            .remove_plan(&store, &inspection.plan.plan_ref)?;
+        Ok(ResourceMutationOutcome::Applied(
+            LoraTrainPlanRemoveResult {
+                layout,
+                store,
+                outcome,
+            },
+        ))
     }
 }
 
@@ -90,7 +178,40 @@ impl LoraTrainPlanUseCase for StdLoraTrainPlanUseCase<'_> {
         &self,
         request: LoraTrainPlanBuildRequest,
     ) -> KernelResult<LoraTrainPlanCreateOutcome> {
-        let prepared = self.prepare_plan(request)?;
+        let layout = self.layout_resolver.resolve(request.layout.clone())?;
+        let transition = stabilize_resource_transition(
+            "create-train-plan",
+            || {
+                let prepared = self.prepare_plan(request.clone())?;
+                let locks = train_dependency_locks(&prepared.plan, ResourceLockMode::Exclusive);
+                Ok((
+                    TrainPlanDependencyToken {
+                        plan: prepared.plan.clone(),
+                        dependencies: prepared.dependencies.clone(),
+                        locks: locks.clone(),
+                    },
+                    (prepared, locks),
+                ))
+            },
+            |(_, locks)| {
+                Ok(match self.coordinator.acquire(
+                    &layout,
+                    ResourceLockRequest::new("create-train-plan", locks.clone()),
+                )? {
+                    Ok(permit) => ResourceTransitionAuthorization::<_, std::convert::Infallible>::Permitted(permit),
+                    Err(busy) => ResourceTransitionAuthorization::Busy(busy),
+                })
+            },
+            |(prepared, _)| ResourceKey::new(ResourceKind::TrainPlan, &prepared.plan.plan_ref),
+        )?;
+        let (prepared, _permit) = match transition {
+            StableResourceTransition::Stable {
+                state: (prepared, _),
+                permit,
+            } => (prepared, permit),
+            StableResourceTransition::Busy(busy) => return Err(busy_error(busy)),
+            StableResourceTransition::Rejected(never) => match never {},
+        };
         self.layout_initializer
             .ensure_train_store_layout(&prepared.store)?;
 
@@ -161,22 +282,7 @@ impl LoraTrainPlanUseCase for StdLoraTrainPlanUseCase<'_> {
         &self,
         request: LoraTrainPlanRemoveRequest,
     ) -> KernelResult<LoraTrainPlanRemoveResult> {
-        let layout = self.layout_resolver.resolve(request.layout)?;
-        let store = train_store_layout(&layout);
-        let inspection = self.plan_store.inspect_plan(&store, &request.selector)?;
-        let outcome = LoraTrainPlanRemovalOutcome {
-            plan: inspection.plan.clone(),
-            plan_dir: inspection.plan_dir.clone(),
-            run_count: inspection.run_count,
-        };
-        self.plan_store
-            .remove_plan(&store, &inspection.plan.plan_ref)?;
-
-        Ok(LoraTrainPlanRemoveResult {
-            layout,
-            store,
-            outcome,
-        })
+        self.remove_plan_guarded(request)?.into_compat_result()
     }
 }
 
@@ -203,11 +309,19 @@ impl StdLoraTrainPlanUseCase<'_> {
             self.clock.now_rfc3339()?,
         )?;
         finalize_plan_identity(&train_store, &mut plan)?;
+        let dependencies = inspect_train_dependencies(
+            &layout,
+            &plan,
+            self.model_catalog,
+            self.dataset_catalog,
+            self.adapter_catalog,
+        )?;
 
         Ok(PreparedPlan {
             plan_dir: train_store.plan_dir(&plan.plan_ref),
             plan_path: train_store.plan_toml_path(&plan.plan_ref),
             plan,
+            dependencies,
             store: train_store,
         })
     }
@@ -215,7 +329,15 @@ impl StdLoraTrainPlanUseCase<'_> {
 
 struct PreparedPlan {
     plan: crate::features::train::domain::LoraTrainPlan,
+    dependencies: TrainDependencySnapshot,
     store: crate::features::train::domain::TrainStoreLayout,
     plan_dir: std::path::PathBuf,
     plan_path: std::path::PathBuf,
+}
+
+#[derive(PartialEq)]
+struct TrainPlanDependencyToken {
+    plan: crate::features::train::domain::LoraTrainPlan,
+    dependencies: TrainDependencySnapshot,
+    locks: Vec<(ResourceKey, ResourceLockMode)>,
 }

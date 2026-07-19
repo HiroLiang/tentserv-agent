@@ -196,6 +196,7 @@ impl LocalClaudeMessagesRequest {
             messages,
             max_tokens: Some(self.max_tokens),
             temperature: self.temperature,
+            adapter: None,
         })
     }
 

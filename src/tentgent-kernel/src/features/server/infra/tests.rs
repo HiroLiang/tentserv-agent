@@ -255,6 +255,7 @@ fn file_catalog_stores_specs_and_process_metadata() {
             &layout,
             &server_ref,
             42,
+            Some("process-token".to_string()),
             8780,
             LaunchMode::Background,
             "2026-05-17T00:00:01Z".to_string(),

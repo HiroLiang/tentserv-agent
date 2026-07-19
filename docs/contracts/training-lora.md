@@ -74,9 +74,11 @@ train/
 Each run creates a new `run_ref`. A successful run creates a new `adapter_ref`;
 runs never overwrite prior adapters.
 
-The HTTP daemon refuses to delete plans with existing run records. CLI `plan rm`
-may remove the plan directory and stored run records, but it does not remove
-adapters already imported into `adapters/store`.
+CLI `plan rm` and daemon plan deletion use the same resource guard. A verified
+live run or a run whose process state cannot be verified blocks deletion.
+Terminal and proven-stale runs may be removed with the plan. Plan deletion does
+not remove adapters already imported into `adapters/store`; completed-run
+output adapter refs are retained as provenance rather than resource ownership.
 
 `--review` previews the generated plan and asks before saving. Answering `n` writes nothing.
 

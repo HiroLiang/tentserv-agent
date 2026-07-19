@@ -1,0 +1,12 @@
+[package]
+name = "tentgent-platform-fs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

@@ -77,8 +77,7 @@ make run-cli ARGS='--help'
 
 ## Current CI/CD
 
-The repository currently has one GitHub Actions workflow:
-`.github/workflows/release.yml`.
+The release workflow is `.github/workflows/release.yml`.
 
 It runs on `v*.*.*` tag pushes and manual `workflow_dispatch`. The package job
 builds release artifacts on native runners for macOS Apple Silicon, macOS
@@ -112,6 +111,12 @@ the Secret Service/D-Bus stack.
 The current release workflow does not run `cargo fmt`, `cargo check`,
 `cargo test`, or Python unit tests before packaging. `scripts/package-local.sh`
 performs `cargo build --release --bin tentgent` as part of artifact packaging.
+
+`.github/workflows/runtime-ownership-windows.yml` is a focused pull-request
+gate for changes to resource coordination, runtime ownership, and the platform
+filesystem replacement boundary. It runs repeated atomic replacement and
+`starting -> ready -> closing` ownership tests on a native Windows runner,
+plus the focused coordination and model-daemon suites.
 
 Before tagging a release, run the script-level release-readiness checks:
 
@@ -183,6 +188,8 @@ make run-cli ARGS='auth --help'
 make run-cli ARGS='model --help'
 make run-cli ARGS='adapter --help'
 make run-cli ARGS='dataset eval --help'
+make run-cli ARGS='runtime reconcile --help'
+make run-cli ARGS='cluster inspect --help'
 make run-cli ARGS='server run --help'
 ```
 
@@ -530,6 +537,19 @@ Run the current orchestration scaffold:
 
 ## Chat Commands
 
+When Python runtime source changes, synchronize the development runtime
+environment before exercising it through Rust. The explicit environment path
+keeps the repository workspace `.venv` separate from the runtime project's
+`.venv` selected by the Rust resolver:
+
+```bash
+UV_PROJECT_ENVIRONMENT="$PWD/python/tentgent-model-runtime/.venv" \
+  uv --no-config sync \
+  --project "$PWD/python/tentgent-model-runtime" \
+  --extra local-model \
+  --reinstall-package tentgent-model-runtime
+```
+
 Run the Python model runtime directly:
 
 ```bash
@@ -600,6 +620,64 @@ Inspect and manage servers:
 ```
 
 Add `--details` to `server start`, `server stop`, or `server rm` when you want a full inspection table.
+
+Inspect file-backed runtime ownership without mutation:
+
+```bash
+./target/debug/tentgent runtime reconcile --home "$PWD/.tentgent-test"
+```
+
+The implementation stores hashed advisory lock files below
+`.tentgent-test/locks/resource-coordination/` and atomic ownership records below
+`.tentgent-test/runtime/ownership/`. The local filesystem is the supported
+development target; do not use network-mounted runtime homes for contention
+tests.
+
+Focused #118 verification:
+
+```bash
+cargo test -p tentgent-kernel resource_coordination
+cargo test -p tentgent-kernel resource_guard
+cargo test -p tentgent-kernel runtime_ownership
+cargo test -p tentgent-kernel cluster
+cargo test -p tentgent-kernel server
+cargo test -p tentgent-kernel adapter
+cargo test -p tentgent-kernel train
+cargo test -p tentgent-cli cluster
+cargo test -p tentgent-cli server
+cargo test -p tentgent-cli train
+cargo test -p tentgent-daemon server::cluster
+cargo test -p tentgent-daemon transport::rest::tests
+uv run --project python/tentgent-model-runtime pytest
+```
+
+Run the opt-in real-model cluster smoke after the small chat, embedding,
+rerank, transcription, and vision fixtures are already present. Point the
+script at the existing data root; it creates an isolated temporary control
+home and never resolves provider credentials or Keychain secrets:
+
+```bash
+cargo build -p tentgent-cli
+TENTGENT_SMOKE_DATA_ROOT="<tentgent-data-root>" \
+  bash scripts/test-cluster-runtime-ownership-smoke.sh
+```
+
+`<tentgent-data-root>` is the directory containing the managed `models/`
+store. Override `TENTGENT_SMOKE_<CAPABILITY>_MODEL_REF`,
+`TENTGENT_SMOKE_AUDIO_PATH`, `TENTGENT_SMOKE_IMAGE_PATH`, or
+`TENTGENT_SMOKE_PORT` when the local fixtures differ. This smoke is a local
+closeout gate, not a normal CI job, because it executes downloaded models.
+
+The cluster watcher has one ignored, non-gating metadata-probe cost
+measurement:
+
+```bash
+cargo test -p tentgent-daemon unchanged_definition_metadata_probe_cost -- --ignored --nocapture
+```
+
+On the July 16, 2026 macOS development host, 10,000 unchanged probes took about
+22 ms (approximately 2,226 ns each). This number is diagnostic evidence only;
+it is not a performance contract or CI threshold.
 
 ## Python Server Direct Entry
 

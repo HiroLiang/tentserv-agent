@@ -13,7 +13,13 @@ use crate::features::adapter::ports::{
     AdapterManifestBuilder, AdapterSourceIndexStore, AdapterSourceMetadata,
     AdapterSourceMetadataReader, AdapterSourceStager, StagedAdapterSource,
 };
-use crate::features::model::domain::{ModelMetadata, ModelStoreLayout};
+use crate::features::model::domain::{
+    ModelCapability, ModelMetadata, ModelRefSelector, ModelStoreLayout,
+};
+use crate::features::model::ports::ModelCatalogStore;
+use crate::features::resource_coordination::{
+    ResourceCoordinator, ResourceKey, ResourceKind, ResourceLockMode, ResourceLockRequest,
+};
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayout;
 
@@ -78,18 +84,21 @@ pub(super) struct AdapterImportFinalizer<'a> {
     pub source_indexes: &'a dyn AdapterSourceIndexStore,
     pub base_indexes: &'a dyn AdapterBaseIndexStore,
     pub content: &'a dyn AdapterContentStore,
+    pub model_catalog: &'a dyn ModelCatalogStore,
+    pub coordinator: &'a dyn ResourceCoordinator,
 }
 
 impl AdapterImportFinalizer<'_> {
     pub fn finalize(
         &self,
         store: &AdapterStoreLayout,
+        layout: &RuntimeLayout,
         staged: &StagedAdapterSource,
         source: AdapterImportSource,
         base_model: Option<&ModelMetadata>,
         options: &AdapterImportOptions,
     ) -> KernelResult<AdapterImportOutcome> {
-        let result = self.finalize_inner(store, staged, source, base_model, options);
+        let result = self.finalize_inner(store, layout, staged, source, base_model, options);
         let cleanup = self.stager.discard_staging(staged);
 
         match (result, cleanup) {
@@ -102,6 +111,7 @@ impl AdapterImportFinalizer<'_> {
     fn finalize_inner(
         &self,
         store: &AdapterStoreLayout,
+        layout: &RuntimeLayout,
         staged: &StagedAdapterSource,
         source: AdapterImportSource,
         base_model: Option<&ModelMetadata>,
@@ -134,6 +144,61 @@ impl AdapterImportFinalizer<'_> {
             })?;
         let adapter_ref = self.identity.adapter_ref_for_manifest(&manifest)?;
         let store_path = store.adapter_dir(&adapter_ref);
+        let capability = options.target_capability.unwrap_or(ModelCapability::Chat);
+        let mut locks = vec![
+            (ResourceKey::maintenance(), ResourceLockMode::Shared),
+            (
+                ResourceKey::new(ResourceKind::Adapter, adapter_ref.to_string()),
+                ResourceLockMode::Exclusive,
+            ),
+        ];
+        if let Some(base_model) = base_model {
+            locks.push((
+                ResourceKey::new(ResourceKind::Model, base_model.model_ref.to_string()),
+                ResourceLockMode::Shared,
+            ));
+            locks.push((
+                ResourceKey::new(
+                    ResourceKind::ModelCapability,
+                    format!("{}|{capability}", base_model.model_ref),
+                ),
+                ResourceLockMode::Shared,
+            ));
+        }
+        let _permit = match self
+            .coordinator
+            .acquire(layout, ResourceLockRequest::new("import-adapter", locks))?
+        {
+            Ok(permit) => permit,
+            Err(busy) => {
+                return Err(KernelError::ResourceCoordinationUnavailable(format!(
+                    "{}; retry after {} ms",
+                    busy.description, busy.retry_after_millis
+                )));
+            }
+        };
+        let current_base_model = match base_model {
+            Some(base_model) => Some(
+                self.model_catalog
+                    .inspect_model(
+                        &ModelStoreLayout::from_models_dir(layout.models_dir.clone()),
+                        &ModelRefSelector::parse(base_model.model_ref.as_str())
+                            .map_err(|error| adapter_store_error(error.to_string()))?,
+                    )?
+                    .metadata,
+            ),
+            None => None,
+        };
+        if let Some(base_model) = current_base_model.as_ref() {
+            if !base_model.supports_capability(capability) {
+                return Err(adapter_store_error(format!(
+                    "base model `{}` no longer advertises `{capability}` capability",
+                    base_model.model_ref
+                )));
+            }
+        }
+        let base_model = current_base_model.as_ref();
+        validate_source_metadata(&source_metadata, base_model)?;
 
         if self.content.adapter_content_exists(store, &adapter_ref)? {
             let mut metadata = self.catalog.load_adapter_metadata(store, &adapter_ref)?;

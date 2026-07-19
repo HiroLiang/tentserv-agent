@@ -444,6 +444,19 @@ impl ServerRuntimeProfileSelection {
     pub fn label(&self) -> String {
         format!("{}-v{}", self.profile_id, self.profile_version)
     }
+
+    pub fn parse_label(value: &str) -> Result<Self, String> {
+        let (profile_id, version) = value
+            .rsplit_once("-v")
+            .ok_or_else(|| format!("runtime profile `{value}` must end with -v<VERSION>"))?;
+        if profile_id.is_empty() {
+            return Err("runtime profile id must not be empty".to_string());
+        }
+        let profile_version = version
+            .parse::<u32>()
+            .map_err(|_| format!("runtime profile `{value}` has an invalid version"))?;
+        Ok(Self::new(profile_id, profile_version))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -711,10 +724,20 @@ pub const fn default_server_capability_option() -> Option<ServerCapability> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerProcessMetadata {
     pub pid: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_token: Option<String>,
     pub launch_mode: LaunchMode,
     pub started_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bound_port: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServerProcessIdentityStatus {
+    Matching,
+    Stopped,
+    Mismatch { description: String },
+    Unavailable { description: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
