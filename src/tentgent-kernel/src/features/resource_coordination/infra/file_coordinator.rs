@@ -6,7 +6,7 @@ use std::{
     time::Instant,
 };
 
-use fs2::FileExt;
+use fs2::{lock_contended_error, FileExt};
 
 use crate::{
     features::resource_coordination::{
@@ -139,7 +139,7 @@ fn try_acquire_set(
                 provisional.metadata_path = Some(metadata_path);
                 held.push(provisional);
             }
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {
+            Err(error) if is_lock_contended(&error) => {
                 drop(held);
                 return Ok(Err(key.clone()));
             }
@@ -147,6 +147,15 @@ fn try_acquire_set(
         }
     }
     Ok(Ok(FileCoordinationLease { _held: held }))
+}
+
+pub(super) fn is_lock_contended(error: &std::io::Error) -> bool {
+    let expected = lock_contended_error();
+    error.kind() == ErrorKind::WouldBlock
+        || matches!(
+            (error.raw_os_error(), expected.raw_os_error()),
+            (Some(actual), Some(expected)) if actual == expected
+        )
 }
 
 struct HeldLock {

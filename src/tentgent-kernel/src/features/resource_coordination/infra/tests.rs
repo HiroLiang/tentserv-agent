@@ -16,6 +16,16 @@ use crate::{
 use super::FileResourceCoordinator;
 
 #[test]
+fn fs2_lock_contention_is_classified_as_busy() {
+    assert!(super::file_coordinator::is_lock_contended(
+        &fs2::lock_contended_error()
+    ));
+    assert!(!super::file_coordinator::is_lock_contended(
+        &std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied")
+    ));
+}
+
+#[test]
 fn coordination_codes_keep_compatible_serialized_values() {
     assert_eq!(
         serde_json::to_string(&ResourceCoordinationCode::ResourceBusy).unwrap(),
