@@ -1,9 +1,9 @@
 # Cluster Runtime Ownership Remediation
 
-Status: findings `R1`-`R20` are implemented and pass the final local
-verification matrix for GitHub issue `#118` on
-`feature/118-cluster-runtime-ownership`. Native Windows CI rerun remains
-pending. Parent `#113` closeout is blocked.
+Status: complete. Findings `R1`-`R20` pass the final local verification matrix
+and native Windows workflow for GitHub issue `#118` on
+`feature/118-cluster-runtime-ownership`. Parent `#113` closeout may begin after
+PR `#123` merges.
 
 Parent records:
 
@@ -21,8 +21,8 @@ gates, or a general scheduler.
 The first audit found lifecycle and transition races that the earlier green
 test suite did not exercise. The second closeout audit confirmed that behavior
 but found remaining module, injection, CLI projection, watcher verification,
-and planning-alignment gaps. This document remains active until both finding
-groups and the native Windows gate are closed.
+and planning-alignment gaps. Both finding groups and the native Windows gate
+are now closed.
 
 ## Verified Baseline
 
@@ -53,7 +53,7 @@ post-spawn cleanup, cross-process mutation drift, or Windows record replacement.
 | `R3` | P1 | remediated; real-listener test passes | Cluster shutdown stops polling the Axum server before waiting for leases, preventing active handlers and bodies from making progress during drain. | Stop admission while continuing to poll existing connections for up to the bounded drain deadline. |
 | `R4` | P1 | remediated; focused tests pass | Model capability and adapter mutation operations are derived before lock acquisition, but the post-lock state may imply a different operation or key set. | Re-derive and compare the operation under the acquired permit; release and retry when the protected key set changed. |
 | `R5` | P1 | remediated; focused tests pass | LoRA plan/run creation locks preflight dependencies but does not revalidate every model, dataset, and resume-adapter dependency after locking. | Persist or start only from one stable, post-lock dependency snapshot. |
-| `R6` | P1 | implemented; cross-check passes; native Windows CI pending | Ownership and daemon metadata replacement relies on `std::fs::rename` replacing an existing destination, which is not a supported Windows update contract. | Use one platform-aware local-filesystem atomic replacement boundary and verify repeated updates on Windows. |
+| `R6` | P1 | remediated; native Windows CI passes | Ownership and daemon metadata replacement relies on `std::fs::rename` replacing an existing destination, which is not a supported Windows update contract. | Use one platform-aware local-filesystem atomic replacement boundary and verify repeated updates on Windows. |
 | `R7` | P2 | remediated; local tests pass | A partially acquired lock set releases OS locks but leaves holder metadata behind; retry delay is bounded but deterministic across contenders. | Make provisional lock cleanup RAII-complete and derive real bounded jitter from per-operation entropy. |
 | `R8` | P2 | remediated; kernel/CLI/REST tests pass | Cluster and server inspect return a global ownership count instead of focused safe claims and generations for the inspected resource. | Add kernel-owned scoped inspection and additive safe CLI/REST detail while doctor remains global and compact. |
 | `R9` | P2 | implemented; local verification passes | `tentgent-platform-fs/src/lib.rs` and `resource_guard/validators/mod.rs` contain implementation logic, while `model_daemon/supervisor.rs` exceeds the mandatory source-file split threshold. | Restore composition-only `lib.rs`/`mod.rs` files and split supervisor tests and focused helpers without changing behavior. |
@@ -65,9 +65,9 @@ post-spawn cleanup, cross-process mutation drift, or Windows record replacement.
 | `R15` | P1 | remediated; Python regression and real smoke pass | Rust route validation honors a separate `TENTGENT_DATA_ROOT`, but a spawned Python worker previously resolved managed models from the control home and failed after successful cluster validation. | Propagate the resolved data root to every spawned worker and make Python managed-model lookup honor it without changing the default home-equals-data-root layout. |
 | `R16` | P1 | remediated; lock regression and real stop pass | Cluster stop holds the server transition lock while waiting for the proxy, but route-claim release previously requested the same server key and could leave all claims stale after an otherwise clean stop. | Keep full dependency locks on claim creation, but let retire/release lock only maintenance plus the claim being removed so shutdown can drain and release claims without weakening reference creation. |
 | `R17` | P2 | remediated; busy-release regression and real smoke pass | A hot-reload or drain release that returned `resource-busy` could still remove its in-process route entry, leaving the durable claim without a retry owner until manual reconciliation. | Remove in-process route state only after durable release succeeds; retain busy claims for bounded drain retry or later stop/reconciliation. |
-| `R18` | P1 | remediated; Rust 1.81 local matrix passes; native Windows rerun pending | PR `#123` native Windows verification stopped before running ownership tests because the committed dependency graph had drifted beyond the workspace's declared Rust 1.81 minimum. The CLI also used `Option::is_none_or`, which was not stable in Rust 1.81. | Lock direct and transitive dependencies to Rust 1.81-compatible releases, use an equivalent stable CLI expression, and verify the full workspace plus the Windows filesystem adapter with Rust 1.81 before rerunning native Windows CI. |
-| `R19` | P1 | remediated; deep-path regressions and Windows cross-check pass; native Windows rerun pending | After `R18`, native Windows coordination tests reached holder metadata writes but failed because the atomic replacement temporary path exceeded the legacy 260-character limit. Rust filesystem calls created the path, while the direct `MoveFileExW` boundary received a non-extended path and returned error 3. | Convert local Windows replacement inputs to absolute extended-length paths, preserve UNC handling, reject device paths, and exercise atomic replacement plus coordination with native paths longer than 260 UTF-16 code units. |
-| `R20` | P1 | remediated; focused local regression passes; native Windows rerun pending | After `R19`, native Windows reached real lock contention but `fs2` returned `ERROR_LOCK_VIOLATION` as OS error 33, which Rust 1.81 did not classify as `WouldBlock`. The coordinator therefore reported an infrastructure failure instead of the expected typed busy result. | Classify contention using the platform-native error returned by `fs2::lock_contended_error()` with a standard `WouldBlock` fallback, and reject unrelated I/O errors from that path. |
+| `R18` | P1 | remediated; Rust 1.81 local and native Windows matrices pass | PR `#123` native Windows verification stopped before running ownership tests because the committed dependency graph had drifted beyond the workspace's declared Rust 1.81 minimum. The CLI also used `Option::is_none_or`, which was not stable in Rust 1.81. | Lock direct and transitive dependencies to Rust 1.81-compatible releases, use an equivalent stable CLI expression, and verify the full workspace plus the Windows filesystem adapter with Rust 1.81 before rerunning native Windows CI. |
+| `R19` | P1 | remediated; deep-path regressions and native Windows CI pass | After `R18`, native Windows coordination tests reached holder metadata writes but failed because the atomic replacement temporary path exceeded the legacy 260-character limit. Rust filesystem calls created the path, while the direct `MoveFileExW` boundary received a non-extended path and returned error 3. | Convert local Windows replacement inputs to absolute extended-length paths, preserve UNC handling, reject device paths, and exercise atomic replacement plus coordination with native paths longer than 260 UTF-16 code units. |
+| `R20` | P1 | remediated; focused and native Windows regressions pass | After `R19`, native Windows reached real lock contention but `fs2` returned `ERROR_LOCK_VIOLATION` as OS error 33, which Rust 1.81 did not classify as `WouldBlock`. The coordinator therefore reported an infrastructure failure instead of the expected typed busy result. | Classify contention using the platform-native error returned by `fs2::lock_contended_error()` with a standard `WouldBlock` fallback, and reject unrelated I/O errors from that path. |
 
 Decision `27` is clarified as follows: LoRA plan/run `model_ref` is a
 model-deletion dependency because current LoRA records do not persist a
@@ -396,9 +396,10 @@ The final local verification matrix passes:
   that pre-existing probe baseline.
 
 All remediation findings pass the final local behavior, structure, and Rust
-1.81 compatibility matrix. The native Windows workflow rerun remains the final
-closeout gate. This document and `#118` must not be marked complete before it
-passes.
+1.81 compatibility matrix. Native Windows workflow run `29673526894` also
+passes repeated atomic replacement, resource coordination, runtime ownership,
+and model-runtime process ownership. The `#118` implementation is complete;
+parent `#113` closeout follows PR `#123` merge.
 
 ## Completion Gates
 
@@ -418,7 +419,7 @@ passes.
 - [x] `cargo test --workspace` and all Python runtime tests pass.
 - [x] Real cluster streaming and stop tests prove lease and drain lifetime.
 - [x] Cross-process guard tests prove operation/key-set stabilization.
-- [ ] Windows repeated atomic replacement is verified on a native Windows
+- [x] Windows repeated atomic replacement is verified on a native Windows
   runner or host.
 - [x] Cluster/server inspect show only scoped safe ownership details; doctor
   stays compact.

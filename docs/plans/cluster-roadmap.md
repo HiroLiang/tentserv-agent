@@ -1,10 +1,9 @@
 # Cluster Roadmap
 
-Status: final slice `#118`, including remediation findings `R1`-`R20`, is
-implemented and passes the local full-suite and Rust 1.81 verification
-matrices. Native Windows CI rerun remains pending under
-[v1.x-roadmap.md](./v1.x-roadmap.md), so parent tracking issue `#113` closeout
-and archival remain blocked.
+Status: selected slices `#114`-`#118` are complete. Final slice `#118`,
+including remediation findings `R1`-`R20`, passes the local full-suite, Rust
+1.81, and native Windows verification matrices. Parent tracking issue `#113`
+may begin combined closeout after PR `#123` merges.
 
 This plan keeps the selected `v1.1.0` cluster slices aligned while leaving
 later cluster-related candidates visible without turning every related
@@ -35,12 +34,10 @@ inspectable before Tentgent adds multi-route serving behavior.
 | `#115` | Cluster definition and validation | completed |
 | `#116` | Route readiness and diagnostics | completed |
 | `#117` | Native local cluster routing MVP | completed |
-| `#118` | Runtime ownership and shutdown safety | all remediation and tracking alignment pass; Windows CI rerun pending |
+| `#118` | Runtime ownership and shutdown safety | completed; local, Rust 1.81, and native Windows gates pass |
 
-The next action is to pass the remaining verification gates in
-[cluster-runtime-ownership-remediation.md](./cluster-runtime-ownership-remediation.md),
-then repeat the combined cluster MVP review. Parent `#113` closeout and plan
-archival must not begin before those completion gates pass. No sixth cluster
+The next action after PR `#123` merges is the combined cluster MVP review under
+parent `#113`, followed by closeout and plan archival. No sixth cluster
 implementation slice is implied by this remediation.
 
 ## Candidate Groups

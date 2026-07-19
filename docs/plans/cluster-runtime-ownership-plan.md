@@ -1,9 +1,9 @@
 # Cluster Runtime Ownership And Resource Guard Plan
 
-Status: findings `R1`-`R20` are implemented and pass the local full-suite and
-Rust 1.81 verification matrices for GitHub issue `#118` on
-`feature/118-cluster-runtime-ownership`. Native Windows CI rerun remains
-pending, so parent `#113` closeout is blocked.
+Status: complete. Findings `R1`-`R20` pass the local full-suite, Rust 1.81, and
+native Windows verification matrices for GitHub issue `#118` on
+`feature/118-cluster-runtime-ownership`. Parent `#113` closeout may begin after
+PR `#123` merges.
 
 Parent plans:
 
@@ -29,7 +29,7 @@ Related contracts:
 This document records the approved design and decision register for the final
 selected `v1.1.0` cluster slice. Decisions `1`-`41` are confirmed. A July 16,
 2026 audit found incomplete lifecycle and transition behavior; its remediation
-is implemented and awaits the final verification gates.
+is implemented and has passed the final verification gates.
 
 ## Objective
 
@@ -66,7 +66,7 @@ full Rust workspace test suite passed after the first remediation. A later
 closeout audit found module, injection, CLI projection, watcher verification,
 planning-alignment, and unused-operation gaps that the behavior matrix did not
 reject. Those changes are implemented and pass the final local matrix. The
-remaining external gates are recorded in
+completed external-gate evidence is recorded in
 [cluster-runtime-ownership-remediation.md](./cluster-runtime-ownership-remediation.md).
 
 ## Pre-Implementation Baseline
