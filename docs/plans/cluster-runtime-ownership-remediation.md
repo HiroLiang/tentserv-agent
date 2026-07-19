@@ -1,6 +1,6 @@
 # Cluster Runtime Ownership Remediation
 
-Status: findings `R1`-`R18` are implemented and pass the final local
+Status: findings `R1`-`R19` are implemented and pass the final local
 verification matrix for GitHub issue `#118` on
 `feature/118-cluster-runtime-ownership`. Native Windows CI rerun remains
 pending. Parent `#113` closeout is blocked.
@@ -66,6 +66,7 @@ post-spawn cleanup, cross-process mutation drift, or Windows record replacement.
 | `R16` | P1 | remediated; lock regression and real stop pass | Cluster stop holds the server transition lock while waiting for the proxy, but route-claim release previously requested the same server key and could leave all claims stale after an otherwise clean stop. | Keep full dependency locks on claim creation, but let retire/release lock only maintenance plus the claim being removed so shutdown can drain and release claims without weakening reference creation. |
 | `R17` | P2 | remediated; busy-release regression and real smoke pass | A hot-reload or drain release that returned `resource-busy` could still remove its in-process route entry, leaving the durable claim without a retry owner until manual reconciliation. | Remove in-process route state only after durable release succeeds; retain busy claims for bounded drain retry or later stop/reconciliation. |
 | `R18` | P1 | remediated; Rust 1.81 local matrix passes; native Windows rerun pending | PR `#123` native Windows verification stopped before running ownership tests because the committed dependency graph had drifted beyond the workspace's declared Rust 1.81 minimum. The CLI also used `Option::is_none_or`, which was not stable in Rust 1.81. | Lock direct and transitive dependencies to Rust 1.81-compatible releases, use an equivalent stable CLI expression, and verify the full workspace plus the Windows filesystem adapter with Rust 1.81 before rerunning native Windows CI. |
+| `R19` | P1 | remediated; deep-path regressions and Windows cross-check pass; native Windows rerun pending | After `R18`, native Windows coordination tests reached holder metadata writes but failed because the atomic replacement temporary path exceeded the legacy 260-character limit. Rust filesystem calls created the path, while the direct `MoveFileExW` boundary received a non-extended path and returned error 3. | Convert local Windows replacement inputs to absolute extended-length paths, preserve UNC handling, reject device paths, and exercise atomic replacement plus coordination with native paths longer than 260 UTF-16 code units. |
 
 Decision `27` is clarified as follows: LoRA plan/run `model_ref` is a
 model-deletion dependency because current LoRA records do not persist a
@@ -363,6 +364,10 @@ logging.
   direct dependency bounds prevent known edition-2024 drift, the lockfile pins
   compatible transitive releases, and CLI optional filters use an equivalent
   Rust 1.81 expression.
+- Windows atomic replacement converts local drive and UNC inputs to absolute
+  extended-length paths before `MoveFileExW`. Focused platform and kernel
+  regressions exercise source and destination paths beyond 260 UTF-16 code
+  units without shortening holder identities or changing coordination layout.
 
 The final local verification matrix passes:
 
@@ -403,6 +408,8 @@ passes.
   focused regressions plus a real five-route local smoke.
 - [x] MSRV finding `R18` is remediated and the full workspace compiles and
   tests with Rust 1.81 locally.
+- [x] Windows deep-path finding `R19` is remediated, covered by focused
+  regressions, and compiles for `x86_64-pc-windows-msvc`.
 - [x] Existing direct local/cloud server and one-shot runtime behavior remains
   unchanged under the workspace suite.
 - [x] `cargo test --workspace` and all Python runtime tests pass.

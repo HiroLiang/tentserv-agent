@@ -1,6 +1,6 @@
 # Cluster Roadmap
 
-Status: final slice `#118`, including remediation findings `R1`-`R18`, is
+Status: final slice `#118`, including remediation findings `R1`-`R19`, is
 implemented and passes the local full-suite and Rust 1.81 verification
 matrices. Native Windows CI rerun remains pending under
 [v1.x-roadmap.md](./v1.x-roadmap.md), so parent tracking issue `#113` closeout

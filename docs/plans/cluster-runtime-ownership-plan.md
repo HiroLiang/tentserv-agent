@@ -1,6 +1,6 @@
 # Cluster Runtime Ownership And Resource Guard Plan
 
-Status: findings `R1`-`R18` are implemented and pass the local full-suite and
+Status: findings `R1`-`R19` are implemented and pass the local full-suite and
 Rust 1.81 verification matrices for GitHub issue `#118` on
 `feature/118-cluster-runtime-ownership`. Native Windows CI rerun remains
 pending, so parent `#113` closeout is blocked.

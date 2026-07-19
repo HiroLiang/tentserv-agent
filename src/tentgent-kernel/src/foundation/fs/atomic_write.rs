@@ -87,4 +87,31 @@ mod tests {
         assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
         let _ = fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn atomic_write_supports_paths_beyond_the_legacy_windows_limit() {
+        let root = std::env::temp_dir().join(format!(
+            "tentgent-atomic-write-long-path-{}-{}",
+            std::process::id(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        let deep = root
+            .join(format!("segment-a-{}", "a".repeat(72)))
+            .join(format!("segment-b-{}", "b".repeat(72)))
+            .join(format!("segment-c-{}", "c".repeat(72)));
+        let path = deep.join("state.toml");
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+
+            assert!(path.as_os_str().encode_wide().count() > 260);
+        }
+
+        atomic_write(&path, b"state = 'starting'\n").unwrap();
+        atomic_write(&path, b"state = 'ready'\n").unwrap();
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), "state = 'ready'\n");
+        assert_eq!(fs::read_dir(&deep).unwrap().count(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
 }
