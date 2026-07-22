@@ -2,9 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::features::cluster::ports::{
-    ClusterCatalogStore, ClusterServerReferenceProbe, ClusterStoreLayoutInitializer,
-};
+use crate::features::cluster::ports::{ClusterCatalogStore, ClusterStoreLayoutInitializer};
 use crate::features::model::ports::ModelCatalogStore;
 use crate::features::resource_guard::{
     ResourceGuardUseCase, ResourceMutationAuthorization, ResourceMutationOutcome,
@@ -39,30 +37,11 @@ impl<'a> StdClusterUseCase<'a> {
         catalog: &'a dyn ClusterCatalogStore,
         model_catalog: &'a dyn ModelCatalogStore,
     ) -> Self {
-        static SERVER_REFS: crate::features::cluster::infra::FileClusterServerReferenceProbe =
-            crate::features::cluster::infra::FileClusterServerReferenceProbe;
-        Self::new_with_server_refs(
-            layout_resolver,
-            layout_initializer,
-            catalog,
-            model_catalog,
-            &SERVER_REFS,
-        )
-    }
-
-    pub fn new_with_server_refs(
-        layout_resolver: &'a dyn RuntimeLayoutResolver,
-        layout_initializer: &'a dyn ClusterStoreLayoutInitializer,
-        catalog: &'a dyn ClusterCatalogStore,
-        model_catalog: &'a dyn ModelCatalogStore,
-        _server_refs: &'a dyn ClusterServerReferenceProbe,
-    ) -> Self {
         Self::new_with_dependencies(
             layout_resolver,
             layout_initializer,
             catalog,
             model_catalog,
-            _server_refs,
             Arc::new(StdResourceGuard::default()),
         )
     }
@@ -72,7 +51,6 @@ impl<'a> StdClusterUseCase<'a> {
         layout_initializer: &'a dyn ClusterStoreLayoutInitializer,
         catalog: &'a dyn ClusterCatalogStore,
         model_catalog: &'a dyn ModelCatalogStore,
-        _server_refs: &'a dyn ClusterServerReferenceProbe,
         guard: Arc<dyn ResourceGuardUseCase>,
     ) -> Self {
         Self {

@@ -523,7 +523,7 @@ fn render_append_outcome(outcome: &SessionAppendOutcome) {
     for appended in &outcome.appended {
         table.add_row(vec![
             Cell::new(appended.index),
-            Cell::new(&appended.role),
+            Cell::new(appended.role),
             Cell::new(&appended.created_at),
         ]);
     }

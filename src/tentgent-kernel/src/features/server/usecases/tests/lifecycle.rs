@@ -1,0 +1,895 @@
+use super::*;
+
+#[test]
+fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
+    let fixture = Fixture::new("cloud");
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let first = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: "claude:claude-3-5-sonnet-latest".to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
+            host: Some("127.0.0.1".to_string()),
+            port: Some(8780),
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect("prepare cloud server");
+    assert!(first.outcome.created);
+    assert_eq!(
+        first.outcome.inspection.spec.provider,
+        Some(CloudProvider::Anthropic)
+    );
+    assert_eq!(
+        first.outcome.inspection.spec.capability,
+        Some(ServerCapability::Chat)
+    );
+    assert!(first.outcome.inspection.spec.runtime_profile.is_none());
+
+    let reused = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: "anthropic:claude-3-5-sonnet-latest".to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
+            host: Some("127.0.0.1".to_string()),
+            port: Some(8780),
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect("reuse cloud server");
+    assert!(!reused.outcome.created);
+    assert_eq!(
+        first.outcome.inspection.spec.server_ref,
+        reused.outcome.inspection.spec.server_ref
+    );
+
+    let embedding = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: "gemini:text-embedding-004".to_string(),
+                capability: Some(ServerCapability::Embedding),
+            },
+            host: Some("127.0.0.1".to_string()),
+            port: Some(8781),
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect("prepare cloud embedding server");
+    assert!(embedding.outcome.created);
+    assert_eq!(
+        embedding.outcome.inspection.spec.provider,
+        Some(CloudProvider::Gemini)
+    );
+    assert_eq!(
+        embedding.outcome.inspection.spec.capability,
+        Some(ServerCapability::Embedding)
+    );
+    assert!(embedding.outcome.inspection.spec.runtime_profile.is_none());
+
+    let listed = servers
+        .list_servers(ServerListRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            running_only: false,
+        })
+        .expect("list servers");
+    assert_eq!(listed.servers.len(), 2);
+
+    let selector = ServerRefSelector::parse(first.outcome.inspection.spec.short_ref.clone())
+        .expect("selector");
+    let removed = servers
+        .remove_server(ServerRemoveRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            selector,
+        })
+        .expect("remove cloud server");
+    assert!(!removed.outcome.inspection.server_dir.exists());
+}
+
+#[test]
+fn standard_server_usecase_prepares_cluster_specs_with_stable_identity() {
+    let fixture = Fixture::new("cluster");
+    fixture.write_model_capabilities(vec![ModelCapability::Chat]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let cluster_catalog = FileClusterCatalogStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let layout = layout_resolver
+        .resolve(fixture.layout_input(LayoutResolveMode::Create))
+        .expect("layout");
+    let cluster_ref = ClusterRef::parse("local-assistant").expect("cluster ref");
+    let cluster_store = ClusterStoreLayout::from_home_dir(layout.home_dir.clone());
+    cluster_catalog
+        .save_cluster(
+            &cluster_store,
+            &cluster_definition(cluster_ref.clone(), fixture.model_ref.clone(), false),
+        )
+        .expect("save cluster");
+    let servers = StdServerUseCase::new_with_cluster_catalog(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &cluster_catalog,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let first = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::Cluster {
+                cluster_ref: cluster_ref.clone(),
+            },
+            host: None,
+            port: Some(8798),
+            lazy_load: true,
+            idle_seconds: Some(30),
+            allow_unverified: true,
+        })
+        .expect("prepare cluster server");
+    assert_eq!(
+        first.outcome.inspection.spec.runtime_kind,
+        ServerRuntimeKind::Cluster
+    );
+    assert_eq!(first.outcome.inspection.spec.capability, None);
+    assert_eq!(
+        first.outcome.inspection.spec.cluster_ref.as_ref(),
+        Some(&cluster_ref)
+    );
+
+    cluster_catalog
+        .save_cluster(
+            &cluster_store,
+            &cluster_definition(cluster_ref.clone(), fixture.model_ref.clone(), true),
+        )
+        .expect("replace cluster");
+    let reused = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::Cluster { cluster_ref },
+            host: None,
+            port: Some(8798),
+            lazy_load: true,
+            idle_seconds: Some(30),
+            allow_unverified: true,
+        })
+        .expect("reuse cluster server after definition update");
+    assert!(!reused.outcome.created);
+    assert_eq!(
+        first.outcome.inspection.spec.server_ref,
+        reused.outcome.inspection.spec.server_ref
+    );
+}
+
+#[test]
+fn standard_server_usecase_rejects_cloud_capabilities_not_supported_by_provider() {
+    let fixture = Fixture::new("cloud-unsupported-capability");
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let err = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: "anthropic:claude-3-5-sonnet-latest".to_string(),
+                capability: Some(ServerCapability::Embedding),
+            },
+            host: None,
+            port: None,
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect_err("anthropic embedding server should be rejected");
+
+    let message = err.to_string();
+    assert!(message.contains("cloud provider `anthropic`"));
+    assert!(message.contains("server capability `embedding`"));
+    assert!(message.contains("[chat, vision-chat]"));
+}
+
+#[test]
+fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
+    let fixture = Fixture::new("local");
+    fixture.write_chat_model();
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: true });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let prepared = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
+            host: None,
+            port: Some(8781),
+            lazy_load: true,
+            idle_seconds: Some(30),
+            allow_unverified: true,
+        })
+        .expect("prepare local server");
+    assert!(prepared.outcome.created);
+    assert_eq!(
+        prepared.outcome.inspection.spec.model_ref.as_ref(),
+        Some(&fixture.model_ref)
+    );
+    assert_eq!(
+        prepared
+            .outcome
+            .inspection
+            .spec
+            .runtime_profile
+            .as_ref()
+            .map(|profile| profile.label())
+            .as_deref(),
+        Some("local-chat-transformers-peft-v1")
+    );
+
+    let selector = ServerRefSelector::parse(prepared.outcome.inspection.spec.short_ref.clone())
+        .expect("selector");
+    let startable = servers
+        .resolve_for_start(ServerResolveForStartRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            selector: selector.clone(),
+            allow_unverified: true,
+        })
+        .expect("resolve for start");
+    assert!(!startable.inspection.running);
+
+    let recorded = servers
+        .record_process_start(ServerRecordProcessStartRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            server_ref: prepared.outcome.inspection.spec.server_ref.clone(),
+            pid: 42,
+            process_token: None,
+            bound_port: 8781,
+            launch_mode: LaunchMode::Background,
+        })
+        .expect("record process start");
+    assert!(recorded.inspection.running);
+    assert_eq!(recorded.inspection.process.expect("process").pid, 42);
+
+    let stopped = servers
+        .stop_server(ServerStopRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            selector: selector.clone(),
+        })
+        .expect("stop server");
+    assert_eq!(stopped.outcome.stopped_pid, 42);
+    assert!(!stopped.outcome.inspection.running);
+    assert!(stopped.outcome.inspection.process.is_none());
+
+    let inspected = servers
+        .inspect_server(ServerInspectRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            selector: selector.clone(),
+        })
+        .expect("inspect stopped");
+    assert!(!inspected.inspection.running);
+
+    servers
+        .remove_server(ServerRemoveRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            selector,
+        })
+        .expect("remove local server");
+}
+
+#[test]
+fn standard_server_usecase_uses_auto_default_port_when_port_is_omitted() {
+    let fixture = Fixture::new("local-default-port");
+    fixture.write_chat_model();
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let prepared = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Chat),
+            },
+            host: None,
+            port: None,
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect("prepare local server");
+
+    assert_eq!(prepared.outcome.inspection.spec.port, 8780);
+    assert!(prepared.outcome.inspection.spec.port_auto);
+}
+
+#[test]
+fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
+    for (label, capability) in [
+        ("embedding", ModelCapability::Embedding),
+        ("rerank", ModelCapability::Rerank),
+        ("audio-transcription", ModelCapability::AudioTranscription),
+        ("vision-chat", ModelCapability::VisionChat),
+    ] {
+        let fixture = Fixture::new(label);
+        fixture.write_model_capabilities(vec![capability]);
+        let layout_resolver = StdRuntimeLayoutResolver;
+        let initializer = StdServerStoreLayoutInitializer;
+        let model_catalog = FileModelCatalogStore;
+        let model_proofs = FileModelCapabilityProofStore;
+        let identity = StdServerIdentityGenerator;
+        let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+        let controller = StaticProcessController;
+        let clock = StaticClock;
+        let servers = StdServerUseCase::new(
+            &layout_resolver,
+            &initializer,
+            &model_catalog,
+            &model_proofs,
+            &identity,
+            &catalog,
+            &controller,
+            &clock,
+        );
+
+        let err = servers
+            .prepare_server(ServerPrepareRequest {
+                layout: fixture.layout_input(LayoutResolveMode::Create),
+                target: ServerPrepareTarget::RuntimeRef {
+                    runtime_ref: fixture.model_ref.short_ref().to_string(),
+                    capability: Some(ServerCapability::Chat),
+                },
+                host: None,
+                port: Some(8781),
+                lazy_load: false,
+                idle_seconds: None,
+                allow_unverified: true,
+            })
+            .expect_err("non-chat model should not prepare a chat server");
+
+        let message = err.to_string();
+        assert!(message.contains("server capability `chat`"));
+        assert!(message.contains("requires model capability `chat`"));
+        assert!(message.contains(capability.as_str()));
+    }
+}
+
+#[test]
+fn standard_server_usecase_infers_capability_from_local_model_metadata() {
+    let fixture = Fixture::new("inferred-vision");
+    fixture.write_model_format_capabilities(
+        ModelFormat::Safetensors,
+        vec![
+            ModelCapability::Chat,
+            ModelCapability::VisionChat,
+            ModelCapability::VideoUnderstanding,
+        ],
+    );
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let prepared = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: None,
+            },
+            host: None,
+            port: Some(8781),
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect("prepare inferred server");
+
+    assert_eq!(
+        prepared.outcome.inspection.spec.capability,
+        Some(ServerCapability::VideoUnderstanding)
+    );
+}
+
+#[test]
+fn standard_server_usecase_rejects_embedding_stored_specs_without_runtime_profile() {
+    let fixture = Fixture::new("stored-embedding");
+    fixture.write_model_capabilities(vec![ModelCapability::Embedding]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+    let layout = StdRuntimeLayoutResolver
+        .resolve(fixture.layout_input(LayoutResolveMode::Create))
+        .expect("layout");
+    let server_store =
+        crate::features::server::domain::ServerStoreLayout::from_home_and_servers_dir(
+            layout.home_dir.clone(),
+            layout.servers_dir.clone(),
+        );
+    StdServerStoreLayoutInitializer
+        .ensure_server_store_layout(&server_store)
+        .expect("server layout");
+    let server_ref =
+        ServerRef::parse("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+            .expect("server ref");
+    FileServerCatalogStore::new(StaticProcessProbe { running: false })
+        .save_server_spec(
+            &server_store,
+            &ServerSpec {
+                server_ref: server_ref.clone(),
+                short_ref: server_ref.short_ref().to_string(),
+                runtime_kind: ServerRuntimeKind::Local,
+                capability: Some(ServerCapability::Embedding),
+                model_ref: Some(fixture.model_ref.clone()),
+                provider: None,
+                provider_model: None,
+                cluster_ref: None,
+                runtime_profile: None,
+                host: "127.0.0.1".to_string(),
+                port: 8781,
+                port_auto: false,
+                lazy_load: false,
+                idle_seconds: None,
+                created_at: "2026-05-17T00:00:00Z".to_string(),
+            },
+        )
+        .expect("save server spec");
+
+    let err = servers
+        .resolve_for_start(ServerResolveForStartRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            selector: ServerRefSelector::parse(server_ref.short_ref()).expect("selector"),
+            allow_unverified: true,
+        })
+        .expect_err("embedding server without profile should fail");
+
+    let message = err.to_string();
+    assert!(message.contains("requires a runtime profile"));
+    assert!(message.contains("embedding"));
+}
+
+#[test]
+fn standard_server_usecase_prepares_embedding_specs() {
+    let fixture = Fixture::new("embedding");
+    fixture.write_model_capabilities(vec![ModelCapability::Embedding]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let prepared = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Embedding),
+            },
+            host: None,
+            port: Some(8781),
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect("prepare embedding server");
+
+    assert!(prepared.outcome.created);
+    assert_eq!(
+        prepared.outcome.inspection.spec.capability,
+        Some(ServerCapability::Embedding)
+    );
+    assert_eq!(
+        prepared.outcome.inspection.spec.model_ref.as_ref(),
+        Some(&fixture.model_ref)
+    );
+    assert_eq!(
+        prepared
+            .outcome
+            .inspection
+            .spec
+            .runtime_profile
+            .as_ref()
+            .map(|profile| profile.label())
+            .as_deref(),
+        Some("local-embedding-transformers-peft-v1")
+    );
+}
+
+#[test]
+fn standard_server_usecase_rejects_mlx_embedding_specs_without_profile() {
+    let fixture = Fixture::new("embedding-mlx");
+    fixture.write_model_format_capabilities(ModelFormat::Mlx, vec![ModelCapability::Embedding]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let err = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Embedding),
+            },
+            host: None,
+            port: Some(8781),
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect_err("mlx embedding server has no runtime profile yet");
+
+    let message = err.to_string();
+    assert!(message.contains("embedding"));
+    assert!(message.contains("backend `mlx`"));
+    assert!(message.contains("does not have a runtime profile"));
+}
+
+#[test]
+fn standard_server_usecase_prepares_rerank_specs() {
+    let fixture = Fixture::new("rerank");
+    fixture.write_model_capabilities(vec![ModelCapability::Rerank]);
+    let layout_resolver = StdRuntimeLayoutResolver;
+    let initializer = StdServerStoreLayoutInitializer;
+    let model_catalog = FileModelCatalogStore;
+    let model_proofs = FileModelCapabilityProofStore;
+    let identity = StdServerIdentityGenerator;
+    let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+    let controller = StaticProcessController;
+    let clock = StaticClock;
+    let servers = StdServerUseCase::new(
+        &layout_resolver,
+        &initializer,
+        &model_catalog,
+        &model_proofs,
+        &identity,
+        &catalog,
+        &controller,
+        &clock,
+    );
+
+    let prepared = servers
+        .prepare_server(ServerPrepareRequest {
+            layout: fixture.layout_input(LayoutResolveMode::Create),
+            target: ServerPrepareTarget::RuntimeRef {
+                runtime_ref: fixture.model_ref.short_ref().to_string(),
+                capability: Some(ServerCapability::Rerank),
+            },
+            host: None,
+            port: Some(8782),
+            lazy_load: false,
+            idle_seconds: None,
+            allow_unverified: true,
+        })
+        .expect("prepare rerank server");
+
+    assert!(prepared.outcome.created);
+    assert_eq!(
+        prepared.outcome.inspection.spec.capability,
+        Some(ServerCapability::Rerank)
+    );
+    assert_eq!(
+        prepared.outcome.inspection.spec.model_ref.as_ref(),
+        Some(&fixture.model_ref)
+    );
+
+    let selector = ServerRefSelector::parse(prepared.outcome.inspection.spec.short_ref.clone())
+        .expect("selector");
+    let startable = servers
+        .resolve_for_start(ServerResolveForStartRequest {
+            layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+            selector,
+            allow_unverified: true,
+        })
+        .expect("rerank server runtime is implemented");
+    assert_eq!(
+        startable.inspection.spec.capability,
+        Some(ServerCapability::Rerank)
+    );
+}
+
+#[test]
+fn standard_server_usecase_prepares_model_runtime_capability_specs() {
+    for (label, server_capability, model_capability, model_format) in [
+        (
+            "audio-speech",
+            ServerCapability::AudioSpeech,
+            ModelCapability::AudioSpeech,
+            ModelFormat::Safetensors,
+        ),
+        (
+            "audio-transcription",
+            ServerCapability::AudioTranscription,
+            ModelCapability::AudioTranscription,
+            ModelFormat::Mlx,
+        ),
+        (
+            "embedding-gguf",
+            ServerCapability::Embedding,
+            ModelCapability::Embedding,
+            ModelFormat::Gguf,
+        ),
+        (
+            "image-generation",
+            ServerCapability::ImageGeneration,
+            ModelCapability::ImageGeneration,
+            ModelFormat::Diffusers,
+        ),
+        (
+            "video-understanding",
+            ServerCapability::VideoUnderstanding,
+            ModelCapability::VideoUnderstanding,
+            ModelFormat::Safetensors,
+        ),
+        (
+            "vision-chat",
+            ServerCapability::VisionChat,
+            ModelCapability::VisionChat,
+            ModelFormat::Mlx,
+        ),
+    ] {
+        let fixture = Fixture::new(label);
+        fixture.write_model_format_capabilities(model_format, vec![model_capability]);
+        let layout_resolver = StdRuntimeLayoutResolver;
+        let initializer = StdServerStoreLayoutInitializer;
+        let model_catalog = FileModelCatalogStore;
+        let model_proofs = FileModelCapabilityProofStore;
+        let identity = StdServerIdentityGenerator;
+        let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+        let controller = StaticProcessController;
+        let clock = StaticClock;
+        let servers = StdServerUseCase::new(
+            &layout_resolver,
+            &initializer,
+            &model_catalog,
+            &model_proofs,
+            &identity,
+            &catalog,
+            &controller,
+            &clock,
+        );
+
+        let prepared = servers
+            .prepare_server(ServerPrepareRequest {
+                layout: fixture.layout_input(LayoutResolveMode::Create),
+                target: ServerPrepareTarget::RuntimeRef {
+                    runtime_ref: fixture.model_ref.short_ref().to_string(),
+                    capability: Some(server_capability),
+                },
+                host: None,
+                port: Some(8782),
+                lazy_load: false,
+                idle_seconds: None,
+                allow_unverified: true,
+            })
+            .expect("prepare model runtime server");
+
+        assert!(prepared.outcome.created);
+        assert_eq!(
+            prepared.outcome.inspection.spec.capability,
+            Some(server_capability)
+        );
+        if server_capability == ServerCapability::Embedding {
+            assert_eq!(
+                prepared
+                    .outcome
+                    .inspection
+                    .spec
+                    .runtime_profile
+                    .as_ref()
+                    .map(|profile| profile.label())
+                    .as_deref(),
+                Some("local-embedding-llama-cpp-v1")
+            );
+        }
+
+        let selector = ServerRefSelector::parse(prepared.outcome.inspection.spec.short_ref.clone())
+            .expect("selector");
+        let startable = servers
+            .resolve_for_start(ServerResolveForStartRequest {
+                layout: fixture.layout_input(LayoutResolveMode::ReadOnly),
+                selector,
+                allow_unverified: true,
+            })
+            .expect("model runtime server is implemented");
+        assert_eq!(
+            startable.inspection.spec.capability,
+            Some(server_capability)
+        );
+    }
+}
+
+#[test]
+fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
+    for (label, server_capability, model_capability) in [
+        (
+            "rerank-gguf",
+            ServerCapability::Rerank,
+            ModelCapability::Rerank,
+        ),
+        (
+            "image-generation-safetensors",
+            ServerCapability::ImageGeneration,
+            ModelCapability::ImageGeneration,
+        ),
+    ] {
+        let fixture = Fixture::new(label);
+        let format = if server_capability == ServerCapability::ImageGeneration {
+            ModelFormat::Safetensors
+        } else {
+            ModelFormat::Gguf
+        };
+        fixture.write_model_format_capabilities(format, vec![model_capability]);
+        let layout_resolver = StdRuntimeLayoutResolver;
+        let initializer = StdServerStoreLayoutInitializer;
+        let model_catalog = FileModelCatalogStore;
+        let model_proofs = FileModelCapabilityProofStore;
+        let identity = StdServerIdentityGenerator;
+        let catalog = FileServerCatalogStore::new(StaticProcessProbe { running: false });
+        let controller = StaticProcessController;
+        let clock = StaticClock;
+        let servers = StdServerUseCase::new(
+            &layout_resolver,
+            &initializer,
+            &model_catalog,
+            &model_proofs,
+            &identity,
+            &catalog,
+            &controller,
+            &clock,
+        );
+
+        let err = servers
+            .prepare_server(ServerPrepareRequest {
+                layout: fixture.layout_input(LayoutResolveMode::Create),
+                target: ServerPrepareTarget::RuntimeRef {
+                    runtime_ref: fixture.model_ref.short_ref().to_string(),
+                    capability: Some(server_capability),
+                },
+                host: None,
+                port: Some(8782),
+                lazy_load: false,
+                idle_seconds: None,
+                allow_unverified: true,
+            })
+            .expect_err("unsupported non-chat format");
+
+        assert!(err.to_string().contains("does not support"));
+    }
+}

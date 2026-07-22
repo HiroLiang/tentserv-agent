@@ -153,13 +153,13 @@ pub struct AppendSessionMessagesRequest {
 pub enum AppendSessionMessagesResult {
     Appended {
         store: ResolvedSessionStore,
-        outcome: SessionAppendOutcome,
-        clear_compaction: Option<SessionCompactionOutcome>,
+        outcome: Box<SessionAppendOutcome>,
+        clear_compaction: Option<Box<SessionCompactionOutcome>>,
     },
     CompactionRequired {
         store: ResolvedSessionStore,
         session_ref: SessionRef,
-        requirement: SessionSummaryRequirement,
+        requirement: Box<SessionSummaryRequirement>,
     },
 }
 

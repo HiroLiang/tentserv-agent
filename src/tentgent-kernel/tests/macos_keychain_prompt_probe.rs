@@ -35,7 +35,11 @@ const ERR_SEC_MISSING_ENTITLEMENT: i32 = -34018;
 #[test]
 #[ignore = "manual live macOS Keychain prompt probe for #105"]
 fn probe_01_direct_temporary_roundtrip_security_framework() {
-    let account = format!("__tentgent_probe_direct_{}_{}", std::process::id(), unix_nanos());
+    let account = format!(
+        "__tentgent_probe_direct_{}_{}",
+        std::process::id(),
+        unix_nanos()
+    );
     let secret = b"tentgent-keychain-prompt-probe";
 
     cleanup_account(&account);
@@ -286,7 +290,10 @@ fn standard_options(service: &str, account: &str) -> PasswordOptions {
 }
 
 fn item_not_found_or_unavailable(err: SecurityFrameworkError) -> bool {
-    matches!(err.code(), ERR_SEC_ITEM_NOT_FOUND | ERR_SEC_MISSING_ENTITLEMENT)
+    matches!(
+        err.code(),
+        ERR_SEC_ITEM_NOT_FOUND | ERR_SEC_MISSING_ENTITLEMENT
+    )
 }
 
 fn unix_nanos() -> u128 {

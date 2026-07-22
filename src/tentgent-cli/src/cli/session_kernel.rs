@@ -73,14 +73,16 @@ impl CliSessionKernel {
 
     pub(super) fn session_usecase(&self) -> StdSessionUseCase<'_> {
         StdSessionUseCase::new(
-            &self.layout_resolver,
-            &self.session_identity,
-            &self.session_clock,
-            &self.session_locks,
-            &self.session_store,
-            self,
-            self,
-            self,
+            tentgent_kernel::features::session::usecases::SessionUseCaseDependencies {
+                layout_resolver: &self.layout_resolver,
+                identity: &self.session_identity,
+                clock: &self.session_clock,
+                locks: &self.session_locks,
+                store: &self.session_store,
+                server_refs: self,
+                adapter_refs: self,
+                summaries: self,
+            },
         )
     }
 

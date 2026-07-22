@@ -149,7 +149,7 @@ pub trait DaemonLifecycleUseCase {
 /// Use-case boundary for detached daemon startup and readiness checks.
 pub trait DaemonDetachedStartUseCase {
     /// Starts or reuses a detached daemon process and waits for readiness.
-    fn start_daemon_detached<'a>(
+    fn start_daemon_detached(
         &'_ self,
         request: DaemonDetachedStartRequest,
     ) -> DaemonUseCaseFuture<'_, DaemonDetachedStartResult>;

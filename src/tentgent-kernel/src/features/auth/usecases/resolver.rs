@@ -149,11 +149,11 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
                     .env_probe
                     .probe_env_secret(request.provider, AuthEnvLoadPolicy::ProcessOnly)?
                     .map(|secret| secret.into_secret_material());
-                return Ok(AuthSecretResolution {
+                Ok(AuthSecretResolution {
                     provider: request.provider,
                     secret,
                     keychain_read_attempted: false,
-                });
+                })
             }
             AuthSourceMode::File => {
                 let secret = match preference.env_file {
@@ -166,11 +166,11 @@ impl AuthSecretResolverUseCase for StdAuthSecretResolverUseCase<'_> {
                         .map(|secret| secret.into_secret_material()),
                     None => None,
                 };
-                return Ok(AuthSecretResolution {
+                Ok(AuthSecretResolution {
                     provider: request.provider,
                     secret,
                     keychain_read_attempted: false,
-                });
+                })
             }
             AuthSourceMode::Keychain => self.resolve_keychain_secret(request),
             AuthSourceMode::None => Ok(AuthSecretResolution {

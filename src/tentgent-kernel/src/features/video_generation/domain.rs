@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum VideoGenerationOutputFormat {
+    #[default]
     Mp4,
     Webm,
 }
@@ -32,12 +34,6 @@ impl VideoGenerationOutputFormat {
 
     pub fn default_filename(self) -> String {
         format!("video.{}", self.extension())
-    }
-}
-
-impl Default for VideoGenerationOutputFormat {
-    fn default() -> Self {
-        Self::Mp4
     }
 }
 
@@ -294,7 +290,9 @@ impl fmt::Display for VideoGenerationWorkflowKind {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum VideoGenerationInput {
+    #[default]
     TextToVideo,
 }
 
@@ -303,12 +301,6 @@ impl VideoGenerationInput {
         match self {
             Self::TextToVideo => VideoGenerationWorkflowKind::TextToVideo,
         }
-    }
-}
-
-impl Default for VideoGenerationInput {
-    fn default() -> Self {
-        Self::TextToVideo
     }
 }
 

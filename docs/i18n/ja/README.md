@@ -35,6 +35,8 @@ tentgent daemon start --host 127.0.0.1 --port 8790
 - Install と upgrade: [docs/user/install.md](../../../docs/user/install.md)
 - Version notes: [docs/user/version.md](../../../docs/user/version.md)
 - CLI command examples: [docs/user/commands.md](../../../docs/user/commands.md)
+- Cluster definition、inspection、server routing:
+  [docs/user/clusters.md](../../../docs/user/clusters.md)
 - Runtime と diagnostics: [docs/user/runtime.md](../../../docs/user/runtime.md)
 - HTTP API reference: [docs/user/api.md](../../../docs/user/api.md)
 - Provider compatibility:

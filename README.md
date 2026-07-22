@@ -2,12 +2,13 @@
 
 Tentgent is a local AI workflow operator: a Rust CLI plus a local HTTP daemon
 that manages model runtimes, adapters, datasets, LoRA training, chat servers,
-and short-lived working sessions on your machine.
+multi-model Clusters, and short-lived working sessions on your machine.
 
 Use it when you want one local tool to:
 
 - pull and deduplicate local models, adapters, and datasets
 - run one-shot chat or long-lived local chat servers
+- route multiple local model capabilities through one named Cluster server
 - expose local workflows through a loopback HTTP API
 - run local media workflows such as audio transcription, speech synthesis,
   image generation/editing, vision chat, and video understanding
@@ -25,6 +26,7 @@ keychain.
 - Traditional Chinese: [docs/i18n/zh-TW/README.md](./docs/i18n/zh-TW/README.md)
 - Japanese: [docs/i18n/ja/README.md](./docs/i18n/ja/README.md)
 - Full user guide: [docs/user/README.md](./docs/user/README.md)
+- Cluster guide: [docs/user/clusters.md](./docs/user/clusters.md)
 - 1.0 readiness checklist:
   [docs/user/1.0-readiness.md](./docs/user/1.0-readiness.md)
 - HTTP API reference: [docs/user/api.md](./docs/user/api.md)
@@ -71,6 +73,26 @@ Start the daemon when you want HTTP access:
 tentgent daemon start --host 127.0.0.1 --port 8790
 curl -sS http://127.0.0.1:8790/healthz
 ```
+
+## Route Multiple Local Models With A Cluster
+
+A Cluster is one named server definition that assigns chat, embedding,
+rerank, audio transcription, and vision requests to explicit managed models.
+It reuses `tentgent server` lifecycle commands and reports route readiness and
+resource blockers before unsafe changes are made.
+
+```bash
+tentgent cluster validate <cluster-definition.toml>
+tentgent cluster apply <cluster-definition.toml>
+tentgent cluster inspect <cluster-ref>
+tentgent cluster run <cluster-ref> --port <port> --detach
+tentgent server ps
+```
+
+Cluster surfaces are experimental in `v1.1.0`. Provider targets can be stored
+and inspected but are not executed, and missing routes never fall back to a
+different model. See the [Cluster guide](./docs/user/clusters.md) for the TOML
+shape, route map, hot reload policy, ownership recovery, and current limits.
 
 ## Install The Tool
 

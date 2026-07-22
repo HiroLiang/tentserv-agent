@@ -8,7 +8,9 @@ use crate::features::model::domain::{MlxRuntimeFamily, ModelCapability, ModelFor
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum VisionChatOutputFormat {
+    #[default]
     Text,
     Json,
     Md,
@@ -37,12 +39,6 @@ impl VisionChatOutputFormat {
             Self::Json => "application/json",
             Self::Md => "text/markdown",
         }
-    }
-}
-
-impl Default for VisionChatOutputFormat {
-    fn default() -> Self {
-        Self::Text
     }
 }
 

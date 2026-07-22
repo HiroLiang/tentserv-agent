@@ -54,26 +54,28 @@ pub struct StdSessionUseCase<'a> {
     summaries: &'a dyn SessionSummaryGenerator,
 }
 
+pub struct SessionUseCaseDependencies<'a> {
+    pub layout_resolver: &'a dyn RuntimeLayoutResolver,
+    pub identity: &'a dyn SessionIdentityGenerator,
+    pub clock: &'a dyn SessionClock,
+    pub locks: &'a dyn SessionLockManager,
+    pub store: &'a dyn SessionStore,
+    pub server_refs: &'a dyn SessionServerRefResolver,
+    pub adapter_refs: &'a dyn SessionAdapterRefResolver,
+    pub summaries: &'a dyn SessionSummaryGenerator,
+}
+
 impl<'a> StdSessionUseCase<'a> {
-    pub fn new(
-        layout_resolver: &'a dyn RuntimeLayoutResolver,
-        identity: &'a dyn SessionIdentityGenerator,
-        clock: &'a dyn SessionClock,
-        locks: &'a dyn SessionLockManager,
-        store: &'a dyn SessionStore,
-        server_refs: &'a dyn SessionServerRefResolver,
-        adapter_refs: &'a dyn SessionAdapterRefResolver,
-        summaries: &'a dyn SessionSummaryGenerator,
-    ) -> Self {
+    pub fn new(dependencies: SessionUseCaseDependencies<'a>) -> Self {
         Self {
-            layout_resolver,
-            identity,
-            clock,
-            locks,
-            store,
-            server_refs,
-            adapter_refs,
-            summaries,
+            layout_resolver: dependencies.layout_resolver,
+            identity: dependencies.identity,
+            clock: dependencies.clock,
+            locks: dependencies.locks,
+            store: dependencies.store,
+            server_refs: dependencies.server_refs,
+            adapter_refs: dependencies.adapter_refs,
+            summaries: dependencies.summaries,
         }
     }
 
@@ -555,7 +557,7 @@ impl SessionMutationUseCase for StdSessionUseCase<'_> {
                 )?;
                 Ok(AppendSessionMessagesResult::Appended {
                     store: resolved,
-                    outcome,
+                    outcome: Box::new(outcome),
                     clear_compaction: None,
                 })
             }
@@ -570,20 +572,20 @@ impl SessionMutationUseCase for StdSessionUseCase<'_> {
                 )?;
                 Ok(AppendSessionMessagesResult::Appended {
                     store: resolved,
-                    outcome,
-                    clear_compaction,
+                    outcome: Box::new(outcome),
+                    clear_compaction: clear_compaction.map(Box::new),
                 })
             }
             BoundedCompactionAction::Summarize(plan) => {
                 Ok(AppendSessionMessagesResult::CompactionRequired {
                     store: resolved,
                     session_ref: locked.session_ref,
-                    requirement: self.summary_requirement(
+                    requirement: Box::new(self.summary_requirement(
                         &locked.metadata,
                         SessionSummaryInput::PersistedCompaction(compaction_input_from_plan(
                             &plan, None,
                         )?),
-                    ),
+                    )),
                 })
             }
         }

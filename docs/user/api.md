@@ -24,6 +24,35 @@ use this shape:
 }
 ```
 
+Guarded model, capability, adapter, dataset, train-plan, Cluster, and server
+mutations may return HTTP `409` with an additive `blockers` array:
+
+```json
+{
+  "error": "cluster_in_use",
+  "message": "cluster cannot be removed while referenced",
+  "blockers": [
+    {
+      "kind": "server-spec",
+      "code": "cluster-in-use",
+      "reference": "<server-ref>",
+      "reason": "server spec targets this cluster",
+      "resource_ref": "<cluster-ref>",
+      "operation": "delete-cluster",
+      "next_actions": ["tentgent server rm <server-ref>"]
+    }
+  ]
+}
+```
+
+Top-level guard codes include `model_in_use`, `capability_in_use`,
+`adapter_in_use`, `dataset_in_use`, `train_plan_in_use`, `cluster_in_use`, and
+`server_in_use`. Short transition contention returns `resource-busy`; state
+that repeatedly changes during guarded validation returns
+`resource-state-unstable`. Both are retryable HTTP `409` responses. The exact
+fields and ordering rules are defined by
+[resource-blockers.md](../contracts/resource-blockers.md).
+
 Multipart audio/image endpoints use one daemon-wide upload cap for received
 file bytes:
 
@@ -118,6 +147,10 @@ Compatibility adapters route to the same chat execution path and are text-only:
 | `POST` | `/v1/messages` | Claude-style `model`, `messages`, optional `system`, `adapter_ref`, `max_tokens`, `temperature`, `stream`. |
 | `POST` | `/v1beta/models/{model}:generateContent` | Gemini-style `contents`, optional `systemInstruction`, `generationConfig`, `adapter_ref`. |
 | `POST` | `/v1beta/models/{model}:streamGenerateContent?alt=sse` | Gemini-style streaming response. |
+
+The daemon registers these Gemini operations through
+`POST /v1beta/models/{*operation}`. Unknown operation suffixes are rejected;
+the two concrete paths above are the callable public shapes.
 
 Tools, function calling, audio content, and non-text message parts are rejected
 by chat compatibility routes until their corresponding adapters exist. Send
@@ -247,6 +280,10 @@ Response:
 ```
 
 Read status and result:
+
+The result endpoint is
+`GET /v1/video/understanding/job/{job_id}/result` with optional `cursor` and
+`max_chunks` query parameters.
 
 ```bash
 curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
@@ -696,6 +733,10 @@ Response:
 
 Read status and result:
 
+The result endpoint is
+`GET /v1/audio/transcriptions/job/{job_id}/result` with optional `cursor` and
+`max_chunks` query parameters.
+
 ```bash
 curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
 curl -sS \
@@ -799,6 +840,9 @@ Response:
 
 Read status and result:
 
+The result endpoint is `GET /v1/audio/speech/job/{job_id}/result` with optional
+`cursor` and `max_chunks` query parameters.
+
 ```bash
 curl -sS http://127.0.0.1:8790/v1/jobs/<job-id>
 curl -sS \
@@ -866,6 +910,12 @@ daemon's `/v1/clusters` management routes. The first experimental runtime
 dispatches local `chat`, `embedding`, `rerank`, `audio-transcription`, and
 `vision-chat` routes; provider targets return an explicit unsupported-target
 error.
+
+`DELETE /v1/clusters/{cluster_ref}` returns `409 cluster_in_use` while any
+running or stopped server spec or active route claim references the Cluster.
+Stopping a server does not remove its reusable spec. Remove every server spec
+listed in `blockers` before retrying; deletion never cascades into server specs
+or model resources.
 
 ## Models
 

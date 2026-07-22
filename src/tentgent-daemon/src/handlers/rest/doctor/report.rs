@@ -15,7 +15,7 @@ use tentgent_kernel::{
             },
         },
         runtime::domain::PythonRuntimeResolutionInput,
-        runtime_ownership::{RuntimeOwnershipStatus, StdRuntimeOwnershipUseCase},
+        runtime_ownership::RuntimeOwnershipStatus,
     },
     foundation::layout::LayoutResolveMode,
 };
@@ -49,7 +49,12 @@ pub async fn report(State(state): State<RestState>) -> Result<Json<DoctorRespons
 
 fn append_runtime_ownership_check(state: &RestState, report: DoctorReport) -> DoctorReport {
     let mut checks = report.checks;
-    let check = match StdRuntimeOwnershipUseCase::default()
+    let check = match state
+        .app()
+        .services()
+        .kernel()
+        .runtime_ownership()
+        .inspection()
         .summarize_runtime_ownership(state.app().layout())
     {
         Ok(inspection) => {

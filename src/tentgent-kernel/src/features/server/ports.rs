@@ -7,6 +7,15 @@ use super::domain::{
     ServerRemoveOutcome, ServerRuntimeTarget, ServerSpec, ServerStoreLayout, ServerSummary,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerProcessStartRecord {
+    pub pid: u32,
+    pub process_token: Option<String>,
+    pub bound_port: u16,
+    pub launch_mode: LaunchMode,
+    pub started_at: String,
+}
+
 /// Ensures the server-store directory exists for mutating server operations.
 pub trait ServerStoreLayoutInitializer {
     /// Creates the server-store root directory.
@@ -93,11 +102,7 @@ pub trait ServerCatalogStore {
         &self,
         layout: &ServerStoreLayout,
         server_ref: &ServerRef,
-        pid: u32,
-        process_token: Option<String>,
-        bound_port: u16,
-        launch_mode: LaunchMode,
-        started_at: String,
+        record: ServerProcessStartRecord,
     ) -> KernelResult<ServerInspection>;
 
     /// Clears process metadata when it is absent or matches the expected pid.

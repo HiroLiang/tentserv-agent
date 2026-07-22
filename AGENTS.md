@@ -128,6 +128,9 @@ Key current documents:
   smoke expectations, and post-1.0 boundaries.
 - `docs/user/commands.md`
   User command examples for auth, model, adapter, dataset, chat, server, and LoRA training flows.
+- `docs/user/clusters.md`
+  Plain-language Cluster definition, readiness, server routing, adapter,
+  hot-reload, blocker, and recovery guidance.
 - `docs/user/model-fixtures.md`
   Recommended small model fixtures and smoke-test commands for chat, embedding,
   rerank, and metadata-only M6 media workflows.
@@ -139,27 +142,23 @@ Key current documents:
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
 - `docs/plans/v1.x-roadmap.md`
-  Active post-`v1.0.0` product roadmap for clusters, compatibility proof
-  foundations, tuple-aware model and LoRA gates, resource coordination, and
-  later 1.x capabilities.
-- `docs/plans/cluster-roadmap.md`
-  Active `v1.x` implementation roadmap for selected `v1.1.0` cluster slices;
-  final `#118` remediation blocks parent `#113` closeout.
-- `docs/plans/cluster-runtime-ownership-plan.md`
-  Approved `#118` implementation record for structured runtime ownership,
-  resource guards, shared-runtime shutdown safety, and its decision register.
-- `docs/plans/cluster-runtime-coordination-architecture.md`
-  Implemented baseline `#118` companion architecture for reusable resource
-  locks, route claims, physical runtime generations, supervisor wiring, and
-  platform-aware cluster definition polling.
-- `docs/plans/cluster-runtime-ownership-remediation.md`
-  `#118` P1/P2 findings, confirmed remediation decisions, implementation
-  evidence, and remaining verification gates before parent `#113` closeout.
+  Active post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is complete;
+  compatibility proof foundations, tuple-aware model and LoRA gates, and later
+  1.x capabilities remain routed here.
 - `docs/plans/bugfix-maintenance-plan.md`
   Active post-`v1.0.0` maintenance plan for bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.
 - `docs/plans/archive/README.md`
   Router for completed or superseded plans that should be consulted only when historical implementation context is needed.
+- `docs/plans/archive/cluster-roadmap.md`
+  Completed `v1.1.0` Cluster MVP roadmap for issues `#113`-`#118`.
+- `docs/plans/archive/cluster-runtime-ownership-plan.md`
+  Archived `#118` ownership, guard, and shutdown decision register.
+- `docs/plans/archive/cluster-runtime-coordination-architecture.md`
+  Implemented reusable coordination, ownership, supervisor, and watcher
+  architecture.
+- `docs/plans/archive/cluster-runtime-ownership-remediation.md`
+  Closed `R1`-`R20` findings and final verification evidence for `#118`.
 - `docs/plans/archive/v1.0.0-stable-compatibility-plan.md`
   Archived `v1.0.0` stable compatibility release train and post-merge release
   and Homebrew tap checklist.

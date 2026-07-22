@@ -38,16 +38,16 @@ async fn standard_session_usecase_runs_file_store_workflows() {
     let store = FileSessionStore;
     let refs = PrefixSessionRefResolver;
     let summaries = FakeSessionSummaryGenerator;
-    let usecase = super::StdSessionUseCase::new(
-        &layout_resolver,
-        &identity,
-        &clock,
-        &locks,
-        &store,
-        &refs,
-        &refs,
-        &summaries,
-    );
+    let usecase = super::StdSessionUseCase::new(super::SessionUseCaseDependencies {
+        layout_resolver: &layout_resolver,
+        identity: &identity,
+        clock: &clock,
+        locks: &locks,
+        store: &store,
+        server_refs: &refs,
+        adapter_refs: &refs,
+        summaries: &summaries,
+    });
     let selection = session_usecases::SessionStoreSelection::default_file(layout_input_for_home(
         &root,
         LayoutResolveMode::Create,
@@ -215,16 +215,16 @@ fn standard_session_usecase_prepares_chat_context_and_applies_summaries() {
     let store = FileSessionStore;
     let refs = PrefixSessionRefResolver;
     let summaries = FakeSessionSummaryGenerator;
-    let usecase = super::StdSessionUseCase::new(
-        &layout_resolver,
-        &identity,
-        &clock,
-        &locks,
-        &store,
-        &refs,
-        &refs,
-        &summaries,
-    );
+    let usecase = super::StdSessionUseCase::new(super::SessionUseCaseDependencies {
+        layout_resolver: &layout_resolver,
+        identity: &identity,
+        clock: &clock,
+        locks: &locks,
+        store: &store,
+        server_refs: &refs,
+        adapter_refs: &refs,
+        summaries: &summaries,
+    });
     let selection = session_usecases::SessionStoreSelection::default_file(layout_input_for_home(
         &root,
         LayoutResolveMode::Create,

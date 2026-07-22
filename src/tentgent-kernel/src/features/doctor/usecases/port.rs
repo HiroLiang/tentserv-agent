@@ -6,33 +6,23 @@ use crate::features::runtime::usecases::RuntimeBootstrapResult;
 use crate::foundation::error::KernelResult;
 
 /// Policy for reading capability state while building a doctor report.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DoctorCapabilityReadPolicy {
     /// Use the current cached capability state, probing only when no cache exists.
+    #[default]
     Current,
     /// Reprobe and persist capability state before mapping it into doctor checks.
     Refresh,
 }
 
-impl Default for DoctorCapabilityReadPolicy {
-    fn default() -> Self {
-        Self::Current
-    }
-}
-
 /// Policy for command probes that are useful diagnostics but not always required.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DoctorCommandCheckPolicy {
     /// Skip optional command probes and only report resolved runtime/capability facts.
     SkipOptional,
     /// Include developer bootstrap tools such as `uv --version`.
+    #[default]
     IncludeDeveloperTools,
-}
-
-impl Default for DoctorCommandCheckPolicy {
-    fn default() -> Self {
-        Self::IncludeDeveloperTools
-    }
 }
 
 /// Request for assembling a doctor report from layout, runtime, and capability facts.

@@ -633,7 +633,7 @@ The implementation stores hashed advisory lock files below
 development target; do not use network-mounted runtime homes for contention
 tests.
 
-Focused #118 verification:
+Focused Cluster coordination and ownership verification:
 
 ```bash
 cargo test -p tentgent-kernel resource_coordination

@@ -44,7 +44,7 @@ impl DatasetSynthRuntimeClient for CloudDatasetSynthRuntimeClient {
         &self,
         request: DatasetSynthPromptRuntimeRequest,
     ) -> DatasetPortFuture<'_, String> {
-        Box::pin(async move { Ok(render_synth_prompt(&request.request)?) })
+        Box::pin(async move { render_synth_prompt(&request.request) })
     }
 
     fn synthesize_dataset(

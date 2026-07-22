@@ -158,20 +158,15 @@ fn normalize_hex_ref(value: &str) -> Result<String, ServerRefParseError> {
     Ok(trimmed.to_ascii_lowercase())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ServerRuntimeKind {
     #[serde(rename = "local")]
+    #[default]
     Local,
     #[serde(rename = "cloud")]
     Cloud,
     #[serde(rename = "cluster")]
     Cluster,
-}
-
-impl Default for ServerRuntimeKind {
-    fn default() -> Self {
-        Self::Local
-    }
 }
 
 impl ServerRuntimeKind {

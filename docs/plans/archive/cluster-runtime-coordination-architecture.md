@@ -1,8 +1,8 @@
 # Cluster Runtime Coordination Architecture
 
-Status: lifecycle remediation and closeout architecture are implemented for
-GitHub issue `#118` and pass final local verification. Native Windows CI
-remains pending, so parent `#113` closeout is blocked.
+Status: archived after GitHub issues `#118` and `#113` completed. The lifecycle
+and coordination architecture passed local, Rust 1.81, native Windows, and
+five-route Cluster smoke verification.
 
 The parent decision register confirms decisions `1`-`28`, including stop-time
 claim ownership, reconcile exclusion, typed blocker projection, effective
@@ -16,10 +16,10 @@ Parent plan:
 
 Related contracts:
 
-- [resource-blockers.md](../contracts/resource-blockers.md)
-- [runtime-ownership.md](../contracts/runtime-ownership.md)
-- [cluster.md](../contracts/cluster.md)
-- [model-runtime-server.md](../contracts/model-runtime-server.md)
+- [resource-blockers.md](../../contracts/resource-blockers.md)
+- [runtime-ownership.md](../../contracts/runtime-ownership.md)
+- [cluster.md](../../contracts/cluster.md)
+- [model-runtime-server.md](../../contracts/model-runtime-server.md)
 
 ## Purpose
 

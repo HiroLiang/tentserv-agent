@@ -2,21 +2,11 @@ use std::path::PathBuf;
 
 use tentgent_kernel::features::daemon::domain::{DEFAULT_DAEMON_HOST, DEFAULT_DAEMON_PORT};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DaemonBootstrapConfig {
     pub home: Option<PathBuf>,
     pub logging: LoggingConfig,
     pub rest: RestConfig,
-}
-
-impl Default for DaemonBootstrapConfig {
-    fn default() -> Self {
-        Self {
-            home: None,
-            logging: LoggingConfig::default(),
-            rest: RestConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

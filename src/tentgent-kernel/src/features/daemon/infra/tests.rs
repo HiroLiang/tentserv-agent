@@ -1,4 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
@@ -179,7 +182,7 @@ fn readiness_status_warning_matches_cli_start_behavior() {
     );
 }
 
-fn daemon_layout(root: &PathBuf) -> DaemonStoreLayout {
+fn daemon_layout(root: &Path) -> DaemonStoreLayout {
     DaemonStoreLayout::from_home_runtime_log_dirs(
         root.join("home"),
         root.join("home/runtime"),

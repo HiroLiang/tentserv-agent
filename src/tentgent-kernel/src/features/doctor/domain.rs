@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum DoctorExecutionMode {
+    #[default]
     Observational,
     LocalCli,
 }
@@ -24,12 +26,6 @@ impl DoctorExecutionMode {
     }
 }
 
-impl Default for DoctorExecutionMode {
-    fn default() -> Self {
-        Self::Observational
-    }
-}
-
 impl std::fmt::Display for DoctorExecutionMode {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.as_str())
@@ -38,7 +34,9 @@ impl std::fmt::Display for DoctorExecutionMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum DoctorRepairIntent {
+    #[default]
     ReportOnly,
     DeveloperPythonEnv,
 }
@@ -53,12 +51,6 @@ impl DoctorRepairIntent {
 
     pub const fn mutates_local_state(self) -> bool {
         matches!(self, Self::DeveloperPythonEnv)
-    }
-}
-
-impl Default for DoctorRepairIntent {
-    fn default() -> Self {
-        Self::ReportOnly
     }
 }
 

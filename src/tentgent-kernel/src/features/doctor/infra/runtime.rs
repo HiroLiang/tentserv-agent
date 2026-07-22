@@ -192,7 +192,7 @@ fn runtime_state_checks(
             profile
                 .message
                 .clone()
-                .unwrap_or_else(|| profile.readiness.as_str().to_string()),
+                .unwrap_or_else(|| profile.readiness.label().to_string()),
         );
         checks.push(match status {
             DoctorCheckStatus::Pass | DoctorCheckStatus::Skipped => check,
@@ -365,11 +365,11 @@ fn python_script_name(name: &str) -> String {
 }
 
 trait RuntimeReadinessLabel {
-    fn as_str(self) -> &'static str;
+    fn label(self) -> &'static str;
 }
 
 impl RuntimeReadinessLabel for RuntimeReadiness {
-    fn as_str(self) -> &'static str {
+    fn label(self) -> &'static str {
         match self {
             RuntimeReadiness::Ready => "ready",
             RuntimeReadiness::Missing => "missing",

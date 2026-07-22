@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 pub const PYTHON_PROJECT_ENV: &str = "TENTGENT_PYTHON_DIR";
 pub const PYTHON_ENV_DIR_ENV: &str = "TENTGENT_PYTHON_ENV_DIR";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BootstrapProfile {
+    #[default]
     Base,
     LocalModel,
     Training,
@@ -23,12 +24,6 @@ impl BootstrapProfile {
             Self::Training => "training",
             Self::Full => "full",
         }
-    }
-}
-
-impl Default for BootstrapProfile {
-    fn default() -> Self {
-        Self::Base
     }
 }
 

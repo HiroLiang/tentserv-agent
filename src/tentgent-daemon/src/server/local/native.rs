@@ -54,12 +54,12 @@ pub(super) struct NativeLocalChatMessage {
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct NativeAdapterRecordPayload {
-    pub(super) adapter_ref: String,
-    pub(super) source_path: String,
-    pub(super) adapter_format: String,
-    pub(super) adapter_type: &'static str,
-    pub(super) short_ref: String,
+pub(in crate::server) struct NativeAdapterRecordPayload {
+    pub(in crate::server) adapter_ref: String,
+    pub(in crate::server) source_path: String,
+    pub(in crate::server) adapter_format: String,
+    pub(in crate::server) adapter_type: &'static str,
+    pub(in crate::server) short_ref: String,
 }
 
 impl From<ProviderChatTextMessage> for NativeLocalChatMessage {

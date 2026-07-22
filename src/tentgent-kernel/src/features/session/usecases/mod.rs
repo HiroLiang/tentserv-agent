@@ -22,4 +22,4 @@ pub use port::{
     SessionSummaryUseCase, SessionSummaryUseCaseRequest, SessionSummaryUseCaseResult,
     SessionUseCaseFuture, UpdateSessionRequest, UpdateSessionResult,
 };
-pub use standard::StdSessionUseCase;
+pub use standard::{SessionUseCaseDependencies, StdSessionUseCase};

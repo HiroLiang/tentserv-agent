@@ -62,14 +62,16 @@ impl ModelRuntimeExecutionEvidenceRecorder for StdModelRuntimeExecutionEvidenceR
         let store = model_store_layout(&request.layout);
         let proof = build_proof(
             &request.metadata,
-            request.capability,
-            request.status,
-            ModelCapabilityProofSource::RuntimeExecution,
-            request.server_ref,
-            request.runtime_profile,
-            request.runtime_profile_version,
-            request.error,
-            self.clock.now_rfc3339()?,
+            ProofBuildInput {
+                capability: request.capability,
+                status: request.status,
+                source: ModelCapabilityProofSource::RuntimeExecution,
+                server_ref: request.server_ref,
+                runtime_profile: request.runtime_profile,
+                runtime_profile_version: request.runtime_profile_version,
+                error: request.error,
+                checked_at: self.clock.now_rfc3339()?,
+            },
         );
         self.proofs.save_capability_proof(&store, &proof)?;
 
@@ -119,14 +121,16 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
         };
         let proof = build_proof(
             &model.metadata,
-            request.capability,
-            status,
-            ModelCapabilityProofSource::ManualProbe,
-            None,
-            None,
-            None,
-            error,
-            self.clock.now_rfc3339()?,
+            ProofBuildInput {
+                capability: request.capability,
+                status,
+                source: ModelCapabilityProofSource::ManualProbe,
+                server_ref: None,
+                runtime_profile: None,
+                runtime_profile_version: None,
+                error,
+                checked_at: self.clock.now_rfc3339()?,
+            },
         );
         self.proofs.save_capability_proof(&store, &proof)?;
 
@@ -147,14 +151,16 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
         let model = self.catalog.inspect_model(&store, &request.selector)?;
         let proof = build_proof(
             &model.metadata,
-            request.capability,
-            request.status,
-            request.source,
-            request.server_ref,
-            request.runtime_profile,
-            request.runtime_profile_version,
-            request.error,
-            self.clock.now_rfc3339()?,
+            ProofBuildInput {
+                capability: request.capability,
+                status: request.status,
+                source: request.source,
+                server_ref: request.server_ref,
+                runtime_profile: request.runtime_profile,
+                runtime_profile_version: request.runtime_profile_version,
+                error: request.error,
+                checked_at: self.clock.now_rfc3339()?,
+            },
         );
         self.proofs.save_capability_proof(&store, &proof)?;
 
@@ -196,8 +202,7 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
     }
 }
 
-fn build_proof(
-    metadata: &ModelMetadata,
+struct ProofBuildInput {
     capability: ModelCapability,
     status: ModelCapabilityProofStatus,
     source: ModelCapabilityProofSource,
@@ -206,21 +211,23 @@ fn build_proof(
     runtime_profile_version: Option<u32>,
     error: Option<String>,
     checked_at: String,
-) -> ModelCapabilityProof {
+}
+
+fn build_proof(metadata: &ModelMetadata, input: ProofBuildInput) -> ModelCapabilityProof {
     ModelCapabilityProof {
         model_ref: metadata.model_ref.clone(),
-        capability,
-        status,
-        source,
+        capability: input.capability,
+        status: input.status,
+        source: input.source,
         primary_format: metadata.primary_format,
         mlx_runtime_family: metadata.mlx_runtime_family,
         backend: backend_label(metadata.mlx_runtime_family, metadata.primary_format),
         runtime_version: None,
-        runtime_profile,
-        runtime_profile_version,
-        server_ref,
-        checked_at,
-        error: error.map(sanitize_proof_error),
+        runtime_profile: input.runtime_profile,
+        runtime_profile_version: input.runtime_profile_version,
+        server_ref: input.server_ref,
+        checked_at: input.checked_at,
+        error: input.error.map(sanitize_proof_error),
     }
 }
 

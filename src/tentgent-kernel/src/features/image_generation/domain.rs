@@ -9,7 +9,9 @@ use crate::features::model::domain::{MlxRuntimeFamily, ModelCapability, ModelFor
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum ImageGenerationOutputFormat {
+    #[default]
     Png,
     Jpeg,
 }
@@ -35,12 +37,6 @@ impl ImageGenerationOutputFormat {
 
     pub fn default_filename(self) -> String {
         format!("image.{}", self.extension())
-    }
-}
-
-impl Default for ImageGenerationOutputFormat {
-    fn default() -> Self {
-        Self::Png
     }
 }
 
@@ -489,7 +485,9 @@ pub struct ResolvedImageGenerationControl {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum ImageGenerationInput {
+    #[default]
     TextToImage,
     ImageToImage {
         image_path: PathBuf,
@@ -519,12 +517,6 @@ impl ImageGenerationInput {
             Self::Inpaint { .. } => ImageGenerationWorkflowKind::Inpaint,
             Self::Control { .. } => ImageGenerationWorkflowKind::Control,
         }
-    }
-}
-
-impl Default for ImageGenerationInput {
-    fn default() -> Self {
-        Self::TextToImage
     }
 }
 

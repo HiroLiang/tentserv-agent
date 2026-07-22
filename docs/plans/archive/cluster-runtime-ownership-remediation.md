@@ -1,9 +1,8 @@
 # Cluster Runtime Ownership Remediation
 
-Status: complete. Findings `R1`-`R20` pass the final local verification matrix
-and native Windows workflow for GitHub issue `#118` on
-`feature/118-cluster-runtime-ownership`. Parent `#113` closeout may begin after
-PR `#123` merges.
+Status: archived after GitHub issues `#118` and `#113` completed. Findings
+`R1`-`R20` passed the final local, Rust 1.81, native Windows, and five-route
+Cluster smoke verification matrices.
 
 Parent records:
 
@@ -372,7 +371,7 @@ logging.
 
 The final local verification matrix passes:
 
-- `cargo test --workspace`: CLI `108`, daemon `306`, and kernel `434` tests
+- `cargo test --workspace`: CLI `108`, daemon `306`, and kernel `436` tests
   passed; one watcher measurement, one subprocess lock-holder helper, and seven
   manual macOS Keychain probes remain intentionally ignored in their parent
   suites, and the helper passes when launched by its parent test;
@@ -386,20 +385,19 @@ The final local verification matrix passes:
   x86_64-pc-windows-msvc` passed;
 - focused resource coordination, resource guard, runtime ownership,
   model-daemon, adapter, train, cluster server, REST, and CLI tests passed;
-- remediation code introduces no new strict-Clippy warning; the repository
-  still has 27 pre-existing warnings outside this slice;
+- `cargo clippy --workspace --all-targets --message-format short` passes with
+  zero warnings after the parent `#113` closeout cleanup;
 - `scripts/test-cluster-runtime-ownership-smoke.sh` passed against the local
   five-model fixture set without reading provider credentials or Keychain;
-- `scripts/test-release-readiness.sh`, targeted Rust formatting checks for all
-  files except the unchanged `#105` manual Keychain probe, and
-  `git diff --check` passed. The repository-wide formatter still reports only
-  that pre-existing probe baseline.
+- `scripts/test-release-readiness.sh`, `cargo fmt --all -- --check`, and
+  `git diff --check` passed. The parent `#113` closeout also normalized the
+  former manual Keychain probe formatting baseline.
 
 All remediation findings pass the final local behavior, structure, and Rust
 1.81 compatibility matrix. Native Windows workflow run `29673526894` also
 passes repeated atomic replacement, resource coordination, runtime ownership,
-and model-runtime process ownership. The `#118` implementation is complete;
-parent `#113` closeout follows PR `#123` merge.
+and model-runtime process ownership. The `#118` implementation and parent
+`#113` closeout are complete.
 
 ## Completion Gates
 
@@ -426,5 +424,4 @@ parent `#113` closeout follows PR `#123` merge.
 - [x] `git diff --check` passes and no new strict-Clippy warning is introduced
   by the remediation.
 - [x] The affected contracts and active plans match the final implementation.
-- [x] GitHub issue `#118` and the Tentgent Roadmap fields reflect active
-  closeout status.
+- [x] GitHub issues `#118` and `#113` reached completed closeout status.
