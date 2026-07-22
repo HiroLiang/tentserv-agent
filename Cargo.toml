@@ -11,7 +11,7 @@ default-members = ["src/tentgent-cli"]
 [workspace.package]
 edition = "2021"
 rust-version = "1.81"
-version = "1.0.1"
+version = "1.1.0"
 license = "Apache-2.0"
 
 [workspace.dependencies]
