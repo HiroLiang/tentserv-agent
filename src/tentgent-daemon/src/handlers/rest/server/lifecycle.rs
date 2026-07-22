@@ -22,7 +22,6 @@ use tentgent_kernel::{
             domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput},
             usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase},
         },
-        runtime_ownership::StdRuntimeOwnershipUseCase,
         server::{
             domain::{
                 parse_server_runtime_selection, CloudProvider, LaunchMode, ServerCapability,
@@ -135,7 +134,12 @@ pub async fn inspect(
         .server_usecase()
         .runtime_ownership_scope_for_server(&result.layout, &result.inspection.spec)
         .map_err(server_error)?;
-    let ownership = StdRuntimeOwnershipUseCase::default()
+    let ownership = state
+        .app()
+        .services()
+        .kernel()
+        .runtime_ownership()
+        .inspection()
         .inspect_runtime_ownership_scope(&result.layout, ownership_scope)
         .map_err(server_error)?;
 

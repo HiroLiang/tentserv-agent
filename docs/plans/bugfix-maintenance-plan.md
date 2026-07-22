@@ -41,14 +41,14 @@ queue that should stay visible from the active plan.
 
 ## Current Handoff State
 
-As of `2026-06-27`, no open maintenance issues are tracked in this plan. A new
+As of `2026-07-21`, no open maintenance issues are tracked in this plan. A new
 session should create additional maintenance issues only when a concrete patch
 bug, diagnostics gap, install/release follow-up, or stale documentation problem
 is identified.
 
-The active feature work is the selected `v1.1.0` cluster issue flow in
-[v1.x-roadmap.md](./v1.x-roadmap.md) and
-[cluster-roadmap.md](./cluster-roadmap.md).
+The completed `v1.1.0` Cluster issue flow is archived under
+[archive/cluster-roadmap.md](./archive/cluster-roadmap.md). Future feature work
+is routed through [v1.x-roadmap.md](./v1.x-roadmap.md).
 
 ## Candidate Maintenance Issues
 
@@ -56,8 +56,11 @@ These candidates are suitable for a patch milestone when their implementation
 stays small and does not introduce a new product surface. Create GitHub issues
 before implementation when a candidate is selected.
 
-- No untracked candidates are currently listed. Add new maintenance candidates
-  here only when they have not yet been opened as GitHub issues.
+- Add a general pull-request CI gate that runs the Rust workspace, Python
+  runtime tests, formatting, Clippy, and documentation/release-readiness
+  checks. `#113` runs this matrix locally, but the repository currently has
+  only the focused Windows ownership pull-request workflow. Open a maintenance
+  issue before implementing this repository-wide CI change.
 
 ## Patch Boundary
 

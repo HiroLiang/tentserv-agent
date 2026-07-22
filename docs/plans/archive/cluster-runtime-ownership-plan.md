@@ -1,30 +1,29 @@
 # Cluster Runtime Ownership And Resource Guard Plan
 
-Status: complete. Findings `R1`-`R20` pass the local full-suite, Rust 1.81, and
-native Windows verification matrices for GitHub issue `#118` on
-`feature/118-cluster-runtime-ownership`. Parent `#113` closeout may begin after
-PR `#123` merges.
+Status: archived after GitHub issue `#118` and parent issue `#113` completed.
+Findings `R1`-`R20` passed the local full-suite, Rust 1.81, native Windows, and
+five-route Cluster smoke verification matrices.
 
 Parent plans:
 
 - [cluster-roadmap.md](./cluster-roadmap.md)
-- [v1.x-roadmap.md](./v1.x-roadmap.md)
+- [v1.x-roadmap.md](../v1.x-roadmap.md)
 
 Companion architecture:
 
 - [cluster-runtime-coordination-architecture.md](./cluster-runtime-coordination-architecture.md)
 
-Active remediation:
+Archived remediation:
 
 - [cluster-runtime-ownership-remediation.md](./cluster-runtime-ownership-remediation.md)
 
 Related contracts:
 
-- [resource-blockers.md](../contracts/resource-blockers.md)
-- [runtime-ownership.md](../contracts/runtime-ownership.md)
-- [cluster.md](../contracts/cluster.md)
-- [model-runtime-server.md](../contracts/model-runtime-server.md)
-- [server-chat.md](../contracts/server-chat.md)
+- [resource-blockers.md](../../contracts/resource-blockers.md)
+- [runtime-ownership.md](../../contracts/runtime-ownership.md)
+- [cluster.md](../../contracts/cluster.md)
+- [model-runtime-server.md](../../contracts/model-runtime-server.md)
+- [server-chat.md](../../contracts/server-chat.md)
 
 This document records the approved design and decision register for the final
 selected `v1.1.0` cluster slice. Decisions `1`-`41` are confirmed. A July 16,

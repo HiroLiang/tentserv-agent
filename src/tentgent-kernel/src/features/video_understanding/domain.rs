@@ -8,7 +8,9 @@ use crate::features::model::domain::{MlxRuntimeFamily, ModelCapability, ModelFor
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum VideoUnderstandingOutputFormat {
+    #[default]
     Text,
     Json,
     Md,
@@ -41,12 +43,6 @@ impl VideoUnderstandingOutputFormat {
 
     pub fn default_filename(self) -> String {
         format!("video-understanding.{}", self.extension())
-    }
-}
-
-impl Default for VideoUnderstandingOutputFormat {
-    fn default() -> Self {
-        Self::Text
     }
 }
 

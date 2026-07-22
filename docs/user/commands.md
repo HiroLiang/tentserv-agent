@@ -900,6 +900,14 @@ changing its server ref. Cluster stop waits up to 30 seconds for admitted Rust
 requests to drain. A timeout leaves ownership records for reconciliation and
 does not kill shared Python work.
 
+`cluster rm` is blocked while any running or stopped server spec references the
+Cluster. `server stop` only stops the process; it does not remove the reusable
+spec. Run `server ls`, remove every reported blocker with the corresponding
+`server rm <server-ref>`, and then retry `cluster rm`. Multiple specs may
+reference the same Cluster when they were created with different ports or
+launch settings. Cluster removal never deletes server specs or bound model
+resources automatically.
+
 Daemon REST exposes matching definition CRUD:
 
 ```bash
@@ -935,11 +943,6 @@ curl -sS http://127.0.0.1:8790/v1/clusters/<cluster-ref> \
   -X DELETE \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN"
 ```
-
-`cluster rm` is blocked while any running or stopped server spec targets that
-cluster or a route claim remains active. Stop and remove the server spec first,
-then let active requests drain; cluster removal never deletes the server or its
-bound model resources automatically.
 
 Guarded remove, capability, bind, and cluster-apply commands report a stable
 blocked or busy code followed by the protected operation/resource, individual

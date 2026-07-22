@@ -18,7 +18,7 @@ use crate::foundation::{error::KernelResult, layout::RuntimeLayoutResolver};
 use super::{
     common::{cluster_store_layout, model_store_layout},
     port::{ClusterRouteExecutionUseCase, ClusterRouteResolveRequest, ClusterRouteResolveResult},
-    readiness::resolve_local_route_readiness,
+    readiness::{resolve_local_route_readiness, ClusterReadinessContext},
 };
 
 /// Resolves one cached cluster definition route without mutating state.
@@ -88,11 +88,13 @@ impl ClusterRouteExecutionUseCase for StdClusterRouteExecutionUseCase<'_> {
             request.route,
             model_ref.to_string(),
             runtime_profile,
-            &request.definition.cluster_ref,
-            &cluster_store,
-            &model_store,
-            self.model_catalog,
-            self.model_proofs,
+            &ClusterReadinessContext {
+                cluster_ref: &request.definition.cluster_ref,
+                cluster_store: &cluster_store,
+                model_store: &model_store,
+                model_catalog: self.model_catalog,
+                model_proofs: self.model_proofs,
+            },
         );
         let allowed = readiness.status.is_ready()
             || (request.allow_unverified

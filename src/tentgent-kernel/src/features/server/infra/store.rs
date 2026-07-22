@@ -1,8 +1,8 @@
 use std::{fs, io::Write, path::Path};
 
 use crate::features::server::domain::{
-    LaunchMode, ServerInspection, ServerProcessMetadata, ServerRef, ServerRefSelector,
-    ServerRemoveOutcome, ServerSpec, ServerStoreLayout, ServerSummary,
+    ServerInspection, ServerProcessMetadata, ServerRef, ServerRefSelector, ServerRemoveOutcome,
+    ServerSpec, ServerStoreLayout, ServerSummary,
 };
 use crate::features::server::ports::{ServerCatalogStore, ServerProcessProbe};
 use crate::foundation::error::KernelResult;
@@ -110,11 +110,7 @@ where
         &self,
         layout: &ServerStoreLayout,
         server_ref: &ServerRef,
-        pid: u32,
-        process_token: Option<String>,
-        bound_port: u16,
-        launch_mode: LaunchMode,
-        started_at: String,
+        record: crate::features::server::ports::ServerProcessStartRecord,
     ) -> KernelResult<ServerInspection> {
         let spec = self.load_server_spec(layout, server_ref)?;
         let inspection = self.inspect_exact(layout, spec.clone(), true)?;
@@ -126,11 +122,11 @@ where
         }
 
         let metadata = ServerProcessMetadata {
-            pid,
-            process_token,
-            launch_mode,
-            started_at,
-            bound_port: Some(bound_port),
+            pid: record.pid,
+            process_token: record.process_token,
+            launch_mode: record.launch_mode,
+            started_at: record.started_at,
+            bound_port: Some(record.bound_port),
         };
         write_process_metadata(&inspection.process_path, &metadata)?;
         self.inspect_exact(layout, spec, true)

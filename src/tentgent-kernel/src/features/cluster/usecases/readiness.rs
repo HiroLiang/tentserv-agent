@@ -55,6 +55,21 @@ pub struct StdClusterReadinessUseCase<'a> {
     auth_status: &'a dyn AuthStatusUseCase,
 }
 
+pub(super) struct ClusterReadinessContext<'a> {
+    pub(super) cluster_ref: &'a ClusterRef,
+    pub(super) cluster_store: &'a ClusterStoreLayout,
+    pub(super) model_store: &'a ModelStoreLayout,
+    pub(super) model_catalog: &'a dyn ModelCatalogStore,
+    pub(super) model_proofs: &'a dyn ModelCapabilityProofStore,
+}
+
+#[derive(Default)]
+struct RouteReadinessDiagnostics {
+    flags: Vec<String>,
+    details: Vec<ClusterReadinessDetail>,
+    next_actions: Vec<ClusterReadinessAction>,
+}
+
 impl<'a> StdClusterReadinessUseCase<'a> {
     pub fn new(
         layout_resolver: &'a dyn RuntimeLayoutResolver,
@@ -227,16 +242,19 @@ fn resolve_cluster_readiness(
     let model_store = model_store_layout(layout);
     let provider_statuses = provider_auth_statuses(inspection, auth_status);
     let mut routes = Vec::with_capacity(inspection.definition.routes.len());
+    let context = ClusterReadinessContext {
+        cluster_ref: &inspection.definition.cluster_ref,
+        cluster_store: store,
+        model_store: &model_store,
+        model_catalog,
+        model_proofs,
+    };
 
     for (route, target) in &inspection.definition.routes {
         routes.push(resolve_route_readiness(
             *route,
             target,
-            &inspection.definition.cluster_ref,
-            store,
-            &model_store,
-            model_catalog,
-            model_proofs,
+            &context,
             provider_statuses.as_ref(),
         ));
     }
@@ -275,27 +293,14 @@ fn provider_auth_statuses(
 fn resolve_route_readiness(
     route: ClusterRouteKey,
     target: &ClusterRouteTarget,
-    cluster_ref: &ClusterRef,
-    store: &ClusterStoreLayout,
-    model_store: &ModelStoreLayout,
-    model_catalog: &dyn ModelCatalogStore,
-    model_proofs: &dyn ModelCapabilityProofStore,
+    context: &ClusterReadinessContext<'_>,
     provider_statuses: Result<&Vec<AuthKeyStatus>, &String>,
 ) -> ClusterRouteReadiness {
     match target {
         ClusterRouteTarget::LocalModel {
             model_ref,
             runtime_profile,
-        } => resolve_local_route_readiness(
-            route,
-            model_ref.to_string(),
-            runtime_profile,
-            cluster_ref,
-            store,
-            model_store,
-            model_catalog,
-            model_proofs,
-        ),
+        } => resolve_local_route_readiness(route, model_ref.to_string(), runtime_profile, context),
         ClusterRouteTarget::Provider {
             provider,
             provider_model,
@@ -309,15 +314,11 @@ pub(super) fn resolve_local_route_readiness(
     configured_runtime_profile: &Option<
         crate::features::server::domain::ServerRuntimeProfileSelection,
     >,
-    cluster_ref: &ClusterRef,
-    store: &ClusterStoreLayout,
-    model_store: &ModelStoreLayout,
-    model_catalog: &dyn ModelCatalogStore,
-    model_proofs: &dyn ModelCapabilityProofStore,
+    context: &ClusterReadinessContext<'_>,
 ) -> ClusterRouteReadiness {
     let capability = route.model_capability();
-    let metadata = match model_catalog.load_model_metadata(
-        model_store,
+    let metadata = match context.model_catalog.load_model_metadata(
+        context.model_store,
         &crate::features::model::domain::ModelRef::parse(&model_ref)
             .expect("stored cluster model_ref should be valid"),
     ) {
@@ -347,18 +348,13 @@ pub(super) fn resolve_local_route_readiness(
                 );
             }
         };
-    let mut flags = Vec::new();
-    let mut details = Vec::new();
-    let mut next_actions = Vec::new();
+    let mut diagnostics = RouteReadinessDiagnostics::default();
     let runtime_profile = local_runtime_profile_readiness(
         route,
         backend,
         configured_runtime_profile.clone(),
-        cluster_ref,
-        store,
-        &mut flags,
-        &mut details,
-        &mut next_actions,
+        context,
+        &mut diagnostics,
     );
 
     let mut query = ModelSupportQuery::from_metadata(&metadata, capability);
@@ -366,7 +362,10 @@ pub(super) fn resolve_local_route_readiness(
         query = query.with_runtime_profile(profile.profile_id.clone(), profile.profile_version);
     }
 
-    let proofs = match model_proofs.list_capability_proofs(model_store, &metadata.model_ref) {
+    let proofs = match context
+        .model_proofs
+        .list_capability_proofs(context.model_store, &metadata.model_ref)
+    {
         Ok(proofs) => proofs,
         Err(err) => {
             return unavailable_route(
@@ -383,20 +382,24 @@ pub(super) fn resolve_local_route_readiness(
     let resolution = ModelSupportStatusResolver.resolve(&metadata, &query, &proofs, &hints);
     let status = route_status_for_support(resolution.status);
     if status.needs_attention() {
-        flags.push(flag_for_route_status(status).to_string());
+        diagnostics
+            .flags
+            .push(flag_for_route_status(status).to_string());
     }
     if let Some(reason) = resolution
         .failure_reason
         .as_deref()
         .or(resolution.stale_reason.as_deref())
     {
-        details.push(ClusterReadinessDetail {
+        diagnostics.details.push(ClusterReadinessDetail {
             name: route.to_string(),
             description: reason.to_string(),
             flags: vec![flag_for_route_status(status).to_string()],
         });
     }
-    next_actions.extend(local_support_actions(&metadata, capability, &resolution));
+    diagnostics
+        .next_actions
+        .extend(local_support_actions(&metadata, capability, &resolution));
 
     ClusterRouteReadiness {
         route,
@@ -410,9 +413,9 @@ pub(super) fn resolve_local_route_readiness(
         evidence: Some(resolution.evidence),
         description: resolution.reason,
         reason: resolution.failure_reason.or(resolution.stale_reason),
-        flags: dedupe(flags),
-        details,
-        next_actions,
+        flags: dedupe(diagnostics.flags),
+        details: diagnostics.details,
+        next_actions: diagnostics.next_actions,
     }
 }
 
@@ -420,11 +423,8 @@ fn local_runtime_profile_readiness(
     route: ClusterRouteKey,
     backend: crate::features::server::domain::ServerRuntimeBackend,
     configured: Option<crate::features::server::domain::ServerRuntimeProfileSelection>,
-    cluster_ref: &ClusterRef,
-    store: &ClusterStoreLayout,
-    flags: &mut Vec<String>,
-    details: &mut Vec<ClusterReadinessDetail>,
-    next_actions: &mut Vec<ClusterReadinessAction>,
+    context: &ClusterReadinessContext<'_>,
+    diagnostics: &mut RouteReadinessDiagnostics,
 ) -> ClusterRuntimeProfileReadiness {
     if let Some(configured) = configured {
         return ClusterRuntimeProfileReadiness {
@@ -437,17 +437,22 @@ fn local_runtime_profile_readiness(
     let inferred = local_server_runtime_profile_for(route.server_capability(), backend)
         .map(|profile| profile.selection);
     if let Some(inferred) = inferred {
-        flags.push("runtime-profile-inferred".to_string());
-        details.push(ClusterReadinessDetail {
+        diagnostics
+            .flags
+            .push("runtime-profile-inferred".to_string());
+        diagnostics.details.push(ClusterReadinessDetail {
             name: format!("{route} runtime profile"),
             description: format!(
                 "runtime profile `{}` was inferred; add it to `{}` for reproducible cluster definitions",
                 inferred.label(),
-                store.cluster_definition_path(cluster_ref.as_str()).display()
+                context
+                    .cluster_store
+                    .cluster_definition_path(context.cluster_ref.as_str())
+                    .display()
             ),
             flags: vec!["runtime-profile-inferred".to_string()],
         });
-        next_actions.push(ClusterReadinessAction {
+        diagnostics.next_actions.push(ClusterReadinessAction {
             code: ClusterReadinessActionCode::UpdateClusterDefinition,
             label: "Update cluster definition".to_string(),
             command: None,

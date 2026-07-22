@@ -69,16 +69,16 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
                     layout: runtime_layout_input(LayoutResolveMode::Create),
                     source_path: path,
                     base_model_selector,
-                    options: adapter_import_options(
-                        target_capability.as_deref(),
-                        adapter_type.as_deref(),
-                        adapter_format.as_deref(),
-                        &backend_support,
+                    options: adapter_import_options(AdapterImportOptionArgs {
+                        target_capability: target_capability.as_deref(),
+                        adapter_type: adapter_type.as_deref(),
+                        adapter_format: adapter_format.as_deref(),
+                        backend_support: &backend_support,
                         control_kind,
                         weight_file,
-                        trigger_word,
+                        trigger_words: trigger_word,
                         recommended_scale,
-                    )?,
+                    })?,
                 })
                 .into_diagnostic()?;
             render_import_outcome("Adapter imported", &result.outcome);
@@ -115,16 +115,16 @@ pub fn handle_adapter_command(action: AdapterCommands) -> Result<()> {
                     repo_id: repo_id.clone(),
                     revision,
                     base_model_selector,
-                    options: adapter_import_options(
-                        target_capability.as_deref(),
-                        adapter_type.as_deref(),
-                        adapter_format.as_deref(),
-                        &backend_support,
+                    options: adapter_import_options(AdapterImportOptionArgs {
+                        target_capability: target_capability.as_deref(),
+                        adapter_type: adapter_type.as_deref(),
+                        adapter_format: adapter_format.as_deref(),
+                        backend_support: &backend_support,
                         control_kind,
                         weight_file,
-                        trigger_word,
+                        trigger_words: trigger_word,
                         recommended_scale,
-                    )?,
+                    })?,
                     auth: AuthSecretResolutionRequest::for_secret_use(
                         Provider::HuggingFace,
                         AuthEnvLoadPolicy::CwdDotenvOverride,
@@ -384,38 +384,44 @@ fn parse_optional_model_selector(
         .transpose()
 }
 
-fn adapter_import_options(
-    target_capability: Option<&str>,
-    adapter_type: Option<&str>,
-    adapter_format: Option<&str>,
-    backend_support: &[String],
+struct AdapterImportOptionArgs<'a> {
+    target_capability: Option<&'a str>,
+    adapter_type: Option<&'a str>,
+    adapter_format: Option<&'a str>,
+    backend_support: &'a [String],
     control_kind: Option<String>,
     weight_file: Option<String>,
-    trigger_word: Vec<String>,
+    trigger_words: Vec<String>,
     recommended_scale: Option<f32>,
-) -> Result<AdapterImportOptions> {
-    let target_capability = target_capability
+}
+
+fn adapter_import_options(args: AdapterImportOptionArgs<'_>) -> Result<AdapterImportOptions> {
+    let target_capability = args
+        .target_capability
         .map(|value| {
             value
                 .parse::<ModelCapability>()
                 .map_err(|err| miette!("invalid --target-capability: {err}"))
         })
         .transpose()?;
-    let adapter_type = adapter_type
+    let adapter_type = args
+        .adapter_type
         .map(|value| {
             value
                 .parse::<AdapterType>()
                 .map_err(|err| miette!("invalid --adapter-type: {err}"))
         })
         .transpose()?;
-    let adapter_format = adapter_format
+    let adapter_format = args
+        .adapter_format
         .map(|value| {
             value
                 .parse::<AdapterFormat>()
                 .map_err(|err| miette!("invalid --adapter-format: {err}"))
         })
         .transpose()?;
-    let backend_support = backend_support
+    let backend_support = args
+        .backend_support
         .iter()
         .map(|value| {
             value
@@ -423,11 +429,13 @@ fn adapter_import_options(
                 .map_err(|err| miette!("invalid --backend-support: {err}"))
         })
         .collect::<Result<Vec<_>>>()?;
-    let trigger_words = trigger_word
+    let trigger_words = args
+        .trigger_words
         .into_iter()
         .filter_map(non_empty_string)
         .collect::<Vec<_>>();
-    let recommended_scale = recommended_scale
+    let recommended_scale = args
+        .recommended_scale
         .map(|value| LoraScale::new(value).map_err(|err| miette!("{err}")))
         .transpose()?;
 
@@ -436,8 +444,8 @@ fn adapter_import_options(
         target_capability,
         adapter_format,
         backend_support,
-        control_kind: control_kind.and_then(non_empty_string),
-        weight_file: weight_file.and_then(non_empty_string),
+        control_kind: args.control_kind.and_then(non_empty_string),
+        weight_file: args.weight_file.and_then(non_empty_string),
         trigger_words,
         recommended_scale,
     })

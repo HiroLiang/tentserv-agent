@@ -3,6 +3,54 @@
 This document summarizes user-facing release notes, stable promises, and known
 limits for current and historical Tentgent versions.
 
+## v1.1.0 (Unreleased)
+
+`v1.1.0` adds the experimental Cluster MVP. A Cluster is one named local
+server definition that routes chat, embedding, rerank, audio transcription,
+and vision requests to explicitly configured managed models while reusing the
+existing server lifecycle.
+
+What changed:
+
+- Added canonical Cluster TOML validation, apply, list, inspect, run, and
+  removal workflows through CLI and daemon REST.
+- Added per-route readiness, problem flags, next actions, doctor summaries,
+  and safe scoped ownership details without reading provider secret material.
+- Added native local Cluster routing for `chat`, `embedding`, `rerank`,
+  `audio-transcription`, and `vision-chat`, including OpenAI, Claude, and
+  Gemini-shaped chat ingress mapped to the configured chat route.
+- Preserved native request-time managed adapter selection for Cluster chat;
+  adapter refs are resolved and checked against the model selected by the
+  Cluster definition.
+- Added guarded `drain` and `block` route update policies, definition watching,
+  request leases, bounded shutdown drain, and stable Cluster/server identity
+  across definition changes.
+- Added reusable cross-process resource coordination, typed blockers, durable
+  runtime ownership, safe process-generation recovery, and dry-run/apply
+  `tentgent runtime reconcile` diagnostics.
+- Added structured protection for model and capability mutation, adapter
+  deletion/rebind, dataset and train-plan deletion, Cluster replacement/removal,
+  server-spec deletion, and matching reference-creation races.
+
+Known limits:
+
+- Cluster CLI, REST, server routing, runtime ownership, and reconcile surfaces
+  remain experimental; existing direct local and cloud server surfaces retain
+  their documented stability.
+- Provider Cluster targets are definition-valid and inspectable but not
+  executable in this release.
+- A runnable Cluster requires a local chat route. Optional routes do not block
+  startup, and missing routes fail explicitly without cross-route fallback.
+- Clusters do not assemble images or audio into chat context automatically and
+  do not store fixed model-plus-adapter targets.
+- Ownership and proof stores remain file-backed. SQLite migration, tuple-aware
+  LoRA gates, and a broad resource scheduler remain later 1.x work.
+
+See the [Cluster guide](./clusters.md),
+[Cluster contract](../contracts/cluster.md),
+[runtime ownership contract](../contracts/runtime-ownership.md), and
+[resource blocker contract](../contracts/resource-blockers.md) for details.
+
 ## v1.0.1
 
 `v1.0.1` is a macOS release-signing and Keychain reliability patch. It keeps

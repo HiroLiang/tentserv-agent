@@ -36,14 +36,16 @@ impl SessionKernelComponent {
         summaries: &'a dyn SessionSummaryGenerator,
     ) -> StdSessionUseCase<'a> {
         StdSessionUseCase::new(
-            &self.layout_resolver,
-            &self.identity,
-            &self.clock,
-            &self.locks,
-            &self.store,
-            server_refs,
-            adapter_refs,
-            summaries,
+            tentgent_kernel::features::session::usecases::SessionUseCaseDependencies {
+                layout_resolver: &self.layout_resolver,
+                identity: &self.identity,
+                clock: &self.clock,
+                locks: &self.locks,
+                store: &self.store,
+                server_refs,
+                adapter_refs,
+                summaries,
+            },
         )
     }
 }

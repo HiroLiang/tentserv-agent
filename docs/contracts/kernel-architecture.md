@@ -166,7 +166,9 @@ features/server/
 features/daemon/
 features/doctor/
 features/job/
+features/resource_coordination/
 features/resource_guard/
+features/runtime_ownership/
 features/session/
 features/runtime/
 features/train/
@@ -333,17 +335,30 @@ training-run import, base-model binding, compatibility checks, and removal.
 validation. It should stay independent from individual store packages so model,
 adapter, dataset, server, and cluster use cases can call one
 guard boundary before deleting, rebinding, or mutating referenced resources.
-Resource-specific guard logic should be isolated in focused validator files,
-such as `validators/model.rs`, `validators/adapter.rs`, and
-`validators/dataset.rs`, so adding or changing one resource's blocking rules
-does not require editing unrelated resource validators.
+Each executable guard operation has one focused validator file, such as
+`validators/delete_model.rs`, `validators/rebind_adapter.rs`, and
+`validators/replace_cluster.rs`. Shared filesystem scans belong in focused
+probe modules, and `registry.rs` owns operation dispatch. Adding or changing
+one operation must not require editing unrelated validation logic.
 
 Resource guard domain types should describe protected resources, operations,
 and structured blockers. Guard infra should provide reference probes over
-stored state families such as server specs, train plans/runs, and future
-cluster route bindings. Probes report references; validators decide whether
-an operation is blocked. CLI and daemon REST render or map the resulting
-blockers, but they must not inspect resource files directly.
+stored state families such as server specs, train plans/runs, cluster routes,
+adapter bindings, and runtime ownership. Probes report references; validators
+decide whether an operation is blocked. CLI and daemon REST render or map the
+resulting blockers, but they must not inspect resource files directly.
+
+`features/resource_coordination/` owns canonical resource keys, sorted
+multi-resource advisory lock acquisition, bounded retry, holder diagnostics,
+and RAII permits. Locks protect state transitions only; they must not remain
+held during inference or streaming. Callers depend on the coordinator port so
+tests can inject deterministic contention behavior.
+
+`features/runtime_ownership/` owns durable Cluster route claims, physical model
+runtime generations, active ownership operations, safe scoped inspection, and
+stale-state reconciliation. Its object-safe ports are separated by claims,
+generations, inspection, and reconciliation. The model runtime supervisor and
+Cluster route manager depend only on the narrow interfaces they use.
 
 `features/dataset/domain.rs` owns pure dataset-store names and schema state:
 

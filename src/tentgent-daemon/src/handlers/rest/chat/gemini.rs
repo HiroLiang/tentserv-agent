@@ -66,7 +66,7 @@ pub(crate) struct GeminiGenerateContentRequest {
     tool_config: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct GeminiGenerationConfig {
     #[serde(alias = "maxOutputTokens")]
     max_output_tokens: Option<u32>,
@@ -156,15 +156,6 @@ impl GeminiGenerateContentRequest {
             .into());
         }
         Ok(())
-    }
-}
-
-impl Default for GeminiGenerationConfig {
-    fn default() -> Self {
-        Self {
-            max_output_tokens: None,
-            temperature: None,
-        }
     }
 }
 

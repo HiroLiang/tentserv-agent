@@ -33,23 +33,9 @@ or too cross-cutting to track only in GitHub issues.
 ## Active Plan Index
 
 - [v1.x-roadmap.md](./v1.x-roadmap.md)
-  Long-term post-`v1.0.0` product roadmap for clusters, compatibility proof
-  foundations, tuple-aware model and LoRA gates, resource coordination, and
-  later 1.x capabilities.
-  - [cluster-roadmap.md](./cluster-roadmap.md)
-    Active implementation roadmap for selected `v1.1.0` cluster slices;
-    `#118` remediation passes locally, while native Windows CI still blocks
-    parent `#113` closeout.
-    - [cluster-runtime-ownership-plan.md](./cluster-runtime-ownership-plan.md)
-      Approved implementation plan and decision register for final cluster
-      slice `#118`, with all local remediation verified and native Windows CI
-      pending.
-      - [cluster-runtime-coordination-architecture.md](./cluster-runtime-coordination-architecture.md)
-        Implemented baseline module, supervisor, lock, and platform polling
-        architecture for the shared `#118` coordination system.
-      - [cluster-runtime-ownership-remediation.md](./cluster-runtime-ownership-remediation.md)
-        P1/P2 audit findings, confirmed decisions, completion-smoke fixes,
-        implementation evidence, and the remaining Windows gate for `#118`.
+  Long-term post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is
+  complete; this plan now routes compatibility proof, tuple-aware gates,
+  multimodal context, provider orchestration, and later 1.x work.
 - [bugfix-maintenance-plan.md](./bugfix-maintenance-plan.md)
   Active maintenance queue for post-`v1.0.0` bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.
@@ -63,8 +49,8 @@ or too cross-cutting to track only in GitHub issues.
 
 - [archive/README.md](./archive/README.md)
   Router for completed or superseded plans, including the completed
-  capability-first M2-M7 release roadmap and archived `v0.9.0` / `v1.0.0`
-  release records.
+  `v1.1.0` Cluster MVP, capability-first M2-M7 release roadmap, and archived
+  `v0.9.0` / `v1.0.0` release records.
 - [archive/v1.0.0-stable-compatibility-plan.md](./archive/v1.0.0-stable-compatibility-plan.md)
   Archived `v1.0.0` stable compatibility release train and post-merge
   release/tap checklist.

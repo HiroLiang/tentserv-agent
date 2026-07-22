@@ -254,11 +254,13 @@ fn file_catalog_stores_specs_and_process_metadata() {
         .record_process_start(
             &layout,
             &server_ref,
-            42,
-            Some("process-token".to_string()),
-            8780,
-            LaunchMode::Background,
-            "2026-05-17T00:00:01Z".to_string(),
+            super::super::ports::ServerProcessStartRecord {
+                pid: 42,
+                process_token: Some("process-token".to_string()),
+                bound_port: 8780,
+                launch_mode: LaunchMode::Background,
+                started_at: "2026-05-17T00:00:01Z".to_string(),
+            },
         )
         .expect("record process");
     assert!(inspection.running);

@@ -42,7 +42,7 @@ pub async fn shutdown(State(state): State<RestState>, headers: HeaderMap, body: 
         };
     }
     if let Err(response) = validate_shutdown_body(&body) {
-        return response;
+        return *response;
     }
 
     let pid = state
@@ -79,16 +79,16 @@ pub async fn shutdown(State(state): State<RestState>, headers: HeaderMap, body: 
         .into_response()
 }
 
-fn validate_shutdown_body(body: &[u8]) -> Result<(), Response> {
+fn validate_shutdown_body(body: &[u8]) -> Result<(), Box<Response>> {
     if body.is_empty() {
         return Ok(());
     }
     let value = serde_json::from_slice::<Value>(body).map_err(|err| {
-        error_response(
+        Box::new(error_response(
             StatusCode::BAD_REQUEST,
             "bad_request",
             format!("invalid JSON request body: {err}"),
-        )
+        ))
     })?;
     match value {
         Value::Object(map) if map.is_empty() => Ok(()),
@@ -97,10 +97,10 @@ fn validate_shutdown_body(body: &[u8]) -> Result<(), Response> {
         | Value::Bool(_)
         | Value::Number(_)
         | Value::String(_)
-        | Value::Array(_) => Err(error_response(
+        | Value::Array(_) => Err(Box::new(error_response(
             StatusCode::BAD_REQUEST,
             "bad_request",
             "shutdown request body must be empty or `{}` without fields",
-        )),
+        ))),
     }
 }

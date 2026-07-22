@@ -138,7 +138,7 @@ pub(in crate::server) struct LocalGeminiGenerateContentRequest {
     tool_config: Option<Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub(super) struct LocalGeminiGenerationConfig {
     #[serde(alias = "maxOutputTokens")]
     max_output_tokens: Option<u32>,
@@ -220,15 +220,6 @@ impl LocalGeminiGenerateContentRequest {
             .into());
         }
         Ok(())
-    }
-}
-
-impl Default for LocalGeminiGenerationConfig {
-    fn default() -> Self {
-        Self {
-            max_output_tokens: None,
-            temperature: None,
-        }
     }
 }
 

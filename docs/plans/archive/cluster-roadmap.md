@@ -1,9 +1,8 @@
 # Cluster Roadmap
 
-Status: selected slices `#114`-`#118` are complete. Final slice `#118`,
-including remediation findings `R1`-`R20`, passes the local full-suite, Rust
-1.81, and native Windows verification matrices. Parent tracking issue `#113`
-may begin combined closeout after PR `#123` merges.
+Status: archived after issues `#114`-`#118` and parent tracking issue `#113`
+completed the `v1.1.0` Cluster MVP. The final implementation passed the local
+full-suite, Rust 1.81, native Windows, and five-route Cluster smoke gates.
 
 This plan keeps the selected `v1.1.0` cluster slices aligned while leaving
 later cluster-related candidates visible without turning every related
@@ -36,9 +35,8 @@ inspectable before Tentgent adds multi-route serving behavior.
 | `#117` | Native local cluster routing MVP | completed |
 | `#118` | Runtime ownership and shutdown safety | completed; local, Rust 1.81, and native Windows gates pass |
 
-The next action after PR `#123` merges is the combined cluster MVP review under
-parent `#113`, followed by closeout and plan archival. No sixth cluster
-implementation slice is implied by this remediation.
+Parent issue `#113` completed the combined Cluster MVP review and archived this
+plan. No sixth Cluster implementation slice is implied by the completed track.
 
 ## Candidate Groups
 
@@ -129,7 +127,7 @@ pass intentionally promotes them:
   or cluster should reject normal deletion until the user explicitly unbinds it.
   Force-style deletion should be a separately designed behavior, not the default
   path. The structured blocker and guard-validator model is defined in
-  [resource-blockers.md](../contracts/resource-blockers.md).
+  [resource-blockers.md](../../contracts/resource-blockers.md).
 - SQLite, or an equivalent indexed local metadata layer, is likely the right
   long-term backend for cluster route bindings, proof records, and resource ownership
   queries. Storage should move incrementally by state family, not through one

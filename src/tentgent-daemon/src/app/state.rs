@@ -33,10 +33,10 @@ impl DaemonAppState {
             services,
             logging,
             layout,
-            cache: MemoryCache::default(),
+            cache: MemoryCache,
             jobs,
             job_runner: JobRunner::default(),
-            scheduler: Scheduler::default(),
+            scheduler: Scheduler,
             rest,
             shutdown_tx,
         }

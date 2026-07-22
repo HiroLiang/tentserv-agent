@@ -66,7 +66,7 @@ async fn forward_managed_chat(
     let adapter = request
         .adapter_ref
         .as_deref()
-        .map(|adapter_ref| resolve_adapter(&state, adapter_ref))
+        .map(|adapter_ref| resolve_managed_adapter(&state, adapter_ref))
         .transpose()?;
     let payload = NativeLocalChatRequest {
         messages: request.messages,
@@ -99,7 +99,7 @@ async fn forward_managed_chat(
     result
 }
 
-fn resolve_adapter(
+pub(in crate::server) fn resolve_managed_adapter(
     state: &LocalServerState,
     adapter_ref: &str,
 ) -> Result<NativeAdapterRecordPayload, LocalServerError> {

@@ -33,6 +33,7 @@ tentgent daemon start --host 127.0.0.1 --port 8790
 - 安裝與升級: [docs/user/install.md](../../../docs/user/install.md)
 - 版本說明: [docs/user/version.md](../../../docs/user/version.md)
 - CLI 指令範例: [docs/user/commands.md](../../../docs/user/commands.md)
+- Cluster 定義、檢查與啟動: [docs/user/clusters.md](../../../docs/user/clusters.md)
 - Runtime 與 diagnostics: [docs/user/runtime.md](../../../docs/user/runtime.md)
 - HTTP API reference: [docs/user/api.md](../../../docs/user/api.md)
 - Provider compatibility:

@@ -21,6 +21,22 @@ active execution track.
   - completed slice order
   - rationale behind earlier runtime, release, server, or backend decisions
 
+## v1.1.0 Cluster MVP
+
+These plans record the completed `#113` Cluster MVP and its implementation
+slices `#114`-`#118`.
+
+- [cluster-roadmap.md](./cluster-roadmap.md)
+  Completed five-slice roadmap for resource safety, canonical Cluster TOML,
+  readiness diagnostics, native local routing, and runtime ownership.
+- [cluster-runtime-ownership-plan.md](./cluster-runtime-ownership-plan.md)
+  Completed `#118` decision register and implementation plan.
+- [cluster-runtime-coordination-architecture.md](./cluster-runtime-coordination-architecture.md)
+  Implemented coordination, guard, ownership, supervisor, and watcher
+  architecture.
+- [cluster-runtime-ownership-remediation.md](./cluster-runtime-ownership-remediation.md)
+  Closed `R1`-`R20` audit findings and verification evidence.
+
 ## v1.0.0 Compatibility Track
 
 These plans were the staged compatibility and release-readiness path through

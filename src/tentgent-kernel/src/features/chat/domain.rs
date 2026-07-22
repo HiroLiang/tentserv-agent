@@ -118,21 +118,11 @@ pub enum ChatPromptValidationError {
     Empty,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ChatGenerationOptions {
     pub max_tokens: Option<u32>,
     pub temperature: Option<f32>,
     pub stream: bool,
-}
-
-impl Default for ChatGenerationOptions {
-    fn default() -> Self {
-        Self {
-            max_tokens: None,
-            temperature: None,
-            stream: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

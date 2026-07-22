@@ -1,6 +1,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{
     collections::{BTreeMap, VecDeque},
+    fs,
     future::poll_fn,
     pin::Pin,
     sync::{Arc, Mutex},
@@ -693,6 +694,44 @@ async fn cluster_router_keeps_the_bound_route_when_request_model_differs() {
     let _ = std::fs::remove_dir_all(home);
 }
 
+#[test]
+fn cluster_chat_route_resolves_managed_adapter_through_native_boundary() {
+    let cluster_ref = ClusterRef::parse("adapter-cluster").expect("cluster ref");
+    let model_ref = ModelRef::parse("d".repeat(64)).expect("model ref");
+    let adapter_ref = "e".repeat(64);
+    let (state, home) = state_for_definition(
+        "managed-adapter",
+        definition(&cluster_ref, &model_ref, false),
+    );
+    write_mlx_chat_model_fixture(&home, model_ref.as_str());
+    write_mlx_chat_adapter_fixture(&home, &adapter_ref, model_ref.as_str());
+
+    let resolved = state
+        .resolve_local_state(ClusterRouteKey::Chat)
+        .expect("resolve cluster chat route");
+    let payload = crate::server::local::managed_adapter::resolve_managed_adapter(
+        &resolved.local,
+        &adapter_ref[..12],
+    )
+    .expect("resolve managed adapter through native local boundary");
+
+    assert_eq!(payload.adapter_ref, adapter_ref);
+    assert_eq!(payload.short_ref, &adapter_ref[..12]);
+    assert_eq!(payload.adapter_format, "mlx");
+    assert_eq!(payload.adapter_type, "lora");
+    assert_eq!(
+        fs::canonicalize(&payload.source_path).expect("canonical payload source"),
+        fs::canonicalize(
+            home.join("adapters/store")
+                .join(&adapter_ref)
+                .join("source")
+        )
+        .expect("canonical expected source")
+    );
+    drop(resolved);
+    let _ = fs::remove_dir_all(home);
+}
+
 fn definition(
     cluster_ref: &ClusterRef,
     model_ref: &ModelRef,
@@ -731,6 +770,46 @@ fn unique_home(label: &str) -> std::path::PathBuf {
         "tentgent-cluster-server-{label}-{}-{nanos}",
         std::process::id()
     ))
+}
+
+fn write_mlx_chat_model_fixture(home: &std::path::Path, model_ref: &str) {
+    let store_dir = home.join("models/store").join(model_ref);
+    let source_dir = store_dir.join("variants/mlx/source");
+    fs::create_dir_all(&source_dir).expect("model source dir");
+    fs::write(store_dir.join("manifest.json"), "{}").expect("model manifest");
+    fs::write(
+        store_dir.join("variants/mlx/variant.toml"),
+        "format = \"mlx\"\nstatus = \"imported\"\nimport_method = \"add\"\nrelative_source_path = \"source\"\n",
+    )
+    .expect("model variant");
+    fs::write(source_dir.join("config.json"), "{}").expect("model config");
+    fs::write(source_dir.join("tokenizer.json"), "{}").expect("model tokenizer");
+    fs::write(
+        store_dir.join("model.toml"),
+        format!(
+            "model_ref = \"{model_ref}\"\nshort_ref = \"{}\"\nsource_kind = \"local\"\nsource_path = \"{}\"\nprimary_format = \"mlx\"\ndetected_formats = [\"mlx\"]\nmodel_capabilities = [\"chat\"]\nmodel_capability_source = \"explicit-user\"\nfile_count = 2\ntotal_bytes = 4\nimported_at = \"2026-07-21T00:00:00Z\"\n",
+            &model_ref[..12],
+            source_dir.display()
+        ),
+    )
+    .expect("model metadata");
+}
+
+fn write_mlx_chat_adapter_fixture(home: &std::path::Path, adapter_ref: &str, model_ref: &str) {
+    let store_dir = home.join("adapters/store").join(adapter_ref);
+    let source_dir = store_dir.join("source");
+    fs::create_dir_all(&source_dir).expect("adapter source dir");
+    fs::write(store_dir.join("manifest.json"), "{}").expect("adapter manifest");
+    fs::write(source_dir.join("adapters.safetensors"), "adapter").expect("adapter weights");
+    fs::write(
+        store_dir.join("adapter.toml"),
+        format!(
+            "adapter_ref = \"{adapter_ref}\"\nshort_ref = \"{}\"\nadapter_format = \"mlx\"\nadapter_type = \"lora\"\ntarget_capability = \"chat\"\nbase_model_ref = \"{model_ref}\"\nbackend_support = [\"mlx\"]\nsource_kind = \"local\"\nsource_path = \"{}\"\nfile_count = 1\ntotal_bytes = 7\nimported_at = \"2026-07-21T00:00:00Z\"\n",
+            &adapter_ref[..12],
+            source_dir.display()
+        ),
+    )
+    .expect("adapter metadata");
 }
 
 fn route_lease_fixture(

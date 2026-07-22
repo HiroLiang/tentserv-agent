@@ -180,7 +180,7 @@ pub async fn append_messages(
 
     match result {
         AppendSessionMessagesResult::Appended { outcome, .. } => {
-            Ok(Json(session_append_response(outcome)))
+            Ok(Json(session_append_response(*outcome)))
         }
         AppendSessionMessagesResult::CompactionRequired { requirement, .. } => {
             let Some(server_ref) = body.compaction_server_ref else {
@@ -189,7 +189,7 @@ pub async fn append_messages(
                     "session compaction is required before appending messages",
                 ));
             };
-            let summary = generate_summary(&state, Some(server_ref), requirement).await?;
+            let summary = generate_summary(&state, Some(server_ref), *requirement).await?;
             let result = state
                 .app()
                 .services()

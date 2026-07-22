@@ -345,9 +345,7 @@ fn format_status_rows(rows: &[(String, String)], value_width: usize) -> String {
 fn status_value_width() -> usize {
     let (_, columns) = Term::stdout().size();
     let available = (columns as usize).saturating_sub(STATUS_FIELD_WIDTH + 1);
-    available
-        .max(STATUS_MIN_VALUE_WIDTH)
-        .min(STATUS_MAX_VALUE_WIDTH)
+    available.clamp(STATUS_MIN_VALUE_WIDTH, STATUS_MAX_VALUE_WIDTH)
 }
 
 fn wrap_status_value(value: &str, max_width: usize) -> Vec<String> {

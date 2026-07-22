@@ -225,25 +225,39 @@ pub(super) fn build_server_spec(
     Ok(spec_for_ref(
         server_ref,
         target,
-        host,
-        port,
-        port_auto,
-        lazy_load,
-        idle_seconds,
-        created_at,
+        ServerSpecSettings {
+            host,
+            port,
+            port_auto,
+            lazy_load,
+            idle_seconds,
+            created_at,
+        },
     ))
 }
 
-fn spec_for_ref(
-    server_ref: ServerRef,
-    target: ServerRuntimeTarget,
+struct ServerSpecSettings {
     host: String,
     port: u16,
     port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
     created_at: String,
+}
+
+fn spec_for_ref(
+    server_ref: ServerRef,
+    target: ServerRuntimeTarget,
+    settings: ServerSpecSettings,
 ) -> ServerSpec {
+    let ServerSpecSettings {
+        host,
+        port,
+        port_auto,
+        lazy_load,
+        idle_seconds,
+        created_at,
+    } = settings;
     let short_ref = server_ref.short_ref().to_string();
     match target {
         ServerRuntimeTarget::LocalModel {

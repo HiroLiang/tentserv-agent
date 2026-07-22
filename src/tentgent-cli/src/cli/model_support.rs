@@ -75,9 +75,9 @@ pub fn model_support_summaries_with_runtime_profile(
         .collect()
 }
 
-pub fn primary_model_support_summary<'a>(
-    summaries: &'a [ModelSupportSummary],
-) -> Option<&'a ModelSupportSummary> {
+pub fn primary_model_support_summary(
+    summaries: &[ModelSupportSummary],
+) -> Option<&ModelSupportSummary> {
     summaries.iter().min_by_key(|summary| {
         (
             support_attention_rank(summary.status),

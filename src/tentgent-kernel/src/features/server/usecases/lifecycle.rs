@@ -453,11 +453,13 @@ impl ServerLifecycleUseCase for StdServerUseCase<'_> {
         let inspection = self.catalog.record_process_start(
             &store,
             &request.server_ref,
-            request.pid,
-            request.process_token,
-            request.bound_port,
-            request.launch_mode,
-            self.clock.now_rfc3339()?,
+            crate::features::server::ports::ServerProcessStartRecord {
+                pid: request.pid,
+                process_token: request.process_token,
+                bound_port: request.bound_port,
+                launch_mode: request.launch_mode,
+                started_at: self.clock.now_rfc3339()?,
+            },
         )?;
 
         Ok(ServerInspectResult {

@@ -31,6 +31,9 @@ The current tool is CLI plus daemon REST. There is no terminal UI command.
   Common commands for auth, models, adapters, datasets, chat, media workflows,
   clusters, servers, daemon, sessions, LoRA training, model support proofs, and
   proof clearing after failed local server launches.
+- [clusters.md](./clusters.md)
+  Plain-language Cluster setup, route mapping, lifecycle reuse, hot reload,
+  resource protection, ownership recovery, and current limits.
 - [api.md](./api.md)
   User-facing daemon HTTP API reference, including request shapes, result
   routes, job behavior, multipart media upload semantics, and HTTP error

@@ -1,39 +1,15 @@
-use std::{net::SocketAddr, path::PathBuf};
-
-use axum::{
-    extract::State,
-    routing::{get, post},
-    Json, Router,
-};
-use serde_json::json;
-use tentgent_kernel::{
-    features::{
-        runtime::{
-            domain::PythonRuntimeResolutionInput,
-            infra::{
-                ModelRuntimeDaemonLaunchPolicy, ModelRuntimeDaemonSupervisor,
-                StdPythonRuntimeResolver, StdRuntimeExecutableResolver,
-            },
-            ports::PythonRuntimeResolver,
-        },
-        server::domain::ServerCapability,
-    },
-    foundation::layout::{
-        LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
-    },
-};
-
 mod capability;
 pub(super) mod claude_messages;
 pub(super) mod error;
 mod evidence;
 pub(super) mod gemini_generate;
-mod managed_adapter;
+pub(in crate::server) mod managed_adapter;
 mod native;
 pub(super) mod openai_chat;
 pub(super) mod openai_embeddings;
 mod openai_images;
 pub(super) mod proxy;
+mod runtime;
 mod sse;
 
 #[cfg(test)]
@@ -49,92 +25,8 @@ pub(super) use openai_chat::{openai_chat_completions, LocalOpenAiChatCompletionR
 pub(super) use openai_embeddings::openai_embeddings;
 use openai_images::image_generations;
 pub(super) use proxy::proxy_request;
-
-pub(super) const PROXY_BODY_LIMIT_BYTES: usize = 256 * 1024 * 1024;
-pub(super) const RUNTIME_CHAT_PATH: &str = "/v1/chat";
-pub(super) const RUNTIME_CHAT_STREAM_PATH: &str = "/v1/chat/stream";
-pub(super) const RUNTIME_EMBEDDINGS_PATH: &str = "/v1/embeddings";
-pub(super) const RUNTIME_IMAGE_GENERATIONS_PATH: &str = "/v1/images/generations";
-
-#[derive(Debug, Clone)]
-pub struct LocalServerRuntimeConfig {
-    pub server_ref: String,
-    pub capability: ServerCapability,
-    pub model_ref: String,
-    pub runtime_profile: Option<String>,
-    pub host: String,
-    pub port: u16,
-    pub runtime_home: Option<PathBuf>,
-    pub idle_seconds: Option<u64>,
-}
-
-#[derive(Clone)]
-pub(super) struct LocalServerState {
-    pub(super) config: LocalServerRuntimeConfig,
-    pub(super) layout: tentgent_kernel::foundation::layout::RuntimeLayout,
-    pub(super) runtime: tentgent_kernel::features::runtime::domain::PythonRuntimeLayout,
-    pub(super) executable_resolver: StdRuntimeExecutableResolver,
-    pub(super) supervisor: ModelRuntimeDaemonSupervisor,
-    pub(super) client: reqwest::Client,
-    pub(super) launch_policy: ModelRuntimeDaemonLaunchPolicy,
-}
-
-pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miette::Result<()> {
-    let addr: SocketAddr = format!("{}:{}", config.host, config.port)
-        .parse()
-        .map_err(|err| miette::miette!("invalid local server bind address: {err}"))?;
-    let layout = StdRuntimeLayoutResolver
-        .resolve(RuntimeLayoutInput {
-            mode: LayoutResolveMode::Create,
-            home_dir: config.runtime_home.clone(),
-            data_root_dir: None,
-        })
-        .map_err(|err| miette::miette!("{err}"))?;
-    let runtime = StdPythonRuntimeResolver
-        .resolve_python_runtime(&layout, PythonRuntimeResolutionInput::default())
-        .map_err(|err| miette::miette!("{err}"))?;
-    let state = LocalServerState {
-        launch_policy: config
-            .idle_seconds
-            .map(ModelRuntimeDaemonLaunchPolicy::with_idle_keep_alive_seconds)
-            .unwrap_or_default(),
-        config,
-        layout,
-        runtime,
-        executable_resolver: StdRuntimeExecutableResolver,
-        supervisor: ModelRuntimeDaemonSupervisor::new(),
-        client: reqwest::Client::new(),
-    };
-    let router = Router::new()
-        .route("/healthz", get(healthz))
-        .route("/v1/chat/completions", post(openai_chat_completions))
-        .route("/v1/chat", post(managed_native_chat))
-        .route("/v1/chat/stream", post(managed_native_chat_stream))
-        .route("/v1/messages", post(claude_messages))
-        .route("/v1beta/models/{*operation}", post(gemini_generate_content))
-        .route("/v1/embeddings", post(openai_embeddings))
-        .route("/v1/images/generations", post(image_generations))
-        .fallback(proxy_request)
-        .with_state(state);
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .map_err(|err| miette::miette!("local server proxy bind failed: {err}"))?;
-    axum::serve(listener, router)
-        .await
-        .map_err(|err| miette::miette!("local server proxy failed: {err}"))
-}
-
-async fn healthz(State(state): State<LocalServerState>) -> Json<serde_json::Value> {
-    Json(json!({
-        "ok": true,
-        "runtime_kind": "local-proxy",
-        "server_ref": state.config.server_ref,
-        "process_token": tentgent_kernel::features::server::infra::server_process_token_from_env(),
-        "runtime_home": state.config.runtime_home.as_ref().map(|path| path.display().to_string()),
-        "capability": state.config.capability.as_str(),
-        "model_ref": state.config.model_ref,
-        "runtime_profile": state.config.runtime_profile,
-        "idle_seconds": state.config.idle_seconds,
-        "backend": "model-runtime-daemon"
-    }))
-}
+pub use runtime::{run_local_server_runtime, LocalServerRuntimeConfig};
+pub(super) use runtime::{
+    LocalServerState, PROXY_BODY_LIMIT_BYTES, RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH,
+    RUNTIME_EMBEDDINGS_PATH, RUNTIME_IMAGE_GENERATIONS_PATH,
+};
