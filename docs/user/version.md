@@ -3,7 +3,7 @@
 This document summarizes user-facing release notes, stable promises, and known
 limits for current and historical Tentgent versions.
 
-## v1.1.0 (Unreleased)
+## v1.1.0
 
 `v1.1.0` adds the experimental Cluster MVP. A Cluster is one named local
 server definition that routes chat, embedding, rerank, audio transcription,
