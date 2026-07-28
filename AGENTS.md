@@ -141,10 +141,14 @@ Key current documents:
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
+- `docs/plans/v1.2.0-local-compatibility-state-plan.md`
+  Active `v1.2.0` execution plan for issues `#126`-`#130`, covering complete
+  local compatibility tuples, proof v2 persistence, tuple-aware model,
+  Cluster, and LoRA gates, diagnostics, recovery, documentation, and closeout.
 - `docs/plans/v1.x-roadmap.md`
   Active post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is complete;
-  compatibility proof foundations, tuple-aware model and LoRA gates, and later
-  1.x capabilities remain routed here.
+  the selected `v1.2.0` compatibility-state slice has its own active execution
+  plan, and later 1.x capabilities remain routed here.
 - `docs/plans/bugfix-maintenance-plan.md`
   Active post-`v1.0.0` maintenance plan for bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.

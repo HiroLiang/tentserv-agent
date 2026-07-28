@@ -32,10 +32,15 @@ or too cross-cutting to track only in GitHub issues.
 
 ## Active Plan Index
 
+- [v1.2.0-local-compatibility-state-plan.md](./v1.2.0-local-compatibility-state-plan.md)
+  Active execution plan for issues `#126`-`#130`: complete compatibility
+  tuples, proof v2 persistence, local model and Cluster gates, LoRA adapter
+  gates, diagnostics, recovery, documentation, and release closeout.
 - [v1.x-roadmap.md](./v1.x-roadmap.md)
   Long-term post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is
-  complete; this plan now routes compatibility proof, tuple-aware gates,
-  multimodal context, provider orchestration, and later 1.x work.
+  complete; the active `v1.2.0` compatibility-state slice is detailed in its
+  own execution plan, while this roadmap continues to route multimodal
+  context, provider orchestration, and later 1.x work.
 - [bugfix-maintenance-plan.md](./bugfix-maintenance-plan.md)
   Active maintenance queue for post-`v1.0.0` bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.
