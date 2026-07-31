@@ -32,6 +32,10 @@ or too cross-cutting to track only in GitHub issues.
 
 ## Active Plan Index
 
+- [issue-127-compatibility-tuple-proof-v2-plan.md](./issue-127-compatibility-tuple-proof-v2-plan.md)
+  Draft issue-level decision register and execution checklist for the complete
+  compatibility tuple, proof v2 persistence, legacy evidence, exact queries,
+  and concurrent file-backed writes.
 - [v1.2.0-local-compatibility-state-plan.md](./v1.2.0-local-compatibility-state-plan.md)
   Active execution plan for issues `#126`-`#130`: complete compatibility
   tuples, proof v2 persistence, local model and Cluster gates, LoRA adapter

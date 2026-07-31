@@ -145,6 +145,10 @@ Key current documents:
   Active `v1.2.0` execution plan for issues `#126`-`#130`, covering complete
   local compatibility tuples, proof v2 persistence, tuple-aware model,
   Cluster, and LoRA gates, diagnostics, recovery, documentation, and closeout.
+- `docs/plans/issue-127-compatibility-tuple-proof-v2-plan.md`
+  Draft issue-level decision register and implementation checklist for the
+  complete compatibility tuple, proof v2 storage, conservative legacy reads,
+  exact queries, and concurrent file-backed proof transitions.
 - `docs/plans/v1.x-roadmap.md`
   Active post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is complete;
   the selected `v1.2.0` compatibility-state slice has its own active execution
