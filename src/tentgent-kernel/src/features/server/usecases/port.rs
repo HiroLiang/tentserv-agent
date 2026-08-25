@@ -17,6 +17,7 @@ pub struct ServerPrepareRequest {
     pub port: Option<u16>,
     pub lazy_load: bool,
     pub idle_seconds: Option<u64>,
+    pub model_idle_seconds: Option<u64>,
     pub allow_unverified: bool,
 }
 

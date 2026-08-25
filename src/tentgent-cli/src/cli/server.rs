@@ -247,7 +247,8 @@ pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> 
             host: command.host,
             port: command.port,
             runtime_home: command.home,
-            idle_seconds: command.idle_seconds,
+            runtime_idle_seconds: command.runtime_idle_seconds,
+            model_idle_seconds: command.model_idle_seconds,
         },
     )
     .await
@@ -266,7 +267,8 @@ pub async fn handle_cluster_server_runtime(
             host: command.host,
             port: command.port,
             runtime_home: command.home,
-            idle_seconds: command.idle_seconds,
+            runtime_idle_seconds: command.runtime_idle_seconds,
+            model_idle_seconds: command.model_idle_seconds,
             allow_unverified: command.allow_unverified,
         },
     )
@@ -283,6 +285,9 @@ async fn run_server(
         return Ok(());
     }
 
+    let runtime_idle_seconds =
+        resolve_runtime_idle_alias(command.runtime_idle_seconds, command.idle_seconds)?;
+
     let outcome = server
         .prepare_server(ServerPrepareRequest {
             layout: runtime_layout_input(LayoutResolveMode::Create, command.home.as_deref()),
@@ -293,7 +298,8 @@ async fn run_server(
             host: command.host,
             port: command.port,
             lazy_load: command.lazy_load,
-            idle_seconds: command.idle_seconds,
+            idle_seconds: runtime_idle_seconds,
+            model_idle_seconds: command.model_idle_seconds,
             allow_unverified: command.allow_unverified,
         })
         .into_diagnostic()?;
@@ -337,6 +343,8 @@ pub(super) async fn run_cluster_server(command: ClusterRunCommand) -> miette::Re
         .map_err(|err| miette!("invalid cluster ref: {err}"))?;
     let kernel = CliServerKernel::new();
     let server = kernel.server_usecase();
+    let runtime_idle_seconds =
+        resolve_runtime_idle_alias(command.runtime_idle_seconds, command.idle_seconds)?;
     let outcome = server
         .prepare_server(ServerPrepareRequest {
             layout: runtime_layout_input(LayoutResolveMode::Create, command.home.as_deref()),
@@ -344,7 +352,8 @@ pub(super) async fn run_cluster_server(command: ClusterRunCommand) -> miette::Re
             host: command.host,
             port: command.port,
             lazy_load: command.lazy_load,
-            idle_seconds: command.idle_seconds,
+            idle_seconds: runtime_idle_seconds,
+            model_idle_seconds: command.model_idle_seconds,
             allow_unverified: command.allow_unverified,
         })
         .into_diagnostic()?;
@@ -374,6 +383,19 @@ pub(super) async fn run_cluster_server(command: ClusterRunCommand) -> miette::Re
     }
 
     Ok(())
+}
+
+fn resolve_runtime_idle_alias(
+    canonical: Option<u64>,
+    legacy: Option<u64>,
+) -> miette::Result<Option<u64>> {
+    match (canonical, legacy) {
+        (Some(canonical), Some(legacy)) if canonical != legacy => Err(miette!(
+            "--runtime-idle-seconds ({canonical}) and deprecated --idle-seconds ({legacy}) must match"
+        )),
+        (Some(canonical), _) => Ok(Some(canonical)),
+        (None, legacy) => Ok(legacy),
+    }
 }
 
 async fn launch_foreground_server(

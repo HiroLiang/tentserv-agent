@@ -261,9 +261,15 @@ fn local_model_runtime_command_args(
     if spec.lazy_load {
         args.push("--lazy-load".to_string());
     }
-    if let Some(idle_seconds) = spec.idle_seconds {
-        args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
-    }
+    let policy = spec
+        .model_runtime_idle_policy()
+        .map_err(server_runtime_error)?;
+    args.extend([
+        "--runtime-idle-seconds".to_string(),
+        policy.runtime_idle_seconds.to_string(),
+        "--model-idle-seconds".to_string(),
+        policy.model_idle_seconds.to_string(),
+    ]);
     Ok(args)
 }
 
@@ -295,9 +301,15 @@ fn cluster_server_runtime_command_args(
     if spec.lazy_load {
         args.push("--lazy-load".to_string());
     }
-    if let Some(idle_seconds) = spec.idle_seconds {
-        args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
-    }
+    let policy = spec
+        .model_runtime_idle_policy()
+        .map_err(server_runtime_error)?;
+    args.extend([
+        "--runtime-idle-seconds".to_string(),
+        policy.runtime_idle_seconds.to_string(),
+        "--model-idle-seconds".to_string(),
+        policy.model_idle_seconds.to_string(),
+    ]);
     if allow_unverified {
         args.push("--allow-unverified".to_string());
     }

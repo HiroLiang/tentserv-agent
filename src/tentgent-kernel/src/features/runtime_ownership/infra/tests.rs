@@ -240,8 +240,9 @@ fn runtime_generation_admission_reuses_starting_record() {
     let layout = runtime_layout(&root);
     let identity = RuntimeExecutionIdentity::unbound(ModelRuntimeCapability::LoraTuning, None);
     let policy = RuntimeLaunchPolicyRecord {
-        idle_keep_alive_seconds: "300".to_string(),
-        model_idle_timeout_seconds: "-1".to_string(),
+        runtime_idle_seconds: 300,
+        model_idle_seconds: 0,
+        legacy_unbounded_model: false,
     };
     let usecase = StdRuntimeOwnershipUseCase::default();
     assert!(matches!(
@@ -266,10 +267,10 @@ fn concurrent_runtime_callers_share_one_generation_and_first_policy() {
     let identity =
         RuntimeExecutionIdentity::model_bound("model-a", ModelRuntimeCapability::Chat, None);
     let callers = [
-        ("one-shot", "101"),
-        ("daemon", "202"),
-        ("direct-server", "303"),
-        ("cluster", "404"),
+        ("one-shot", 101),
+        ("daemon", 202),
+        ("direct-server", 303),
+        ("cluster", 404),
     ];
     let barrier = Arc::new(Barrier::new(callers.len()));
     let outcomes = Arc::new(Mutex::new(Vec::new()));
@@ -283,8 +284,9 @@ fn concurrent_runtime_callers_share_one_generation_and_first_policy() {
             thread::spawn(move || {
                 barrier.wait();
                 let policy = RuntimeLaunchPolicyRecord {
-                    idle_keep_alive_seconds: idle.to_string(),
-                    model_idle_timeout_seconds: "-1".to_string(),
+                    runtime_idle_seconds: idle,
+                    model_idle_seconds: 0,
+                    legacy_unbounded_model: false,
                 };
                 let admission = StdRuntimeOwnershipUseCase::default()
                     .admit_runtime_generation(&layout, identity, policy)
@@ -702,10 +704,48 @@ fn legacy_ownership_operation_without_resource_keys_deserializes() {
     assert!(operation.resource_keys.is_empty());
 }
 
+#[test]
+fn runtime_policy_accepts_legacy_names_and_text_but_rejects_negative_values() {
+    let legacy: RuntimeLaunchPolicyRecord =
+        toml::from_str("idle_keep_alive_seconds = '300'\nmodel_idle_timeout_seconds = '0'\n")
+            .expect("legacy runtime policy");
+    assert_eq!(legacy, runtime_policy());
+
+    let body = toml::to_string(&legacy).expect("canonical runtime policy");
+    assert!(body.contains("runtime_idle_seconds = 300"));
+    assert!(body.contains("model_idle_seconds = 0"));
+    assert!(!body.contains("idle_keep_alive_seconds"));
+    assert!(!body.contains("model_idle_timeout_seconds"));
+
+    let migrated = toml::from_str::<RuntimeLaunchPolicyRecord>(
+        "idle_keep_alive_seconds = '300'\nmodel_idle_timeout_seconds = '-1'\n",
+    )
+    .expect("former legacy sentinel must remain recoverable");
+    assert_eq!(migrated.runtime_idle_seconds, 300);
+    assert_eq!(migrated.model_idle_seconds, 0);
+    assert!(migrated.legacy_unbounded_model);
+    let migrated_body = toml::to_string(&migrated).expect("migrated runtime policy");
+    assert!(migrated_body.contains("model_idle_seconds = 0"));
+    assert!(migrated_body.contains("legacy_unbounded_model = true"));
+
+    let error = toml::from_str::<RuntimeLaunchPolicyRecord>(
+        "runtime_idle_seconds = '300'\nmodel_idle_seconds = '-1'\n",
+    )
+    .expect_err("negative policy must be rejected");
+    assert!(error.to_string().contains("non-negative"));
+
+    let error = toml::from_str::<RuntimeLaunchPolicyRecord>(
+        "runtime_idle_seconds = 30\nmodel_idle_seconds = 31\n",
+    )
+    .expect_err("invalid clock ordering must be rejected");
+    assert!(error.to_string().contains("less than or equal"));
+}
+
 fn runtime_policy() -> RuntimeLaunchPolicyRecord {
     RuntimeLaunchPolicyRecord {
-        idle_keep_alive_seconds: "300".to_string(),
-        model_idle_timeout_seconds: "-1".to_string(),
+        runtime_idle_seconds: 300,
+        model_idle_seconds: 0,
+        legacy_unbounded_model: false,
     }
 }
 

@@ -1,7 +1,8 @@
 # Bugfix And Maintenance Plan
 
-Status: active post-`v1.0.0` maintenance and patch planning record. All
-currently tracked `#103`-`#107` maintenance issues are completed.
+Status: active post-`v1.0.0` maintenance and patch planning record. Issues
+`#103`-`#107` are completed; `#131` is implemented and validated pending
+review and merge, and `#132` tracks a separate server-option no-op follow-up.
 
 This plan tracks released-product cleanup: bugs, diagnostics gaps, stale
 documentation, release follow-up, repository hygiene, and small hardening work.
@@ -38,13 +39,17 @@ queue that should stay visible from the active plan.
 | [#105](https://github.com/HiroLiang/tentserv-agent/issues/105) | Completed | `v1.0.1 Patch` | Fix signed Homebrew macOS Keychain prompt behavior and keep the release path aligned with the existing signing setup. |
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
+| [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Implemented; pending review and merge | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Planning | `v1.2.0` | Honor Local/Cluster lazy-load configuration and stop Cloud targets from silently accepting unsupported local-runtime lifecycle options. |
 
 ## Current Handoff State
 
-As of `2026-07-21`, no open maintenance issues are tracked in this plan. A new
-session should create additional maintenance issues only when a concrete patch
-bug, diagnostics gap, install/release follow-up, or stale documentation problem
-is identified.
+As of `2026-08-08`, `#131` is implemented and validated on its bug branch. Its
+detailed diagnosis, decisions, implementation evidence, and smoke procedure are in
+[issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md).
+Review and merge that fix before resuming `#127` implementation. Issue `#132`
+remains a separate follow-up and should receive its own issue-level planning
+before its branch is implemented.
 
 The completed `v1.1.0` Cluster issue flow is archived under
 [archive/cluster-roadmap.md](./archive/cluster-roadmap.md). Future feature work

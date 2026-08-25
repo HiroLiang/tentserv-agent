@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
@@ -43,6 +44,7 @@ class TaskManager:
         *,
         max_workers: int = 4,
         completed_retention_seconds: float = 1.0,
+        clock: Callable[[], float] = monotonic,
     ) -> None:
         self._lock = RLock()
         self._executor = ThreadPoolExecutor(
@@ -51,7 +53,8 @@ class TaskManager:
         )
         self._tasks: dict[str, _TrackedTask] = {}
         self._state = TaskManagerState.OPEN
-        self._last_activity_at = monotonic()
+        self._clock = clock
+        self._last_activity_at = self._clock()
         self._completed_retention_seconds = completed_retention_seconds
 
     @property
@@ -76,7 +79,7 @@ class TaskManager:
                 task=task,
                 future=future,
             )
-            self._last_activity_at = monotonic()
+            self._last_activity_at = self._clock()
 
         return TaskHandle(
             task_ref=task.task_ref,
@@ -85,7 +88,7 @@ class TaskManager:
         )
 
     def poll_completed(self) -> None:
-        now = monotonic()
+        now = self._clock()
         with self._lock:
             for task_ref, tracked in list(self._tasks.items()):
                 if not tracked.future.done() or not tracked.task.is_terminal:
@@ -101,7 +104,7 @@ class TaskManager:
 
     def touch_activity(self) -> None:
         with self._lock:
-            self._last_activity_at = monotonic()
+            self._last_activity_at = self._clock()
 
     def begin_closing(self) -> None:
         with self._lock:
@@ -121,9 +124,12 @@ class TaskManager:
 
     def is_idle_for(self, seconds: float) -> bool:
         with self._lock:
-            if self._tasks:
+            if any(
+                not tracked.future.done() or not tracked.task.is_terminal
+                for tracked in self._tasks.values()
+            ):
                 return False
-            return monotonic() - self._last_activity_at >= seconds
+            return self._clock() - self._last_activity_at >= seconds
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
@@ -135,7 +141,7 @@ class TaskManager:
                 "task_count": len(self._tasks),
                 "tasks_by_status": statuses,
                 "last_activity_age_seconds": round(
-                    monotonic() - self._last_activity_at,
+                    self._clock() - self._last_activity_at,
                     3,
                 ),
             }
@@ -161,4 +167,4 @@ class TaskManager:
             raise
         finally:
             with self._lock:
-                self._last_activity_at = monotonic()
+                self._last_activity_at = self._clock()

@@ -898,7 +898,8 @@ fn state_for_definition(
             host: "127.0.0.1".to_string(),
             port: 0,
             runtime_home: Some(layout.home_dir.clone()),
-            idle_seconds: None,
+            runtime_idle_seconds: 300,
+            model_idle_seconds: 0,
             allow_unverified: true,
         },
         runtime: PythonRuntimeLayout {

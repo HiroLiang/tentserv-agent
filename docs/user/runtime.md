@@ -106,6 +106,14 @@ The actual path shown by `runtime status` or `doctor` may differ when
 state. Do not remove it unless you are intentionally repairing or reinstalling
 the managed Python runtime.
 
+Local and Cluster server proxies keep their public Rust listener independent
+from subordinate Python model runtimes. By default, a loaded model releases
+immediately after its final request lease (`model_idle_seconds = 0`), while an
+idle Python process exits after 300 seconds (`runtime_idle_seconds = 300`). A
+later request reloads the model or restarts the process. Health, inspect, and
+ownership probes are read-only and do not postpone those transitions. Use
+`tentgent server inspect <server-ref>` to see both effective values.
+
 Package-manager installs such as Homebrew prepare this environment with:
 
 ```bash

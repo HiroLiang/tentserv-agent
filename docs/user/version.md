@@ -3,6 +3,19 @@
 This document summarizes user-facing release notes, stable promises, and known
 limits for current and historical Tentgent versions.
 
+## Unreleased
+
+- Restored bounded local model memory behavior with separate
+  `runtime_idle_seconds` (`300` by default) and `model_idle_seconds` (`0` by
+  default) policies for Local and Cluster model runtimes.
+- Made runtime health and ownership inspection observational so supervisor
+  polling no longer prevents idle model release or process shutdown.
+- Kept deprecated `idle_seconds` as a runtime-idle alias while rejecting
+  conflicting aliases, negative values, and model-idle values greater than the
+  runtime timeout.
+- Added canonical policy visibility to server REST responses, server inspect,
+  runtime health snapshots, and runtime ownership diagnostics.
+
 ## v1.1.0
 
 `v1.1.0` adds the experimental Cluster MVP. A Cluster is one named local

@@ -41,8 +41,15 @@ pub struct LocalServerRuntimeCommand {
     pub home: Option<PathBuf>,
     #[arg(long)]
     pub lazy_load: bool,
-    #[arg(long = "idle-seconds", value_name = "N")]
-    pub idle_seconds: Option<u64>,
+    #[arg(
+        long = "runtime-idle-seconds",
+        visible_alias = "idle-seconds",
+        default_value_t = 300,
+        value_name = "N"
+    )]
+    pub runtime_idle_seconds: u64,
+    #[arg(long = "model-idle-seconds", default_value_t = 0, value_name = "N")]
+    pub model_idle_seconds: u64,
 }
 
 #[derive(Debug, Subcommand)]
@@ -51,7 +58,7 @@ pub enum ServerCommands {
     #[command(
         name = "run",
         about = "Create a server spec and launch it in foreground mode by default.",
-        long_about = "Create or reuse one stored server spec for a local model reference or cloud runtime reference and launch it immediately. `RUNTIME_REF` can be a full Tentgent model reference, a unique short-ref prefix, `openai:<MODEL_NAME>`, `anthropic:<MODEL_NAME>`, or `claude:<MODEL_NAME>`.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address. When `--port` is omitted, Tentgent starts scanning at 8780 and records the actual bound port in process metadata.\n`--capability` selects the endpoint family. When omitted for a local model, Tentgent infers it from stored model capabilities.\n`--lazy-load` preserves the server spec preference while the local proxy starts or reuses the shared Python runtime on demand.\n`--idle-seconds` becomes the shared Python runtime idle shutdown policy if this proxy starts that runtime.\n`--detach` launches the initial server process in background mode and returns immediately."
+        long_about = "Create or reuse one stored server spec for a local model reference or cloud runtime reference and launch it immediately. `RUNTIME_REF` can be a full Tentgent model reference, a unique short-ref prefix, `openai:<MODEL_NAME>`, `anthropic:<MODEL_NAME>`, or `claude:<MODEL_NAME>`.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address. When `--port` is omitted, Tentgent starts scanning at 8780 and records the actual bound port in process metadata.\n`--capability` selects the endpoint family. When omitted for a local model, Tentgent infers it from stored model capabilities.\n`--lazy-load` preserves the server spec preference while the local proxy starts or reuses the shared Python runtime on demand.\n`--runtime-idle-seconds` controls managed Python runtime shutdown after workload idleness (default 300); deprecated `--idle-seconds` is an alias. `--model-idle-seconds` releases the loaded model after its final lease (default 0).\n`--detach` launches the initial server process in background mode and returns immediately."
     )]
     Run(ServerRunCommand),
     /// List registered server specs and their current runtime state.
@@ -165,9 +172,15 @@ pub struct ServerRunCommand {
     /// Delay model loading until the first request arrives.
     #[arg(short = 'l', long)]
     pub lazy_load: bool,
-    /// Auto-release the loaded model after N idle seconds.
+    /// Deprecated alias for --runtime-idle-seconds.
     #[arg(short = 'i', long = "idle-seconds", value_name = "N")]
     pub idle_seconds: Option<u64>,
+    /// Shut down the managed Python runtime after N workload-idle seconds.
+    #[arg(long = "runtime-idle-seconds", value_name = "N")]
+    pub runtime_idle_seconds: Option<u64>,
+    /// Release the loaded model after N model-idle seconds. Defaults to 0.
+    #[arg(long = "model-idle-seconds", value_name = "N")]
+    pub model_idle_seconds: Option<u64>,
     /// Endpoint family to serve from the selected runtime.
     #[arg(long, value_name = "CAPABILITY")]
     pub capability: Option<ServerCapability>,

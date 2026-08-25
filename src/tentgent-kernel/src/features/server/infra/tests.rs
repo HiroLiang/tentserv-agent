@@ -44,6 +44,45 @@ fn local_identity_json_preserves_legacy_field_order() {
 }
 
 #[test]
+fn local_identity_preserves_legacy_default_and_separates_model_idle_policy() {
+    let identity = StdServerIdentityGenerator;
+    let target = ServerRuntimeTarget::LocalModel {
+        model_ref: ModelRef::parse("a".repeat(64)).expect("model ref"),
+        backend: ServerRuntimeBackend::Mlx,
+        capability: ServerCapability::Chat,
+        runtime_profile: None,
+    };
+    let legacy = identity
+        .server_ref_for_target(&target, "127.0.0.1", 8780, false, true, Some(30))
+        .expect("legacy identity");
+    let canonical_without_model_override = identity
+        .server_ref_for_target_with_model_idle(
+            &target,
+            "127.0.0.1",
+            8780,
+            false,
+            true,
+            Some(30),
+            None,
+        )
+        .expect("canonical legacy-compatible identity");
+    let retained_model = identity
+        .server_ref_for_target_with_model_idle(
+            &target,
+            "127.0.0.1",
+            8780,
+            false,
+            true,
+            Some(30),
+            Some(5),
+        )
+        .expect("model idle identity");
+
+    assert_eq!(legacy, canonical_without_model_override);
+    assert_ne!(legacy, retained_model);
+}
+
+#[test]
 fn embedding_identity_json_includes_capability_without_changing_chat_shape() {
     let body = local_capability_identity_json_for_test(
         "abc123",
@@ -244,6 +283,7 @@ fn file_catalog_stores_specs_and_process_metadata() {
         port_auto: false,
         lazy_load: false,
         idle_seconds: None,
+        model_idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
@@ -304,6 +344,7 @@ fn local_runtime_args_use_rust_proxy_shape() {
         port_auto: false,
         lazy_load: true,
         idle_seconds: Some(30),
+        model_idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
@@ -335,8 +376,10 @@ fn local_runtime_args_use_rust_proxy_shape() {
             "--runtime-profile",
             "local-chat-transformers-peft-v1",
             "--lazy-load",
-            "--idle-seconds",
-            "30"
+            "--runtime-idle-seconds",
+            "30",
+            "--model-idle-seconds",
+            "0"
         ]
     );
     assert!(parts.env.is_empty());
@@ -365,6 +408,7 @@ fn local_embedding_runtime_args_include_runtime_profile() {
         port_auto: false,
         lazy_load: false,
         idle_seconds: None,
+        model_idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
@@ -402,6 +446,7 @@ fn local_rerank_runtime_args_are_supported() {
         port_auto: false,
         lazy_load: false,
         idle_seconds: None,
+        model_idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
 
@@ -438,6 +483,7 @@ fn cloud_runtime_args_include_provider_auth_env() {
         port_auto: false,
         lazy_load: false,
         idle_seconds: None,
+        model_idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
     let auth = AuthSecretMaterial::new(Provider::OpenAI, AuthSecretSource::Env, "secret");
@@ -494,6 +540,7 @@ fn cluster_runtime_args_and_identity_use_cluster_ref_not_definition_content() {
         port_auto: true,
         lazy_load: true,
         idle_seconds: Some(30),
+        model_idle_seconds: None,
         created_at: "2026-07-12T00:00:00Z".to_string(),
     };
     let parts = server_runtime_command_parts(
@@ -577,6 +624,7 @@ fn local_chat_spec_for_port(port: u16, port_auto: bool) -> ServerSpec {
         port_auto,
         lazy_load: false,
         idle_seconds: None,
+        model_idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
     }
 }

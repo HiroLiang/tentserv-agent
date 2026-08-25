@@ -116,7 +116,8 @@ step "validate and apply isolated cluster definition"
 
 step "start detached cluster server"
 RUN_OUTPUT="$("$TENTGENT_BIN" cluster run --home "$CONTROL_HOME" \
-  runtime-ownership-smoke --port "$PORT" --idle-seconds 1 \
+  runtime-ownership-smoke --port "$PORT" --runtime-idle-seconds 1 \
+  --model-idle-seconds 0 \
   --allow-unverified --detach)"
 echo "$RUN_OUTPUT"
 SERVER_REF="$(printf '%s\n' "$RUN_OUTPUT" | sed -nE \
@@ -190,12 +191,28 @@ if [[ "$RECONCILE_OUTPUT" != *"route_claims: 0"* ]]; then
   exit 1
 fi
 step "repair idle runtime generation records"
-sleep 2
-"$TENTGENT_BIN" runtime reconcile --home "$CONTROL_HOME" --apply
-FINAL_RECONCILE_OUTPUT="$("$TENTGENT_BIN" runtime reconcile --home "$CONTROL_HOME")"
+FINAL_RECONCILE_OUTPUT=""
+for _ in $(seq 1 20); do
+  "$TENTGENT_BIN" runtime reconcile --home "$CONTROL_HOME" --apply >/dev/null
+  FINAL_RECONCILE_OUTPUT="$("$TENTGENT_BIN" runtime reconcile --home "$CONTROL_HOME")"
+  if [[ "$FINAL_RECONCILE_OUTPUT" == *"status_before: healthy"* \
+    && "$FINAL_RECONCILE_OUTPUT" == *"route_claims: 0"* \
+    && "$FINAL_RECONCILE_OUTPUT" == *"runtime_generations: 0"* \
+    && "$FINAL_RECONCILE_OUTPUT" == *"active_operations: 0"* \
+    && "$FINAL_RECONCILE_OUTPUT" == *"stale_records: 0"* \
+    && "$FINAL_RECONCILE_OUTPUT" == *"malformed_records: 0"* ]]; then
+    break
+  fi
+  sleep 1
+done
 echo "$FINAL_RECONCILE_OUTPUT"
-if [[ "$FINAL_RECONCILE_OUTPUT" != *"stale_records: 0"* ]]; then
-  echo "error: runtime reconciliation left stale ownership records" >&2
+if [[ "$FINAL_RECONCILE_OUTPUT" != *"status_before: healthy"* \
+  || "$FINAL_RECONCILE_OUTPUT" != *"route_claims: 0"* \
+  || "$FINAL_RECONCILE_OUTPUT" != *"runtime_generations: 0"* \
+  || "$FINAL_RECONCILE_OUTPUT" != *"active_operations: 0"* \
+  || "$FINAL_RECONCILE_OUTPUT" != *"stale_records: 0"* \
+  || "$FINAL_RECONCILE_OUTPUT" != *"malformed_records: 0"* ]]; then
+  echo "error: runtime reconciliation did not reach a clean ownership state" >&2
   exit 1
 fi
 echo "cluster runtime ownership smoke passed"

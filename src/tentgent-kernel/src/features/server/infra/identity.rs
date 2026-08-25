@@ -24,6 +24,27 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
         lazy_load: bool,
         idle_seconds: Option<u64>,
     ) -> KernelResult<ServerRef> {
+        self.server_ref_for_target_with_model_idle(
+            target,
+            host,
+            port,
+            port_auto,
+            lazy_load,
+            idle_seconds,
+            None,
+        )
+    }
+
+    fn server_ref_for_target_with_model_idle(
+        &self,
+        target: &ServerRuntimeTarget,
+        host: &str,
+        port: u16,
+        port_auto: bool,
+        lazy_load: bool,
+        idle_seconds: Option<u64>,
+        model_idle_seconds: Option<u64>,
+    ) -> KernelResult<ServerRef> {
         let server_ref = match target {
             ServerRuntimeTarget::LocalModel {
                 model_ref,
@@ -39,6 +60,7 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
                     port_auto,
                     lazy_load,
                     idle_seconds,
+                    model_idle_seconds,
                 })?
             }
             ServerRuntimeTarget::LocalModel {
@@ -54,6 +76,7 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
                     port,
                     lazy_load,
                     idle_seconds,
+                    model_idle_seconds,
                 })?
             }
             ServerRuntimeTarget::LocalModel {
@@ -70,6 +93,7 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
                 port_auto,
                 lazy_load,
                 idle_seconds,
+                model_idle_seconds,
             })?,
             ServerRuntimeTarget::LocalModel {
                 model_ref,
@@ -84,6 +108,7 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
                 port,
                 lazy_load,
                 idle_seconds,
+                model_idle_seconds,
             })?,
             ServerRuntimeTarget::CloudProvider {
                 provider,
@@ -154,6 +179,7 @@ impl ServerIdentityGenerator for StdServerIdentityGenerator {
                     port_auto,
                     lazy_load,
                     idle_seconds,
+                    model_idle_seconds,
                 })?
             }
         };
@@ -171,6 +197,8 @@ struct LocalServerIdentity<'a> {
     port: u16,
     lazy_load: bool,
     idle_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_idle_seconds: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -183,6 +211,8 @@ struct LocalAutoPortServerIdentity<'a> {
     port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_idle_seconds: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -195,6 +225,8 @@ struct LocalCapabilityServerIdentity<'a> {
     port: u16,
     lazy_load: bool,
     idle_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_idle_seconds: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -208,6 +240,8 @@ struct LocalCapabilityAutoPortServerIdentity<'a> {
     port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_idle_seconds: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -267,6 +301,8 @@ struct ClusterServerIdentity<'a> {
     port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_idle_seconds: Option<u64>,
 }
 
 fn compute_server_ref(identity: impl Serialize) -> KernelResult<String> {
@@ -290,6 +326,7 @@ pub(crate) fn local_identity_json_for_test(
         port,
         lazy_load,
         idle_seconds,
+        model_idle_seconds: None,
     })
     .expect("serialize local identity")
 }
@@ -311,6 +348,7 @@ pub(crate) fn local_capability_identity_json_for_test(
         port,
         lazy_load,
         idle_seconds,
+        model_idle_seconds: None,
     })
     .expect("serialize local capability identity")
 }

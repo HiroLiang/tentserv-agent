@@ -213,6 +213,7 @@ pub(super) fn build_server_spec(
     port: Option<u16>,
     lazy_load: bool,
     idle_seconds: Option<u64>,
+    model_idle_seconds: Option<u64>,
     created_at: String,
     identity: &dyn ServerIdentityGenerator,
 ) -> KernelResult<ServerSpec> {
@@ -220,8 +221,41 @@ pub(super) fn build_server_spec(
         .map_err(|err| KernelError::UnsupportedTarget(err.to_string()))?;
     let port_auto = port.is_none();
     let port = port.unwrap_or(DEFAULT_SERVER_PORT);
-    let server_ref =
-        identity.server_ref_for_target(&target, &host, port, port_auto, lazy_load, idle_seconds)?;
+    let (idle_seconds, model_idle_seconds) = match &target {
+        ServerRuntimeTarget::LocalModel { .. } | ServerRuntimeTarget::Cluster { .. } => {
+            let policy = crate::features::runtime::domain::ModelRuntimeIdlePolicy::from_overrides(
+                idle_seconds,
+                model_idle_seconds,
+            )
+            .map_err(KernelError::UnsupportedTarget)?;
+            (
+                (policy.runtime_idle_seconds
+                    != crate::features::runtime::domain::DEFAULT_RUNTIME_IDLE_SECONDS)
+                    .then_some(policy.runtime_idle_seconds),
+                (policy.model_idle_seconds
+                    != crate::features::runtime::domain::DEFAULT_MODEL_IDLE_SECONDS)
+                    .then_some(policy.model_idle_seconds),
+            )
+        }
+        ServerRuntimeTarget::CloudProvider { .. } => {
+            if model_idle_seconds.is_some() {
+                return Err(KernelError::UnsupportedTarget(
+                    "model_idle_seconds applies only to Local and Cluster server targets"
+                        .to_string(),
+                ));
+            }
+            (idle_seconds, None)
+        }
+    };
+    let server_ref = identity.server_ref_for_target_with_model_idle(
+        &target,
+        &host,
+        port,
+        port_auto,
+        lazy_load,
+        idle_seconds,
+        model_idle_seconds,
+    )?;
     Ok(spec_for_ref(
         server_ref,
         target,
@@ -231,6 +265,7 @@ pub(super) fn build_server_spec(
             port_auto,
             lazy_load,
             idle_seconds,
+            model_idle_seconds,
             created_at,
         },
     ))
@@ -242,6 +277,7 @@ struct ServerSpecSettings {
     port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
+    model_idle_seconds: Option<u64>,
     created_at: String,
 }
 
@@ -256,6 +292,7 @@ fn spec_for_ref(
         port_auto,
         lazy_load,
         idle_seconds,
+        model_idle_seconds,
         created_at,
     } = settings;
     let short_ref = server_ref.short_ref().to_string();
@@ -280,6 +317,7 @@ fn spec_for_ref(
             port_auto,
             lazy_load,
             idle_seconds,
+            model_idle_seconds,
             created_at,
         },
         ServerRuntimeTarget::CloudProvider {
@@ -301,6 +339,7 @@ fn spec_for_ref(
             port_auto,
             lazy_load,
             idle_seconds,
+            model_idle_seconds,
             created_at,
         },
         ServerRuntimeTarget::Cluster { cluster_ref } => ServerSpec {
@@ -318,6 +357,7 @@ fn spec_for_ref(
             port_auto,
             lazy_load,
             idle_seconds,
+            model_idle_seconds,
             created_at,
         },
     }

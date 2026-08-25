@@ -108,9 +108,15 @@ pub struct ClusterRunCommand {
     /// Record the shared server lazy-load preference in the stored spec.
     #[arg(short = 'l', long)]
     pub lazy_load: bool,
-    /// Auto-release each loaded model runtime after N idle seconds.
+    /// Deprecated alias for --runtime-idle-seconds.
     #[arg(short = 'i', long = "idle-seconds", value_name = "N")]
     pub idle_seconds: Option<u64>,
+    /// Shut down each managed Python runtime after N workload-idle seconds.
+    #[arg(long = "runtime-idle-seconds", value_name = "N")]
+    pub runtime_idle_seconds: Option<u64>,
+    /// Release each loaded local model after N model-idle seconds. Defaults to 0.
+    #[arg(long = "model-idle-seconds", value_name = "N")]
+    pub model_idle_seconds: Option<u64>,
     /// Allow unknown or stale local route support evidence for this launch.
     #[arg(long)]
     pub allow_unverified: bool,
@@ -133,8 +139,15 @@ pub struct ClusterServerRuntimeCommand {
     pub home: Option<PathBuf>,
     #[arg(long)]
     pub lazy_load: bool,
-    #[arg(long = "idle-seconds", value_name = "N")]
-    pub idle_seconds: Option<u64>,
+    #[arg(
+        long = "runtime-idle-seconds",
+        visible_alias = "idle-seconds",
+        default_value_t = 300,
+        value_name = "N"
+    )]
+    pub runtime_idle_seconds: u64,
+    #[arg(long = "model-idle-seconds", default_value_t = 0, value_name = "N")]
+    pub model_idle_seconds: u64,
     #[arg(long)]
     pub allow_unverified: bool,
 }

@@ -23,6 +23,26 @@ fn server_list_target_label_uses_cluster_ref_for_cluster_targets() {
     assert_eq!(server_list_target_label(&spec), "local-assistant");
 }
 
+#[test]
+fn runtime_idle_alias_accepts_matching_values_and_rejects_conflicts() {
+    assert_eq!(resolve_runtime_idle_alias(None, None).unwrap(), None);
+    assert_eq!(
+        resolve_runtime_idle_alias(Some(30), None).unwrap(),
+        Some(30)
+    );
+    assert_eq!(
+        resolve_runtime_idle_alias(None, Some(30)).unwrap(),
+        Some(30)
+    );
+    assert_eq!(
+        resolve_runtime_idle_alias(Some(30), Some(30)).unwrap(),
+        Some(30)
+    );
+
+    let error = resolve_runtime_idle_alias(Some(30), Some(31)).expect_err("conflict");
+    assert!(error.to_string().contains("must match"));
+}
+
 fn local_server_spec() -> ServerSpec {
     let model_ref =
         ModelRef::parse("abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd")
@@ -43,6 +63,7 @@ fn local_server_spec() -> ServerSpec {
         port_auto: false,
         lazy_load: false,
         idle_seconds: None,
+        model_idle_seconds: None,
         created_at: "2026-06-15T00:00:00Z".to_string(),
     }
 }
@@ -63,6 +84,7 @@ fn cloud_server_spec() -> ServerSpec {
         port_auto: false,
         lazy_load: false,
         idle_seconds: None,
+        model_idle_seconds: None,
         created_at: "2026-06-15T00:00:00Z".to_string(),
     }
 }
@@ -83,6 +105,7 @@ fn cluster_server_spec() -> ServerSpec {
         port_auto: false,
         lazy_load: false,
         idle_seconds: None,
+        model_idle_seconds: None,
         created_at: "2026-07-12T00:00:00Z".to_string(),
     }
 }

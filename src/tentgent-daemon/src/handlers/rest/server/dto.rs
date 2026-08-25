@@ -67,6 +67,8 @@ pub struct ServerSummaryItem {
     pub port_auto: bool,
     pub bound_port: Option<u16>,
     pub lazy_load: bool,
+    pub runtime_idle_seconds: Option<u64>,
+    pub model_idle_seconds: Option<u64>,
     pub idle_seconds: Option<u64>,
     pub created_at: String,
     pub running: bool,
@@ -90,7 +92,13 @@ pub struct ServerInspectionItem {
     pub port_auto: bool,
     pub bound_port: Option<u16>,
     pub lazy_load: bool,
+    pub runtime_idle_seconds: Option<u64>,
+    pub model_idle_seconds: Option<u64>,
     pub idle_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_runtime_idle_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_idle_seconds: Option<u64>,
     pub created_at: String,
     pub running: bool,
     pub process: Option<ServerProcessItem>,
@@ -224,6 +232,8 @@ pub fn server_summary_item(summary: ServerSummary) -> ServerSummaryItem {
         port_auto: fields.port_auto,
         bound_port,
         lazy_load: fields.lazy_load,
+        runtime_idle_seconds: fields.idle_seconds,
+        model_idle_seconds: fields.model_idle_seconds,
         idle_seconds: fields.idle_seconds,
         created_at: fields.created_at,
         running: summary.running,
@@ -258,7 +268,11 @@ pub fn server_inspection_item_with_ownership(
         port_auto: fields.port_auto,
         bound_port,
         lazy_load: fields.lazy_load,
+        runtime_idle_seconds: fields.idle_seconds,
+        model_idle_seconds: fields.model_idle_seconds,
         idle_seconds: fields.idle_seconds,
+        effective_runtime_idle_seconds: fields.effective_runtime_idle_seconds,
+        effective_model_idle_seconds: fields.effective_model_idle_seconds,
         created_at: fields.created_at,
         running: inspection.running,
         process: inspection.process.map(server_process_item),
@@ -315,10 +329,16 @@ struct ServerFields {
     port_auto: bool,
     lazy_load: bool,
     idle_seconds: Option<u64>,
+    model_idle_seconds: Option<u64>,
+    effective_runtime_idle_seconds: Option<u64>,
+    effective_model_idle_seconds: Option<u64>,
     created_at: String,
 }
 
 fn server_fields(spec: ServerSpec) -> ServerFields {
+    let effective_policy = (!spec.is_cloud())
+        .then(|| spec.model_runtime_idle_policy().ok())
+        .flatten();
     let target = match spec.runtime_kind {
         tentgent_kernel::features::server::domain::ServerRuntimeKind::Local => {
             ServerTargetItem::LocalModel {
@@ -377,6 +397,9 @@ fn server_fields(spec: ServerSpec) -> ServerFields {
         port_auto: spec.port_auto,
         lazy_load: spec.lazy_load,
         idle_seconds: spec.idle_seconds,
+        model_idle_seconds: spec.model_idle_seconds,
+        effective_runtime_idle_seconds: effective_policy.map(|policy| policy.runtime_idle_seconds),
+        effective_model_idle_seconds: effective_policy.map(|policy| policy.model_idle_seconds),
         created_at: spec.created_at,
     }
 }

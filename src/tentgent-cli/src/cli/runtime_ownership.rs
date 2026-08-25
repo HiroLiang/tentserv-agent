@@ -35,9 +35,11 @@ fn runtime_ownership_lines(view: &RuntimeOwnershipView) -> Vec<String> {
     }
     for generation in &view.generations {
         lines.push(format!(
-            "  runtime {} ({}){}",
+            "  runtime {} ({}, runtime_idle_seconds={}, model_idle_seconds={}){}",
             identity_label(&generation.identity),
             generation.state.as_str(),
+            generation.policy.runtime_idle_seconds,
+            generation.policy.model_idle_seconds,
             generation
                 .diagnostic
                 .as_deref()
@@ -134,8 +136,9 @@ mod tests {
                 state: RuntimeGenerationState::Closing,
                 identity,
                 policy: RuntimeLaunchPolicyRecord {
-                    idle_keep_alive_seconds: "300".to_string(),
-                    model_idle_timeout_seconds: "-1".to_string(),
+                    runtime_idle_seconds: 300,
+                    model_idle_seconds: 0,
+                    legacy_unbounded_model: false,
                 },
                 operation: RuntimeGenerationOperation::Close,
                 diagnostic: Some("waiting for verified shutdown".to_string()),
@@ -154,7 +157,9 @@ mod tests {
         assert!(output.contains("Ownership [cluster local-assistant]: attention"));
         assert!(output.contains("model aaaaaaaaaaaa / chat / default@1"));
         assert!(output.contains("(active)"));
-        assert!(output.contains("(closing): waiting for verified shutdown"));
+        assert!(output.contains(
+            "(closing, runtime_idle_seconds=300, model_idle_seconds=0): waiting for verified shutdown"
+        ));
         assert!(output.contains("warning stale-generation"));
         assert!(!output.contains(&model_ref));
         assert!(!output.contains("process_token"));

@@ -24,6 +24,7 @@ fn standard_server_usecase_allows_verified_local_support_status() {
             port: Some(8790),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: false,
         })
         .expect("verified support should allow local server preparation");
@@ -53,6 +54,7 @@ fn standard_server_usecase_allows_catalog_supported_local_status() {
             port: Some(8791),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: false,
         })
         .expect("supported catalog hint should allow local server preparation");
@@ -84,6 +86,7 @@ fn standard_server_usecase_rejects_failed_local_support_status() {
             port: Some(8792),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: true,
         })
         .expect_err("failed support status should block local server preparation");
@@ -115,6 +118,7 @@ fn standard_server_usecase_rejects_unsupported_local_support_status() {
             port: Some(8798),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: true,
         })
         .expect_err("unsupported support status should block local server preparation");
@@ -143,6 +147,7 @@ fn standard_server_usecase_rejects_unknown_support_without_override() {
             port: Some(8793),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: false,
         })
         .expect_err("unknown support status should block by default");
@@ -180,6 +185,7 @@ fn standard_server_usecase_rejects_missing_model_files_even_with_override() {
             port: Some(8799),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: true,
         })
         .expect_err("missing files should block even when unverified support is allowed");
@@ -208,6 +214,7 @@ fn standard_server_usecase_allows_unknown_support_with_override() {
             port: Some(8794),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: true,
         })
         .expect("unknown support should be allowed with explicit override");
@@ -232,6 +239,7 @@ fn standard_server_usecase_rechecks_existing_specs_on_start() {
             port: Some(8795),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: true,
         })
         .expect("prepare with override");
@@ -273,6 +281,7 @@ fn standard_server_usecase_rejects_stale_support_without_override() {
             port: Some(8796),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: false,
         })
         .expect_err("stale support status should block by default");
@@ -306,6 +315,7 @@ fn standard_server_usecase_allows_stale_support_with_override() {
             port: Some(8797),
             lazy_load: false,
             idle_seconds: None,
+            model_idle_seconds: None,
             allow_unverified: true,
         })
         .expect("stale support should be allowed with explicit override");

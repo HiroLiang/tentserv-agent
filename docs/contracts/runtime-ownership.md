@@ -130,9 +130,16 @@ PID, token, capability, model, and effective profile identity match. Legacy
 daemon metadata remains recovery evidence; port-only or PID-only adoption is
 not permitted.
 
-The first spawner chooses the idle policy for a generation. Later callers reuse
-that generation and receive an idle-policy mismatch diagnostic when their
-requested policy differs.
+The first spawner chooses both `runtime_idle_seconds` and
+`model_idle_seconds` for a generation. Later callers reuse that generation and
+receive an idle-policy mismatch diagnostic when either requested value differs.
+Ownership and health probes are observational and do not refresh either idle
+clock. Legacy ownership records using `idle_keep_alive_seconds` and
+`model_idle_timeout_seconds` remain readable. The former exact `-1` model
+sentinel is migration evidence only: a matching live generation is gracefully
+retired, a dead generation is removed, and replacement uses the bounded new
+policy. New requests can never select a negative value, and new records use the
+canonical names.
 
 ## Cluster Reload Policy
 

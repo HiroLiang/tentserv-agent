@@ -43,7 +43,8 @@ pub struct LocalServerRuntimeConfig {
     pub host: String,
     pub port: u16,
     pub runtime_home: Option<PathBuf>,
-    pub idle_seconds: Option<u64>,
+    pub runtime_idle_seconds: u64,
+    pub model_idle_seconds: u64,
 }
 
 #[derive(Clone)]
@@ -72,10 +73,11 @@ pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miett
         .resolve_python_runtime(&layout, PythonRuntimeResolutionInput::default())
         .map_err(|err| miette::miette!("{err}"))?;
     let state = LocalServerState {
-        launch_policy: config
-            .idle_seconds
-            .map(ModelRuntimeDaemonLaunchPolicy::with_idle_keep_alive_seconds)
-            .unwrap_or_default(),
+        launch_policy: ModelRuntimeDaemonLaunchPolicy::new(
+            config.runtime_idle_seconds,
+            config.model_idle_seconds,
+        )
+        .map_err(|error| miette::miette!(error))?,
         config,
         layout,
         runtime,
@@ -112,7 +114,8 @@ async fn healthz(State(state): State<LocalServerState>) -> Json<serde_json::Valu
         "capability": state.config.capability.as_str(),
         "model_ref": state.config.model_ref,
         "runtime_profile": state.config.runtime_profile,
-        "idle_seconds": state.config.idle_seconds,
+        "runtime_idle_seconds": state.config.runtime_idle_seconds,
+        "model_idle_seconds": state.config.model_idle_seconds,
         "backend": "model-runtime-daemon"
     }))
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -39,10 +40,23 @@ class RuntimeServerConfig:
     model_ref: str | None = None
     home: Path | None = None
     lazy_load: bool = True
-    idle_keep_alive_seconds: float = 300.0
-    model_idle_timeout_seconds: float = 0.0
+    runtime_idle_seconds: float = 300.0
+    model_idle_seconds: float = 0.0
     closing_grace_seconds: float = 2.0
     task_poll_interval_seconds: float = 0.5
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("runtime_idle_seconds", self.runtime_idle_seconds),
+            ("model_idle_seconds", self.model_idle_seconds),
+        ):
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        if self.model_idle_seconds > self.runtime_idle_seconds:
+            raise ValueError(
+                "model_idle_seconds must be less than or equal to "
+                "runtime_idle_seconds"
+            )
 
 
 class RuntimeLifecycleState:
@@ -68,9 +82,12 @@ class RuntimeLifecycleState:
         self._closing_started_at: float | None = None
 
     async def start(self) -> None:
-        self._watcher = asyncio.create_task(self._watch_idle())
         if self._config.model_ref is not None and not self._config.lazy_load:
             await asyncio.to_thread(self._preload_bound_model)
+        # Runtime idleness begins once startup work has completed and the app is
+        # ready to accept tasks. Preload time must not consume the idle budget.
+        self._task_manager.touch_activity()
+        self._watcher = asyncio.create_task(self._watch_idle())
 
     async def stop(self) -> None:
         if self._watcher is not None:
@@ -107,6 +124,10 @@ class RuntimeLifecycleState:
                 "capability": self._config.capability.value,
                 "model_ref": self._config.model_ref,
                 "model_bound": self._bound_model is not None,
+                "lifecycle": {
+                    "runtime_idle_seconds": self._config.runtime_idle_seconds,
+                    "model_idle_seconds": self._config.model_idle_seconds,
+                },
                 "resources": self._resource_manager.snapshot(),
             },
             "tasks": task_snapshot,
@@ -125,11 +146,8 @@ class RuntimeLifecycleState:
             self._resource_manager.release_idle()
 
             if self._task_manager.state == TaskManagerState.OPEN:
-                if (
-                    self._config.idle_keep_alive_seconds >= 0
-                    and self._task_manager.is_idle_for(
-                        self._config.idle_keep_alive_seconds
-                    )
+                if self._task_manager.is_idle_for(
+                    self._config.runtime_idle_seconds
                 ):
                     self._task_manager.begin_closing()
                     self._closing_started_at = monotonic()
