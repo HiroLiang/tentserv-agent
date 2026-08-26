@@ -5,6 +5,16 @@ limits for current and historical Tentgent versions.
 
 ## Unreleased
 
+No changes are recorded after `v1.1.1` yet.
+
+## v1.1.1
+
+`v1.1.1` is a local model-memory and runtime lifecycle reliability patch. It
+restores bounded model release after requests while preserving safe shared
+Python runtime reuse for Local and Cluster servers.
+
+What changed:
+
 - Restored bounded local model memory behavior with separate
   `runtime_idle_seconds` (`300` by default) and `model_idle_seconds` (`0` by
   default) policies for Local and Cluster model runtimes.
@@ -15,6 +25,19 @@ limits for current and historical Tentgent versions.
   runtime timeout.
 - Added canonical policy visibility to server REST responses, server inspect,
   runtime health snapshots, and runtime ownership diagnostics.
+- Removed platform-specific Rust compile warnings from Windows library and
+  test builds without changing runtime behavior.
+
+Known limits:
+
+- Operating-system memory counters may retain allocator or framework caches
+  after model release; supported verification uses resource state, release
+  calls, successful reload, and process lifecycle rather than an exact byte
+  threshold.
+- This patch does not add memory-pressure eviction, cross-model scheduling,
+  new backend families, or provider and cloud lifecycle changes.
+- Existing ignored `lazy_load` propagation and unsupported Cloud lifecycle
+  fields remain tracked separately by issue `#132`.
 
 ## v1.1.0
 

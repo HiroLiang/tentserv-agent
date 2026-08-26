@@ -52,6 +52,16 @@ assert_release_workflow_patches_installers() {
   assert_contains "${workflow}" '$BaseUrl = if ($env:TENTGENT_INSTALL_BASE_URL) { $env:TENTGENT_INSTALL_BASE_URL } else { $DefaultBaseUrl }'
 }
 
+assert_release_workflow_uses_version_notes() {
+  local workflow="${root_dir}/.github/workflows/release.yml"
+
+  assert_contains "${workflow}" 'docs/user/version.md'
+  assert_contains "${workflow}" 'base_version="${version%%-*}"'
+  assert_contains "${workflow}" "docs/user/version.md >release-summary.md"
+  assert_contains "${workflow}" "cat release-summary.md"
+  assert_not_contains "${workflow}" "| sh -s --"
+}
+
 assert_macos_release_signing_avoids_restricted_keychain_entitlements() {
   assert_contains "${root_dir}/scripts/package-local.sh" '--options runtime'
   assert_contains "${root_dir}/scripts/package-local.sh" '--identifier "${MACOS_SIGNING_IDENTIFIER}"'
@@ -116,6 +126,9 @@ fi
 
 echo "==> Checking release workflow installer patching"
 assert_release_workflow_patches_installers
+
+echo "==> Checking release workflow uses version notes"
+assert_release_workflow_uses_version_notes
 
 echo "==> Checking macOS release signing avoids restricted Keychain entitlements"
 assert_macos_release_signing_avoids_restricted_keychain_entitlements

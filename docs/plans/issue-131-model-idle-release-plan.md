@@ -1,7 +1,7 @@
 # Issue 131 Model Idle Release And Runtime Keep-Alive Plan
 
-Status: implemented and validated on `bug/131-model-idle-release`; awaiting
-review and merge for
+Status: implemented and validated on `bug/131-model-idle-release`, merged into
+`main`, and awaiting `v1.1.1` release-candidate verification for
 [#131](https://github.com/HiroLiang/tentserv-agent/issues/131).
 
 Parent plans:
