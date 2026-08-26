@@ -1,8 +1,13 @@
-use std::{process::Child, sync::Arc, thread, time::Duration};
+use std::{process::Child, sync::Arc, thread};
+
+#[cfg(unix)]
+use std::time::Duration;
 
 use crate::foundation::error::{KernelError, KernelResult};
 
+#[cfg(unix)]
 const TERMINATE_GRACE: Duration = Duration::from_secs(2);
+#[cfg(unix)]
 const TERMINATE_POLL: Duration = Duration::from_millis(25);
 
 pub(super) struct PendingRuntimeProcess {
@@ -123,11 +128,10 @@ fn runtime_error(error: impl std::fmt::Display) -> KernelError {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        process::{Command, Stdio},
-        thread,
-        time::Duration,
-    };
+    use std::process::{Command, Stdio};
+
+    #[cfg(unix)]
+    use std::{thread, time::Duration};
 
     use super::PendingRuntimeProcess;
 
