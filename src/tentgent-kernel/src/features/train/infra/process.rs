@@ -1,8 +1,10 @@
+#[cfg(unix)]
 use std::process::{Command, Stdio};
 
 use crate::features::train::ports::TrainProcessProbe;
 use crate::foundation::error::KernelResult;
 
+#[cfg(unix)]
 use super::error::train_store_error;
 
 /// Operating-system process liveness probe.

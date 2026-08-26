@@ -1,3 +1,4 @@
+#[cfg(unix)]
 use std::{
     process::{Command, Stdio},
     thread,
@@ -49,20 +50,22 @@ impl DaemonProcessProbe for StdDaemonProcessProbe {
 /// Sends TERM and waits briefly for a daemon process to exit.
 #[derive(Debug, Clone, Copy)]
 pub struct StdDaemonProcessController<P = StdDaemonProcessProbe> {
-    process_probe: P,
+    _process_probe: P,
 }
 
 impl Default for StdDaemonProcessController<StdDaemonProcessProbe> {
     fn default() -> Self {
         Self {
-            process_probe: StdDaemonProcessProbe,
+            _process_probe: StdDaemonProcessProbe,
         }
     }
 }
 
 impl<P> StdDaemonProcessController<P> {
     pub fn new(process_probe: P) -> Self {
-        Self { process_probe }
+        Self {
+            _process_probe: process_probe,
+        }
     }
 }
 
@@ -88,7 +91,7 @@ where
             }
 
             for _ in 0..30 {
-                if !self.process_probe.is_process_running(pid)? {
+                if !self._process_probe.is_process_running(pid)? {
                     return Ok(());
                 }
                 thread::sleep(Duration::from_millis(100));

@@ -1,3 +1,4 @@
+#[cfg(unix)]
 use std::{
     process::{Command, Stdio},
     thread,
@@ -9,7 +10,9 @@ use crate::foundation::error::KernelResult;
 
 use super::error::server_runtime_error;
 
+#[cfg(unix)]
 const TERMINATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
+#[cfg(unix)]
 const TERMINATION_WAIT_ATTEMPTS: usize = 320;
 
 /// Operating-system process liveness probe.
@@ -54,20 +57,22 @@ impl ServerProcessProbe for StdServerProcessProbe {
 /// Sends TERM and waits briefly for a server process to exit.
 #[derive(Debug, Clone, Copy)]
 pub struct StdServerProcessController<P = StdServerProcessProbe> {
-    process_probe: P,
+    _process_probe: P,
 }
 
 impl Default for StdServerProcessController<StdServerProcessProbe> {
     fn default() -> Self {
         Self {
-            process_probe: StdServerProcessProbe,
+            _process_probe: StdServerProcessProbe,
         }
     }
 }
 
 impl<P> StdServerProcessController<P> {
     pub fn new(process_probe: P) -> Self {
-        Self { process_probe }
+        Self {
+            _process_probe: process_probe,
+        }
     }
 }
 
@@ -93,7 +98,7 @@ where
             }
 
             for _ in 0..TERMINATION_WAIT_ATTEMPTS {
-                if !self.process_probe.is_process_running(pid)? {
+                if !self._process_probe.is_process_running(pid)? {
                     return Ok(());
                 }
                 thread::sleep(TERMINATION_POLL_INTERVAL);
