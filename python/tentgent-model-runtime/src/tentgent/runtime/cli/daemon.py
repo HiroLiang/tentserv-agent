@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from collections.abc import Sequence
 from pathlib import Path
@@ -43,22 +44,24 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Delay model loading until the first request.",
     )
     parser.add_argument(
-        "--idle-keep-alive-seconds",
-        default=300.0,
+        "--runtime-idle-seconds",
         type=float,
-        help=(
-            "Idle seconds before the runtime begins graceful shutdown. "
-            "Use a negative value to keep the process alive until external shutdown."
-        ),
+        help="Idle seconds before the runtime begins graceful shutdown (default: 300).",
+    )
+    parser.add_argument(
+        "--idle-keep-alive-seconds",
+        type=float,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--model-idle-seconds",
+        type=float,
+        help="Idle seconds before an unused loaded model is released (default: 0).",
     )
     parser.add_argument(
         "--model-idle-timeout-seconds",
-        default=0.0,
         type=float,
-        help=(
-            "Idle seconds before an unused loaded model resource is released. "
-            "Use a negative value to keep loaded model resources until shutdown."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--closing-grace-seconds",
@@ -72,7 +75,53 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         help="Seconds between task cleanup and idle lifecycle polls.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    args.runtime_idle_seconds = _resolve_timeout_alias(
+        parser,
+        canonical_name="--runtime-idle-seconds",
+        canonical_value=args.runtime_idle_seconds,
+        legacy_name="--idle-keep-alive-seconds",
+        legacy_value=args.idle_keep_alive_seconds,
+        default=300.0,
+    )
+    args.model_idle_seconds = _resolve_timeout_alias(
+        parser,
+        canonical_name="--model-idle-seconds",
+        canonical_value=args.model_idle_seconds,
+        legacy_name="--model-idle-timeout-seconds",
+        legacy_value=args.model_idle_timeout_seconds,
+        default=0.0,
+    )
+    if args.model_idle_seconds > args.runtime_idle_seconds:
+        parser.error(
+            "--model-idle-seconds must be less than or equal to "
+            "--runtime-idle-seconds"
+        )
+    return args
+
+
+def _resolve_timeout_alias(
+    parser: argparse.ArgumentParser,
+    *,
+    canonical_name: str,
+    canonical_value: float | None,
+    legacy_name: str,
+    legacy_value: float | None,
+    default: float,
+) -> float:
+    if (
+        canonical_value is not None
+        and legacy_value is not None
+        and canonical_value != legacy_value
+    ):
+        parser.error(
+            f"{canonical_name} and deprecated {legacy_name} must match when both are set"
+        )
+    value = canonical_value if canonical_value is not None else legacy_value
+    value = default if value is None else value
+    if not math.isfinite(value) or value < 0:
+        parser.error(f"{canonical_name} must be finite and non-negative")
+    return value
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -96,8 +145,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             model_ref=args.model_ref,
             home=home,
             lazy_load=args.lazy_load,
-            idle_keep_alive_seconds=args.idle_keep_alive_seconds,
-            model_idle_timeout_seconds=args.model_idle_timeout_seconds,
+            runtime_idle_seconds=args.runtime_idle_seconds,
+            model_idle_seconds=args.model_idle_seconds,
             closing_grace_seconds=args.closing_grace_seconds,
             task_poll_interval_seconds=args.task_poll_interval_seconds,
         ),

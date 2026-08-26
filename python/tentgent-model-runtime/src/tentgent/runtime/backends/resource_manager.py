@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+import math
 from threading import RLock
 from time import monotonic
 from typing import Any, Generic, TypeVar
@@ -36,15 +37,21 @@ class ResourceManager(Generic[ModelT]):
         self,
         *,
         model_factory: Callable[[Any], ModelT],
-        model_idle_timeout_seconds: float = 0.0,
+        model_idle_seconds: float = 0.0,
+        clock: Callable[[], float] = monotonic,
     ) -> None:
+        _validate_idle_timeout(
+            model_idle_seconds,
+            name="model_idle_seconds",
+        )
         self._lock = RLock()
         self._model_resources: dict[
             ModelResourceKey,
             _LoadedModelResource[ModelT],
         ] = {}
-        self._default_model_idle_timeout_seconds = model_idle_timeout_seconds
+        self._default_model_idle_seconds = model_idle_seconds
         self._model_factory = model_factory
+        self._clock = clock
 
     @contextmanager
     def lease_model(
@@ -72,7 +79,7 @@ class ResourceManager(Generic[ModelT]):
                 resource.model.load(record)
             yield resource.model
         finally:
-            resource.last_used_at = monotonic()
+            resource.last_used_at = self._clock()
             resource.lock.release()
             with self._lock:
                 resource.active_leases -= 1
@@ -80,14 +87,12 @@ class ResourceManager(Generic[ModelT]):
                 self.release_idle()
 
     def release_idle(self) -> int:
-        now = monotonic()
+        now = self._clock()
         resources_to_release: list[_LoadedModelResource[ModelT]] = []
 
         with self._lock:
             for key, resource in list(self._model_resources.items()):
                 timeout = resource.idle_timeout_seconds
-                if timeout < 0:
-                    continue
                 if resource.active_leases > 0:
                     continue
                 if now - resource.last_used_at < timeout:
@@ -124,14 +129,14 @@ class ResourceManager(Generic[ModelT]):
                     "loaded": resource.model.is_loaded,
                     "active_leases": resource.active_leases,
                     "idle_timeout_seconds": resource.idle_timeout_seconds,
-                    "idle_age_seconds": round(monotonic() - resource.last_used_at, 3),
+                    "idle_age_seconds": round(self._clock() - resource.last_used_at, 3),
                 }
                 for key, resource in self._model_resources.items()
             ]
 
         return {
-            "default_model_idle_timeout_seconds": (
-                self._default_model_idle_timeout_seconds
+            "default_model_idle_seconds": (
+                self._default_model_idle_seconds
             ),
             "model_resource_count": len(model_resources),
             "model_resources": model_resources,
@@ -145,6 +150,11 @@ class ResourceManager(Generic[ModelT]):
         *,
         idle_timeout_seconds: float | None,
     ) -> _LoadedModelResource[ModelT]:
+        if idle_timeout_seconds is not None:
+            _validate_idle_timeout(
+                idle_timeout_seconds,
+                name="idle_timeout_seconds",
+            )
         with self._lock:
             resource = self._model_resources.get(key)
             if resource is not None:
@@ -158,15 +168,20 @@ class ResourceManager(Generic[ModelT]):
                 lock=RLock(),
                 record=record,
                 idle_timeout_seconds=(
-                    self._default_model_idle_timeout_seconds
+                    self._default_model_idle_seconds
                     if idle_timeout_seconds is None
                     else idle_timeout_seconds
                 ),
-                last_used_at=monotonic(),
+                last_used_at=self._clock(),
             )
             self._model_resources[key] = resource
             resource.active_leases += 1
             return resource
+
+
+def _validate_idle_timeout(value: float, *, name: str) -> None:
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{name} must be finite and non-negative")
 
 
 def _kind_value(kind: Any) -> str:

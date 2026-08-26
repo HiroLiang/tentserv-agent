@@ -215,9 +215,9 @@ PyTorch, and Apple Silicon MLX LoRA packages where supported.
 
 `GET /healthz` returns the runtime process snapshot. Rust uses this endpoint to
 distinguish ready, closing, and shutdown states for one Python runtime process.
-Each successful health check refreshes the runtime task-manager activity
-timestamp, so a Rust supervisor can keep a managed Python runtime alive by
-polling health before the idle keep-alive window expires.
+Health is observational: it does not refresh model or runtime activity. Rust
+startup probes, supervisor polling, CLI inspection, and ownership inspection
+therefore cannot keep an otherwise idle runtime alive.
 
 Response fields include:
 
@@ -231,8 +231,33 @@ Response fields include:
 - `runtime.capability`
 - `runtime.model_ref`
 - `runtime.model_bound`
+- `runtime.lifecycle.runtime_idle_seconds`
+- `runtime.lifecycle.model_idle_seconds`
 - `runtime.resources`
 - `tasks`
+
+## Idle Policies
+
+The runtime has two independent finite clocks:
+
+- `runtime_idle_seconds` defaults to `300`. It begins when startup becomes
+  ready, then resets when accepted runtime work completes. Expiry begins
+  graceful process shutdown and the lifespan cleanup calls `release_all()`.
+- `model_idle_seconds` defaults to `0`. It begins when the final model lease
+  completes. Expiry removes the loaded resource and calls the backend's
+  `release()` without stopping the process.
+
+The pair must satisfy
+`0 <= model_idle_seconds <= runtime_idle_seconds`. Negative values, including
+the former `-1` retain-forever sentinel, and non-finite Python values are
+rejected before serving. Retained completed-task metadata does not postpone
+runtime shutdown, and a model cannot be released while it has an active lease.
+
+The direct Python CLI accepts `--runtime-idle-seconds` and
+`--model-idle-seconds`. The older `--idle-keep-alive-seconds` and
+`--model-idle-timeout-seconds` names remain deprecated aliases; a canonical and
+legacy value supplied together must match. Rust-managed launches use only the
+canonical names.
 
 ## Shutdown
 

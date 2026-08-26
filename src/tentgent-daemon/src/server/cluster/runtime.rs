@@ -42,10 +42,12 @@ pub async fn run_cluster_server_runtime(config: ClusterServerRuntimeConfig) -> m
         config.cluster_ref.clone(),
     );
     let state = ClusterServerState {
-        launch_policy: config
-            .idle_seconds
-            .map(tentgent_kernel::features::runtime::infra::ModelRuntimeDaemonLaunchPolicy::with_idle_keep_alive_seconds)
-            .unwrap_or_default(),
+        launch_policy:
+            tentgent_kernel::features::runtime::infra::ModelRuntimeDaemonLaunchPolicy::new(
+                config.runtime_idle_seconds,
+                config.model_idle_seconds,
+            )
+            .map_err(|error| miette::miette!(error))?,
         config,
         layout,
         runtime,

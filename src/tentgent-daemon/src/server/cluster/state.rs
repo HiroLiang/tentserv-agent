@@ -30,7 +30,8 @@ pub struct ClusterServerRuntimeConfig {
     pub host: String,
     pub port: u16,
     pub runtime_home: Option<std::path::PathBuf>,
-    pub idle_seconds: Option<u64>,
+    pub runtime_idle_seconds: u64,
+    pub model_idle_seconds: u64,
     pub allow_unverified: bool,
 }
 
@@ -110,7 +111,8 @@ impl ClusterServerState {
                     host: self.config.host.clone(),
                     port: self.config.port,
                     runtime_home: Some(self.layout.home_dir.clone()),
-                    idle_seconds: self.config.idle_seconds,
+                    runtime_idle_seconds: self.config.runtime_idle_seconds,
+                    model_idle_seconds: self.config.model_idle_seconds,
                 },
                 layout: self.layout.clone(),
                 runtime: self.runtime.clone(),

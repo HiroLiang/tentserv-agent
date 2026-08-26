@@ -146,6 +146,7 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
         port_auto: true,
         lazy_load: true,
         idle_seconds: Some(30),
+        model_idle_seconds: Some(5),
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
     let process = ServerProcessMetadata {
@@ -163,9 +164,15 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
     assert!(spec_body.contains("profile_id = \"local-chat-transformers-peft\""));
     assert!(spec_body.contains("profile_version = 1"));
     assert!(spec_body.contains("lazy_load = true"));
+    assert!(spec_body.contains("runtime_idle_seconds = 30"));
+    assert!(spec_body.contains("model_idle_seconds = 5"));
+    assert!(!spec_body
+        .lines()
+        .any(|line| line.starts_with("idle_seconds = ")));
     let parsed_spec: ServerSpec = toml::from_str(&spec_body).expect("parse spec");
     assert_eq!(parsed_spec, spec);
     let legacy_body = spec_body
+        .replace("runtime_idle_seconds = 30", "idle_seconds = 30")
         .lines()
         .filter(|line| !line.starts_with("capability = ") && !line.starts_with("port_auto = "))
         .filter(|line| !line.starts_with("[runtime_profile]"))
@@ -177,6 +184,8 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
     assert_eq!(parsed_legacy_spec.capability, Some(ServerCapability::Chat));
     assert!(parsed_legacy_spec.runtime_profile.is_none());
     assert!(!parsed_legacy_spec.port_auto);
+    assert_eq!(parsed_legacy_spec.idle_seconds, Some(30));
+    assert_eq!(parsed_legacy_spec.model_idle_seconds, Some(5));
 
     let process_body = toml::to_string_pretty(&process).expect("serialize process");
     assert!(process_body.contains("launch_mode = \"background\""));
@@ -194,6 +203,40 @@ fn server_spec_and_process_metadata_round_trip_existing_toml_shape() {
         toml::from_str(&legacy_process_body).expect("parse legacy process");
     assert_eq!(parsed_legacy_process.bound_port, None);
     assert_eq!(parsed_legacy_process.process_token, None);
+}
+
+#[test]
+fn server_spec_rejects_conflicting_or_invalid_idle_policy() {
+    let server_ref = "c".repeat(SERVER_REF_HEX_LENGTH);
+    let model_ref = "d".repeat(64);
+    let base = format!(
+        r#"server_ref = "{server_ref}"
+short_ref = "{}"
+runtime_kind = "local"
+capability = "chat"
+model_ref = "{model_ref}"
+host = "127.0.0.1"
+port = 8780
+lazy_load = true
+created_at = "2026-05-17T00:00:00Z"
+"#,
+        &server_ref[..SHORT_SERVER_REF_LENGTH]
+    );
+
+    let conflicting =
+        format!("{base}runtime_idle_seconds = 30\nidle_seconds = 31\nmodel_idle_seconds = 5\n");
+    let error = toml::from_str::<ServerSpec>(&conflicting).expect_err("conflicting alias");
+    assert!(error.to_string().contains("must match"));
+
+    let invalid = format!("{base}runtime_idle_seconds = 30\nmodel_idle_seconds = 31\n");
+    let error = toml::from_str::<ServerSpec>(&invalid).expect_err("invalid policy");
+    assert!(error.to_string().contains("less than or equal"));
+
+    let matching =
+        format!("{base}runtime_idle_seconds = 30\nidle_seconds = 30\nmodel_idle_seconds = 5\n");
+    let parsed = toml::from_str::<ServerSpec>(&matching).expect("matching alias");
+    assert_eq!(parsed.idle_seconds, Some(30));
+    assert_eq!(parsed.model_idle_seconds, Some(5));
 }
 
 #[test]

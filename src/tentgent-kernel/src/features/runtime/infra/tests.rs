@@ -75,11 +75,26 @@ fn std_runtime_executable_resolver_uses_platform_bin_layout() {
 }
 
 #[test]
-fn model_runtime_launch_policy_overrides_idle_keep_alive_only() {
-    let policy = ModelRuntimeDaemonLaunchPolicy::with_idle_keep_alive_seconds(30);
+fn model_runtime_launch_policy_sets_both_finite_clocks() {
+    let policy = ModelRuntimeDaemonLaunchPolicy::new(30, 5).expect("valid idle policy");
 
-    assert_eq!(policy.idle_keep_alive_seconds, "30");
-    assert_eq!(policy.model_idle_timeout_seconds, "-1");
+    assert_eq!(policy.runtime_idle_seconds, 30);
+    assert_eq!(policy.model_idle_seconds, 5);
+}
+
+#[test]
+fn model_runtime_launch_policy_defaults_to_bounded_release() {
+    let policy = ModelRuntimeDaemonLaunchPolicy::default();
+
+    assert_eq!(policy.runtime_idle_seconds, 300);
+    assert_eq!(policy.model_idle_seconds, 0);
+}
+
+#[test]
+fn invalid_model_runtime_idle_policy_is_rejected() {
+    let error = ModelRuntimeDaemonLaunchPolicy::new(30, 31).expect_err("invalid idle policy");
+
+    assert!(error.contains("model_idle_seconds"));
 }
 
 #[test]

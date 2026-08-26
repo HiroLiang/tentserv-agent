@@ -689,8 +689,36 @@ mod tests {
                 assert_eq!(command.port, Some(8790));
                 assert!(command.lazy_load);
                 assert_eq!(command.idle_seconds, Some(30));
+                assert_eq!(command.runtime_idle_seconds, None);
+                assert_eq!(command.model_idle_seconds, None);
                 assert!(command.allow_unverified);
                 assert!(command.detach);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_canonical_server_idle_policy_options() {
+        let cli = Cli::try_parse_from([
+            "tentgent",
+            "server",
+            "run",
+            "abc123",
+            "--runtime-idle-seconds",
+            "30",
+            "--model-idle-seconds",
+            "5",
+        ])
+        .expect("parse canonical idle policy");
+
+        match cli.command {
+            Commands::Server {
+                action: ServerCommands::Run(command),
+            } => {
+                assert_eq!(command.idle_seconds, None);
+                assert_eq!(command.runtime_idle_seconds, Some(30));
+                assert_eq!(command.model_idle_seconds, Some(5));
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -761,7 +789,8 @@ mod tests {
                     Some(std::path::Path::new("/tmp/tentgent"))
                 );
                 assert!(command.lazy_load);
-                assert_eq!(command.idle_seconds, Some(30));
+                assert_eq!(command.runtime_idle_seconds, 30);
+                assert_eq!(command.model_idle_seconds, 0);
             }
             other => panic!("unexpected command: {other:?}"),
         }

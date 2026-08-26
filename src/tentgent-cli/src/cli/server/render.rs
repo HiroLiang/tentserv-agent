@@ -407,16 +407,27 @@ pub(super) fn render_server_table_with_model_support(
             "false"
         }),
     ]);
-    table.add_row(vec![
-        Cell::new("idle_seconds"),
-        Cell::new(
-            inspection
-                .spec
-                .idle_seconds
-                .map(|seconds| seconds.to_string())
-                .unwrap_or_else(|| "(not set)".to_string()),
-        ),
-    ]);
+    if inspection.spec.is_cloud() {
+        table.add_row(vec![
+            Cell::new("idle_seconds"),
+            Cell::new(
+                inspection
+                    .spec
+                    .idle_seconds
+                    .map(|seconds| seconds.to_string())
+                    .unwrap_or_else(|| "(not set)".to_string()),
+            ),
+        ]);
+    } else if let Ok(policy) = inspection.spec.model_runtime_idle_policy() {
+        table.add_row(vec![
+            Cell::new("runtime_idle_seconds"),
+            Cell::new(policy.runtime_idle_seconds),
+        ]);
+        table.add_row(vec![
+            Cell::new("model_idle_seconds"),
+            Cell::new(policy.model_idle_seconds),
+        ]);
+    }
     table.add_row(vec![
         Cell::new("created_at"),
         Cell::new(&inspection.spec.created_at),

@@ -142,9 +142,14 @@ Key current documents:
 - `docs/development/README.md`
   Developer command reference for source-first builds and repository-local tests.
 - `docs/plans/v1.2.0-local-compatibility-state-plan.md`
-  Active `v1.2.0` execution plan for issues `#126`-`#130`, covering complete
-  local compatibility tuples, proof v2 persistence, tuple-aware model,
-  Cluster, and LoRA gates, diagnostics, recovery, documentation, and closeout.
+  Active `v1.2.0` execution plan for issues `#126`-`#130`, with `#131` as a
+  blocking runtime-lifecycle prerequisite, covering complete local
+  compatibility tuples, proof v2 persistence, tuple-aware model, Cluster, and
+  LoRA gates, diagnostics, recovery, documentation, and closeout.
+- `docs/plans/issue-131-model-idle-release-plan.md`
+  Implemented and validated issue-level contract, decision register,
+  implementation evidence, and live smoke runbook for restoring model idle
+  release and separating it from shared Python runtime process keep-alive.
 - `docs/plans/v1.x-roadmap.md`
   Active post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is complete;
   the selected `v1.2.0` compatibility-state slice has its own active execution

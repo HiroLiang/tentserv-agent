@@ -109,47 +109,47 @@ def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
             AudioTranscriptionBackendModel
         ] = ResourceManager(
             model_factory=build_audio_transcription_model,
-            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+            model_idle_seconds=config.model_idle_seconds,
         )
         return audio_transcription_resources
     if config.capability == RuntimeCapability.AUDIO_SPEECH:
         audio_speech_resources: ResourceManager[AudioSpeechBackendModel] = (
             ResourceManager(
                 model_factory=build_audio_speech_model,
-                model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+                model_idle_seconds=config.model_idle_seconds,
             )
         )
         return audio_speech_resources
     if config.capability == RuntimeCapability.CHAT:
         chat_resources: ResourceManager[ChatBackendModel] = ResourceManager(
             model_factory=build_chat_model,
-            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+            model_idle_seconds=config.model_idle_seconds,
         )
         return chat_resources
     if config.capability == RuntimeCapability.EMBEDDING:
         embedding_resources: ResourceManager[EmbeddingBackendModel] = ResourceManager(
             model_factory=build_embedding_model,
-            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+            model_idle_seconds=config.model_idle_seconds,
         )
         return embedding_resources
     if config.capability == RuntimeCapability.IMAGE_GENERATION:
         image_generation_resources: ResourceManager[ImageGenerationBackendModel] = (
             ResourceManager(
                 model_factory=build_image_generation_model,
-                model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+                model_idle_seconds=config.model_idle_seconds,
             )
         )
         return image_generation_resources
     if config.capability == RuntimeCapability.LORA_TUNING:
         lora_tuning_resources: ResourceManager[LoraTuningBackendModel] = ResourceManager(
             model_factory=build_lora_tuning_model,
-            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+            model_idle_seconds=config.model_idle_seconds,
         )
         return lora_tuning_resources
     if config.capability == RuntimeCapability.RERANK:
         rerank_resources: ResourceManager[RerankBackendModel] = ResourceManager(
             model_factory=build_rerank_model,
-            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+            model_idle_seconds=config.model_idle_seconds,
         )
         return rerank_resources
     if config.capability == RuntimeCapability.VIDEO_UNDERSTANDING:
@@ -157,13 +157,13 @@ def _resource_manager(config: RuntimeServerConfig) -> ResourceManager[Any]:
             VideoUnderstandingBackendModel
         ] = ResourceManager(
             model_factory=build_video_understanding_model,
-            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+            model_idle_seconds=config.model_idle_seconds,
         )
         return video_understanding_resources
     if config.capability == RuntimeCapability.VISION_CHAT:
         vision_chat_resources: ResourceManager[VisionChatBackendModel] = ResourceManager(
             model_factory=build_vision_chat_model,
-            model_idle_timeout_seconds=config.model_idle_timeout_seconds,
+            model_idle_seconds=config.model_idle_seconds,
         )
         return vision_chat_resources
 

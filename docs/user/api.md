@@ -1020,7 +1020,7 @@ For ControlNet-style image control adapters, set `target_capability` to
 | Method | Path | Body |
 | --- | --- | --- |
 | `GET` | `/v1/servers` | None. |
-| `POST` | `/v1/servers` | Local/cloud: `{"runtime_ref":"<model-or-cloud-ref>","capability":"optional chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation","host":"optional","port":8780,"lazy_load":true,"idle_seconds":60}`. Cluster: `{"runtime_kind":"cluster","cluster_ref":"<cluster-ref>","host":"optional","port":8780,"allow_unverified":false}`. |
+| `POST` | `/v1/servers` | Local/cloud: `{"runtime_ref":"<model-or-cloud-ref>","capability":"optional chat\|embedding\|rerank\|audio-transcription\|audio-speech\|vision-chat\|video-understanding\|image-generation","host":"optional","port":8780,"lazy_load":true,"runtime_idle_seconds":300,"model_idle_seconds":0}`. Cluster: `{"runtime_kind":"cluster","cluster_ref":"<cluster-ref>","host":"optional","port":8780,"runtime_idle_seconds":300,"model_idle_seconds":0,"allow_unverified":false}`. |
 | `GET` | `/v1/servers/{reference}` | None. |
 | `DELETE` | `/v1/servers/{reference}` | Removes a stopped server spec. |
 | `POST` | `/v1/servers/{reference}/start` | `{"wait_ready":true,"timeout_seconds":30,"allow_unverified":false}` |
@@ -1046,6 +1046,16 @@ responses also expose a structured `target`; cluster targets use
 remain present.
 Unsupported endpoint families on that direct server should return `404` or an
 endpoint-specific error.
+
+`runtime_idle_seconds` and `model_idle_seconds` apply to Local and Cluster
+model runtimes and default to `300` and `0`. Both are non-negative and the
+model value cannot exceed the runtime value. Deprecated `idle_seconds` is an
+input and response mirror for runtime idle only; supplying it together with a
+different canonical value returns `400`. List and create responses return the
+canonical optional fields plus the legacy mirror. Detailed inspection also
+returns `effective_runtime_idle_seconds` and
+`effective_model_idle_seconds`. Health and inspection do not refresh either
+idle clock.
 
 ## Sessions
 

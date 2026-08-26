@@ -958,6 +958,22 @@ tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
 tentgent server inspect <server-ref>
 ```
 
+Local and Cluster model runtimes use separate idle controls:
+
+```bash
+tentgent server run <model-ref> \
+  --runtime-idle-seconds 300 \
+  --model-idle-seconds 0 \
+  --lazy-load
+```
+
+`--model-idle-seconds 0` releases the model immediately after the final
+request lease. The Rust proxy stays available; `--runtime-idle-seconds 300`
+lets the subordinate Python process exit after five minutes without accepted
+work, and a later request starts it again. The model value must be less than or
+equal to the runtime value. `--idle-seconds` remains a deprecated alias for
+`--runtime-idle-seconds`; if both are supplied they must match.
+
 `--port` is optional. When omitted, Tentgent creates an auto-port server spec
 that starts scanning at `8780` each time the server is launched. The first free
 port is recorded as the running process `bound_port`; `server ls`, `server ps`,
@@ -988,11 +1004,10 @@ endpoint family from the model's stored capabilities. The priority is
 servers bind the selected model in their Rust proxy spec, so the direct server
 request body does not need `model_ref`, `model`, or `model_kind` fields. The
 proxy starts or reuses the shared Python model runtime on demand; that Python
-runtime may idle-shutdown and be started again on a later request. When set,
-`--idle-seconds` becomes the shared Python runtime idle shutdown policy if this
-proxy is the process that starts it. Direct Python runtime callers that do not
-start a model-bound server may still send explicit `model` and `model_kind`
-fields.
+runtime may idle-shutdown and be started again on a later request. Health and
+inspect operations do not extend either idle clock. Direct Python runtime
+callers that do not start a model-bound server may still send explicit `model`
+and `model_kind` fields.
 
 For local model-bound servers, `server inspect` includes a `model_support` row
 for the server capability selected at creation time. This row reports the
@@ -1008,6 +1023,9 @@ to provider-hosted models rather than records in the local model store.
 
 `server inspect` also shows a safe runtime ownership summary. It does not expose
 process-instance tokens, lock paths, or internal request lease ids.
+For Local and Cluster targets it also shows the concrete effective
+`runtime_idle_seconds` and `model_idle_seconds`, including the `300` / `0`
+defaults when the stored spec omitted explicit overrides.
 
 Use `doctor` when you want the same support diagnostics across all stored local
 models and stored clusters. `doctor` keeps the main check list compact and

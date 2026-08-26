@@ -82,6 +82,8 @@ pub async fn create(
     State(state): State<RestState>,
     Json(request): Json<ServerCreateRequest>,
 ) -> Result<(StatusCode, Json<ServerCreateResponse>), RestError> {
+    let runtime_idle_seconds =
+        resolve_runtime_idle_alias(request.runtime_idle_seconds, request.idle_seconds)?;
     let result = state
         .app()
         .services()
@@ -93,7 +95,8 @@ pub async fn create(
             host: request.host,
             port: request.port,
             lazy_load: request.lazy_load.unwrap_or(false),
-            idle_seconds: request.idle_seconds,
+            idle_seconds: runtime_idle_seconds,
+            model_idle_seconds: request.model_idle_seconds,
             allow_unverified: request.allow_unverified.unwrap_or(false),
         })
         .map_err(server_error)?;
@@ -406,8 +409,28 @@ pub struct ServerCreateRequest {
     pub host: Option<String>,
     pub port: Option<u16>,
     pub lazy_load: Option<bool>,
+    pub runtime_idle_seconds: Option<u64>,
+    pub model_idle_seconds: Option<u64>,
     pub idle_seconds: Option<u64>,
     pub allow_unverified: Option<bool>,
+}
+
+fn resolve_runtime_idle_alias(
+    canonical: Option<u64>,
+    legacy: Option<u64>,
+) -> Result<Option<u64>, RestError> {
+    match (canonical, legacy) {
+        (Some(canonical), Some(legacy)) if canonical != legacy => {
+            Err(RestError::bad_request(
+                "bad_request",
+                format!(
+                    "`runtime_idle_seconds` ({canonical}) and deprecated `idle_seconds` ({legacy}) must match"
+                ),
+            ))
+        }
+        (Some(canonical), _) => Ok(Some(canonical)),
+        (None, legacy) => Ok(legacy),
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]

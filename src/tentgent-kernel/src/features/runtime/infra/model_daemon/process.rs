@@ -40,7 +40,11 @@ impl PendingRuntimeProcess {
     }
 
     pub(super) fn disarm(mut self) {
-        self.child.take();
+        if let Some(mut child) = self.child.take() {
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
     }
 
     pub(super) fn terminate_and_wait(&mut self) -> KernelResult<()> {
@@ -119,7 +123,11 @@ fn runtime_error(error: impl std::fmt::Display) -> KernelError {
 
 #[cfg(test)]
 mod tests {
-    use std::process::{Command, Stdio};
+    use std::{
+        process::{Command, Stdio},
+        thread,
+        time::Duration,
+    };
 
     use super::PendingRuntimeProcess;
 
@@ -143,6 +151,33 @@ mod tests {
             .terminate_and_wait()
             .expect("terminate pending process group");
         assert_eq!(pending.pid(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn disarmed_runtime_process_is_reaped_after_natural_exit() {
+        let child = Command::new("sh")
+            .args(["-c", "exit 0"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn short process");
+        let pid = child.id();
+
+        PendingRuntimeProcess::new(child).disarm();
+
+        for _ in 0..100 {
+            let status = Command::new("ps")
+                .args(["-p", &pid.to_string(), "-o", "stat="])
+                .output()
+                .expect("probe child");
+            if !status.status.success() || status.stdout.is_empty() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("disarmed runtime process {pid} was not reaped");
     }
 
     #[cfg(windows)]

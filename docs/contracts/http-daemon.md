@@ -665,6 +665,8 @@ working context, not audit logs.
       "port_auto": true,
       "bound_port": null,
       "lazy_load": false,
+      "runtime_idle_seconds": null,
+      "model_idle_seconds": null,
       "idle_seconds": null,
       "created_at": "2026-04-28T00:00:00Z",
       "running": false,
@@ -693,6 +695,8 @@ and returns:
     "port_auto": true,
     "bound_port": null,
     "lazy_load": false,
+    "runtime_idle_seconds": null,
+    "model_idle_seconds": null,
     "idle_seconds": null,
     "created_at": "2026-04-28T00:00:00Z",
     "running": false,
@@ -1564,12 +1568,13 @@ server:
 
 ```json
 {
-  "runtime_ref": "openai:gpt-4.1-mini",
+  "runtime_ref": "<local-model-ref>",
   "capability": "chat",
   "host": "127.0.0.1",
   "port": 8780,
-  "lazy_load": false,
-  "idle_seconds": null
+  "lazy_load": true,
+  "runtime_idle_seconds": 300,
+  "model_idle_seconds": 0
 }
 ```
 
@@ -1620,6 +1625,8 @@ An abbreviated response is:
     "port_auto": false,
     "bound_port": null,
     "lazy_load": false,
+    "runtime_idle_seconds": null,
+    "model_idle_seconds": null,
     "idle_seconds": null,
     "created_at": "2026-04-28T00:00:00Z",
     "running": false,
@@ -1648,11 +1655,24 @@ runtime on demand and lets that Python runtime follow its normal idle shutdown
 lifecycle. Requests to those model-bound server ports omit `model` and
 `model_kind`; direct Python runtime callers may still provide those fields
 explicitly. The server process remains a server lifecycle resource, not a job
-record. `idle_seconds`, when set, is passed to the shared Python runtime
-supervisor as the idle shutdown policy if the proxy is the process that starts
-that capability/model runtime; an already-running shared runtime is reused with
-its existing policy. The local proxy does not keep a separate permanent Python
-process alive.
+record. Local and Cluster specs use two finite policies:
+`runtime_idle_seconds` defaults to `300` and shuts down the subordinate Python
+process after workload idleness; `model_idle_seconds` defaults to `0` and
+releases a model after its final lease without closing the Rust proxy. Both are
+non-negative and the model value cannot exceed the runtime value. Deprecated
+`idle_seconds` remains a runtime-idle input and response mirror; when supplied
+with `runtime_idle_seconds`, the values must match. An already-running shared
+runtime is reused with the complete first-spawner policy, and mismatch
+diagnostics compare both values. Health, inspect, and ownership probes do not
+reset either clock.
+
+List and create responses expose requested `runtime_idle_seconds`,
+`model_idle_seconds`, and the deprecated `idle_seconds` mirror. Detailed
+inspection also exposes concrete `effective_runtime_idle_seconds` and
+`effective_model_idle_seconds`, so omitted Local or Cluster values are visible
+as `300` / `0`. New stored specs use canonical field names; legacy
+`idle_seconds` specs remain readable. The local proxy does not keep a separate
+permanent Python process alive.
 
 Cluster server starts require a local `routes.chat` target. Only that required
 route gates process startup; optional route problems remain route-scoped.

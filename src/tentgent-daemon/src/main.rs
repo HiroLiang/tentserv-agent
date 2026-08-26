@@ -78,8 +78,14 @@ struct LocalServerArgs {
     home: Option<PathBuf>,
     #[arg(long)]
     lazy_load: bool,
-    #[arg(long = "idle-seconds")]
-    idle_seconds: Option<u64>,
+    #[arg(
+        long = "runtime-idle-seconds",
+        visible_alias = "idle-seconds",
+        default_value_t = 300
+    )]
+    runtime_idle_seconds: u64,
+    #[arg(long = "model-idle-seconds", default_value_t = 0)]
+    model_idle_seconds: u64,
 }
 
 #[derive(Debug, Parser)]
@@ -97,8 +103,14 @@ struct ClusterServerArgs {
     home: Option<PathBuf>,
     #[arg(long)]
     lazy_load: bool,
-    #[arg(long = "idle-seconds")]
-    idle_seconds: Option<u64>,
+    #[arg(
+        long = "runtime-idle-seconds",
+        visible_alias = "idle-seconds",
+        default_value_t = 300
+    )]
+    runtime_idle_seconds: u64,
+    #[arg(long = "model-idle-seconds", default_value_t = 0)]
+    model_idle_seconds: u64,
     #[arg(long)]
     allow_unverified: bool,
 }
@@ -145,7 +157,8 @@ async fn main() -> miette::Result<()> {
             host: args.host,
             port: args.port,
             runtime_home: args.home,
-            idle_seconds: args.idle_seconds,
+            runtime_idle_seconds: args.runtime_idle_seconds,
+            model_idle_seconds: args.model_idle_seconds,
         })
         .await;
     }
@@ -164,7 +177,8 @@ async fn main() -> miette::Result<()> {
             host: args.host,
             port: args.port,
             runtime_home: args.home,
-            idle_seconds: args.idle_seconds,
+            runtime_idle_seconds: args.runtime_idle_seconds,
+            model_idle_seconds: args.model_idle_seconds,
             allow_unverified: args.allow_unverified,
         })
         .await;

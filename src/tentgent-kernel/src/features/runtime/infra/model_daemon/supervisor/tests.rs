@@ -161,28 +161,89 @@ async fn health_failure_terminates_worker_before_removing_generation() {
     .await;
 }
 
+#[tokio::test]
+async fn dead_legacy_unbounded_generation_is_removed_before_replacement() {
+    let home = std::env::temp_dir().join(format!(
+        "tentgent-model-daemon-legacy-policy-{}",
+        crate::features::resource_coordination::new_operation_id()
+    ));
+    let layout = test_layout(home.clone());
+    let identity = RuntimeExecutionIdentity::unbound(ModelRuntimeCapability::LoraTuning, None);
+    let ownership = StdRuntimeOwnershipUseCase::default();
+    let record = match ownership
+        .admit_runtime_generation(
+            &layout,
+            identity.clone(),
+            RuntimeLaunchPolicyRecord {
+                runtime_idle_seconds: 300,
+                model_idle_seconds: 0,
+                legacy_unbounded_model: true,
+            },
+        )
+        .expect("admit legacy generation")
+    {
+        RuntimeGenerationAdmission::Start(record) => record,
+        other => panic!("unexpected admission: {other:?}"),
+    };
+    let record = transition_applied(
+        ownership
+            .mark_runtime_ready(
+                &layout,
+                &identity,
+                &record.generation_id,
+                RuntimeGenerationEndpoint {
+                    host: DEFAULT_HOST.to_string(),
+                    port: 18781,
+                    pid: u32::MAX,
+                    process_token: record.process_token.clone(),
+                },
+            )
+            .expect("mark ready"),
+        "ready transition",
+    )
+    .expect("ready record");
+    let metadata_path = layout.runtime_dir.join("legacy-daemon.toml");
+    fs::create_dir_all(&layout.runtime_dir).expect("runtime dir");
+    fs::write(&metadata_path, "legacy = true\n").expect("legacy metadata");
+    let supervisor = ModelRuntimeDaemonSupervisor::new();
+
+    supervisor
+        .retire_legacy_unbounded_generation(&layout, &identity, &record, &metadata_path)
+        .await
+        .expect("retire dead legacy generation");
+
+    assert!(ownership
+        .summarize_runtime_ownership(&layout)
+        .expect("ownership inspection")
+        .generations
+        .is_empty());
+    assert!(!metadata_path.exists());
+    let _ = fs::remove_dir_all(home);
+}
+
 #[test]
 fn reused_generation_keeps_first_spawner_idle_policy() {
     let stored = RuntimeLaunchPolicyRecord {
-        idle_keep_alive_seconds: "120".to_string(),
-        model_idle_timeout_seconds: "45".to_string(),
+        runtime_idle_seconds: 120,
+        model_idle_seconds: 45,
+        legacy_unbounded_model: false,
     };
     let requested = ModelRuntimeDaemonLaunchPolicy {
-        idle_keep_alive_seconds: "300".to_string(),
-        model_idle_timeout_seconds: "-1".to_string(),
+        runtime_idle_seconds: 300,
+        model_idle_seconds: 0,
     };
 
     let mismatch = launch_policy_mismatch(&stored, &requested)
         .expect("different caller policy should be diagnosed");
     assert!(mismatch.contains("first-spawner policy"));
-    assert!(mismatch.contains("idle_keep_alive_seconds=120"));
-    assert!(mismatch.contains("model_idle_timeout_seconds=45"));
+    assert!(mismatch.contains("runtime_idle_seconds=120"));
+    assert!(mismatch.contains("model_idle_seconds=45"));
     assert_eq!(
         launch_policy_mismatch(
             &stored,
             &ModelRuntimeDaemonLaunchPolicy {
-                idle_keep_alive_seconds: "120".to_string(),
-                model_idle_timeout_seconds: "45".to_string(),
+                runtime_idle_seconds: 120,
+                model_idle_seconds: 45,
             }
         ),
         None
@@ -313,8 +374,9 @@ fn prepared_generation(
             &layout,
             identity.clone(),
             RuntimeLaunchPolicyRecord {
-                idle_keep_alive_seconds: "300".to_string(),
-                model_idle_timeout_seconds: "-1".to_string(),
+                runtime_idle_seconds: 300,
+                model_idle_seconds: 0,
+                legacy_unbounded_model: false,
             },
         )
         .unwrap()

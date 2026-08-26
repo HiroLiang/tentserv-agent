@@ -206,6 +206,8 @@ async fn server_list_and_inspect_read_kernel_catalog() {
     assert_eq!(servers[0]["port"], 8999);
     assert_eq!(servers[0]["lazy_load"], false);
     assert_eq!(servers[0]["idle_seconds"], 60);
+    assert_eq!(servers[0]["runtime_idle_seconds"], 60);
+    assert!(servers[0]["model_idle_seconds"].is_null());
     assert_eq!(servers[0]["running"], false);
     assert!(servers[0]["process"].is_null());
 
@@ -249,6 +251,8 @@ async fn server_list_and_inspect_read_kernel_catalog() {
     assert_eq!(server["ownership"]["claims"], serde_json::json!([]));
     assert_eq!(server["ownership"]["generations"], serde_json::json!([]));
     assert_eq!(server["ownership"]["issues"], serde_json::json!([]));
+    assert_eq!(server["effective_runtime_idle_seconds"], 60);
+    assert_eq!(server["effective_model_idle_seconds"], 0);
     let serialized_ownership = serde_json::to_string(&server["ownership"]).unwrap();
     for private_field in [
         "pid",
@@ -279,7 +283,7 @@ async fn server_create_infers_capability_from_model_metadata() {
                 .uri("/v1/servers")
                 .header("content-type", "application/json")
                 .body(Body::from(format!(
-                    r#"{{"runtime_ref":"{model_ref}","host":"127.0.0.1","port":8998,"lazy_load":true,"idle_seconds":30,"allow_unverified":true}}"#
+                    r#"{{"runtime_ref":"{model_ref}","host":"127.0.0.1","port":8998,"lazy_load":true,"runtime_idle_seconds":30,"idle_seconds":30,"model_idle_seconds":5,"allow_unverified":true}}"#
                 )))
                 .expect("request"),
         )
@@ -298,12 +302,48 @@ async fn server_create_infers_capability_from_model_metadata() {
     assert_eq!(body["server"]["port"], 8998);
     assert_eq!(body["server"]["lazy_load"], true);
     assert_eq!(body["server"]["idle_seconds"], 30);
+    assert_eq!(body["server"]["runtime_idle_seconds"], 30);
+    assert_eq!(body["server"]["model_idle_seconds"], 5);
+    assert_eq!(body["server"]["effective_runtime_idle_seconds"], 30);
+    assert_eq!(body["server"]["effective_model_idle_seconds"], 5);
     let server_ref = body["server"]["server_ref"].as_str().expect("server ref");
     assert!(home
         .join("servers")
         .join(server_ref)
         .join("server.toml")
         .exists());
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[tokio::test]
+async fn server_create_rejects_conflicting_runtime_idle_aliases() {
+    let requested_home = unique_home("servers-create-idle-conflict");
+    let state = rest_state_for_home(requested_home);
+    let home = state.app().layout().home_dir.canonicalize().expect("home");
+    let model_ref = "b".repeat(64);
+    write_safetensors_model_fixture_with_capabilities(&home, &model_ref, &["chat"]);
+
+    let response = build_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/servers")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"runtime_ref":"{model_ref}","runtime_idle_seconds":30,"idle_seconds":31,"allow_unverified":true}}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert!(body["message"]
+        .as_str()
+        .expect("error message")
+        .contains("must match"));
 
     let _ = fs::remove_dir_all(home);
 }

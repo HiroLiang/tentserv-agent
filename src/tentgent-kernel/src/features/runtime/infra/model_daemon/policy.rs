@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::features::model::domain::ModelCapability;
-
-const IDLE_KEEP_ALIVE_SECONDS: &str = "300";
-const MODEL_IDLE_TIMEOUT_SECONDS: &str = "-1";
+use crate::features::{model::domain::ModelCapability, runtime::domain::ModelRuntimeIdlePolicy};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ModelRuntimeCapability {
@@ -64,24 +61,26 @@ impl std::fmt::Display for ModelRuntimeCapability {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelRuntimeDaemonLaunchPolicy {
-    pub idle_keep_alive_seconds: String,
-    pub model_idle_timeout_seconds: String,
+    pub runtime_idle_seconds: u64,
+    pub model_idle_seconds: u64,
 }
 
 impl ModelRuntimeDaemonLaunchPolicy {
-    pub fn with_idle_keep_alive_seconds(seconds: u64) -> Self {
+    pub fn from_idle_policy(policy: ModelRuntimeIdlePolicy) -> Self {
         Self {
-            idle_keep_alive_seconds: seconds.to_string(),
-            model_idle_timeout_seconds: MODEL_IDLE_TIMEOUT_SECONDS.to_string(),
+            runtime_idle_seconds: policy.runtime_idle_seconds,
+            model_idle_seconds: policy.model_idle_seconds,
         }
+    }
+
+    pub fn new(runtime_idle_seconds: u64, model_idle_seconds: u64) -> Result<Self, String> {
+        ModelRuntimeIdlePolicy::new(runtime_idle_seconds, model_idle_seconds)
+            .map(Self::from_idle_policy)
     }
 }
 
 impl Default for ModelRuntimeDaemonLaunchPolicy {
     fn default() -> Self {
-        Self {
-            idle_keep_alive_seconds: IDLE_KEEP_ALIVE_SECONDS.to_string(),
-            model_idle_timeout_seconds: MODEL_IDLE_TIMEOUT_SECONDS.to_string(),
-        }
+        Self::from_idle_policy(ModelRuntimeIdlePolicy::default())
     }
 }
