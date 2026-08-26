@@ -86,6 +86,11 @@ checksums. The release job downloads those artifacts, prepares installer
 assets and release notes, creates or updates the GitHub Release, and verifies
 prerelease/latest release state.
 
+GitHub Release notes use the matching stable-version section from
+`docs/user/version.md`. For example, `v1.1.1-rc.131.1` and `v1.1.1` both use
+the `## v1.1.1` section. The release fails before publication when that section
+is missing or empty, so update version notes in the release metadata change.
+
 macOS package jobs use the `apple-developer` GitHub Actions environment with
 `deployment: false`. They import an Apple Developer ID Application certificate
 from environment secrets, sign the `tentgent` binary with hardened runtime and

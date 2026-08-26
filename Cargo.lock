@@ -1969,7 +1969,7 @@ dependencies = [
 
 [[package]]
 name = "tentgent-cli"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "clap",
  "comfy-table",
@@ -1988,7 +1988,7 @@ dependencies = [
 
 [[package]]
 name = "tentgent-daemon"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "axum",
  "base64",
@@ -2013,7 +2013,7 @@ dependencies = [
 
 [[package]]
 name = "tentgent-kernel"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "directories",
  "dotenvy",
@@ -2038,7 +2038,7 @@ dependencies = [
 
 [[package]]
 name = "tentgent-platform-fs"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "windows-sys 0.59.0",
 ]
