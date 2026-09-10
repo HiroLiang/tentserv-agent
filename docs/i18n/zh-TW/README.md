@@ -1,53 +1,58 @@
 # Tentgent 中文入口
 
-Tentgent 是本地 AI workflow operator。當前產品介面是 `tentgent` CLI 加本地
-daemon REST API；沒有 terminal UI 指令。
-
-英文文件是 source of truth。這份中文 README 只保留快速入口，詳細安裝、版本、
-API、contract 與 readiness 內容請以英文文件為準。
+Tentgent 是管理本地模型、推論、資料集、LoRA 訓練與 HTTP 服務的 CLI 工具。依下列目的進入功能頁，即可找到操作範例、參數與 API 格式。詳細文件以英文為準。
 
 ## 快速開始
 
 ```bash
 brew tap hiroliang/tap
 brew install hiroliang/tap/tentgent
-tentgent runtime bootstrap
+tentgent --version
+tentgent runtime bootstrap --profile local-model
 tentgent doctor
+tentgent model pull HuggingFaceTB/SmolLM-135M-Instruct
+tentgent chat <model-ref> --message "user:Hello" --max-tokens 64
 ```
 
-最小本地流程：
+以 pull/list 輸出的 ref 取代 `<model-ref>`。Windows、Linux 與版本選擇請看[安裝文件](../../user/install.md)。
 
-```bash
-tentgent auth hf set
-tentgent model pull google/gemma-3-1b-it
-tentgent chat <model-ref> --message "user:Hello"
-tentgent daemon start --host 127.0.0.1 --port 8790
-```
+<a id="文件入口"></a>
 
-## 文件入口
+## 依目的找功能
 
-- 英文 source of truth: [README.md](../../../README.md)
-- 完整使用者文件: [docs/user/README.md](../../../docs/user/README.md)
-- 1.0 readiness checklist:
-  [docs/user/1.0-readiness.md](../../../docs/user/1.0-readiness.md)
-- 安裝與升級: [docs/user/install.md](../../../docs/user/install.md)
-- 版本說明: [docs/user/version.md](../../../docs/user/version.md)
-- CLI 指令範例: [docs/user/commands.md](../../../docs/user/commands.md)
-- Cluster 定義、檢查與啟動: [docs/user/clusters.md](../../../docs/user/clusters.md)
-- Runtime 與 diagnostics: [docs/user/runtime.md](../../../docs/user/runtime.md)
-- HTTP API reference: [docs/user/api.md](../../../docs/user/api.md)
-- Provider compatibility:
-  [docs/user/provider-compatibility.md](../../../docs/user/provider-compatibility.md)
-- Model support catalog:
-  [docs/user/model-support-catalog.md](../../../docs/user/model-support-catalog.md)
-- API surface stability contract:
-  [docs/contracts/api-surface-stability.md](../../../docs/contracts/api-surface-stability.md)
-- Provider secret contract:
-  [docs/contracts/auth-secrets.md](../../../docs/contracts/auth-secrets.md)
-- Developer docs: [docs/development/README.md](../../../docs/development/README.md)
+| 目的 | 指令 | 功能說明 |
+| --- | --- | --- |
+| 安裝、升級與移除 | `--version` | [安裝](../../user/install.md) |
+| 準備 runtime、查看後端 | `runtime bootstrap/status` | [Runtime](../../user/runtime.md) |
+| 設定金鑰、切換來源 | `auth` | [認證](../../user/auth.md) |
+| 診斷、修復與清理 | `doctor / runtime reconcile / store gc` | [維護](../../user/maintenance.md) |
+| 模型、能力與支援證據 | `model` | [模型](../../user/models.md) |
+| 匯入、綁定、移除 adapter | `adapter` | [Adapters](../../user/adapters.md) |
+| 產生、驗證、匯入與評估資料 | `dataset` | [Datasets](../../user/datasets.md) |
+| 建立 plan、訓練並使用 LoRA | `train lora` | [LoRA 訓練](../../user/training-lora.md) |
+| 文字對話與串流 | `chat` | [Chat](../../user/inference/chat.md) |
+| 文字向量與文件排序 | `embed / rerank` | [Embedding / rerank](../../user/inference/embedding-rerank.md) |
+| 語音轉文字、合成語音 | `transcribe / speak` | [音訊](../../user/inference/audio.md) |
+| 詢問圖片內容 | `vision chat` | [Vision](../../user/inference/vision.md) |
+| 理解影片 | `video understand` | [Video](../../user/inference/video.md) |
+| 產生圖片 | `image generate` | [圖片生成](../../user/inference/images/generate.md) |
+| 改圖、遮罩重繪、ControlNet | `image transform/inpaint/control` | [圖片編輯](../../user/inference/images/edit.md) |
+| 建立管理用 HTTP 入口 | `daemon` | [Daemon、host 與認證](../../user/daemon.md) |
+| 建立本地或雲端模型服務 | `server` | [Servers](../../user/servers.md) |
+| 多模型共用一個服務入口 | `cluster` | [Clusters](../../user/clusters.md) |
+| 保存有界對話內容 | `session / chat --session` | [Sessions](../../user/sessions.md) |
+| 查詢、取消與清理工作 | `/v1/jobs` | [Jobs](../../user/jobs.md) |
+
+## 其他文件
+
+- [English README](../../../README.md) · [User guide](../../user/README.md)
+- [Command index](../../user/commands.md) · [HTTP API index](../../user/api.md)
+- [OpenAI](../../user/providers/openai.md) · [Anthropic / Claude](../../user/providers/anthropic.md) · [Gemini](../../user/providers/gemini.md)
+- [Provider compatibility](../../user/provider-compatibility.md) · [Base URLs](../../user/providers/README.md#base-urls)
+- [Model fixtures](../../user/model-fixtures.md) · [Support catalog](../../user/model-support-catalog.md)
+- [Version notes](../../user/version.md) · [1.0 readiness](../../user/1.0-readiness.md)
+- [Developer guide](../../development/README.md) · [Contracts](../../contracts/README.md)
 
 ## 語言
 
-- 繁體中文: [docs/i18n/zh-TW/README.md](./README.md)
-- 日本語: [docs/i18n/ja/README.md](../ja/README.md)
-- Localized docs router: [docs/i18n/README.md](../README.md)
+[English](../../../README.md) · [繁體中文](../zh-TW/README.md) · [日本語](../ja/README.md) · [Languages](../README.md)

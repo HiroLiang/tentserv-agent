@@ -52,6 +52,8 @@ Use this directory for concise interface documents that define stable boundaries
   Local session metadata and transcript message store boundary.
 - [server-chat.md](./server-chat.md)
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
+- [model-runtime-server.md](./model-runtime-server.md)
+  Direct Python runtime health, capability dispatch, and graceful shutdown.
 - [server-embedding.md](./server-embedding.md)
   Direct local model-server embedding request shape and capability routing.
 - [server-rerank.md](./server-rerank.md)
@@ -69,7 +71,7 @@ Use this directory for concise interface documents that define stable boundaries
 - [tentgent-daemon.md](./tentgent-daemon.md)
   Rust daemon application host, bootstrap, transport, and runtime-state boundary.
 - [training-lora.md](./training-lora.md)
-  Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
+  Managed LoRA plan identity, config shape, backend rules, and run boundaries.
 - [runtime-home.md](./runtime-home.md)
   Runtime-home resolution, standard subdirectories, and environment-variable overrides.
 - [platform-backends.md](./platform-backends.md)

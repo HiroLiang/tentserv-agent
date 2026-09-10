@@ -1025,6 +1025,9 @@ cloud provider client. OpenAI, Anthropic, and Gemini provider requests resolve
 secrets through the daemon auth resolver; Python model-runtime processes are not
 started for these workflows.
 
+For accepted JSON fields, mutually exclusive inputs, CLI provider differences,
+and current execution limits, see [Datasets](../user/datasets.md#http-request-fields).
+
 ## LoRA Train Plans
 
 The daemon exposes LoRA train-plan management without starting training runs:

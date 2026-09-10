@@ -13,7 +13,7 @@ tentgent train lora plan inspect <PLAN_REF>
 tentgent train lora plan rm <PLAN_REF>
 ```
 
-Implemented execution scaffold:
+Implemented execution commands:
 
 ```text
 tentgent train lora run <PLAN_REF>
@@ -23,35 +23,19 @@ tentgent train lora run-worker --home <HOME> --run-ref <RUN_REF>
 The `run-worker` command is hidden. It is an internal detached worker entry for
 the HTTP daemon and should not be treated as user-facing CLI.
 
-Kernel migration state:
+Execution ownership:
 
-- CLI plan management now uses `tentgent-kernel` train use cases for plan
-  preview/create/list/inspect/remove.
-- CLI run startup and foreground execution use `tentgent-kernel` train use
-  cases for durable run records and adapter use cases for successful adapter
-  imports.
-- HTTP train routes are intentionally left on the legacy path until the CLI
-  migration is complete.
-
-Current slice memory:
-
-- Slice 1: Rust run orchestration, durable run artifacts, clean CLI events, Python skeleton runner
-- Slice 2: MLX runner emits real Tentgent events through `mlx_lm.lora`
-- Slice 3a: PEFT runner preflight routes `safetensors` plans to a dedicated backend without creating fake adapters
-- Slice 3b: PEFT runner loads tokenizer, reads `train.jsonl` plus optional validation split, and builds causal-LM labels
-- Slice 3c: PEFT runner runs a minimal Transformers plus PEFT training loop and emits train, eval, checkpoint, memory, and done events
-- Slice 4: successful MLX and PEFT runs import adapters into the adapter store
-
-Direct model-runtime slice:
-
+- CLI and daemon plan/run handlers use `tentgent-kernel` train use cases for
+  managed identity, dependency checks, durable records, and resource guards.
 - `python/tentgent-model-runtime` exposes `POST /v1/tuning/lora/runs` behind
   the `lora-tuning` capability.
 - The direct runtime endpoint executes one local PEFT or MLX chat / causal-LM
   LoRA job from resolved model and dataset paths.
-- It returns parsed run events and the adapter output path, but it does not own
-  managed plan identity, durable run records, or adapter-store imports.
-- Rust should continue to own model/dataset resolution, workspace selection,
-  run persistence, and adapter import when this endpoint is wired in later.
+- It returns parsed run events and the adapter output path when execution
+  completes. Rust persists results and imports successful adapters.
+
+User-facing commands, parameter mappings, and API payload examples are in
+[LoRA Training](../user/training-lora.md).
 
 ## Managed Layout
 
@@ -133,9 +117,13 @@ or backend output, and they are not redacted.
 
 CLI output modes:
 
-- default: clean step lines plus one live progress line for the active long-running stage
-- `--verbose`: include eval, checkpoint, and backend summary events in the user-facing stream
-- `--debug`: stream raw backend logs in addition to writing `raw.log`
+- default: clean stage and available progress events
+- `--verbose`: include eval, checkpoint, and backend summary events
+- `--debug`: include raw backend output in addition to writing `raw.log`
+
+The current direct Python endpoint buffers events and returns them after
+execution completes. CLI modes select which returned events are rendered;
+they do not guarantee live progress delivery while the backend is training.
 
 Backends may emit noisy progress bars or logs. Tentgent should parse or summarize known signals and keep raw output out of the default CLI unless a failure occurs.
 

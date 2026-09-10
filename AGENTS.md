@@ -62,135 +62,145 @@ Current product surface:
 
 Key current documents:
 
-- `docs/contracts/runtime-home.md`
+- [docs/contracts/runtime-home.md](./docs/contracts/runtime-home.md)
   Runtime-home resolution, environment-variable overrides, and standard storage roots.
-- `docs/contracts/kernel-architecture.md`
+- [docs/contracts/kernel-architecture.md](./docs/contracts/kernel-architecture.md)
   `tentgent-kernel` module placement, dependency direction, capability readiness, and persistence boundaries.
-- `docs/contracts/auth-secrets.md`
+- [docs/contracts/auth-secrets.md](./docs/contracts/auth-secrets.md)
   Provider-secret resolution order and keychain usage rules.
-- `docs/contracts/model-store.md`
+- [docs/contracts/model-store.md](./docs/contracts/model-store.md)
   Model-store identity, deduplication, layout, and Hugging Face pull boundaries.
-- `docs/contracts/resource-blockers.md`
+- [docs/contracts/resource-blockers.md](./docs/contracts/resource-blockers.md)
   Cross-process transition coordination and structured resource-mutation
   blocker rules.
-- `docs/contracts/runtime-ownership.md`
+- [docs/contracts/runtime-ownership.md](./docs/contracts/runtime-ownership.md)
   Durable route claims, physical runtime generations, guarded shutdown, and
   stale-state reconciliation.
-- `docs/contracts/cluster.md`
+- [docs/contracts/cluster.md](./docs/contracts/cluster.md)
   Cluster definition identity, canonical TOML storage, route-target validation,
   readiness diagnostics, local cluster server routing, daemon REST integration,
   guarded hot reload, runtime ownership, and resource protection.
-- `docs/contracts/model-support-status.md`
+- [docs/contracts/model-support-status.md](./docs/contracts/model-support-status.md)
   Support status vocabulary, evidence precedence, stale-proof rules, and
   transition rules for model/capability/backend tuples.
-- `docs/contracts/model-support-proof-schema.md`
+- [docs/contracts/model-support-proof-schema.md](./docs/contracts/model-support-proof-schema.md)
   Local proof and support hint record schema for explaining model support
   status.
-- `docs/contracts/adapter-store.md`
+- [docs/contracts/adapter-store.md](./docs/contracts/adapter-store.md)
   Adapter-store identity, compatibility metadata, layout, and source-index draft.
-- `docs/contracts/dataset-store.md`
+- [docs/contracts/dataset-store.md](./docs/contracts/dataset-store.md)
   Dataset-store identity, layout, local import, and deduplication boundary for training data.
-- `docs/contracts/dataset-schema.md`
+- [docs/contracts/dataset-schema.md](./docs/contracts/dataset-schema.md)
   Canonical chat, tool-call, and cloud-generated dataset record schema.
-- `docs/contracts/session-store.md`
+- [docs/contracts/session-store.md](./docs/contracts/session-store.md)
   Local session metadata and transcript message store boundary.
-- `docs/contracts/job-workspace.md`
+- [docs/contracts/job-workspace.md](./docs/contracts/job-workspace.md)
   Kernel-owned job workspace, chunk IO, result file, and cleanup port boundary.
-- `docs/contracts/server-chat.md`
+- [docs/contracts/server-chat.md](./docs/contracts/server-chat.md)
   HTTP chat request shape, adapter validation rules, and runtime error mapping.
-- `docs/contracts/model-runtime-server.md`
+- [docs/contracts/model-runtime-server.md](./docs/contracts/model-runtime-server.md)
   Direct Python model runtime health and graceful shutdown boundary.
-- `docs/contracts/server-embedding.md`
+- [docs/contracts/server-embedding.md](./docs/contracts/server-embedding.md)
   Direct local model-server embedding request shape and capability routing.
-- `docs/contracts/server-rerank.md`
+- [docs/contracts/server-rerank.md](./docs/contracts/server-rerank.md)
   Direct local model-server rerank request shape and capability routing.
-- `docs/contracts/server-runtime-profile.md`
+- [docs/contracts/server-runtime-profile.md](./docs/contracts/server-runtime-profile.md)
   Runtime profile selection, storage, identity, launch, and inspect visibility
   for model-bound server starts.
-- `docs/contracts/http-daemon.md`
+- [docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md)
   Rust HTTP daemon health/status endpoint, JSON response, and error-shape contract.
-- `docs/contracts/provider-api-errors.md`
+- [docs/contracts/provider-api-errors.md](./docs/contracts/provider-api-errors.md)
   Provider-shaped API unsupported-field, content, operation, and capability
   error semantics.
-- `docs/contracts/tentgent-daemon.md`
+- [docs/contracts/tentgent-daemon.md](./docs/contracts/tentgent-daemon.md)
   Rust daemon application host, bootstrap, transport, and runtime-state boundary.
-- `docs/contracts/training-lora.md`
-  Managed LoRA train-plan identity, config shape, backend rules, and future run boundaries.
-- `docs/user/README.md`
+- [docs/contracts/training-lora.md](./docs/contracts/training-lora.md)
+  Managed LoRA train-plan identity, config shape, backend rules, and run boundaries.
+- [docs/user/README.md](./docs/user/README.md)
   Router for user-facing install, upgrade, command, version, and runtime documentation.
-- `docs/user/install.md`
+- [docs/user/install.md](./docs/user/install.md)
   Install, upgrade, pinned-version, PATH, and local package smoke-test guidance.
-- `docs/user/version.md`
+- [docs/user/version.md](./docs/user/version.md)
   User-facing release notes, stable promises, known limits, and upgrade
   expectations.
-- `docs/user/1.0-readiness.md`
+- [docs/user/1.0-readiness.md](./docs/user/1.0-readiness.md)
   User and contributor checklist for the `1.0.0` stability promise, release
   smoke expectations, and post-1.0 boundaries.
-- `docs/user/commands.md`
-  User command examples for auth, model, adapter, dataset, chat, server, and LoRA training flows.
-- `docs/user/clusters.md`
+- [docs/user/commands.md](./docs/user/commands.md)
+  Command index linking to focused feature examples, parameters, and HTTP formats.
+- [docs/user/inference/README.md](./docs/user/inference/README.md)
+  Chat, embedding, rerank, audio, vision, video, and image workflow guides.
+- [docs/user/providers/README.md](./docs/user/providers/README.md)
+  Provider-compatible curl and SDK examples, base URLs, and limitations.
+- [docs/user/api.md](./docs/user/api.md)
+  HTTP conventions and route-family index into feature-owned request/response docs.
+- [docs/user/datasets.md](./docs/user/datasets.md)
+  Dataset synthesis, evaluation, local commands, parameters, and HTTP fields.
+- [docs/user/training-lora.md](./docs/user/training-lora.md)
+  LoRA plan/run instructions, CLI-to-JSON mapping, and adapter selection.
+- [docs/user/clusters.md](./docs/user/clusters.md)
   Plain-language Cluster definition, readiness, server routing, adapter,
   hot-reload, blocker, and recovery guidance.
-- `docs/user/model-fixtures.md`
+- [docs/user/model-fixtures.md](./docs/user/model-fixtures.md)
   Recommended small model fixtures and smoke-test commands for chat, embedding,
   rerank, and metadata-only M6 media workflows.
-- `docs/user/model-support-catalog.md`
+- [docs/user/model-support-catalog.md](./docs/user/model-support-catalog.md)
   Built-in model-family catalog, support hint levels, and how catalog evidence
   differs from local verification proof.
-- `docs/user/runtime.md`
+- [docs/user/runtime.md](./docs/user/runtime.md)
   Runtime-home, platform/backend, environment override, and Keychain prompt notes.
-- `docs/development/README.md`
+- [docs/development/README.md](./docs/development/README.md)
   Developer command reference for source-first builds and repository-local tests.
-- `docs/plans/v1.2.0-local-compatibility-state-plan.md`
+- [docs/plans/v1.2.0-local-compatibility-state-plan.md](./docs/plans/v1.2.0-local-compatibility-state-plan.md)
   Active `v1.2.0` execution plan for issues `#126`-`#130`, with `#131` as a
   blocking runtime-lifecycle prerequisite, covering complete local
   compatibility tuples, proof v2 persistence, tuple-aware model, Cluster, and
   LoRA gates, diagnostics, recovery, documentation, and closeout.
-- `docs/plans/issue-131-model-idle-release-plan.md`
+- [docs/plans/issue-131-model-idle-release-plan.md](./docs/plans/issue-131-model-idle-release-plan.md)
   Implemented and validated issue-level contract, decision register,
   implementation evidence, and live smoke runbook for restoring model idle
   release and separating it from shared Python runtime process keep-alive.
-- `docs/plans/v1.x-roadmap.md`
+- [docs/plans/v1.x-roadmap.md](./docs/plans/v1.x-roadmap.md)
   Active post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is complete;
   the selected `v1.2.0` compatibility-state slice has its own active execution
   plan, and later 1.x capabilities remain routed here.
-- `docs/plans/bugfix-maintenance-plan.md`
+- [docs/plans/bugfix-maintenance-plan.md](./docs/plans/bugfix-maintenance-plan.md)
   Active post-`v1.0.0` maintenance plan for bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene.
-- `docs/plans/archive/README.md`
+- [docs/plans/archive/README.md](./docs/plans/archive/README.md)
   Router for completed or superseded plans that should be consulted only when historical implementation context is needed.
-- `docs/plans/archive/cluster-roadmap.md`
+- [docs/plans/archive/cluster-roadmap.md](./docs/plans/archive/cluster-roadmap.md)
   Completed `v1.1.0` Cluster MVP roadmap for issues `#113`-`#118`.
-- `docs/plans/archive/cluster-runtime-ownership-plan.md`
+- [docs/plans/archive/cluster-runtime-ownership-plan.md](./docs/plans/archive/cluster-runtime-ownership-plan.md)
   Archived `#118` ownership, guard, and shutdown decision register.
-- `docs/plans/archive/cluster-runtime-coordination-architecture.md`
+- [docs/plans/archive/cluster-runtime-coordination-architecture.md](./docs/plans/archive/cluster-runtime-coordination-architecture.md)
   Implemented reusable coordination, ownership, supervisor, and watcher
   architecture.
-- `docs/plans/archive/cluster-runtime-ownership-remediation.md`
+- [docs/plans/archive/cluster-runtime-ownership-remediation.md](./docs/plans/archive/cluster-runtime-ownership-remediation.md)
   Closed `R1`-`R20` findings and final verification evidence for `#118`.
-- `docs/plans/archive/v1.0.0-stable-compatibility-plan.md`
+- [docs/plans/archive/v1.0.0-stable-compatibility-plan.md](./docs/plans/archive/v1.0.0-stable-compatibility-plan.md)
   Archived `v1.0.0` stable compatibility release train and post-merge release
   and Homebrew tap checklist.
-- `docs/plans/archive/post-m7-platform-compatibility-roadmap.md`
+- [docs/plans/archive/post-m7-platform-compatibility-roadmap.md](./docs/plans/archive/post-m7-platform-compatibility-roadmap.md)
   Archived post-M7 platform compatibility roadmap. Current follow-up work is
   split between the active `v1.x` roadmap and bugfix maintenance plan.
-- `docs/plans/archive/post-1.0-serving-targets-and-multimodal-context-pipeline.md`
+- [docs/plans/archive/post-1.0-serving-targets-and-multimodal-context-pipeline.md](./docs/plans/archive/post-1.0-serving-targets-and-multimodal-context-pipeline.md)
   Archived post-1.0 serving-target and multimodal-context planning note.
-- `docs/plans/archive/provider-api-compatibility-and-model-support-roadmap.md`
+- [docs/plans/archive/provider-api-compatibility-and-model-support-roadmap.md](./docs/plans/archive/provider-api-compatibility-and-model-support-roadmap.md)
   Archived provider compatibility, model support, runtime profile, and 1.0
   readiness roadmap.
-- `docs/plans/archive/v0.9.0-hardening-plan.md`
+- [docs/plans/archive/v0.9.0-hardening-plan.md](./docs/plans/archive/v0.9.0-hardening-plan.md)
   Completed `v0.9.0` execution plan for 1.0 hardening, stable/experimental API
   audit, conformance smoke coverage, runtime recovery, cleanup, support proof
   retry behavior, readiness docs, and release closeout.
-- `docs/plans/archive/capability-first-release-roadmap.md`
+- [docs/plans/archive/capability-first-release-roadmap.md](./docs/plans/archive/capability-first-release-roadmap.md)
   Completed M2-M7 roadmap for model capability classification, embedding,
   rerank, media workflows, MLX backend parity, and Apple Developer ID signing.
-- `docs/plans/archive/http-daemon-mvp.md`
+- [docs/plans/archive/http-daemon-mvp.md](./docs/plans/archive/http-daemon-mvp.md)
   Completed service-entry plan for exposing Tentgent as a local HTTP daemon/API subsystem.
-- `docs/plans/archive/cloud-provider-server-mvp.md`
+- [docs/plans/archive/cloud-provider-server-mvp.md](./docs/plans/archive/cloud-provider-server-mvp.md)
   Completed OpenAI and Claude cloud provider server routing plan.
-- `docs/plans/archive/http-chat-streaming-mvp.md`
+- [docs/plans/archive/http-chat-streaming-mvp.md](./docs/plans/archive/http-chat-streaming-mvp.md)
   Completed Server-Sent Events streaming plan for local base-model, local adapter, and cloud provider chat.
 
 ## Project Naming
@@ -231,6 +241,15 @@ Key current documents:
 - When both the root and a child `AGENTS.md` exist, the nearest file to the working directory should win for local rules.
 - The root `AGENTS.md` should still remain the top-level directory and documentation index.
 - Use folder-level `README.md` files as routing documents when a subtree grows beyond what this file should summarize.
+
+## Documentation Content Boundary
+
+- Keep reusable feature commands, parameters, and API formats in versioned
+  user docs, linked from the root README and `docs/user/README.md`.
+- Keep personal interview scripts, machine-specific refs, generated datasets,
+  and rehearsal results under the already ignored `test-data/` directory.
+- Formal docs must not depend on ignored local notes. Use placeholders for
+  machine-specific paths and refs in reusable examples.
 
 ## Documentation Update Rule
 
