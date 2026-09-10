@@ -1,598 +1,202 @@
 # Tentgent
 
-Tentgent is a local AI workflow operator: a Rust CLI plus a local HTTP daemon
-that manages model runtimes, adapters, datasets, LoRA training, chat servers,
-multi-model Clusters, and short-lived working sessions on your machine.
+Tentgent is a local AI workflow operator: a Rust CLI and HTTP daemon for
+models, inference, datasets, adapters, LoRA training, and application servers.
+Manage local resources, run a request, or expose model capabilities through
+one tool. Cloud workflows use your configured provider credentials.
 
-Use it when you want one local tool to:
-
-- pull and deduplicate local models, adapters, and datasets
-- run one-shot chat or long-lived local chat servers
-- route multiple local model capabilities through one named Cluster server
-- expose local workflows through a loopback HTTP API
-- run local media workflows such as audio transcription, speech synthesis,
-  image generation/editing, vision chat, and video understanding
-- validate, import, export, and diff datasets
-- create LoRA train plans, launch runs, and inspect run logs or metrics
-- keep bounded local chat sessions as short-term working context
-
-Tentgent is local-first. Runtime data lives under `TENTGENT_HOME` by default,
-and provider secrets can come from `.env` / environment variables or the system
-keychain.
-
-## Languages And Docs
-
-- English source of truth: [README.md](./README.md)
-- Traditional Chinese: [docs/i18n/zh-TW/README.md](./docs/i18n/zh-TW/README.md)
-- Japanese: [docs/i18n/ja/README.md](./docs/i18n/ja/README.md)
-- Full user guide: [docs/user/README.md](./docs/user/README.md)
-- Cluster guide: [docs/user/clusters.md](./docs/user/clusters.md)
-- 1.0 readiness checklist:
-  [docs/user/1.0-readiness.md](./docs/user/1.0-readiness.md)
-- HTTP API reference: [docs/user/api.md](./docs/user/api.md)
-- API surface stability contract:
-  [docs/contracts/api-surface-stability.md](./docs/contracts/api-surface-stability.md)
-- Model fixture and smoke-test guide:
-  [docs/user/model-fixtures.md](./docs/user/model-fixtures.md)
-- Model support catalog:
-  [docs/user/model-support-catalog.md](./docs/user/model-support-catalog.md)
-- Developer guide: [docs/development/README.md](./docs/development/README.md)
+[User guide](./docs/user/README.md) · [Command index](./docs/user/commands.md) ·
+[HTTP API](./docs/user/api.md) · [繁體中文](./docs/i18n/zh-TW/README.md) ·
+[日本語](./docs/i18n/ja/README.md)
 
 ## Quick Start
 
-The current product surface is the `tentgent` CLI plus the local daemon REST
-API. There is no terminal UI command.
+On macOS, install from the Homebrew tap:
 
 ```bash
 brew tap hiroliang/tap
 brew install hiroliang/tap/tentgent
+tentgent --version
 tentgent runtime bootstrap
 tentgent doctor
 ```
 
-Then configure keys only for the providers you use:
+For Windows, Linux preview, pinned versions, upgrades, or uninstalling, use the
+[installation guide](./docs/user/install.md). Backend availability varies by
+platform; check [runtime support](./docs/user/runtime.md#backend-status).
+
+Prepare local model dependencies and try a small public chat fixture:
 
 ```bash
-tentgent auth hf set
-tentgent auth openai set
-tentgent auth anthropic set
-tentgent auth gemini set
-```
-
-Try the smallest local workflow:
-
-```bash
-tentgent model pull google/gemma-3-1b-it
+tentgent runtime bootstrap --profile local-model
+tentgent model pull HuggingFaceTB/SmolLM-135M-Instruct
 tentgent model ls
-tentgent chat <model-ref> --message "user:Hello"
+tentgent chat <model-ref> --message "user:Hello" --max-tokens 64
 ```
 
-Start the daemon when you want HTTP access:
+Replace `<model-ref>` with the ref printed by pull/list. This small fixture is
+useful for checking the workflow; choose a model appropriate to your task from
+the [fixture guide](./docs/user/model-fixtures.md) or
+[model catalog](./docs/user/model-support-catalog.md).
+
+Configure [provider authentication](./docs/user/auth.md) only when needed.
+For example, `tentgent auth hf set` stores a Hugging Face token for a gated
+repository after its publisher has granted your account access.
+
+## Choose An Entry Point
+
+| Entry point | Use it for |
+| --- | --- |
+| CLI | Resource management and foreground inference on your machine. |
+| Daemon | HTTP management APIs and asynchronous workflows, normally on port 8790. |
+| Model or Cluster server | Application inference on a separate port, normally starting at 8780. |
+
+## Find A Feature
+
+Choose what you want to do. Each linked guide includes examples and parameters;
+features with HTTP endpoints also document request and response formats.
+
+## Install, Configure, And Diagnose
+
+| I want to… | CLI | Guide |
+| --- | --- | --- |
+| Install, upgrade, or select a version | `--version` | [Installation](./docs/user/install.md) |
+| Prepare Python dependencies and select a backend | `runtime bootstrap/status` | [Runtime](./docs/user/runtime.md) |
+| Set keys or switch env/file/Keychain modes | `auth` | [Authentication](./docs/user/auth.md) |
+| Diagnose, repair stale ownership, or clean staging | `doctor`, `runtime reconcile`, `store gc` | [Maintenance](./docs/user/maintenance.md) |
+
+## Manage Models, Adapters, And Data
+
+| I want to… | CLI | Guide |
+| --- | --- | --- |
+| Pull/import a model, inspect capabilities and proof | `model` | [Models](./docs/user/models.md) |
+| Import, bind, inspect, or remove an adapter | `adapter` | [Adapters](./docs/user/adapters.md) |
+| Generate, validate, import, evaluate, or export data | `dataset` | [Datasets](./docs/user/datasets.md) |
+| Find a small test model or supported model family | `model catalog` | [Fixtures](./docs/user/model-fixtures.md), [support catalog](./docs/user/model-support-catalog.md) |
+
+## Run Inference
+
+| I want to… | CLI | Guide |
+| --- | --- | --- |
+| Chat with a base model or adapter, optionally stream | `chat` | [Text chat](./docs/user/inference/chat.md) |
+| Embed text or rank documents | `embed`, `rerank` | [Embeddings and reranking](./docs/user/inference/embedding-rerank.md) |
+| Transcribe audio or generate speech | `transcribe`, `speak` | [Audio](./docs/user/inference/audio.md) |
+| Ask a question about an image | `vision chat` | [Vision](./docs/user/inference/vision.md) |
+| Ask a question about a video | `video understand` | [Video](./docs/user/inference/video.md) |
+| Create an image from text | `image generate` | [Image generation](./docs/user/inference/images/generate.md) |
+| Restyle, inpaint, or use ControlNet | `image transform/inpaint/control` | [Image editing](./docs/user/inference/images/edit.md) |
+
+The [inference index](./docs/user/inference/README.md) explains file inputs, output paths,
+multipart uploads, and which HTTP operations produce jobs.
+
+## Train And Use LoRA
+
+Prepare a [dataset](./docs/user/datasets.md), create and inspect a
+[train plan](./docs/user/training-lora.md#plan-commands), then
+[run training and select the adapter](./docs/user/training-lora.md#run-and-select-the-adapter).
+The guide covers every `train lora` command, backend-specific parameters,
+HTTP fields, logs, and current interruption/resume limits.
+
+## Serve Applications And Keep Context
+
+| I want to… | CLI / HTTP | Guide |
+| --- | --- | --- |
+| Expose managed workflows over HTTP | `daemon` | [Daemon, host, port, bearer auth](./docs/user/daemon.md) |
+| Keep one local/cloud model behind an HTTP endpoint | `server` | [Servers and lifecycle options](./docs/user/servers.md) |
+| Route several model capabilities through one port | `cluster` | [Clusters](./docs/user/clusters.md) |
+| Keep bounded local conversation context | `session`, `chat --session` | [Sessions](./docs/user/sessions.md) |
+| Poll, cancel, collect results, and delete jobs | `/v1/jobs` | [Jobs](./docs/user/jobs.md) |
+
+## Integrate A Client
+
+- [HTTP index](./docs/user/api.md): native routes, authentication, errors, and payload links.
+- [Provider compatibility](./docs/user/provider-compatibility.md): supported endpoint and field matrix.
+- [OpenAI examples](./docs/user/providers/openai.md): chat, embeddings, images, audio, Python/JavaScript SDKs.
+- [Anthropic / Claude examples](./docs/user/providers/anthropic.md): messages, streaming, Python SDK.
+- [Gemini examples](./docs/user/providers/gemini.md): generate content, streaming, embeddings.
+- [Base URL selection](./docs/user/providers/README.md#base-urls): daemon, local server, or cloud server.
+
+## Support And Releases
+
+- [Version notes](./docs/user/version.md): released behavior, limits, and upgrade expectations.
+- [Stability checklist](./docs/user/1.0-readiness.md): the 1.0 promise and post-1.0 boundaries.
+- [API stability contract](./docs/contracts/api-surface-stability.md): stable and experimental classifications.
+
+## Common Workflows
+
+### Customize A Chat Model
+
+1. [Prepare and validate a dataset](./docs/user/datasets.md).
+2. [Create a LoRA plan](./docs/user/training-lora.md#plan-commands) with a compatible local model.
+3. [Run training](./docs/user/training-lora.md#run-and-select-the-adapter) and inspect the imported adapter.
+4. [Compare chat with and without the adapter](./docs/user/inference/chat.md), then use the same adapter in server requests.
+
+Plan creation only saves a recipe. The training guide explains backend limits,
+progress reporting, and interruption behavior before you start a run.
+
+### Connect An Application
+
+1. Start the [daemon](./docs/user/daemon.md) for managed workflow APIs, or a
+   [model server](./docs/user/servers.md) for a dedicated inference endpoint.
+2. Select the [native HTTP format](./docs/user/api.md) or a
+   [provider-compatible client](./docs/user/providers/README.md).
+3. Use [job status and result routes](./docs/user/jobs.md) for asynchronous workflows.
+
+For a quick daemon health check:
 
 ```bash
 tentgent daemon start --host 127.0.0.1 --port 8790
 curl -sS http://127.0.0.1:8790/healthz
-```
-
-## Route Multiple Local Models With A Cluster
-
-A Cluster is one named server definition that assigns chat, embedding,
-rerank, audio transcription, and vision requests to explicit managed models.
-It reuses `tentgent server` lifecycle commands and reports route readiness and
-resource blockers before unsafe changes are made.
-
-```bash
-tentgent cluster validate <cluster-definition.toml>
-tentgent cluster apply <cluster-definition.toml>
-tentgent cluster inspect <cluster-ref>
-tentgent cluster run <cluster-ref> --port <port> --detach
-tentgent server ps
-```
-
-Cluster surfaces are experimental in `v1.1.0`. Provider targets can be stored
-and inspected but are not executed, and missing routes never fall back to a
-different model. See the [Cluster guide](./docs/user/clusters.md) for the TOML
-shape, route map, hot reload policy, ownership recovery, and current limits.
-
-## Install The Tool
-
-Recommended macOS install through the project Homebrew tap:
-
-```bash
-brew tap hiroliang/tap
-brew install hiroliang/tap/tentgent
-tentgent runtime bootstrap
-tentgent doctor
-tentgent --version
-```
-
-Recommended Windows PowerShell install from the latest GitHub Release:
-
-```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.ps1 | iex
-$env:Path = "$env:LOCALAPPDATA\Programs\tentgent\bin;$env:Path"
-tentgent doctor
-tentgent --version
-```
-
-Linux x86_64 install from the latest GitHub Release:
-
-```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/latest/download/install.sh | bash
-tentgent doctor
-tentgent --version
-```
-
-The Linux release uses the GitHub Release tarball and the default `base`
-runtime bootstrap profile. Full managed runtime and local model backend parity
-is still not claimed on Linux.
-
-On Linux preview installs, set and persist `TENTGENT_HOME` before bootstrap if
-you want runtime data outside the default direct-installer support directory.
-
-Use GitHub Release installers when you want a pinned or reproducible
-script-based setup:
-
-```bash
-curl -fsSL https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.sh | bash
-tentgent doctor
-tentgent --version
-```
-
-```powershell
-irm https://github.com/HiroLiang/tentserv-agent/releases/download/v0.3.3/install.ps1 | iex
-$env:Path = "$env:LOCALAPPDATA\Programs\tentgent\bin;$env:Path"
-tentgent doctor
-tentgent --version
-```
-
-Replace `v0.3.3` with the release tag you want to pin. The Unix installer is a
-Bash script; use `bash`, not `sh`.
-
-If you previously installed with `install.sh`, `~/.local/bin/tentgent` may
-shadow the Homebrew binary. Check the Homebrew build directly with:
-
-```bash
-/opt/homebrew/opt/tentgent/bin/tentgent -V
-```
-
-Upgrade Homebrew installs with:
-
-```bash
-brew update
-brew upgrade hiroliang/tap/tentgent
-tentgent runtime bootstrap
-tentgent doctor
-tentgent --version
-```
-
-User runtime data under `TENTGENT_HOME` is preserved.
-
-See [docs/user/install.md](./docs/user/install.md) for install, upgrade, pinned versions, local package smoke tests, and uninstall notes.
-
-## Configure Keys
-
-Check the local runtime and provider key state:
-
-```bash
-tentgent doctor
-tentgent runtime status
-tentgent auth status
-tentgent auth mode
-```
-
-Configure provider keys through the system keychain:
-
-```bash
-tentgent auth hf set
-tentgent auth openai set
-tentgent auth anthropic set
-tentgent auth gemini set
-```
-
-Or use environment variables / `.env` for the current process:
-
-```bash
-cat > .env <<'EOF'
-HF_TOKEN=...
-OPENAI_API_KEY=...
-ANTHROPIC_API_KEY=...
-GEMINI_API_KEY=...
-EOF
-```
-
-Control which source Tentgent may use per provider:
-
-```bash
-tentgent auth mode openai auto
-tentgent auth mode openai env
-tentgent auth mode gemini file --path ~/.config/tentgent/provider.env
-tentgent auth mode anthropic none
-```
-
-`auto` is the default. It tries request/prompt material, `.env` / process env,
-process cache, then Keychain. Use `env` when an external shell or OpenShell
-injects standard provider variables such as `OPENAI_API_KEY`. Use `file` only
-with an explicit env file path. Use `none` to disable local provider secret
-resolution for a provider.
-
-Auth files use dotenv-style provider variables:
-
-```dotenv
-HF_TOKEN=...
-OPENAI_API_KEY=...
-ANTHROPIC_API_KEY=...
-GEMINI_API_KEY=...
-```
-
-See [docs/contracts/auth-secrets.md](./docs/contracts/auth-secrets.md) for provider secret resolution and Keychain boundaries.
-
-## Import, Pull, And Remove Models
-
-Pull, inspect, import, and remove managed models:
-
-```bash
-tentgent model catalog --capability chat --publisher Qwen
-tentgent model pull hf-internal-testing/tiny-random-gpt2 --revision main
-tentgent model ls
-tentgent model inspect <model-ref-or-prefix>
-tentgent model capability proofs <model-ref-or-prefix>
-tentgent model capability proof clear <model-ref-or-prefix> chat
-tentgent model add /absolute/path/to/model
-tentgent model rm <model-ref>
-```
-
-Use `model catalog` to browse built-in model-family support hints before
-pulling a model. See
-[docs/user/commands.md](./docs/user/commands.md#models-and-chat) for full
-model, adapter, dataset, and chat command examples.
-`model ls` keeps support status compact, while `model inspect` shows the full
-per-capability proof, hint, runtime profile, backend, reason, and next-action
-details.
-`model capability proofs` lists local verification and launch evidence. Use
-`model capability proof clear <model-ref> <capability>` after fixing a runtime
-problem to remove failed proof evidence before retrying a local server start.
-
-## One-Shot Chat
-
-Run one local request without starting a server:
-
-```bash
-tentgent chat <model-ref> --message "user:Hello there"
-```
-
-For one-shot chat message format and adapter examples, see [docs/user/commands.md](./docs/user/commands.md#models-and-chat).
-
-## Start, Stop, And Chat With Servers
-
-Run a model-bound local server:
-
-```bash
-tentgent server run <model-ref> --host 127.0.0.1 --port 8780 --lazy-load
-curl -sS http://127.0.0.1:8780/healthz
-```
-
-Local servers are launched through the direct Python model runtime daemon for
-`chat`, `embedding`, `rerank`, audio, vision, video, and image endpoint
-families. The model is bound at server start, so direct server requests stay
-small and do not need a `model` payload. When `--capability` is omitted for a
-local model, Tentgent chooses the server endpoint family from the model's stored
-capabilities, preferring more specialized media capabilities before `chat`.
-When `--port` is omitted, server specs start from port `8780` and the launcher
-scans upward at process start until it finds a free loopback port. Explicit
-`--port` values are fixed and fail clearly when unavailable. Running server
-metadata records the actual bound port for later `server ls`, health checks, and
-direct curl calls.
-Local model-bound server starts check the selected capability, support status,
-and runtime profile before launch. `verified` and `supported` are allowed by
-default; `failed` and `unsupported` are blocked; `unknown` and `stale` require
-an explicit `--allow-unverified` retry. Server launch still records latest
-capability proof metadata so `tentgent model capability proofs <model-ref>` can
-show which capability paths have launched or failed locally. If a failed proof
-blocks retry after you fix the runtime environment, clear it with
-`tentgent model capability proof clear <model-ref> <capability>`.
-`server inspect` and `doctor` surface the same runtime-profile and backend
-diagnostics, including copyable next-action commands for failed, stale,
-unknown, or unsupported local tuples.
-
-Cloud provider servers are paused until they are ported to the model runtime
-HTTP boundary.
-
-Chat with a server directly:
-
-```bash
-curl -sS http://127.0.0.1:8780/v1/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"messages":[{"role":"user","content":"Hello"}],"stream":false}'
-```
-
-Manage detached servers:
-
-```bash
-tentgent server ls
-tentgent server inspect <server-ref>
-tentgent server ps
-tentgent server stop <server-ref>
-```
-
-Direct model-server chat is stateless. Use the daemon in the next section for
-model-ref based native and compatibility chat routes. For server chat request
-and adapter rules, see [docs/contracts/server-chat.md](./docs/contracts/server-chat.md).
-For local model-bound servers, `server ls` shows compact model short refs and
-`server inspect` shows the full bound model plus selected-capability support
-status, runtime profile, runtime profile version, execution backend, and next
-action when operator work is needed. Local chat and embedding server specs show
-selected runtime profiles such as `local-chat-mlx-v1` or
-`local-embedding-transformers-peft-v1` when profile metadata is recorded.
-
-## Start And Stop The Daemon
-
-```bash
-tentgent daemon start --host 127.0.0.1 --port 8790
 tentgent daemon status
-curl -sS http://127.0.0.1:8790/healthz
-curl -sS http://127.0.0.1:8790/v1/status
 ```
 
-Use daemon chat when you want the local daemon to run the same text-only chat
-use case through native, OpenAI-compatible, Claude-compatible, or
-Gemini-compatible request shapes:
+Daemon `/v1/*` routes require a bearer header when a token is configured.
+`--host` selects the listener interface; it is separate from runtime-home
+selection. See [binding and authentication](./docs/user/daemon.md).
 
-```bash
-curl -sS http://127.0.0.1:8790/v1/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"model_ref":"<model-ref>","messages":[{"role":"user","content":"Hello"}],"stream":false}'
+### Route Multiple Models
 
-curl -sS http://127.0.0.1:8790/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"<model-ref>","messages":[{"role":"user","content":"Hello"}],"stream":true}'
-```
+A [Cluster](./docs/user/clusters.md) maps chat, embedding, rerank,
+transcription, and vision routes to explicit local models. Validate and apply
+its TOML definition, then launch it through the existing server lifecycle.
+The guide covers readiness, hot reload, blockers, and recovery.
 
-Stop the daemon:
+## Storage And Support
 
-```bash
-tentgent daemon stop
-```
+Runtime data belongs to the resolved Tentgent runtime home, which can be
+overridden with `TENTGENT_HOME`. Models, adapters, datasets, and server specs
+have managed identities. Learn the [runtime layout](./docs/user/runtime.md#runtime-home)
+before relocating data or selecting a separate home.
 
-For the full user-facing daemon API, endpoint list, response shapes, auth
-behavior, and error mapping, see [docs/user/api.md](./docs/user/api.md). For
-the lower-level daemon transport contract, see
-[docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md).
+Use `tentgent doctor` for a compact health report and
+`tentgent model inspect <model-ref>` for model-specific support evidence.
+Follow [maintenance guidance](./docs/user/maintenance.md) for failed imports,
+stale ownership, and interrupted jobs.
 
-## Media CLI And API Rules
+The [version notes](./docs/user/version.md) describe release-specific behavior.
+Runtime/catalog recognition alone does not establish successful execution:
+read [support evidence](./docs/user/models.md) and verify your selected model.
+Provider-compatible APIs implement the documented subset of each protocol.
 
-- CLI media commands such as `tentgent transcribe`, `tentgent speak`,
-  `tentgent vision chat`, `tentgent video understand`, and `tentgent image
-  generate` read local files, text, or prompts directly from the caller's
-  machine.
-- Daemon file-upload media endpoints receive multipart file bytes; curl
-  `@/path/file` syntax is client-side file reading, not a daemon path contract.
-- Audio transcription, audio speech, video understanding, and image
-  generation/editing daemon routes return jobs. Native daemon vision chat is a
-  bounded synchronous request.
-- Audio/image multipart upload size is controlled by
-  `TENTGENT_MEDIA_UPLOAD_MAX_BYTES`, defaulting to 20 MiB. Video uploads use
-  `TENTGENT_VIDEO_UPLOAD_MAX_BYTES`, defaulting to 512 MiB. Oversized uploads
-  return HTTP `413` with workflow-specific error codes.
+## Contributing And Project Direction
 
-See [docs/user/commands.md](./docs/user/commands.md) for CLI examples,
-[docs/user/api.md](./docs/user/api.md) for request shapes, and
-[docs/user/model-fixtures.md](./docs/user/model-fixtures.md) for small model
-fixtures.
+For source builds and repository-local tests, start with the
+[developer guide](./docs/development/README.md).
+Cross-module and HTTP boundaries are indexed under
+[contracts](./docs/contracts/README.md); agent-oriented repository context is in
+[AGENTS.md](./AGENTS.md).
 
-## Remove The Tool
+Track upcoming work in the [active plans index](./docs/plans/README.md),
+[1.x roadmap](./docs/plans/v1.x-roadmap.md), and
+[maintenance queue](./docs/plans/bugfix-maintenance-plan.md).
+Completed plans remain in the [archive](./docs/plans/archive/README.md).
 
-Remove Homebrew-installed binaries and support files without deleting user
-runtime data:
-
-```bash
-brew uninstall hiroliang/tap/tentgent
-```
-
-For direct `install.sh` installs, remove the installed files:
-
-```bash
-rm -f "$HOME/.local/bin/tentgent"
-rm -rf "$HOME/.local/share/tentgent"
-```
-
-On Linux preview installs, `$HOME/.local/share/tentgent` may also be the
-default runtime home. Do not remove it unless you intentionally want to delete
-runtime data or you used `TENTGENT_HOME` to place runtime data elsewhere.
-
-Optional safe-to-recreate bootstrap cache cleanup:
-
-```bash
-rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
-```
-
-Do not remove `TENTGENT_HOME` unless you intentionally want to delete models, adapters, datasets, sessions, servers, train records, and other local runtime data. See [docs/user/install.md](./docs/user/install.md) and [docs/user/runtime.md](./docs/user/runtime.md) for uninstall and runtime-home details.
-
-## Version Notes
-
-- `v1.0.0`: stable compatibility release; freezes the documented stable CLI,
-  daemon REST, local model-bound server, direct cloud server, provider
-  unsupported-error, install readiness, and diagnostics surfaces while keeping
-  experimental and post-1.0 work explicitly routed outside the stable promise.
-- `v0.9.0`: 1.0 hardening readiness release; adds API surface audit
-  documentation, provider-compatible conformance smoke coverage, install and
-  runtime recovery diagnostics, cancellation and shutdown semantics, support
-  proof retry and stale-state recovery, and the 1.0 readiness checklist.
-- `v0.8.0`: runtime profile and startup gating release; adds local `chat` and
-  `embedding` runtime profiles, gates local server starts by support status and
-  profile availability, records launch proofs, improves inspect/doctor
-  diagnostics, and adds configurable provider auth source modes.
-- `v0.7.0`: support status release; surfaces model capability support in
-  `model ls`, `model inspect`, `server ls`, and `doctor`, adds local proof and
-  catalog evidence records, and documents how support moves between unknown,
-  supported, verified, failed, and unsupported states.
-- `v0.6.0`: compatibility contract release; documents OpenAI, Claude/Anthropic,
-  and Gemini-compatible endpoint support, stabilizes unsupported provider API
-  errors, and adds compatibility fixtures for current daemon, direct cloud, and
-  local model-bound provider-shaped routes.
-- `v0.5.2`: patch release for readable runtime diagnostics; `runtime status` now renders wrapped field/value rows, and `runtime bootstrap --profile all` aliases `full`.
-- `v0.5.1`: patch release for packaged Python workspace layout; includes the workspace `uv.lock` so managed runtime bootstrap works with `uv --frozen`.
-- `v0.5.0`: mature model-runtime server release; adds Rust local server proxying through the shared Python model runtime daemon, cloud provider server runtimes, direct local/cloud OpenAI-compatible endpoints, local model capability mutation and proof commands, and the OpenAI `gpt-image-1` request fix.
-- `v0.4.1`: signed macOS and M6 media workflow release; adds Developer ID/notarization workflow wiring, native media jobs, MLX media paths, and CLI plus daemon REST consolidation.
-- `v0.3.5-alpha.0`: CLI plus daemon REST consolidation preview; removes the former terminal UI, legacy core, and legacy HTTP crates, and keeps broad diagnostics under `doctor`.
-- `v0.3.4-alpha.2`: Linux x86_64 preview release with release tarball install, default base runtime bootstrap, and Docker-smoked `doctor` readiness on Ubuntu 24.04.
-- `v0.3.3`: adds Homebrew tap update tooling for repeatable formula URL and checksum updates after stable releases.
-- `v0.3.2`: adds `tentgent runtime bootstrap` as the package-manager friendly managed Python runtime setup entry point.
-- `v0.3.1`: macOS installer hotfix that ad-hoc signs release binaries and clears quarantine metadata after install.
-- `v0.3.0`: stable 0.3.x baseline for session context fixes, daemon/server boundaries, release safety, size display, runtime footprint visibility, and improved transcript rendering.
-- `v0.3.0-alpha.2`: bugfix preview for session context, rolling summaries, daemon/server boundaries, prerelease safety, size display, and runtime footprint visibility.
-- `v0.3.0-alpha.1`: historical terminal UI preview release. The current tool is CLI plus daemon only.
-- `v0.2.0`: local HTTP daemon parity expansion with store, dataset, server, chat, training, diagnostics, and bounded session APIs.
-
-See [docs/user/version.md](./docs/user/version.md) for version notes, feature lists, and known limits.
-
-## Full CLI Command Reference
-
-The README intentionally shows the shortest path. See [docs/user/commands.md](./docs/user/commands.md) for the complete CLI command reference covering auth, models, adapters, datasets, chat, clusters, servers, daemon, sessions, and LoRA training.
-
-## API And Contracts
-
-Detailed contracts live under [docs/contracts/](./docs/contracts/README.md) so
-this README stays easy to scan.
-
-- [docs/contracts/api-surface-stability.md](./docs/contracts/api-surface-stability.md)
-  Stable, experimental, internal, and deprecated surface classification for
-  the `v1.0.0` stability promise.
-- [docs/contracts/http-daemon.md](./docs/contracts/http-daemon.md)
-  Complete local daemon API contract, endpoint list, auth behavior, response
-  shapes, and error mapping.
-- [docs/contracts/server-chat.md](./docs/contracts/server-chat.md)
-  Model-bound server chat request shape and adapter validation rules.
-- [docs/contracts/cluster.md](./docs/contracts/cluster.md)
-  Cluster definitions, readiness, experimental local route serving, guarded hot
-  reload, runtime ownership, and resource protection.
-- [docs/contracts/runtime-ownership.md](./docs/contracts/runtime-ownership.md)
-  Durable route claims, physical runtime generations, shutdown, and stale-state
-  recovery.
-- [docs/contracts/session-store.md](./docs/contracts/session-store.md)
-  Session metadata, message records, mutation rules, and bounded compaction.
-- [docs/contracts/runtime-home.md](./docs/contracts/runtime-home.md)
-  Runtime-home, store-path, Python runtime, and environment override rules.
-- [docs/contracts/auth-secrets.md](./docs/contracts/auth-secrets.md)
-  Provider secret resolution, `.env` / env behavior, and Keychain boundaries.
-- [docs/contracts/provider-api-errors.md](./docs/contracts/provider-api-errors.md)
-  Stable unsupported-field, content, operation, and capability error semantics
-  for provider-shaped API routes.
-- [docs/contracts/model-support-status.md](./docs/contracts/model-support-status.md)
-  Support status vocabulary, evidence precedence, stale-proof rules, and
-  transition rules for model/capability/backend tuples.
-- [docs/contracts/training-lora.md](./docs/contracts/training-lora.md)
-  Managed LoRA plan and run boundaries.
-
-## Configure Paths
-
-Set `TENTGENT_HOME` to move all normal runtime state:
-
-```bash
-export TENTGENT_HOME="$HOME/.tentgent"
-```
-
-Use narrower overrides when only one store or runtime path should move:
-
-```bash
-export TENTGENT_MODELS_DIR="/Volumes/models/tentgent"
-export TENTGENT_DATASETS_DIR="$HOME/datasets/tentgent"
-export TENTGENT_PYTHON_DIR="$PWD/python/tentgent-model-runtime"
-export TENTGENT_PYTHON_ENV_DIR="$PWD/python/tentgent-model-runtime/.venv"
-```
-
-Common provider environment variables:
-
-```bash
-export HF_TOKEN="..."
-export OPENAI_API_KEY="..."
-export ANTHROPIC_API_KEY="..."
-```
-
-Tentgent loads `.env` for process-local provider credentials before falling
-back to the system keychain. For predictable `.env` behavior, run `tentgent`
-from the directory containing the file or export variables in your shell.
-
-See [docs/user/runtime.md](./docs/user/runtime.md) for platform defaults,
-runtime-home rules, Python runtime resolution, and Keychain prompt notes.
-
-## Current Capabilities
-
-Included:
-
-- provider auth key management for Hugging Face, OpenAI, and Anthropic
-- content-addressed model, adapter, and dataset stores
-- dataset validation, prompt templates, local import, export, and diff workflows
-- one-shot local chat for MLX, PEFT safetensors, and llama-cpp GGUF paths
-- one-shot local embedding and rerank commands for compatible safetensors models
-- foreground audio transcription, text-to-speech WAV generation, native
-  image-plus-text vision chat, and image generation/editing for compatible
-  local models
-- local HTTP daemon API for store, dataset, server, chat, training, diagnostics, and bounded session workflows
-- managed LoRA train plans, durable run records, metrics/log inspection, and runnable MLX / PEFT training loops
-- local sessions with bounded transcript compaction for short-term working context
-- stored cluster definitions with route readiness diagnostics and experimental
-  local multi-route server dispatch, guarded hot reload, runtime ownership, and
-  bounded shutdown through the shared server lifecycle
-- dry-run/apply recovery for proven-stale runtime ownership through
-  `tentgent runtime reconcile`
-- installer-managed Python runtime bootstrap for direct installs and `tentgent runtime bootstrap` for package-manager installs
-
-Known limits:
-
-- macOS and Windows x86_64 are the first packaged install targets
-- MLX requires Apple Silicon macOS
-- MLX acceleration is currently implemented for chat, LoRA training, native
-  vision chat, audio transcription, and image generation. MLX text-to-speech
-  remains planned until a stable local `mlx-audio` TTS path is verified.
-- Cloud provider servers and provider-backed dataset synth/eval are paused
-  until they are ported to the model runtime HTTP boundary
-- generated dataset splits are not deduplicated against each other yet
-- provider key set/remove and `doctor --fix` remain CLI-only
-- macOS Developer ID signing and notarization are handled by the release
-  workflow for current macOS artifacts
-
-## Development
-
-Build from source:
-
-```bash
-cargo build --workspace
-./target/debug/tentgent doctor
-```
-
-Use a repository-local runtime home while testing:
-
-```bash
-export TENTGENT_HOME="$PWD/.tentgent-test"
-```
-
-See [docs/development/README.md](./docs/development/README.md) for developer commands and repository-local tests.
-
-## Contributing
-
-Issues, experiments, integrations, and pull requests are welcome. Good first
-areas include documentation, installer smoke tests, platform-specific runtime
-notes, dataset examples, and clients that use the local HTTP daemon.
-
-Before larger changes, read [AGENTS.md](./AGENTS.md) and the relevant contract
-under [docs/contracts/](./docs/contracts/README.md), then keep changes small
-enough to review.
-
-## Project Docs
-
-- [docs/user/](./docs/user/README.md)
-  User install, upgrade, version, 1.0 readiness, command, runtime, provider
-  compatibility, support status, and Keychain docs.
-- [AGENTS.md](./AGENTS.md)
-  Shared repository context and documentation routing.
-- [CLAUDE.md](./CLAUDE.md)
-  Agent workflows and role boundaries.
-- [docs/contracts/](./docs/contracts/README.md)
-  Cross-language interfaces and stable runtime contracts.
-- [docs/plans/](./docs/plans/README.md)
-  Active `v1.x` roadmap and post-`v1.0.0` maintenance plans.
+Report a reproducible problem or propose a focused improvement through
+[GitHub Issues](https://github.com/HiroLiang/tentserv-agent/issues).
+Include the Tentgent version, platform, selected backend, and relevant command
+or API error while keeping credentials out of the report.
 
 ## License
 
-This project is licensed under the Apache License, Version 2.0. See [LICENSE](./LICENSE).
+Tentgent is licensed under [Apache License 2.0](./LICENSE).
+Model weights and optional dependencies retain their own license terms.
