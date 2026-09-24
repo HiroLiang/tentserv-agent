@@ -2,6 +2,56 @@
 
 Tentgent stores runtime state outside source code by default.
 
+## Common Commands
+
+Inspect the managed Python runtime:
+
+```bash
+tentgent runtime status
+tentgent runtime status --profile full
+tentgent runtime status --project /path/to/python-project --env /path/to/python-env
+```
+
+Prepare the managed Python runtime after package-manager installs such as
+Homebrew:
+
+```bash
+tentgent runtime bootstrap
+tentgent doctor
+```
+
+Install heavier optional runtime profiles only when needed:
+
+```bash
+tentgent runtime bootstrap --profile local-model
+tentgent runtime bootstrap --profile training
+tentgent runtime bootstrap --profile full
+tentgent runtime bootstrap --profile all
+```
+
+Inspect the paths that would be used without syncing:
+
+```bash
+tentgent runtime bootstrap --print-plan
+tentgent runtime bootstrap --profile local-model --dry-run
+```
+
+## Parameters
+
+Use the installed command’s `-h` or `--help` for required arguments and version-specific options.
+
+| Command | Option | Meaning |
+| --- | --- | --- |
+| `runtime bootstrap` | `--project <PATH>` | Python daemon project directory. Defaults to the resolved packaged or source project |
+| `runtime bootstrap` | `--env <PATH>` | Managed Python environment path. Defaults to the resolved Tentgent Python env |
+| `runtime bootstrap` | `--uv <PATH>` | Use an explicit pinned uv executable path |
+| `runtime bootstrap` | `--profile <PROFILE>` | Runtime dependency profile to install [default: base] [possible values: base, local-model, training, full] |
+| `runtime bootstrap` | `--dry-run` | Ask uv to plan the sync without modifying the Python environment |
+| `runtime bootstrap` | `--print-plan` | Print resolved paths without syncing |
+| `runtime status` | `--project <PATH>` | Python daemon project directory override for status resolution |
+| `runtime status` | `--env <PATH>` | Managed Python environment path override for status resolution |
+| `runtime status` | `--profile <PROFILE>` | Show readiness for one runtime dependency profile [possible values: base, local-model, training, full] |
+
 ## Runtime Home
 
 During development, prefer a repository-local runtime home:
@@ -87,6 +137,10 @@ MLX model metadata:
 - `mlx-diffusion` is the Apple Silicon MLX path for native
   `image-generation` through MFLUX Flux-family text-to-image models.
 
+## HTTP Listener Addresses
+
+See [HTTP listener addresses](./daemon.md#http-listener-addresses) for `--host`, `--port`, and non-loopback binds.
+
 ## Runtime Footprint
 
 Use `tentgent runtime status` or `tentgent doctor` to inspect
@@ -164,26 +218,7 @@ rm -rf "$TENTGENT_HOME/runtime/bootstrap/uv-cache"
 
 ## Store Staging Cleanup
 
-Interrupted model, adapter, or dataset imports can leave partial files under
-managed staging directories before Tentgent has computed a content hash and
-installed a canonical `store/<ref>` entry.
-
-Inspect abandoned staging directories without deleting anything:
-
-```bash
-tentgent store gc
-```
-
-Delete the listed staging directories:
-
-```bash
-tentgent store gc --apply
-```
-
-This command only removes direct children of `models/staging`,
-`adapters/staging`, and `datasets/staging`. It does not remove hashed model,
-adapter, or dataset content under `store/<ref>`; use the specific `model rm`,
-`adapter rm`, or `dataset rm` commands for canonical objects.
+See [Store cleanup](./maintenance.md#store-staging-cleanup) for dry-run and apply examples.
 
 ## Backend Status
 
@@ -298,61 +333,7 @@ requires them.
 
 ## Stale Runtime And Job State
 
-Daemon job workspaces are temporary runtime state under `TENTGENT_HOME`. They
-may be retained after success, failure, cancellation, interruption, or daemon
-shutdown so result routes and inspection still have stable files to read.
-Deleting a terminal job through the daemon job API removes both the durable job
-record and its workspace:
-
-```bash
-curl -sS http://127.0.0.1:8790/v1/jobs
-curl -X DELETE http://127.0.0.1:8790/v1/jobs/<job-id>
-```
-
-Active jobs cannot be deleted. Cancel them first when the job is still active:
-
-```bash
-curl -X POST http://127.0.0.1:8790/v1/jobs/<job-id>/cancel
-```
-
-Cancellation always updates the durable job state, but already-started blocking
-runtime work may take time to stop. If daemon shutdown or restart leaves an
-active job in doubt, restart the daemon and inspect `/v1/jobs`; previously
-queued or running daemon jobs are recorded as `interrupted` instead of being
-silently reused.
-
-Local model-bound server processes are separate from daemon jobs. Use server
-inspection and stop commands for stale server runtime state:
-
-```bash
-tentgent server ps
-tentgent server inspect <server-ref>
-tentgent server stop <server-ref>
-```
-
-Cluster routes and shared Python runtimes also retain durable ownership records
-so another process cannot remove their model or capability during a lifecycle
-transition. Inspect recovery actions without changing state:
-
-```bash
-tentgent runtime reconcile
-```
-
-`tentgent cluster inspect <cluster-ref>` and
-`tentgent server inspect <server-ref>` show safe ownership details scoped to
-that object. They omit process ids, process tokens, local ownership paths, and
-internal generation ids. Doctor remains a compact global summary.
-
-Stop the owner named by the report before applying recovery. Then use:
-
-```bash
-tentgent runtime reconcile --apply
-```
-
-Malformed state is quarantined only when no live process can own it. A later
-`tentgent runtime reconcile --apply --purge-quarantine` removes records that
-were quarantined before that invocation. Unreadable or unverifiable state
-remains blocked instead of being deleted.
+See [Stale runtime and job state](./maintenance.md#stale-runtime-and-job-state) for ownership repair and interrupted-job recovery.
 
 ## Keychain Prompts
 

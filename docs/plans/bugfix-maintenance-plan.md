@@ -42,6 +42,8 @@ queue that should stay visible from the active plan.
 | [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Implemented; pending review and merge | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
 | [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Planning | `v1.2.0` | Honor Local/Cluster lazy-load configuration and stop Cloud targets from silently accepting unsupported local-runtime lifecycle options. |
 
+| [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Implemented; pending review | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
+
 ## Current Handoff State
 
 As of `2026-08-08`, `#131` is implemented and validated on its bug branch. Its

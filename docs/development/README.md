@@ -462,8 +462,8 @@ curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> \
 curl -sS http://127.0.0.1:8790/v1/sessions/<session-ref> -X DELETE
 ```
 
-Session deletion is permanent. Chat remains stateless unless `--session` or
-`session_ref` is provided. Session-aware chat holds the session lock until the
+Session deletion is permanent. CLI chat uses stored context with `--session`;
+daemon chat is stateless. CLI session chat holds the session lock until the
 assistant reply is recorded, so same-session turns are serialized. Sessions are
 bounded to 50 persisted messages; compaction may rewrite older transcript
 messages into a generated summary message.
@@ -817,9 +817,7 @@ curl -sS http://127.0.0.1:8790/v1/datasets/import \
 curl -sS http://127.0.0.1:8790/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{
-    "server_ref": "<server-ref>",
-    "session_ref": "<session-ref>",
-    "max_session_messages": 50,
+    "model_ref": "<model-ref>",
     "messages": [
       {"role": "user", "content": "Say hello in Traditional Chinese."}
     ],
@@ -829,7 +827,7 @@ curl -sS http://127.0.0.1:8790/v1/chat \
 curl -sS -N http://127.0.0.1:8790/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{
-    "server_ref": "<server-ref>",
+    "model_ref": "<model-ref>",
     "messages": [
       {"role": "user", "content": "Say hello in Traditional Chinese."}
     ],
@@ -841,8 +839,7 @@ curl -sS http://127.0.0.1:8790/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{
-    "model": "<server-ref>",
-    "session_ref": "<session-ref>",
+    "model": "<model-ref>",
     "messages": [
       {"role": "user", "content": "Say hello in Traditional Chinese."}
     ],
@@ -853,7 +850,7 @@ curl -sS -N http://127.0.0.1:8790/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TENTGENT_DAEMON_TOKEN" \
   -d '{
-    "model": "<server-ref>",
+    "model": "<model-ref>",
     "messages": [
       {"role": "user", "content": "Say hello in Traditional Chinese."}
     ],
@@ -882,16 +879,13 @@ Detached daemon children inherit daemon configuration environment variables,
 including `TENTGENT_DAEMON_TOKEN`; local model-server proxy children remove
 that token before launch.
 
-At this stage the daemon records process metadata and serves `GET /healthz`,
-`GET /v1/status`, and read-only discovery endpoints for models, adapters,
-datasets, server specs, controlled server lifecycle mutations, and
-`POST /v1/chat` proxying to already-running model-bound server ports.
-`POST /v1/chat/completions` adds a limited OpenAI-style success wrapper for
-basic chat-completion clients; its `model` field selects a Tentgent server ref
-or unique prefix, not a provider model name. Both chat routes can optionally use
-`session_ref` for bounded context and transcript recording. Persisted session
-transcripts are capped at 50 messages and may compact older messages into one
-summary message. Use
+The daemon records process metadata and serves diagnostics, store management,
+server lifecycle operations, and native chat through kernel use cases.
+`POST /v1/chat` requires a managed `model_ref`. Provider-shaped routes such as
+`POST /v1/chat/completions` accept a local model selector or supported provider
+model name, as described in [provider compatibility](../user/provider-compatibility.md).
+Chat endpoints are stateless; CLI `chat --session` provides automatic transcript
+context, while `/v1/sessions` exposes explicit record management. Use
 `GET /v1/servers/<server-ref>/health` to distinguish process state from target
 HTTP reachability before sending chat. Use the daemon and server log diagnostics
 endpoints to inspect fixed stdout/stderr log paths without accepting arbitrary
