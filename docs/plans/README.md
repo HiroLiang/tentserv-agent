@@ -35,13 +35,16 @@ or too cross-cutting to track only in GitHub issues.
 - [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md)
   Implemented and validated issue-level contract, decision register, evidence,
   and live smoke runbook for restoring model idle release without letting
-  health probes keep the shared Python runtime alive indefinitely. Merge of
-  this maintenance fix remains the prerequisite before `#127` resumes.
+  health probes keep the shared Python runtime alive indefinitely. Merged and
+  released in `v1.1.1`.
+- [issue-132-server-runtime-option-contract-plan.md](./issue-132-server-runtime-option-contract-plan.md)
+  Accepted Local/Cluster eager-load and Cloud option decisions, with reviewable
+  implementation checkpoints. Complete before `#128` and `#130`.
 - [v1.2.0-local-compatibility-state-plan.md](./v1.2.0-local-compatibility-state-plan.md)
-  Active execution plan for issues `#126`-`#130`, with `#131` recorded as a
-  blocking maintenance prerequisite: complete compatibility tuples, proof v2
-  persistence, local model and Cluster gates, LoRA adapter gates, diagnostics,
-  recovery, documentation, and release closeout.
+  Active execution plan for issues `#126`-`#130`: complete compatibility
+  tuples, proof v2 persistence, local model and Cluster gates, LoRA adapter
+  gates, diagnostics, recovery, documentation, and release closeout. The
+  separate `#132` fix precedes server/Cluster gates and diagnostics.
 - [v1.x-roadmap.md](./v1.x-roadmap.md)
   Long-term post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is
   complete; the active `v1.2.0` compatibility-state slice is detailed in its
@@ -50,8 +53,7 @@ or too cross-cutting to track only in GitHub issues.
 - [bugfix-maintenance-plan.md](./bugfix-maintenance-plan.md)
   Active maintenance queue for post-`v1.0.0` bug fixes, diagnostics polish,
   release follow-up, documentation cleanup, and repository hygiene. Its current
-  open items are review and merge of the implemented `#131` lifecycle fix and
-  the separate `#132` server-option no-op follow-up.
+  open server-option follow-up is `#132`.
 
 ## Deferred Plans
 

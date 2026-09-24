@@ -1,8 +1,8 @@
 # Bugfix And Maintenance Plan
 
 Status: active post-`v1.0.0` maintenance and patch planning record. Issues
-`#103`-`#107` are completed; `#131` is implemented and validated pending
-review and merge, and `#132` tracks a separate server-option no-op follow-up.
+`#103`-`#107`, `#131`, and `#136` are complete. `#132` tracks the remaining
+server-option no-op follow-up.
 
 This plan tracks released-product cleanup: bugs, diagnostics gaps, stale
 documentation, release follow-up, repository hygiene, and small hardening work.
@@ -39,19 +39,18 @@ queue that should stay visible from the active plan.
 | [#105](https://github.com/HiroLiang/tentserv-agent/issues/105) | Completed | `v1.0.1 Patch` | Fix signed Homebrew macOS Keychain prompt behavior and keep the release path aligned with the existing signing setup. |
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
-| [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Implemented; pending review and merge | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
-| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Planning | `v1.2.0` | Honor Local/Cluster lazy-load configuration and stop Cloud targets from silently accepting unsupported local-runtime lifecycle options. |
-
-| [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Implemented; pending review | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
+| [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Decisions accepted; implementation pending | `v1.2.0` | Honor Local/Cluster lazy-load configuration and reject unsupported Cloud lifecycle options. See the [issue-level plan](./issue-132-server-runtime-option-contract-plan.md). |
+| [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State
 
-As of `2026-08-08`, `#131` is implemented and validated on its bug branch. Its
-detailed diagnosis, decisions, implementation evidence, and smoke procedure are in
+As of `2026-09-24`, `#131` is merged and released in `v1.1.1`; its evidence and
+smoke procedure remain in
 [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md).
-Review and merge that fix before resuming `#127` implementation. Issue `#132`
-remains a separate follow-up and should receive its own issue-level planning
-before its branch is implemented.
+Issue `#132` has a [decision register and review checkpoints](./issue-132-server-runtime-option-contract-plan.md).
+Its core decisions are accepted; one image-generation edge case remains open.
+It is independent of `#127` and precedes `#128` and `#130` implementation.
 
 The completed `v1.1.0` Cluster issue flow is archived under
 [archive/cluster-roadmap.md](./archive/cluster-roadmap.md). Future feature work
