@@ -243,6 +243,10 @@ Response fields include:
 - `runtime.resources`
 - `tasks`
 
+Resource entries include `state` (`available`, `invalidated`, or `quarantined`),
+`load_error`, and `cleanup_error`. Diagnostics are strings, not retained loader
+tracebacks. Quarantined resources are still counted; they are not reported as freed.
+
 ## Idle Policies
 
 The runtime has two independent finite clocks:
@@ -265,6 +269,67 @@ The direct Python CLI accepts `--runtime-idle-seconds` and
 `--model-idle-timeout-seconds` names remain deprecated aliases; a canonical and
 legacy value supplied together must match. Rust-managed launches use only the
 canonical names.
+
+## Managed Preload
+
+`POST /v1/lifecycle/preload` is an internal, model-bound load validation operation.
+Its JSON body contains only required, non-empty string `task_ref` and
+`process_token` fields. The token must match this runtime's launcher-supplied
+generation token; it is an identity check, not authentication. The operation
+accepts no caller-selected model/path, backend, workflow, or adapter.
+
+Preload submits a `preload` task through TaskManager and takes an ordinary model
+lease for the runtime's bound model/capability. It executes `load()` (or reuses a
+loaded resource), requires `is_loaded`, and exits the lease before returning:
+
+```json
+{
+  "status": "done",
+  "task_ref": "preload-task-ref",
+  "model_ref": "bound-model-ref",
+  "capability": "chat",
+  "process_token": "expected-generation-token"
+}
+```
+
+Completion validates loading, not continued residency: model idle `0` releases
+after the final lease; positive idle preserves normal reuse/expiry. Image
+generation and LoRA tuning have no fixed supported preload. MLX embedding and
+rerank placeholders are also rejected because their `load()` only sets metadata.
+
+Errors use `detail.code` and `detail.message`; accepted tasks also include
+`detail.task_ref`. Generation mismatch diagnostics never disclose the actual token.
+
+| HTTP | Code | Meaning |
+| --- | --- | --- |
+| 422 | `invalid_preload_request` | Missing, null, wrong-type, blank, extra fields, or malformed JSON. |
+| 409 | `runtime_generation_mismatch` | Missing runtime token or mismatched expected token. |
+| 409 | `runtime_closing`, `preload_task_exists` | Admission closed or task ref already tracked. |
+| 400 | `preload_unbound_runtime` | Runtime has no bound model. |
+| 501 | `preload_unsupported` | Unsupported capability/backend or unavailable backend dependency. |
+| 500 | `preload_failed` | Loading did not produce a loaded model, or loading/cleanup failed. |
+| 504 | `preload_wait_timeout` | Internal 300-second HTTP observation budget expired. |
+
+The wait budget is independent of both idle clocks and has no CLI option.
+Timeout/cancellation of the HTTP wait does not cancel queued or running native
+loading. Accepted work remains active until it actually finishes; completion
+restarts runtime idle, and normal lease exit governs model idle. Late errors are
+consumed even without a waiting HTTP client. A backend's own timeout is a load
+failure (`500`), not observation expiry (`504`).
+
+Failed loading invalidates only that resource and calls its `release()` under
+the resource lock. Reserved waiters reject the invalidated object; after the
+last reservation exits, a retry creates a fresh object. Inference-body errors
+do not invalidate a successfully loaded model. Failed cleanup quarantines the
+object and rejects reuse, without global release or shared-runtime termination.
+Idle cleanup skips quarantine, but runtime-idle shutdown still runs and retries
+cleanup for all resources; one cleanup failure does not skip other resources.
+
+The public Local proxy returns `404` for the entire `/v1/lifecycle` and
+`/internal/v1/lifecycle` namespaces, including slash, query, encoded, and
+URL-normalized equivalents, before runtime resolution or proof recording.
+This blocks existing shutdown as well as preload. Local eager startup/readiness
+and Cluster preload integration are separate #132 steps, not enabled by this API.
 
 ## Shutdown
 

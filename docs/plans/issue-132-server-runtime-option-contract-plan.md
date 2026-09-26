@@ -1,7 +1,7 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: Step 1 implemented and validated; paused at the user review checkpoint.
-Steps 2-7 have not started. This branch is not ready for release.
+Status: Steps 1-2 implemented and validated; paused at the Step 2 review checkpoint.
+Steps 3-7 have not started. This branch is not ready for release.
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
 
@@ -15,7 +15,8 @@ Checked on `2026-09-26`: issue #132 is open in Tentgent Roadmap with the `bug`,
 `area:api`, `area:runtime-profile`, and `type:implementation` labels. Reuse the
 branch above. It contains `origin/main` at `f41a96d` plus planning commits
 `fbd10ea`, `c7e8800`, and `0bde241`; implementation began from a clean working tree.
-No PR is open for this branch. Keep the existing issue, labels, project, and
+Step 2 began from clean Step 1 commit `8a28a68`, without pushing or changing branches.
+Keep the existing issue, labels, project, and
 milestone; no new implementation branch or child issue is needed.
 
 ## Problem And Boundary
@@ -132,7 +133,7 @@ publish a release as part of implementation. Step 0 is this planning checkpoint.
 | --- | --- | --- | --- |
 | 0 | Final plan and tracking alignment | None | D1-D9 |
 | 1 | Target option validation and legacy compatibility | 0 | D4-D6, D9 |
-| 2 | Python managed preload operation and cleanup | 1 | D1, D7 |
+| 2 | Python managed preload, cleanup, and public lifecycle isolation | 1 | D1, D7 |
 | 3 | Local eager/lazy startup and truthful readiness | 2 | D1, D6, D7 |
 | 4 | Cluster eager startup | 3 | D2 |
 | 5 | Cluster candidate/committed snapshot boundary | 4 | D3 |
@@ -169,26 +170,39 @@ the Python command below plus `tests/test_image_lazy_only.py`.
 `cargo check --workspace --all-targets`, `cargo fmt --all -- --check`, and
 `git diff --check` passed. No real models were loaded; eager/resource smoke is
 still deferred to the later slices. No preload, readiness, reload, or #131 idle
-implementation changed. Stop here for review before Step 2.
+implementation changed. The user subsequently authorized Step 2.
 
 ### Step 2: Python Preload
 
 - Add focused preload task/request modules under `runtime/task/` and
   `runtime/server/`; wire `server/routes/lifecycle.py` to TaskManager and the
   bound model. Reuse ResourceManager leasing and scoped failed-load cleanup.
-- Tests in `test_runtime_lifecycle.py`, `test_server_bound_models.py`, and a
-  focused preload test file cover actual load, idle 0/positive release, clean
-  retry after failure, concurrency, closing/generation rejection, and a dropped
-  wait while a blocking load remains correctly tracked.
+- Enforce strict payload/generation checks and unsupported metadata-only
+  backends. Preserve queued/running tasks after wait timeout/cancellation;
+  quarantine cleanup failures without global release or disabling idle shutdown.
+- Move public Local lifecycle namespace rejection forward from Step 3, as
+  approved: reject before runtime resolution, generation creation, or proof writes.
+- Tests cover load/reuse, idle 0/positive, clean retry, reserved waiters,
+  quarantine, admission errors, and abandoned waits with tracked native loading.
 - Review result: the internal endpoint has an independently tested request,
   response, activity, and resource contract. Fake backends avoid model downloads.
+
+Step 2 evidence (`2026-09-26`): see the [managed preload contract](../contracts/model-runtime-server.md#managed-preload).
+Full Python runtime suite: 114 passed plus 11 subtests. Rust Local: 33 passed;
+Cluster: 17 passed, 1 existing manual benchmark ignored. Run
+`uv run --project python/tentgent-model-runtime pytest python/tentgent-model-runtime/tests -q`
+and the Local/Cluster commands below with `--lib`. Local socket tests required
+execution outside the sandbox; all passed on rerun. Workspace all-target checks,
+Rust/Python formatting, and diff checks passed. Fake backends only: no model
+download, GPU/RSS smoke, readiness/proof wiring, or Cluster integration in this
+slice. Stop for review before Step 3; no push, merge, or release.
 
 ### Step 3: Local Startup And Readiness
 
 - Add a typed preload operation beside kernel `runtime/infra/model_daemon/`
   supervisor/health adapters. Carry load mode through both hidden hosts into
   daemon `server/local/runtime.rs`; add explicit startup/readiness state and
-  guards for public fallback forwarding.
+  readiness admission guards (lifecycle namespace isolation is done in Step 2).
 - Update CLI background observation and daemon REST server health/start proof
   recording. A 10-second CLI observation or 30/120-second REST readiness wait
   must not turn unfinished preload into successful verification or failure proof.
@@ -298,8 +312,8 @@ actually execute; a zero-test filtered run is not evidence.
 
 - [x] Settle D1-D9, including explicit lazy for Diffusers and MLX/MFLUX images.
 - [x] Confirm current issue/branch and define independently reviewable slices.
-- [x] Implement and validate Step 1; user review is pending.
-- [ ] Complete Steps 2-7, stopping for review at each checkpoint.
+- [x] Implement and validate Steps 1-2; Step 2 review is pending.
+- [ ] Complete Steps 3-7, stopping for review at each checkpoint.
 - [ ] Every accepted decision D1-D9 is implemented and verified.
 - [ ] Each review step records its focused test result and remaining risk.
 - [ ] All #132 issue acceptance criteria pass and user-facing docs match.

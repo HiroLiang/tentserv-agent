@@ -90,7 +90,7 @@ routes rather than caller-facing API surfaces.
 
 | Tier | Routes | Notes |
 | --- | --- | --- |
-| `internal` | `GET /healthz`, `POST /v1/lifecycle/shutdown` | Rust supervisor health and graceful shutdown boundary for one runtime process. |
+| `internal` | `GET /healthz`, `POST /v1/lifecycle/shutdown`, `POST /v1/lifecycle/preload` | Supervisor health, graceful shutdown, and generation-checked bound-model preload for one runtime process. Public Local forwarding rejects the lifecycle namespace before runtime creation. |
 | `internal` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/embeddings`, `POST /v1/rerank`, plus mirrored `/internal/v1/...` aliases where mounted | Direct local inference execution routes called by Rust. |
 | `internal` | `POST /v1/audio/transcriptions`, `POST /v1/audio/speech`, `POST /v1/images/generations`, `POST /v1/images/transforms`, `POST /v1/images/inpaint`, `POST /v1/images/control`, `POST /v1/video/understanding`, `POST /v1/vision/chat`, plus mirrored `/internal/v1/...` aliases where mounted | Direct media execution routes. Rust owns upload handling, job workspaces, and public result routes. |
 | `internal` | `POST /v1/tuning/lora/runs`, plus mirrored `/internal/v1/...` aliases where mounted | Direct LoRA execution route. Rust owns managed plan identity, durable run records, and adapter import. |

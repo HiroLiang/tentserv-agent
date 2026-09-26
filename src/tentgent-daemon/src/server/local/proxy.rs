@@ -7,8 +7,8 @@ use axum::{
 
 use super::{
     capability::ensure_model_endpoint, error::LocalServerError,
-    evidence::record_runtime_execution_result, LocalServerState, PROXY_BODY_LIMIT_BYTES,
-    RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH, RUNTIME_EMBEDDINGS_PATH,
+    evidence::record_runtime_execution_result, ingress::reject_lifecycle_path, LocalServerState,
+    PROXY_BODY_LIMIT_BYTES, RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH, RUNTIME_EMBEDDINGS_PATH,
     RUNTIME_IMAGE_GENERATIONS_PATH,
 };
 
@@ -16,6 +16,7 @@ pub(in crate::server) async fn proxy_request(
     State(state): State<LocalServerState>,
     request: AxumRequest,
 ) -> Result<Response, LocalServerError> {
+    reject_lifecycle_path(request.uri().path())?;
     let endpoint = ensure_model_endpoint(&state).await?;
     let path_and_query = request
         .uri()
