@@ -49,8 +49,8 @@ As of `2026-09-26`, `#131` is merged and released in `v1.1.1`; its evidence and
 smoke procedure remain in
 [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md).
 Issue `#132` has a [decision register and review checkpoints](./issue-132-server-runtime-option-contract-plan.md).
-Its core decisions and Diffusers lazy-only behavior are accepted; applicability
-to MLX/MFLUX image generation remains open.
+Its decisions include lazy-only Diffusers and MLX/MFLUX image generation, with
+implementation split into seven reviewable steps. Implementation has not begun.
 It is independent of `#127` and precedes `#128` and `#130` implementation.
 
 The completed `v1.1.0` Cluster issue flow is archived under
