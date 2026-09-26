@@ -31,9 +31,9 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
             },
             host: Some("127.0.0.1".to_string()),
             port: Some(8780),
-            lazy_load: false,
-            idle_seconds: None,
-            model_idle_seconds: None,
+            lazy_load: None.into(),
+            idle_seconds: None.into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("prepare cloud server");
@@ -57,9 +57,9 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
             },
             host: Some("127.0.0.1".to_string()),
             port: Some(8780),
-            lazy_load: false,
-            idle_seconds: None,
-            model_idle_seconds: None,
+            lazy_load: None.into(),
+            idle_seconds: None.into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("reuse cloud server");
@@ -78,9 +78,9 @@ fn standard_server_usecase_prepares_cloud_specs_and_reuses_aliases() {
             },
             host: Some("127.0.0.1".to_string()),
             port: Some(8781),
-            lazy_load: false,
-            idle_seconds: None,
-            model_idle_seconds: None,
+            lazy_load: None.into(),
+            idle_seconds: None.into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("prepare cloud embedding server");
@@ -158,9 +158,9 @@ fn standard_server_usecase_prepares_cluster_specs_with_stable_identity() {
             },
             host: None,
             port: Some(8798),
-            lazy_load: true,
-            idle_seconds: Some(30),
-            model_idle_seconds: None,
+            lazy_load: Some(true).into(),
+            idle_seconds: Some(30).into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("prepare cluster server");
@@ -186,9 +186,9 @@ fn standard_server_usecase_prepares_cluster_specs_with_stable_identity() {
             target: ServerPrepareTarget::Cluster { cluster_ref },
             host: None,
             port: Some(8798),
-            lazy_load: true,
-            idle_seconds: Some(30),
-            model_idle_seconds: None,
+            lazy_load: Some(true).into(),
+            idle_seconds: Some(30).into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("reuse cluster server after definition update");
@@ -230,9 +230,9 @@ fn standard_server_usecase_rejects_cloud_capabilities_not_supported_by_provider(
             },
             host: None,
             port: None,
-            lazy_load: false,
-            idle_seconds: None,
-            model_idle_seconds: None,
+            lazy_load: None.into(),
+            idle_seconds: None.into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect_err("anthropic embedding server should be rejected");
@@ -275,9 +275,9 @@ fn standard_server_usecase_prepares_local_specs_and_tracks_process_state() {
             },
             host: None,
             port: Some(8781),
-            lazy_load: true,
-            idle_seconds: Some(30),
-            model_idle_seconds: None,
+            lazy_load: Some(true).into(),
+            idle_seconds: Some(30).into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("prepare local server");
@@ -380,9 +380,9 @@ fn standard_server_usecase_uses_auto_default_port_when_port_is_omitted() {
             },
             host: None,
             port: None,
-            lazy_load: false,
-            idle_seconds: None,
-            model_idle_seconds: None,
+            lazy_load: None.into(),
+            idle_seconds: None.into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("prepare local server");
@@ -429,9 +429,9 @@ fn standard_server_usecase_rejects_non_chat_models_for_chat_specs() {
                 },
                 host: None,
                 port: Some(8781),
-                lazy_load: false,
-                idle_seconds: None,
-                model_idle_seconds: None,
+                lazy_load: None.into(),
+                idle_seconds: None.into(),
+                model_idle_seconds: None.into(),
                 allow_unverified: true,
             })
             .expect_err("non-chat model should not prepare a chat server");
@@ -482,9 +482,9 @@ fn standard_server_usecase_infers_capability_from_local_model_metadata() {
             },
             host: None,
             port: Some(8781),
-            lazy_load: false,
-            idle_seconds: None,
-            model_idle_seconds: None,
+            lazy_load: None.into(),
+            idle_seconds: None.into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("prepare inferred server");
@@ -600,9 +600,9 @@ fn standard_server_usecase_prepares_embedding_specs() {
             },
             host: None,
             port: Some(8781),
-            lazy_load: false,
-            idle_seconds: None,
-            model_idle_seconds: None,
+            lazy_load: None.into(),
+            idle_seconds: None.into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("prepare embedding server");
@@ -661,9 +661,9 @@ fn standard_server_usecase_rejects_mlx_embedding_specs_without_profile() {
             },
             host: None,
             port: Some(8781),
-            lazy_load: false,
-            idle_seconds: None,
-            model_idle_seconds: None,
+            lazy_load: None.into(),
+            idle_seconds: None.into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect_err("mlx embedding server has no runtime profile yet");
@@ -706,9 +706,9 @@ fn standard_server_usecase_prepares_rerank_specs() {
             },
             host: None,
             port: Some(8782),
-            lazy_load: false,
-            idle_seconds: None,
-            model_idle_seconds: None,
+            lazy_load: None.into(),
+            idle_seconds: None.into(),
+            model_idle_seconds: None.into(),
             allow_unverified: true,
         })
         .expect("prepare rerank server");
@@ -808,9 +808,11 @@ fn standard_server_usecase_prepares_model_runtime_capability_specs() {
                 },
                 host: None,
                 port: Some(8782),
-                lazy_load: false,
-                idle_seconds: None,
-                model_idle_seconds: None,
+                lazy_load: (server_capability == ServerCapability::ImageGeneration)
+                    .then_some(true)
+                    .into(),
+                idle_seconds: None.into(),
+                model_idle_seconds: None.into(),
                 allow_unverified: true,
             })
             .expect("prepare model runtime server");
@@ -899,9 +901,11 @@ fn standard_server_usecase_rejects_unsupported_non_chat_server_formats() {
                 },
                 host: None,
                 port: Some(8782),
-                lazy_load: false,
-                idle_seconds: None,
-                model_idle_seconds: None,
+                lazy_load: (server_capability == ServerCapability::ImageGeneration)
+                    .then_some(true)
+                    .into(),
+                idle_seconds: None.into(),
+                model_idle_seconds: None.into(),
                 allow_unverified: true,
             })
             .expect_err("unsupported non-chat format");

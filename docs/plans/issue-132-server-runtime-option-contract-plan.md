@@ -1,7 +1,7 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: decisions settled; ready for implementation one reviewed step at a time.
-Implementation not started.
+Status: Step 1 implemented and validated; paused at the user review checkpoint.
+Steps 2-7 have not started. This branch is not ready for release.
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
 
@@ -14,7 +14,7 @@ Milestone: `v1.2.0`
 Checked on `2026-09-26`: issue #132 is open in Tentgent Roadmap with the `bug`,
 `area:api`, `area:runtime-profile`, and `type:implementation` labels. Reuse the
 branch above. It contains `origin/main` at `f41a96d` plus planning commits
-`fbd10ea` and `c7e8800`; the working tree was clean and matched its remote.
+`fbd10ea`, `c7e8800`, and `0bde241`; implementation began from a clean working tree.
 No PR is open for this branch. Keep the existing issue, labels, project, and
 milestone; no new implementation branch or child issue is needed.
 
@@ -157,6 +157,20 @@ publish a release as part of implementation. Step 0 is this planning checkpoint.
 - Review result: supported options and recovery messages are unambiguous;
   Local/Cluster eager execution still awaits later steps.
 
+Step 1 evidence (`2026-09-26`): input presence uses `LifecycleInput` without
+changing persisted boolean/identity shapes. Cloud detailed responses add
+`lifecycle_options_applicability: "not_applicable_legacy_ignored"`.
+Kernel server tests: 57 passed; CLI server-filtered tests: 14 passed; daemon
+server-filtered tests: 119 library + 2 worker tests passed, 1 existing manual
+watcher benchmark ignored. Python image guard/lifecycle/bound-model tests:
+33 passed. Commands: `cargo test -p tentgent-kernel features::server --lib`,
+`cargo test -p tentgent-cli server`, `cargo test -p tentgent-daemon server`, and
+the Python command below plus `tests/test_image_lazy_only.py`.
+`cargo check --workspace --all-targets`, `cargo fmt --all -- --check`, and
+`git diff --check` passed. No real models were loaded; eager/resource smoke is
+still deferred to the later slices. No preload, readiness, reload, or #131 idle
+implementation changed. Stop here for review before Step 2.
+
 ### Step 2: Python Preload
 
 - Add focused preload task/request modules under `runtime/task/` and
@@ -284,7 +298,8 @@ actually execute; a zero-test filtered run is not evidence.
 
 - [x] Settle D1-D9, including explicit lazy for Diffusers and MLX/MFLUX images.
 - [x] Confirm current issue/branch and define independently reviewable slices.
-- [ ] Complete Steps 1-7, stopping for review at each checkpoint.
+- [x] Implement and validate Step 1; user review is pending.
+- [ ] Complete Steps 2-7, stopping for review at each checkpoint.
 - [ ] Every accepted decision D1-D9 is implemented and verified.
 - [ ] Each review step records its focused test result and remaining risk.
 - [ ] All #132 issue acceptance criteria pass and user-facing docs match.

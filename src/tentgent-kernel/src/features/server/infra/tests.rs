@@ -481,8 +481,8 @@ fn cloud_runtime_args_include_provider_auth_env() {
         host: "127.0.0.1".to_string(),
         port: 8781,
         port_auto: false,
-        lazy_load: false,
-        idle_seconds: None,
+        lazy_load: true,
+        idle_seconds: Some(42),
         model_idle_seconds: None,
         created_at: "2026-05-17T00:00:00Z".to_string(),
     };
@@ -502,6 +502,10 @@ fn cloud_runtime_args_include_provider_auth_env() {
         vec![("OPENAI_API_KEY".to_string(), "secret".to_string())]
     );
     assert_eq!(parts.env_remove, vec!["TENTGENT_DAEMON_TOKEN".to_string()]);
+    assert!(!parts
+        .args
+        .iter()
+        .any(|arg| arg.contains("idle-seconds") || arg == "--lazy-load"));
     assert!(parts.args.ends_with(&[
         "--provider".to_string(),
         "openai".to_string(),

@@ -4,7 +4,8 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+use tentgent_kernel::features::server::options::LifecycleInput;
 use tentgent_kernel::{
     features::{
         auth::{
@@ -82,8 +83,10 @@ pub async fn create(
     State(state): State<RestState>,
     Json(request): Json<ServerCreateRequest>,
 ) -> Result<(StatusCode, Json<ServerCreateResponse>), RestError> {
-    let runtime_idle_seconds =
-        resolve_runtime_idle_alias(request.runtime_idle_seconds, request.idle_seconds)?;
+    let runtime_idle_seconds = resolve_runtime_idle_alias(
+        request.runtime_idle_seconds.value(),
+        request.idle_seconds.value(),
+    )?;
     let result = state
         .app()
         .services()
@@ -94,8 +97,11 @@ pub async fn create(
             target: server_prepare_target(&request)?,
             host: request.host,
             port: request.port,
-            lazy_load: request.lazy_load.unwrap_or(false),
-            idle_seconds: runtime_idle_seconds,
+            lazy_load: request.lazy_load,
+            idle_seconds: LifecycleInput::with_presence(
+                runtime_idle_seconds,
+                request.runtime_idle_seconds.is_provided() || request.idle_seconds.is_provided(),
+            ),
             model_idle_seconds: request.model_idle_seconds,
             allow_unverified: request.allow_unverified.unwrap_or(false),
         })
@@ -408,11 +414,23 @@ pub struct ServerCreateRequest {
     pub capability: Option<ServerCapability>,
     pub host: Option<String>,
     pub port: Option<u16>,
-    pub lazy_load: Option<bool>,
-    pub runtime_idle_seconds: Option<u64>,
-    pub model_idle_seconds: Option<u64>,
-    pub idle_seconds: Option<u64>,
+    #[serde(default, deserialize_with = "deserialize_lifecycle_input")]
+    pub lazy_load: LifecycleInput<bool>,
+    #[serde(default, deserialize_with = "deserialize_lifecycle_input")]
+    pub runtime_idle_seconds: LifecycleInput<u64>,
+    #[serde(default, deserialize_with = "deserialize_lifecycle_input")]
+    pub model_idle_seconds: LifecycleInput<u64>,
+    #[serde(default, deserialize_with = "deserialize_lifecycle_input")]
+    pub idle_seconds: LifecycleInput<u64>,
     pub allow_unverified: Option<bool>,
+}
+
+fn deserialize_lifecycle_input<'de, D, T>(deserializer: D) -> Result<LifecycleInput<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(LifecycleInput::Provided)
 }
 
 fn resolve_runtime_idle_alias(

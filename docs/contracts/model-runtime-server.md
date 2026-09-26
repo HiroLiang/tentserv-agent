@@ -78,6 +78,13 @@ entrypoints. LoRA tuning remains an explicit direct-runtime endpoint because a
 training run owns its base model through the tuning payload and managed train
 plan.
 
+Image-generation runtimes require lazy loading, for both Diffusers and MLX/MFLUX.
+Direct Python CLI invocation must include `--lazy-load`; programmatic
+`RuntimeServerConfig` rejects `lazy_load=False` for this capability. This applies
+to both bound and unbound runtimes. Startup must not choose a workflow implicitly
+or report eager success without loading its pipeline. Workflow-aware eager
+preparation remains outside this contract; request-specific loading is unchanged.
+
 ### Audio Transcription
 
 `POST /v1/audio/transcriptions` runs batch local audio transcription

@@ -214,7 +214,6 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
 }
 
 pub async fn handle_cloud_server_runtime(command: CloudServerRuntimeCommand) -> miette::Result<()> {
-    let _ = (command.lazy_load, command.idle_seconds);
     let provider = match command.provider.trim().to_ascii_lowercase().as_str() {
         "openai" => Provider::OpenAI,
         "anthropic" | "claude" => Provider::Anthropic,
@@ -235,9 +234,11 @@ pub async fn handle_cloud_server_runtime(command: CloudServerRuntimeCommand) -> 
 }
 
 pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> miette::Result<()> {
-    let _ = command.lazy_load;
     let capability = ServerCapability::parse(&command.capability)
         .map_err(|err| miette!("unsupported local server capability: {err}"))?;
+    tentgent_kernel::features::server::options::LoadMode::from_lazy_load(command.lazy_load)
+        .ensure_supported(capability)
+        .into_diagnostic()?;
     tentgent_daemon::server::local::run_local_server_runtime(
         tentgent_daemon::server::local::LocalServerRuntimeConfig {
             server_ref: command.server_ref,
@@ -297,9 +298,9 @@ async fn run_server(
             },
             host: command.host,
             port: command.port,
-            lazy_load: command.lazy_load,
-            idle_seconds: runtime_idle_seconds,
-            model_idle_seconds: command.model_idle_seconds,
+            lazy_load: command.lazy_load.then_some(true).into(),
+            idle_seconds: runtime_idle_seconds.into(),
+            model_idle_seconds: command.model_idle_seconds.into(),
             allow_unverified: command.allow_unverified,
         })
         .into_diagnostic()?;
@@ -351,9 +352,9 @@ pub(super) async fn run_cluster_server(command: ClusterRunCommand) -> miette::Re
             target: ServerPrepareTarget::Cluster { cluster_ref },
             host: command.host,
             port: command.port,
-            lazy_load: command.lazy_load,
-            idle_seconds: runtime_idle_seconds,
-            model_idle_seconds: command.model_idle_seconds,
+            lazy_load: command.lazy_load.then_some(true).into(),
+            idle_seconds: runtime_idle_seconds.into(),
+            model_idle_seconds: command.model_idle_seconds.into(),
             allow_unverified: command.allow_unverified,
         })
         .into_diagnostic()?;

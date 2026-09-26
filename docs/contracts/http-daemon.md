@@ -1598,6 +1598,22 @@ Cluster targets must not include `runtime_ref` or `capability`. Existing
 local/cloud requests may omit `runtime_kind`; when it is supplied, it must
 match the parsed `runtime_ref` target kind.
 
+After target resolution, new Cloud requests reject explicit `lazy_load`,
+`runtime_idle_seconds`, `model_idle_seconds`, and legacy `idle_seconds` with
+`400 unsupported_target`, including `false`, `0`, and `null`; omit these fields.
+Local/Cluster null values retain their existing default and alias semantics.
+Local image-generation (Diffusers and MLX/MFLUX) requires `lazy_load: true`,
+including when capability is inferred. Eager create and stored-spec start fail
+before worker launch, even with `allow_unverified`; old specs remain readable
+and removable. Recovery is to create a lazy spec with the desired settings.
+
+Valid legacy Cloud specs retain read/start/ref compatibility and are not
+rewritten. Cloud detailed server objects (including create/start/inspect) add
+`lifecycle_options_applicability: "not_applicable_legacy_ignored"`. Raw lifecycle
+fields remain for compatibility but do not control Cloud execution. New Cloud
+specs retain canonical `false`/absent defaults and the existing identity encoding.
+Hidden Cloud workers no longer receive ignored lifecycle flags.
+
 Omit `port` to request automatic port selection. Auto-port specs keep
 `requested_port = 8780` and rescan from that default on every launch; they do
 not create a new server record just because a previous run had to bind a higher

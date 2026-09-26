@@ -40,7 +40,7 @@ queue that should stay visible from the active plan.
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
 | [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
-| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Decisions accepted; implementation pending | `v1.2.0` | Honor Local/Cluster lazy-load configuration and reject unsupported Cloud lifecycle options. See the [issue-level plan](./issue-132-server-runtime-option-contract-plan.md). |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Step 1 implemented; awaiting review | `v1.2.0` | Cloud option rejection and local image lazy-only guards are validated. Eager execution and Cluster reload remain pending. See the [issue-level plan](./issue-132-server-runtime-option-contract-plan.md). |
 | [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State
@@ -50,7 +50,8 @@ smoke procedure remain in
 [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md).
 Issue `#132` has a [decision register and review checkpoints](./issue-132-server-runtime-option-contract-plan.md).
 Its decisions include lazy-only Diffusers and MLX/MFLUX image generation, with
-implementation split into seven reviewable steps. Implementation has not begun.
+implementation split into seven reviewable steps. Step 1 validation and legacy
+compatibility are implemented and tested; stop for review before Step 2.
 It is independent of `#127` and precedes `#128` and `#130` implementation.
 
 The completed `v1.1.0` Cluster issue flow is archived under

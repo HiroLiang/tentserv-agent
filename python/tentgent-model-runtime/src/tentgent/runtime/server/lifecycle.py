@@ -46,6 +46,11 @@ class RuntimeServerConfig:
     task_poll_interval_seconds: float = 0.5
 
     def __post_init__(self) -> None:
+        if self.capability == RuntimeCapability.IMAGE_GENERATION and not self.lazy_load:
+            raise ValueError(
+                "image-generation requires --lazy-load (lazy_load=True); "
+                "workflow-aware eager loading is not supported"
+            )
         for name, value in (
             ("runtime_idle_seconds", self.runtime_idle_seconds),
             ("model_idle_seconds", self.model_idle_seconds),
