@@ -1,7 +1,7 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: core decisions accepted; one image-generation edge case awaits a
-product decision. Implementation not started.
+Status: core decisions and Diffusers lazy-only behavior accepted. Applicability
+to MLX/MFLUX image generation remains to be confirmed. Implementation not started.
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
 
@@ -19,8 +19,9 @@ model/runtime idle fix. It does not change #131's two idle clocks, proof v2,
 adapter loading, or Cloud provider session policy.
 
 The existing `server run` CLI flag defaults to `lazy_load=false`. Once fixed,
-omitting `--lazy-load` means eager start. This changes observable startup time
-and failure timing for existing commands and stored Local/Cluster specs.
+omitting `--lazy-load` means eager start for supported targets; the lazy-only
+Diffusers image target rejects that choice under D9. This changes observable
+startup time and failure timing for existing commands and stored specs.
 
 ## Accepted Decisions
 
@@ -34,23 +35,33 @@ and failure timing for existing commands and stored Local/Cluster specs.
 | D6 | Existing Local/Cluster specs honor their stored `lazy_load=false` as eager after upgrade. | No silent compatibility exception preserves the old accidental lazy behavior. |
 | D7 | Load mode is a startup action, not a physical runtime ownership policy. | A reused generation still receives an explicit preload request for eager start; #131's first-spawner idle policy remains authoritative. |
 | D8 | #132 precedes #128 and #130 because they share server/Cluster gates, diagnostics, and docs. #127 can proceed independently. | #132 stays a maintenance issue, not a child of compatibility parent #126. |
+| D9 | Diffusers `image-generation` requires `lazy_load=true`; do not preload every workflow or choose a workflow implicitly. This is an explicit exception to D1/D6. | CLI requires `--lazy-load`; REST requires `lazy_load:true`. Reject eager create/run and stored-spec start before launching a worker, with a corrective message. Existing specs remain readable and retain their refs. |
 
-## Remaining Product Decision
+## Image-Generation Boundary
 
 Python can infer one preload model kind for Chat, Embedding, Rerank, audio,
 vision, and video. `image-generation` selects its model kind from the request's
 workflow (text-to-image, image-to-image, inpaint, or control); the server spec
 does not choose one. The current Python preload path therefore skips it. A
 generic eager start cannot truthfully claim that the image model was loaded.
+In addition, both Diffusers and MFLUX `load()` only initialize model metadata;
+their actual pipeline/weight preparation happens inside image generation.
 
-Recommended rule: reject eager image-generation start with a precise message
-to use `--lazy-load`; keep request-specific image loading on demand. Because
-the CLI flag defaults to false, an image-generation server command without
-`--lazy-load` would then fail, as would an existing image-generation spec
-stored with `lazy_load=false`. The alternative is to add a workflow/model-kind
-selection to server specs and preload that selection, which expands #132's
-public contract. Select the rule before Step 1 is implemented; do not silently
-map image-generation eager to a partial or skipped preload.
+Accepted on `2026-09-26`: Diffusers stays lazy-only in #132. Load only the
+workflow required by the incoming request. A new Diffusers image server without
+`--lazy-load` (or REST `lazy_load:true`) must fail validation. Starting an old
+Diffusers image spec with `lazy_load=false` also fails with instructions to
+create a lazy spec using the same model and desired server settings. Do not
+rewrite its stored ref or silently coerce its load mode.
+
+Workflow-aware image preloading and backend preparation are deferred for
+Diffusers. MLX/MFLUX has the same preparation gap, but extending D9 to that
+backend still requires confirmation. Never report eager success after skipping
+actual preload. Settle that remaining applicability before Step 1.
+
+Select D9 by the resolved Local `image-generation` target and Diffusers backend.
+Do not infer it from a filename extension. Cluster currently has no image route;
+this decision does not add one.
 
 ## Implementation Contract
 
@@ -66,9 +77,9 @@ map image-generation eager to a partial or skipped preload.
   failure through the existing server-start error path. Avoid treating a
   successful proxy health probe as proof of eager readiness.
 - `model_idle_seconds=0` permits immediate release after preload completes;
-  this is readiness validation, not a warm-residency promise. A capability
-  without one deterministic preload model kind requires the product decision
-  above; it must never report eager success after skipping preload.
+  this is readiness validation, not a warm-residency promise. Apply D9 to the
+  resolved Diffusers image target before starting a runtime. A capability must
+  never report eager success after skipping preload.
 - Make eager startup failure leave no falsely ready server metadata or leaked
   route claim. Keep existing shared runtime ownership and guarded shutdown
   behavior; do not stop another server's healthy shared runtime on failure.
@@ -93,7 +104,7 @@ before the next step. The plan commit is the first checkpoint.
 | --- | --- | --- |
 | 0 | Decision and dependency baseline | This plan, active-plan routing, #132 issue decisions, and #128/#130 ordering. No runtime change. |
 | 1 | Load-mode contract and preload boundary | Define internal load-mode intent and the managed preload request/result. Show how health identity, timeout, unsupported capability, concurrency, and model-idle release are handled. Focused Python and Rust tests; no Local/Cluster start behavior change yet. |
-| 2 | Local end-to-end behavior | Propagate the stored choice through CLI, daemon, kernel, and Local proxy. Eager waits for actual preload; lazy stays on demand. Check new and legacy specs, reused runtime, startup failure cleanup, `model_idle_seconds=0` and positive retention. |
+| 2 | Local end-to-end behavior | Propagate the stored choice through CLI, daemon, kernel, and Local proxy. Eager waits for actual preload; lazy stays on demand. Check new and legacy specs, reused runtime, startup failure cleanup, `model_idle_seconds=0`, positive retention, and Diffusers lazy-only validation/recovery. |
 | 3 | Cluster start | Preload all resolved local routes, deduplicate by physical runtime, and fail with a named route when any route is invalid or fails loading. Verify claims and process cleanup; lazy start remains on demand. |
 | 4 | Cluster hot reload | Stage a candidate definition, preload it, then switch routing; preserve old routing on load failure and drain old generation after success. Test concurrent requests and repeated failed reloads. |
 | 5 | Cloud contract and stored-spec compatibility | Reject every explicit unsupported CLI/REST field, including REST `lazy_load:false`; preserve old Cloud spec read/start/ref, mark ignored legacy values in inspect, and cover identity collision/compatibility. |
@@ -108,6 +119,7 @@ Step 6 closes remaining cross-surface consistency and smoke evidence.
 | Scenario | Expected evidence |
 | --- | --- |
 | Local lazy and eager, new and stored specs | First request triggers lazy load; eager start proves load before ready; eager load failure fails start. |
+| Diffusers image target | New CLI/REST eager requests and old eager spec starts fail before worker launch. Explicit lazy succeeds, starts without loading a pipeline, and loads only the requested workflow on first use. Non-image targets remain eligible for eager. |
 | Eager with model idle 0 and positive value | Resource count returns to zero for 0; stays available until the positive idle expires. Runtime process follows its separate idle policy. |
 | Shared runtime reuse | Eager preload runs even without spawning a new Python process; ownership policy is unchanged. |
 | Cluster multiple routes and reload | All valid routes checked, shared physical runtime loaded once, partial failure blocks promotion, old traffic continues, successful switch drains safely. |
@@ -127,8 +139,9 @@ Step 6 closes remaining cross-surface consistency and smoke evidence.
 
 ## Completion
 
-- [ ] Resolve the image-generation eager edge case before implementation.
-- [ ] Every accepted decision D1-D8 is implemented and verified.
+- [x] Decide Diffusers image-generation load mode: D9 requires explicit lazy.
+- [ ] Confirm whether D9 also applies to MLX/MFLUX image generation.
+- [ ] Every accepted decision D1-D9 is implemented and verified.
 - [ ] Each review step records its focused test result and remaining risk.
 - [ ] All #132 issue acceptance criteria pass and user-facing docs match.
 - [ ] PR review and merge are complete; #132 can then be closed.
