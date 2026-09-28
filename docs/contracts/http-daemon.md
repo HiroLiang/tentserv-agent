@@ -1453,9 +1453,10 @@ keys.
 `video-understanding`, or `image-generation`.
 
 The manual verify route records a metadata-level `manual-probe` proof. It does
-not run full endpoint inference in this slice. Local model-bound server starts
-write `server-start` proofs after launch success or failure. Resolved local
-runtime attempts may write `runtime-execution` proofs after execution succeeds
+not run full endpoint inference in this slice. Local eager workers write
+`server-start` proofs only after terminal preload success or accepted-task load
+failure, not process launch, lazy startup, or readiness observation timeout.
+Resolved local runtime attempts may write `runtime-execution` proofs after execution succeeds
 or fails. Future endpoint smoke tests can write `endpoint-smoke` proofs with
 the same response shape.
 
@@ -1529,9 +1530,9 @@ capability used by a cluster route cannot be removed until the cluster route is
 updated or deleted.
 
 `GET /v1/servers/{server_ref}/health` checks one stored server spec. Stopped
-servers return `running: false` and `reachable: false` without opening a network
-connection. Running servers probe the target model-bound server's `/healthz`
-endpoint:
+servers return `running: false`, `reachable: false`, and `ready: false` without
+opening a network connection. Running servers probe `/healthz`; reachability
+alone is not Local load readiness. An abbreviated ready Local response is:
 
 ```json
 {
@@ -1542,11 +1543,14 @@ endpoint:
   },
   "running": true,
   "reachable": true,
+  "ready": true,
   "target_url": "http://127.0.0.1:8780/healthz",
   "target_status": 200,
   "target_health": {
-    "status": "ok",
-    "chat_ready": true
+    "ok": true,
+    "ready": true,
+    "status": "ready",
+    "load_mode": "eager"
   },
   "checked_at": "2026-04-28T00:00:00Z",
   "error": null
@@ -1763,7 +1767,13 @@ An abbreviated response is:
 ```
 
 With `wait_ready: true`, the response includes readiness. A readiness timeout
-does not roll back or stop the launched process:
+does not roll back or stop the launched process and cannot write model proof.
+Local readiness requires matching server/home/process identity and explicit
+`ok:true`, `ready:true`, `status:"ready"`, not HTTP reachability alone. While
+eager preload is pending the process can be `running:true`, `reachable:true`,
+but `ready:false`. Non-waiting start omits readiness and makes no load-success
+claim. `GET /v1/servers/{server_ref}/health` also exposes the additive `ready`
+boolean separately from `running` and `reachable`:
 
 ```json
 {
@@ -1777,8 +1787,10 @@ does not roll back or stop the launched process:
     "reachable": true,
     "target_status": 200,
     "target_health": {
-      "status": "ok",
-      "chat_ready": true
+      "ok": true,
+      "ready": true,
+      "status": "ready",
+      "load_mode": "eager"
     },
     "checked_at": "2026-04-28T00:00:00Z",
     "error": null

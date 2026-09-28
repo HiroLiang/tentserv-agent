@@ -152,13 +152,13 @@ Use the installed command’s `-h` or `--help` for required arguments and versio
 | `server run` | `-H, --home <HOME>` | Optional Tentgent runtime home override for server state and model lookup |
 | `server run` | `-a, --host <HOST>` | Interface for the active HTTP listener; use 127.0.0.1 for loopback. |
 | `server run` | `-p, --port <PORT>` | Fixed TCP port for the HTTP listener. Omit to auto-scan from 8780 |
-| `server run` | `-l, --lazy-load` | Local/Cluster only. Required for local image-generation; other proxies currently load on demand even when omitted. |
+| `server run` | `-l, --lazy-load` | Local: load on first request; omitted means eager load validation before ready. Required for local image-generation. Cluster eager integration is pending. |
 | `server run` | `-i, --idle-seconds <N>` | Deprecated alias for --runtime-idle-seconds |
 | `server run` | `--runtime-idle-seconds <N>` | Shut down the managed Python runtime after N workload-idle seconds |
 | `server run` | `--model-idle-seconds <N>` | Release the loaded model after N model-idle seconds. Defaults to 0 |
 | `server run` | `--capability <CAPABILITY>` | Endpoint family to serve from the selected runtime |
 | `server run/start` | `--allow-unverified` | Allow local server start when model support status is unknown or stale |
-| `server run` | `-d, --detach` | Launch the initial server process in background mode and return immediately |
+| `server run` | `-d, --detach` | Launch in background mode; observe startup for up to 10 seconds, then report ready or still starting |
 | `server ls/ps/inspect/start/stop/rm` | `-H, --home <HOME>` | Optional Tentgent runtime home override for server state lookup |
 | `server start` | `-d, --details` | Show the full inspection table after the server starts |
 | `server stop` | `-d, --details` | Show the full inspection table after the server stops |
@@ -216,7 +216,7 @@ idle clock.
 | `runtime_kind`, `cluster_ref` | Use `"cluster"` plus a stored Cluster ref for Cluster targets; omit `runtime_ref` and `capability`. |
 | `capability` | Optional local/cloud endpoint family; CLI values are listed above. |
 | `host`, `port` | Optional interface string and integer port; omitted port enables auto-selection. |
-| `lazy_load` | Local/Cluster boolean preference; local image-generation requires `true`. Cloud rejects the field. |
+| `lazy_load` | Local/Cluster boolean, default `false`. Local eagerly validates loading when false; image-generation requires `true`. Cloud rejects the field. |
 | `runtime_idle_seconds`, `model_idle_seconds` | Optional non-negative integer timeouts for Local/Cluster runtimes. |
 | `idle_seconds` | Deprecated runtime timeout alias; it must match the canonical field when both are present. |
 | `allow_unverified` | Optional boolean launch admission override; only unknown/stale evidence can be bypassed. |
@@ -240,15 +240,40 @@ HTTP create stores the spec and returns `server` plus `created`; call `/start`
 separately. Read `server.server_ref` from that response. Start returns `server`
 and optional `readiness`; inspection returns `server`, and list returns
 `servers`. Use `server.port` as the effective client port and `running` for
-process state. Health also reports `reachable`, `target_status`, and `error`.
+process state. Health also reports `reachable`, `ready`, `target_status`, and `error`.
 Logs and absolute paths are daemon-host diagnostics.
+
+### Local Startup And Readiness
+
+Local starts honor the stored mode, including existing specs. Eager starts
+validate base-model loading before admitting inference, even when reusing an
+existing Python runtime. During loading, `/healthz` returns HTTP 200 with
+`ok:false`, `ready:false`, `status:"starting"`; inference returns HTTP 503
+`server_starting`. Completion changes health to `ok:true`, `ready:true`,
+`status:"ready"`. Lazy starts are ready without loading; the first inference
+loads the model. Health polling never loads or retains it.
+
+`running` only means the proxy process exists. CLI detached observation expiry
+reports `starting`; REST `wait_ready:false` omits readiness, and an expired
+`wait_ready:true` returns `readiness.ready:false` without stopping the worker.
+None of these observations writes model verification proof. The worker writes
+`server-start` proof only for a confirmed terminal preload success/failure;
+lazy inference keeps using `runtime-execution` evidence.
+
+The internal preload wait is 300 seconds (Rust allows 305 seconds for transport).
+A preload observation/transport failure stops this proxy startup without marking
+the model incompatible or killing a shared Python runtime. Accepted Python work
+may finish later and release its lease normally. If an older Python runtime lacks
+preload support, run `tentgent runtime bootstrap --profile local-model`, stop the
+affected old runtime when safe, and retry. Eager success does not promise warm
+weights: model idle `0` releases them after loading; use positive model idle for
+retention, subject to the existing runtime's first-spawner policy.
 
 ### Current Lifecycle Limits
 
-Local and Cluster proxies currently load on demand regardless of the stored
-`lazy_load` preference; eager startup remains pending in
-[issue #132](https://github.com/HiroLiang/tentserv-agent/issues/132).
-The following option validation is already enforced:
+Cluster proxies still load on demand regardless of stored `lazy_load`; eager
+Cluster startup/reload remain later [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
+slices. These target rules also apply:
 
 - New Cloud creation/run rejects explicit `lazy_load`, `runtime_idle_seconds`,
   `model_idle_seconds`, and `idle_seconds`, including REST `false`, `0`, or

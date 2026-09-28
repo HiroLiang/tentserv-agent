@@ -166,6 +166,9 @@ async fn main() -> miette::Result<()> {
             runtime_home: args.home,
             runtime_idle_seconds: args.runtime_idle_seconds,
             model_idle_seconds: args.model_idle_seconds,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::from_lazy_load(
+                args.lazy_load,
+            ),
         })
         .await;
     }

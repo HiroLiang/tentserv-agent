@@ -5,6 +5,7 @@ mod identity;
 mod layout;
 mod process;
 mod process_identity;
+mod readiness;
 mod runtime;
 mod store;
 mod time;
@@ -16,6 +17,7 @@ pub use identity::StdServerIdentityGenerator;
 pub use layout::StdServerStoreLayoutInitializer;
 pub use process::{StdServerProcessController, StdServerProcessProbe};
 pub use process_identity::StdServerProcessIdentityProbe;
+pub use readiness::{observe_server_readiness, ServerReadinessObservation};
 pub use runtime::{
     server_process_token_from_env, ServerRuntimeLaunchRequest, ServerRuntimeLauncher,
     SpawnedForegroundServer, SERVER_PROCESS_TOKEN_ENV_VAR,

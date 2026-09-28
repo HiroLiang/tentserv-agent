@@ -64,6 +64,7 @@ async fn lifecycle_requests_fail_before_runtime_or_proof_side_effects() {
             runtime_home: Some(layout.home_dir.clone()),
             runtime_idle_seconds: 300,
             model_idle_seconds: 0,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::Lazy,
         },
         runtime: PythonRuntimeLayout {
             project_dir: layout.runtime_dir.join("missing-project"),
@@ -75,6 +76,9 @@ async fn lifecycle_requests_fail_before_runtime_or_proof_side_effects() {
         supervisor: ModelRuntimeDaemonSupervisor::new(),
         client: reqwest::Client::new(),
         launch_policy: ModelRuntimeDaemonLaunchPolicy::default(),
+        readiness: crate::server::local::startup::StartupReadiness::new(
+            tentgent_kernel::features::server::options::LoadMode::Lazy,
+        ),
     };
     let before = tree_contents(&layout.home_dir);
     for path in PRIVATE_PATHS {

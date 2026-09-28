@@ -12,6 +12,7 @@ mod openai_images;
 pub(super) mod proxy;
 mod runtime;
 mod sse;
+pub(in crate::server) mod startup;
 
 #[cfg(test)]
 mod tests;

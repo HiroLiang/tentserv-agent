@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use tentgent_kernel::features::model::domain::ModelRef;
 use tentgent_kernel::features::server::domain::ServerRef;
 
+mod readiness;
+
 #[tokio::test]
 async fn server_run_rejects_each_cloud_lifecycle_flag_before_auth_or_launch() {
     for flags in [

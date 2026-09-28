@@ -146,6 +146,7 @@ pub struct ServerHealthResponse {
     pub server: ServerHealthServerItem,
     pub running: bool,
     pub reachable: bool,
+    pub ready: bool,
     pub target_url: String,
     pub target_status: Option<u16>,
     pub target_health: Option<serde_json::Value>,

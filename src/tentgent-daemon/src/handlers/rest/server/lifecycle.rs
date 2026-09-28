@@ -15,10 +15,6 @@ use tentgent_kernel::{
             usecases::{AuthSecretResolutionRequest, AuthSecretResolverUseCase},
         },
         cluster::domain::ClusterRef,
-        model::{
-            domain::{ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelRefSelector},
-            usecases::{ModelCapabilityProofRecordRequest, ModelCapabilityProofUseCase},
-        },
         runtime::{
             domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput},
             usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase},
@@ -250,17 +246,7 @@ pub async fn start(
                 allow_unverified,
             }) {
                 Ok(spawned) => spawned,
-                Err(err) => {
-                    let message = err.to_string();
-                    let _ = record_local_server_capability_proof(
-                        &state,
-                        &layout,
-                        &inspection,
-                        ModelCapabilityProofStatus::Failed,
-                        Some(message),
-                    );
-                    return Err(server_error(err));
-                }
+                Err(err) => return Err(server_error(err)),
             }
         };
         match state
@@ -279,14 +265,6 @@ pub async fn start(
             Ok(result) => result.inspection,
             Err(err) => {
                 let _ = StdServerProcessController::default().terminate_process(spawned.pid);
-                let message = err.to_string();
-                let _ = record_local_server_capability_proof(
-                    &state,
-                    &layout,
-                    &inspection,
-                    ModelCapabilityProofStatus::Failed,
-                    Some(message),
-                );
                 return Err(server_error(err));
             }
         }
@@ -294,35 +272,14 @@ pub async fn start(
     drop(start_permit);
 
     let readiness = if wait_ready {
-        let readiness = wait_for_server_ready(&recorded_inspection, timeout_seconds).await;
-        let (status, error) = if readiness.ready {
-            (ModelCapabilityProofStatus::Verified, None)
-        } else {
-            (
-                ModelCapabilityProofStatus::Failed,
-                readiness
-                    .error
-                    .clone()
-                    .or_else(|| Some("server readiness check did not pass".to_string())),
-            )
-        };
-        let _ = record_local_server_capability_proof(
-            &state,
-            &layout,
-            &recorded_inspection,
-            status,
-            error,
-        );
-        Some(readiness)
+        Some(wait_for_server_ready(&recorded_inspection, timeout_seconds).await)
     } else {
-        let _ = record_local_server_capability_proof(
-            &state,
-            &layout,
-            &recorded_inspection,
-            ModelCapabilityProofStatus::Verified,
-            None,
-        );
         None
+    };
+    let recorded_inspection = if wait_ready {
+        super::common::inspect_server(&state, &reference)?
+    } else {
+        recorded_inspection
     };
     drop(state);
 
@@ -330,60 +287,6 @@ pub async fn start(
         server: server_inspection_item(recorded_inspection),
         readiness,
     }))
-}
-
-fn record_local_server_capability_proof(
-    state: &RestState,
-    layout: &RuntimeLayout,
-    inspection: &ServerInspection,
-    status: ModelCapabilityProofStatus,
-    error: Option<String>,
-) -> Result<(), tentgent_kernel::foundation::error::KernelError> {
-    let Some(model_ref) = inspection.spec.local_model_ref() else {
-        return Ok(());
-    };
-    let selector = ModelRefSelector::parse(model_ref.as_str()).map_err(|err| {
-        tentgent_kernel::foundation::error::KernelError::ModelStoreUnavailable(format!(
-            "invalid model ref in server spec: {err}"
-        ))
-    })?;
-    state
-        .app()
-        .services()
-        .kernel()
-        .models()
-        .capability_proof_usecase()
-        .record_model_capability_proof(ModelCapabilityProofRecordRequest {
-            layout: layout_input_from_layout(layout, LayoutResolveMode::Create),
-            selector,
-            capability: inspection
-                .spec
-                .capability
-                .ok_or_else(|| {
-                    tentgent_kernel::foundation::error::KernelError::ServerStoreUnavailable(
-                        format!(
-                            "local server spec `{}` is missing capability metadata",
-                            inspection.spec.short_ref
-                        ),
-                    )
-                })?
-                .required_model_capability(),
-            status,
-            source: ModelCapabilityProofSource::ServerStart,
-            server_ref: Some(inspection.spec.server_ref.to_string()),
-            runtime_profile: inspection
-                .spec
-                .runtime_profile
-                .as_ref()
-                .map(|profile| profile.profile_id.clone()),
-            runtime_profile_version: inspection
-                .spec
-                .runtime_profile
-                .as_ref()
-                .map(|profile| profile.profile_version),
-            error,
-        })?;
-    Ok(())
 }
 
 pub async fn stop(

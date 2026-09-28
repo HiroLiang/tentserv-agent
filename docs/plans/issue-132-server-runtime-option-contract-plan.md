@@ -1,7 +1,7 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: Steps 1-2 implemented and validated; paused at the Step 2 review checkpoint.
-Steps 3-7 have not started. This branch is not ready for release.
+Status: Steps 1-3 implemented and validated; awaiting Step 3 review.
+Steps 4-7 have not started. This branch is not ready for release.
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
 
@@ -16,6 +16,8 @@ Checked on `2026-09-26`: issue #132 is open in Tentgent Roadmap with the `bug`,
 branch above. It contains `origin/main` at `f41a96d` plus planning commits
 `fbd10ea`, `c7e8800`, and `0bde241`; implementation began from a clean working tree.
 Step 2 began from clean Step 1 commit `8a28a68`, without pushing or changing branches.
+Step 3 began from clean Step 2 commit `bb283fa`; the user resumed it after a
+pause on `2026-09-28`. Keep each implementation slice in an independent commit.
 Keep the existing issue, labels, project, and
 milestone; no new implementation branch or child issue is needed.
 
@@ -195,7 +197,7 @@ and the Local/Cluster commands below with `--lib`. Local socket tests required
 execution outside the sandbox; all passed on rerun. Workspace all-target checks,
 Rust/Python formatting, and diff checks passed. Fake backends only: no model
 download, GPU/RSS smoke, readiness/proof wiring, or Cluster integration in this
-slice. Stop for review before Step 3; no push, merge, or release.
+slice. The user subsequently authorized Step 3; no push, merge, or release.
 
 ### Step 3: Local Startup And Readiness
 
@@ -213,6 +215,48 @@ slice. Stop for review before Step 3; no push, merge, or release.
   without terminating another owner's generation.
 - Review result: Local startup genuinely honors the stored mode and reports
   process state separately from completed eager readiness.
+
+#### Step 3 Evidence (`2026-09-28`)
+
+- Typed Rust preload client with unique task refs, completion identity checks,
+  305-second transport budget, and separate load/observation/unavailable errors.
+- Both hidden Local hosts carry load mode. Local eager startup binds health in
+  `starting`, blocks inference with 503, preloads new/reused endpoints, then
+  becomes ready. Lazy startup skips model-runtime resolution/preload.
+- Worker-owned terminal preload proof; removed CLI/REST launch-based proof
+  writes. Shared runtime termination and #131 idle policy remain unchanged.
+- CLI reports still-starting after its 10-second observation; REST distinguishes
+  readiness from reachability and re-inspects process state after waiting.
+- Updated affected contracts and user/developer documentation. Cluster edits only
+  initialize the new Local state fields; Cluster eager behavior is not implemented.
+
+Completed test runs:
+
+| Command | Result |
+| --- | --- |
+| `cargo test -p tentgent-kernel model_daemon --lib` | 15 passed, including 5 preload and supervisor/identity regressions |
+| `cargo test -p tentgent-kernel features::server --lib` | 57 passed |
+| `cargo test -p tentgent-cli server` | 15 passed; includes real 10-second observation expiry |
+| `cargo test -p tentgent-daemon server` | 129 library + 2 worker tests passed, including 38 Local tests; 1 existing manual benchmark ignored |
+| `uv run --project python/tentgent-model-runtime pytest python/tentgent-model-runtime/tests -q` | 114 passed + 11 subtests |
+| `uv run --project python/tentgent-model-runtime python scripts/test-local-server-startup.py` | 8 subprocess integration tests passed |
+
+The integration script uses built CLI/daemon binaries, the real Python HTTP,
+TaskManager and ResourceManager, and an instrumented fake chat backend in
+temporary homes. It verifies first spawn/reuse, foreground/detached and REST
+waiting/non-waiting starts, lazy first-request loading, model idle 0/positive
+release, health polling, terminal failure, and timeout/stop while loading.
+Both abandoned-start scenarios preserve Python work until its lease releases;
+only confirmed worker completion writes proof. The timeout scenario shortens
+only the fixture's Python observation budget, not production's 300-second value.
+
+Workspace all-target check, both binary builds, Rust formatting, script Ruff,
+and diff checks passed without compile warnings. Socket/process tests ran
+outside the sandbox. Initial fixture path/profile/metadata assumptions were
+corrected before passing reruns. No models were downloaded; real backend/GPU/RSS
+and native cross-platform integration remain Step 7 evidence, not claimed here.
+Stop at Step 3 review; no push, merge, release, architecture cleanup, or
+stale-ownership remediation in this slice.
 
 ### Step 4: Cluster Startup
 
@@ -312,8 +356,8 @@ actually execute; a zero-test filtered run is not evidence.
 
 - [x] Settle D1-D9, including explicit lazy for Diffusers and MLX/MFLUX images.
 - [x] Confirm current issue/branch and define independently reviewable slices.
-- [x] Implement and validate Steps 1-2; Step 2 review is pending.
-- [ ] Complete Steps 3-7, stopping for review at each checkpoint.
+- [x] Implement and validate Steps 1-3; awaiting Step 3 review.
+- [ ] Complete Steps 4-7, stopping for review at each checkpoint.
 - [ ] Every accepted decision D1-D9 is implemented and verified.
 - [ ] Each review step records its focused test result and remaining risk.
 - [ ] All #132 issue acceptance criteria pass and user-facing docs match.

@@ -10,7 +10,7 @@ capability when it starts the process through the runtime daemon entrypoint. If
 the caller omitted `--capability` for a local model-bound server, Rust infers
 that capability from stored model metadata before launching the Rust server
 proxy. The proxy then starts or reuses the matching Python runtime through the
-shared runtime daemon supervisor on demand.
+shared runtime daemon supervisor at eager startup or on demand for lazy servers.
 
 Supported capability values:
 
@@ -328,8 +328,15 @@ cleanup for all resources; one cleanup failure does not skip other resources.
 The public Local proxy returns `404` for the entire `/v1/lifecycle` and
 `/internal/v1/lifecycle` namespaces, including slash, query, encoded, and
 URL-normalized equivalents, before runtime resolution or proof recording.
-This blocks existing shutdown as well as preload. Local eager startup/readiness
-and Cluster preload integration are separate #132 steps, not enabled by this API.
+This blocks existing shutdown as well as preload. The Local worker invokes
+preload after the supervisor's existing health/generation check, including on
+reuse; managed Python launch itself stays lazy. Rust allows 305 seconds for the
+300-second server wait plus transport overhead and validates completion identity.
+Only a matching terminal completion opens Local inference admission. Confirmed
+accepted-task load errors fail startup and record failed proof; timeout,
+transport, generation, and missing-endpoint errors fail startup without such
+proof or shared-runtime termination. See [Local readiness](../user/servers.md#local-startup-and-readiness).
+Cluster preload integration remains a later #132 slice.
 
 ## Shutdown
 

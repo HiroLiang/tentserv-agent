@@ -113,6 +113,7 @@ impl ClusterServerState {
                     runtime_home: Some(self.layout.home_dir.clone()),
                     runtime_idle_seconds: self.config.runtime_idle_seconds,
                     model_idle_seconds: self.config.model_idle_seconds,
+                    load_mode: tentgent_kernel::features::server::options::LoadMode::Lazy,
                 },
                 layout: self.layout.clone(),
                 runtime: self.runtime.clone(),
@@ -120,6 +121,9 @@ impl ClusterServerState {
                 supervisor: self.supervisor.clone(),
                 client: self.client.clone(),
                 launch_policy: self.launch_policy.clone(),
+                readiness: super::super::local::startup::StartupReadiness::new(
+                    tentgent_kernel::features::server::options::LoadMode::Lazy,
+                ),
             },
             lease,
         })

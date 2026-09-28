@@ -68,6 +68,18 @@ Run Python unit tests that do not require provider network access:
 uv run --project python/tentgent-model-runtime pytest
 ```
 
+Local startup subprocess integration (POSIX, no model downloads):
+
+```bash
+cargo build -p tentgent-cli -p tentgent-daemon --bins
+uv run --project python/tentgent-model-runtime python scripts/test-local-server-startup.py
+```
+
+This runs both Rust hosts against the real Python HTTP/task/resource lifecycle
+with an instrumented fake chat backend and isolated temporary homes. It covers
+eager/lazy startup, reused generations, readiness/proof timing, idle release,
+and interrupted startup. It is not real-model or GPU-memory evidence.
+
 Use the Makefile wrappers:
 
 ```bash

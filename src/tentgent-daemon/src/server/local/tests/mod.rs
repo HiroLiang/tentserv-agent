@@ -40,5 +40,6 @@ mod fixtures;
 mod lifecycle_ingress;
 mod provider_routes;
 mod proxy_and_chat;
+mod startup;
 
 use fixtures::*;
