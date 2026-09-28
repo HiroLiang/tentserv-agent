@@ -178,7 +178,6 @@ async fn main() -> miette::Result<()> {
                 .enumerate()
                 .filter_map(|(index, value)| (index != 1).then_some(value)),
         );
-        let _ = args.lazy_load;
         let cluster_ref = ClusterRef::parse(&args.cluster_ref)
             .map_err(|err| miette::miette!("invalid cluster ref: {err}"))?;
         return run_cluster_server_runtime(ClusterServerRuntimeConfig {
@@ -190,6 +189,9 @@ async fn main() -> miette::Result<()> {
             runtime_idle_seconds: args.runtime_idle_seconds,
             model_idle_seconds: args.model_idle_seconds,
             allow_unverified: args.allow_unverified,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::from_lazy_load(
+                args.lazy_load,
+            ),
         })
         .await;
     }

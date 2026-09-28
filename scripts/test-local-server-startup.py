@@ -368,6 +368,19 @@ class LocalStartupTests(unittest.TestCase):
         self.assertEqual(self.proofs(), [])
 
     def tearDown(self):
+        # Report isolated worker diagnostics before deleting a failed fixture.
+        result = self._outcome.result
+        if any(test is self for test, _ in result.failures + result.errors):
+            for pattern in [
+                "host-*.log",
+                "runtime/model-runtime-daemons/**/*.log",
+                "servers/**/*.log",
+            ]:
+                for path in self.home.glob(pattern):
+                    print(
+                        f"\n{path.relative_to(self.home)}:\n{path.read_text()[-6000:]}",
+                        file=sys.stderr,
+                    )
         # Open fixture gates before stopping hosts; only touch this test's home.
         (self.home / "allow-load").touch()
         try:

@@ -18,6 +18,14 @@ pub(super) struct ClusterServerError {
 }
 
 impl ClusterServerError {
+    pub(super) fn starting() -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "cluster_starting".into(),
+            message: "cluster server is still validating eager route loading; retry after health reports ready".into(),
+        }
+    }
+
     pub(super) fn definition_reload_failed(message: String) -> Self {
         Self {
             status: StatusCode::SERVICE_UNAVAILABLE,

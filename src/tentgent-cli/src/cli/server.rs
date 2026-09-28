@@ -259,7 +259,6 @@ pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> 
 pub async fn handle_cluster_server_runtime(
     command: ClusterServerRuntimeCommand,
 ) -> miette::Result<()> {
-    let _ = command.lazy_load;
     let cluster_ref = ClusterRef::parse(&command.cluster_ref)
         .map_err(|err| miette!("invalid cluster ref: {err}"))?;
     tentgent_daemon::server::cluster::run_cluster_server_runtime(
@@ -272,6 +271,9 @@ pub async fn handle_cluster_server_runtime(
             runtime_idle_seconds: command.runtime_idle_seconds,
             model_idle_seconds: command.model_idle_seconds,
             allow_unverified: command.allow_unverified,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::from_lazy_load(
+                command.lazy_load,
+            ),
         },
     )
     .await

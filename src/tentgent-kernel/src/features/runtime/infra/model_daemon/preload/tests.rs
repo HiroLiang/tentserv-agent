@@ -171,8 +171,57 @@ async fn old_runtime_returns_actionable_bootstrap_diagnostic() {
     assert!(error
         .message
         .contains("tentgent runtime bootstrap --profile local-model"));
-    assert_eq!(error.kind, ModelRuntimePreloadFailureKind::Unavailable);
+    assert_eq!(error.kind, ModelRuntimePreloadFailureKind::NotAccepted);
     worker.await.unwrap();
+}
+
+#[tokio::test]
+async fn explicit_pre_admission_rejection_is_safe_to_release_without_proof() {
+    for (status, code, expected) in [
+        (
+            400,
+            "preload_unbound_runtime",
+            ModelRuntimePreloadFailureKind::NotAccepted,
+        ),
+        (
+            409,
+            "runtime_generation_mismatch",
+            ModelRuntimePreloadFailureKind::NotAccepted,
+        ),
+        (
+            409,
+            "runtime_closing",
+            ModelRuntimePreloadFailureKind::NotAccepted,
+        ),
+        (
+            422,
+            "invalid_preload_request",
+            ModelRuntimePreloadFailureKind::NotAccepted,
+        ),
+        (
+            501,
+            "preload_unsupported",
+            ModelRuntimePreloadFailureKind::NotAccepted,
+        ),
+        // An existing same-ID task or an unrecognized response may still own work.
+        (
+            409,
+            "preload_task_exists",
+            ModelRuntimePreloadFailureKind::Unavailable,
+        ),
+        (503, "unknown", ModelRuntimePreloadFailureKind::Unavailable),
+    ] {
+        let (endpoint, worker) = mock_runtime(1, move |_| {
+            (
+                status,
+                json!({"detail": {"code": code, "message": "rejected"}}),
+            )
+        })
+        .await;
+        let error = preload_model_runtime(&endpoint).await.unwrap_err();
+        assert_eq!(error.kind, expected, "{code}");
+        worker.await.unwrap();
+    }
 }
 
 #[tokio::test]

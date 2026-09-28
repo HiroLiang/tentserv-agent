@@ -7,7 +7,7 @@ use crate::provider_compat::ProviderCompatRejection;
 
 use super::{error::LocalServerError, LocalServerState};
 
-pub(super) async fn ensure_model_endpoint(
+pub(in crate::server) async fn ensure_model_endpoint(
     state: &LocalServerState,
 ) -> Result<ModelRuntimeDaemonEndpoint, LocalServerError> {
     let capability = model_runtime_capability(state.config.capability);

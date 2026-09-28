@@ -40,7 +40,7 @@ queue that should stay visible from the active plan.
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
 | [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
-| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Steps 1-3 implemented; awaiting Step 3 review | `v1.2.0` | Local eager/lazy startup, truthful readiness, and worker-owned proof are validated, including subprocess integration. Cluster eager startup/reload remain pending. See the [Step 3 evidence](./issue-132-server-runtime-option-contract-plan.md#step-3-evidence-2026-09-28). |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Steps 1-4 implemented; awaiting Step 4 review | `v1.2.0` | Local and Cluster eager/lazy startup, truthful readiness, worker-owned proof, and protected startup draining. Eager Cluster hot reload remains pending. See the [Step 4 evidence](./issue-132-server-runtime-option-contract-plan.md#step-4-evidence-2026-09-28). |
 | [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State
@@ -50,11 +50,11 @@ smoke procedure remain in
 [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md).
 Issue `#132` has a [decision register and review checkpoints](./issue-132-server-runtime-option-contract-plan.md).
 Its decisions include lazy-only Diffusers and MLX/MFLUX image generation, with
-implementation split into seven reviewable steps. Steps 1-3 (validation, legacy
+implementation split into seven reviewable steps. Steps 1-4 (validation, legacy
 compatibility, internal preload/cleanup, public lifecycle isolation, and Local
-startup/readiness) are implemented and tested. Step 3 resumed after the user's
-pause and is ready for review; the issue plan records focused and subprocess
-test evidence. Steps 4-7 have not started.
+and Cluster startup/readiness) are implemented and validated. Step 4 is ready
+for review; the issue plan records focused and subprocess test evidence.
+Steps 5-7 have not started; this intermediate branch is not release-ready.
 It is independent of `#127` and precedes `#128` and `#130` implementation.
 
 The completed `v1.1.0` Cluster issue flow is archived under

@@ -26,7 +26,7 @@ pub fn observe_server_readiness(
         return ServerReadinessObservation::IdentityMismatch;
     }
     let ready = payload["ok"].as_bool() == Some(true)
-        && (inspection.spec.runtime_kind != ServerRuntimeKind::Local
+        && (inspection.spec.runtime_kind == ServerRuntimeKind::Cloud
             || (payload["ready"].as_bool() == Some(true)
                 && payload["status"].as_str() == Some("ready")));
     if ready {

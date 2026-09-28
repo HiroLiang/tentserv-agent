@@ -33,11 +33,25 @@ impl HealthFixture {
         let thread = std::thread::spawn(move || {
             while !stop.load(Ordering::Acquire) {
                 if let Ok((mut stream, _)) = listener.accept() {
+                    // macOS may inherit the listener's nonblocking mode.
+                    stream.set_nonblocking(false).unwrap();
                     stream
                         .set_read_timeout(Some(Duration::from_secs(2)))
                         .unwrap();
                     let mut request = [0; 2048];
-                    stream.read(&mut request).unwrap();
+                    match stream.read(&mut request) {
+                        Ok(0) => continue,
+                        Ok(_) => {}
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                            ) =>
+                        {
+                            continue
+                        }
+                        Err(error) => panic!("fixture request read failed: {error}"),
+                    }
                     let body = reply.lock().unwrap().to_string();
                     let response = format!(
                         "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -135,6 +149,30 @@ async fn detached_observation_expiry_preserves_process_and_does_not_claim_ready(
         background_health_status(&inspection),
         BackgroundHealthStatus::Matches
     );
+    let mut cluster = inspection.clone();
+    cluster.spec.runtime_kind = ServerRuntimeKind::Cluster;
+    fixture.health(&cluster, false);
+    assert_eq!(
+        background_health_status(&cluster),
+        BackgroundHealthStatus::Starting
+    );
+    fixture.health(&cluster, true);
+    assert_eq!(
+        background_health_status(&cluster),
+        BackgroundHealthStatus::Matches
+    );
+    fixture
+        .body
+        .lock()
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .remove("ready");
+    assert_eq!(
+        background_health_status(&cluster),
+        BackgroundHealthStatus::Starting
+    );
+    fixture.health(&inspection, true);
     fixture.body.lock().unwrap()["process_token"] = serde_json::json!("stale-worker");
     assert!(matches!(
         background_health_status(&inspection),

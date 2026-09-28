@@ -1,7 +1,7 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: Steps 1-3 implemented and validated; awaiting Step 3 review.
-Steps 4-7 have not started. This branch is not ready for release.
+Status: Steps 1-4 implemented and validated; awaiting Step 4 review.
+Steps 5-7 have not started. This branch is not ready for release.
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
 
@@ -18,6 +18,7 @@ branch above. It contains `origin/main` at `f41a96d` plus planning commits
 Step 2 began from clean Step 1 commit `8a28a68`, without pushing or changing branches.
 Step 3 began from clean Step 2 commit `bb283fa`; the user resumed it after a
 pause on `2026-09-28`. Keep each implementation slice in an independent commit.
+Step 4 began from clean Step 3 commit `0316f41` on the same branch.
 Keep the existing issue, labels, project, and
 milestone; no new implementation branch or child issue is needed.
 
@@ -269,6 +270,53 @@ stale-ownership remediation in this slice.
 - Review result: an eager Cluster is ready only after its local routes load;
   claims and active work remain protected on partial failure.
 
+#### Step 4 Evidence (2026-09-28)
+
+The Cluster worker now honors stored load mode in both hosts. Startup resolves
+one snapshot before claiming/loading routes, deduplicates full physical keys,
+and preloads sequentially. Health remains `starting` and inference returns
+`503 cluster_starting` until all local routes complete. The watcher starts only
+after readiness; a definition change during startup fails the startup check.
+Lazy startup does not resolve/preload routes. Provider execution stays unsupported.
+
+Listener bind precedes preload. Terminal failures clean completed claims;
+explicit pre-admission rejection releases claims without failed proof. Stop
+observes current work for the existing 30-second drain budget, starts no next
+route, and never publishes readiness afterward. Uncertain completion retains
+claims for reconciliation rather than terminating shared Python work. Per-route
+terminal evidence reuses Local's worker-owned proof boundary.
+
+| Command | Result |
+| --- | --- |
+| `cargo test -p tentgent-daemon server` | 139 library + 2 worker tests passed; 1 existing manual benchmark ignored. Includes 27 Cluster tests. |
+| `cargo test -p tentgent-kernel features::server --lib` | 57 passed |
+| `cargo test -p tentgent-kernel runtime_ownership --lib` | 14 passed |
+| `cargo test -p tentgent-kernel model_daemon --lib` | 16 passed |
+| `cargo test -p tentgent-cli server` | 15 passed, including Local/Cluster readiness classification |
+| `uv run --project python/tentgent-model-runtime pytest python/tentgent-model-runtime/tests -q` | 114 passed + 11 subtests |
+| `uv run --project python/tentgent-model-runtime python scripts/test-local-server-startup.py` | 8 subprocess integration tests passed in the final isolated rerun |
+| `uv run --project python/tentgent-model-runtime python scripts/test-cluster-server-startup.py` | 11 subprocess integration tests passed |
+
+The Cluster subprocess suite uses both built Rust hosts and real Python
+HTTP/TaskManager/ResourceManager with fake backends in isolated temporary homes.
+It covers all five local routes, eager/lazy, foreground/detached, REST wait
+expiry, reused generations/first-spawner policy, zero/positive model idle,
+partial failure, pre-admission rejection, bind failure, preload timeout, and
+stop during loading including the real 30-second drain budget. Rust tests also
+cover exact-key grouping, provider limitations, snapshot changes and active
+stream leases. Fixture fixes addressed colliding temporary names, media assets,
+current/history proof counting, log paths, and macOS nonblocking socket reads.
+One concurrent smoke rerun hit two Local wait timeouts; their cause was not
+captured before cleanup. The final isolated Local rerun passed all eight tests.
+Run the suites sequentially because they share host TCP ports; failed fixtures
+now print worker logs before cleanup. Concurrent-suite reliability is not claimed.
+
+Workspace all-target check, binary builds, Rust formatting, script Ruff, and
+diff checks passed without compile warnings. No models were downloaded. Real
+backend/GPU/RSS and cross-platform integration remain Step 7 evidence. Eager
+hot reload remains Steps 5-6: do not release this intermediate branch. Stop at
+Step 4 review; no push, merge, release, or stale-ownership remediation.
+
 ### Step 5: Cluster Snapshot Staging
 
 - Split `server/cluster/cache.rs` into committed reads, candidate reads, and
@@ -356,8 +404,9 @@ actually execute; a zero-test filtered run is not evidence.
 
 - [x] Settle D1-D9, including explicit lazy for Diffusers and MLX/MFLUX images.
 - [x] Confirm current issue/branch and define independently reviewable slices.
-- [x] Implement and validate Steps 1-3; awaiting Step 3 review.
-- [ ] Complete Steps 4-7, stopping for review at each checkpoint.
+- [x] Implement and validate Steps 1-3.
+- [x] Implement and validate Step 4; awaiting Step 4 review.
+- [ ] Complete Steps 5-7, stopping for review at each checkpoint.
 - [ ] Every accepted decision D1-D9 is implemented and verified.
 - [ ] Each review step records its focused test result and remaining risk.
 - [ ] All #132 issue acceptance criteria pass and user-facing docs match.

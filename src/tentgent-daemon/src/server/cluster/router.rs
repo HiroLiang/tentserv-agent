@@ -28,11 +28,21 @@ pub(super) fn cluster_router(state: ClusterServerState) -> Router {
         .route("/v1/audio/transcriptions", post(audio_transcription))
         .route("/v1/vision/chat", post(vision_chat))
         .fallback(unsupported_path)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            super::startup::admit_ready_request,
+        ))
         .with_state(state)
 }
 
 async fn healthz(State(state): State<ClusterServerState>) -> Response {
-    match state.definitions.current() {
+    let ready = state.startup.is_ready();
+    let snapshot = if ready {
+        state.definitions.current()
+    } else {
+        Ok(state.startup.snapshot.clone())
+    };
+    match snapshot {
         Ok(snapshot) => {
             let chat_target = snapshot
                 .definition
@@ -52,7 +62,13 @@ async fn healthz(State(state): State<ClusterServerState>) -> Response {
             (
                 status,
                 Json(json!({
-                    "ok": chat_local,
+                    "ok": chat_local && ready,
+                    "ready": chat_local && ready,
+                    "status": if ready && chat_local { "ready" } else { "starting" },
+                    "load_mode": match state.config.load_mode {
+                        tentgent_kernel::features::server::options::LoadMode::Lazy => "lazy",
+                        tentgent_kernel::features::server::options::LoadMode::Eager => "eager",
+                    },
                     "runtime_kind": "cluster-proxy",
                     "server_ref": state.config.server_ref,
                     "process_token": tentgent_kernel::features::server::infra::server_process_token_from_env(),

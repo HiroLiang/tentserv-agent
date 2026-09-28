@@ -1,4 +1,4 @@
-use std::{future::IntoFuture, net::SocketAddr};
+use std::{net::SocketAddr, time::Duration};
 
 use tentgent_kernel::{
     features::runtime::{
@@ -13,11 +13,10 @@ use tentgent_kernel::{
 
 use super::{
     cache::ClusterDefinitionCache,
-    error::ClusterServerError,
     leases::RouteGenerationManager,
-    router::cluster_router,
+    lifecycle::serve_cluster,
+    startup::{prepare_cluster_startup, ClusterStartupState},
     state::{ClusterServerRuntimeConfig, ClusterServerState},
-    watch,
 };
 
 pub async fn run_cluster_server_runtime(config: ClusterServerRuntimeConfig) -> miette::Result<()> {
@@ -42,6 +41,12 @@ pub async fn run_cluster_server_runtime(config: ClusterServerRuntimeConfig) -> m
         config.cluster_ref.clone(),
     );
     let state = ClusterServerState {
+        startup: ClusterStartupState::new(
+            definitions
+                .current()
+                .map_err(|err| miette::miette!("{err}"))?,
+            config.load_mode,
+        ),
         launch_policy:
             tentgent_kernel::features::runtime::infra::ModelRuntimeDaemonLaunchPolicy::new(
                 config.runtime_idle_seconds,
@@ -57,51 +62,19 @@ pub async fn run_cluster_server_runtime(config: ClusterServerRuntimeConfig) -> m
         definitions,
         routes,
     };
-    let (watch_cancel_tx, watch_cancel_rx) = tokio::sync::watch::channel(false);
-    let watcher = tokio::spawn(watch::run_definition_watcher(
-        state.definitions.clone(),
-        state.routes.clone(),
-        watch_cancel_rx,
-    ));
-    let shutdown_state = state.clone();
-    let router = cluster_router(state);
+    // Binding must succeed before any route claim or model load is started.
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|err| miette::miette!("cluster server proxy bind failed: {err}"))?;
-    let (graceful_tx, graceful_rx) = tokio::sync::oneshot::channel::<()>();
-    let server = axum::serve(listener, router)
-        .with_graceful_shutdown(async move {
-            let _ = graceful_rx.await;
-        })
-        .into_future();
-    tokio::pin!(server);
-    tokio::select! {
-        result = &mut server => {
-            result.map_err(|err| miette::miette!("cluster server proxy failed: {err}"))?;
-        }
-        _ = wait_for_shutdown_signal() => {
-            let _ = watch_cancel_tx.send(true);
-            shutdown_state.routes.begin_drain();
-            let _ = graceful_tx.send(());
-            let shutdown = async {
-                let (server_result, drain_result) = tokio::join!(
-                    &mut server,
-                    shutdown_state.routes.finish_drain(),
-                );
-                drain_result?;
-                server_result.map_err(|error| ClusterServerError::route_unavailable(error.to_string()))
-            };
-            match tokio::time::timeout(std::time::Duration::from_secs(30), shutdown).await {
-                Ok(result) => {
-                    result.map_err(|err| miette::miette!("cluster server proxy failed during graceful shutdown: {err}"))?;
-                }
-                Err(_) => shutdown_state.routes.preserve_on_timeout(),
-            }
-        }
-    }
-    let _ = watch_cancel_tx.send(true);
-    let _ = watcher.await;
-    Ok(())
+    serve_cluster(
+        listener,
+        &state,
+        prepare_cluster_startup(&state),
+        wait_for_shutdown_signal(),
+        Duration::from_secs(30),
+    )
+    .await
+    .map_err(|err| miette::miette!("{err}"))
 }
 
 async fn wait_for_shutdown_signal() {

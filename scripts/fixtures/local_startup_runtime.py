@@ -1,13 +1,15 @@
-"""Real Python runtime with an instrumented fake chat backend; no model downloads."""
+"""Real Python runtime with instrumented fake load/chat backends; no downloads."""
 
 from __future__ import annotations
 
 import json
 import os
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
+from starlette.responses import JSONResponse
 from tentgent.runtime.backends.base import BackendFamily
 from tentgent.runtime.backends.chat import ChatBackendModel, ChatResult
 from tentgent.runtime.cli import daemon
@@ -15,11 +17,15 @@ from tentgent.runtime.server import preload
 from tentgent.runtime.server.app import create_app
 
 HOME_DIR = Path(os.environ["TENTGENT_HOME"])
+CAPABILITY = "chat"
 
 
 def event(name):
     with (HOME_DIR / "backend-events.jsonl").open("a") as output:
-        output.write(json.dumps({"event": name, "pid": os.getpid()}) + "\n")
+        output.write(
+            json.dumps({"event": name, "pid": os.getpid(), "capability": CAPABILITY})
+            + "\n"
+        )
 
 
 class FixtureChatModel(ChatBackendModel):
@@ -32,11 +38,14 @@ class FixtureChatModel(ChatBackendModel):
         event("load")
         control = json.loads((HOME_DIR / "control.json").read_text())
         deadline = time.monotonic() + 40
-        while control.get("blocked") and not (HOME_DIR / "allow-load").exists():
+        blocked = (
+            control.get("blocked") or control.get("block_capability") == CAPABILITY
+        )
+        while blocked and not (HOME_DIR / "allow-load").exists():
             if time.monotonic() > deadline:
                 raise RuntimeError("fixture load gate was not opened")
             time.sleep(0.02)
-        if control.get("fail"):
+        if control.get("fail") or control.get("fail_capability") == CAPABILITY:
             raise RuntimeError("injected backend load failure")
         self.loaded = True
         event("loaded")
@@ -59,6 +68,8 @@ class FixtureChatModel(ChatBackendModel):
 
 
 def fixture_app(config, **kwargs):
+    global CAPABILITY
+    CAPABILITY = config.capability.value
     assert config.lazy_load, "managed Python launch must stay lazy"
     event("spawn")
     control = json.loads((HOME_DIR / "control.json").read_text())
@@ -70,16 +81,35 @@ def fixture_app(config, **kwargs):
     async def observe_preload(request, call_next):
         if request.url.path == "/v1/lifecycle/preload":
             event("preload")
+            if control.get("preload_reject"):
+                return JSONResponse(
+                    status_code=501,
+                    content={
+                        "detail": {
+                            "code": "preload_unsupported",
+                            "message": "fixture admission rejection",
+                        }
+                    },
+                )
         return await call_next(request)
 
     return app
 
 
 if __name__ == "__main__":
-    with (
-        patch(
-            "tentgent.runtime.server.app.build_chat_model", lambda _: FixtureChatModel()
-        ),
-        patch.object(daemon, "create_app", fixture_app),
-    ):
+    with ExitStack() as stack:
+        for capability in [
+            "chat",
+            "embedding",
+            "rerank",
+            "audio_transcription",
+            "vision_chat",
+        ]:
+            stack.enter_context(
+                patch(
+                    f"tentgent.runtime.server.app.build_{capability}_model",
+                    lambda _: FixtureChatModel(),
+                )
+            )
+        stack.enter_context(patch.object(daemon, "create_app", fixture_app))
         raise SystemExit(daemon.main())

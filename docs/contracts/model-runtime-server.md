@@ -336,7 +336,14 @@ Only a matching terminal completion opens Local inference admission. Confirmed
 accepted-task load errors fail startup and record failed proof; timeout,
 transport, generation, and missing-endpoint errors fail startup without such
 proof or shared-runtime termination. See [Local readiness](../user/servers.md#local-startup-and-readiness).
-Cluster preload integration remains a later #132 slice.
+Cluster startup uses the same operation, sequentially deduplicating configured
+local routes by physical identity before opening inference admission. Its
+route-claim lease protects accepted preload work through completion or bounded
+drain; uncertain completion retains the claim for reconciliation. Explicit
+pre-admission rejection (including an absent preload endpoint) releases the
+caller's claim without recording failed proof. See
+[Cluster startup](./cluster.md#startup-and-load-mode). Eager hot reload remains
+#132 Steps 5-6.
 
 ## Shutdown
 

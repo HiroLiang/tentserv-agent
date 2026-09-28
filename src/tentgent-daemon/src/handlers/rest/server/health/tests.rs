@@ -89,15 +89,15 @@ async fn reachable_stale_or_legacy_local_health_is_not_load_readiness() {
     old.as_object_mut().unwrap().remove("status");
     *body.lock().unwrap() = old;
     assert!(!probe_server_health(&inspection).await.ready);
-    // Cloud and Cluster retain their existing health contract in this slice.
-    for kind in [
-        tentgent_kernel::features::server::domain::ServerRuntimeKind::Cloud,
-        tentgent_kernel::features::server::domain::ServerRuntimeKind::Cluster,
-    ] {
-        let mut other = inspection.clone();
-        other.spec.runtime_kind = kind;
-        assert!(probe_server_health(&other).await.ready);
-    }
+    let mut other = inspection.clone();
+    other.spec.runtime_kind = tentgent_kernel::features::server::domain::ServerRuntimeKind::Cloud;
+    assert!(probe_server_health(&other).await.ready);
+    other.spec.runtime_kind = tentgent_kernel::features::server::domain::ServerRuntimeKind::Cluster;
+    assert!(!probe_server_health(&other).await.ready);
+    *body.lock().unwrap() = payload(&other, false);
+    assert!(!probe_server_health(&other).await.ready);
+    *body.lock().unwrap() = payload(&other, true);
+    assert!(probe_server_health(&other).await.ready);
     worker.abort();
 }
 

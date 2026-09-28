@@ -23,7 +23,8 @@ use tentgent_kernel::{
             },
         },
         runtime::infra::{
-            preload_model_runtime, ModelRuntimeDaemonEndpoint, ModelRuntimePreloadFailureKind,
+            preload_model_runtime, ModelRuntimeDaemonEndpoint, ModelRuntimePreloadError,
+            ModelRuntimePreloadFailureKind,
         },
         server::options::LoadMode,
     },
@@ -86,7 +87,16 @@ pub(super) async fn prepare_with_endpoint(
     // This runs on BOTH newly spawned and reused generations. Managed Python
     // launch stays lazy; its first-spawner idle/ownership policy is unchanged.
     let endpoint = endpoint.await?;
-    let result = preload_model_runtime(&endpoint).await;
+    preload_and_record(state, &endpoint)
+        .await
+        .map_err(|error| LocalServerError::internal(error.to_string()))
+}
+
+pub(in crate::server) async fn preload_and_record(
+    state: &LocalServerState,
+    endpoint: &ModelRuntimeDaemonEndpoint,
+) -> Result<(), ModelRuntimePreloadError> {
+    let result = preload_model_runtime(endpoint).await;
     let evidence = match &result {
         Ok(_) => Some((ModelCapabilityProofStatus::Verified, None)),
         Err(error) if error.kind == ModelRuntimePreloadFailureKind::LoadFailed => {
@@ -101,9 +111,7 @@ pub(super) async fn prepare_with_endpoint(
     }
     // Never terminate or release all resources of a shared Python generation
     // when this local server cannot complete its own startup.
-    result
-        .map(|_| ())
-        .map_err(|error| LocalServerError::internal(error.to_string()))
+    result.map(|_| ())
 }
 
 fn record_startup_evidence(

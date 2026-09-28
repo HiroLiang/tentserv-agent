@@ -17,6 +17,8 @@ static NEXT_TASK: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelRuntimePreloadFailureKind {
     LoadFailed,
+    /// No task was accepted; release caller claims without recording failed proof.
+    NotAccepted,
     ObservationTimeout,
     Unavailable,
 }
@@ -72,9 +74,9 @@ async fn preload_with_client(
     let model_ref = endpoint
         .model_ref
         .as_deref()
-        .ok_or_else(|| unavailable("managed preload requires a model-bound runtime"))?;
+        .ok_or_else(|| not_accepted("managed preload requires a model-bound runtime"))?;
     if endpoint.process_token.is_empty() {
-        return Err(unavailable(
+        return Err(not_accepted(
             "managed preload requires a runtime generation token",
         ));
     }
@@ -86,7 +88,7 @@ async fn preload_with_client(
         .map_err(transport_error)?;
     let status = response.status();
     if status == reqwest::StatusCode::NOT_FOUND {
-        return Err(unavailable(
+        return Err(not_accepted(
             "Python runtime does not support managed preload; run `tentgent runtime bootstrap --profile local-model` and restart the affected runtime",
         ));
     }
@@ -102,6 +104,16 @@ async fn preload_with_client(
             && matches!(code, "preload_failed" | "preload_unsupported")
         {
             ModelRuntimePreloadFailureKind::LoadFailed
+        } else if detail.get("task_ref").is_none()
+            && matches!(
+                (status.as_u16(), code),
+                (400, "preload_unbound_runtime")
+                    | (409, "runtime_generation_mismatch" | "runtime_closing")
+                    | (422, "invalid_preload_request")
+                    | (501, "preload_unsupported")
+            )
+        {
+            ModelRuntimePreloadFailureKind::NotAccepted
         } else {
             ModelRuntimePreloadFailureKind::Unavailable
         };
@@ -133,6 +145,13 @@ async fn preload_with_client(
 fn unavailable(message: impl Into<String>) -> ModelRuntimePreloadError {
     ModelRuntimePreloadError {
         kind: ModelRuntimePreloadFailureKind::Unavailable,
+        message: message.into(),
+    }
+}
+
+fn not_accepted(message: impl Into<String>) -> ModelRuntimePreloadError {
+    ModelRuntimePreloadError {
+        kind: ModelRuntimePreloadFailureKind::NotAccepted,
         message: message.into(),
     }
 }

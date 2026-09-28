@@ -152,7 +152,7 @@ Use the installed command’s `-h` or `--help` for required arguments and versio
 | `server run` | `-H, --home <HOME>` | Optional Tentgent runtime home override for server state and model lookup |
 | `server run` | `-a, --host <HOST>` | Interface for the active HTTP listener; use 127.0.0.1 for loopback. |
 | `server run` | `-p, --port <PORT>` | Fixed TCP port for the HTTP listener. Omit to auto-scan from 8780 |
-| `server run` | `-l, --lazy-load` | Local: load on first request; omitted means eager load validation before ready. Required for local image-generation. Cluster eager integration is pending. |
+| `server run` | `-l, --lazy-load` | Load on first request; omitted means eager load validation before ready. Required for local image-generation. Cluster startup follows the same mode for all local routes. |
 | `server run` | `-i, --idle-seconds <N>` | Deprecated alias for --runtime-idle-seconds |
 | `server run` | `--runtime-idle-seconds <N>` | Shut down the managed Python runtime after N workload-idle seconds |
 | `server run` | `--model-idle-seconds <N>` | Release the loaded model after N model-idle seconds. Defaults to 0 |
@@ -216,7 +216,7 @@ idle clock.
 | `runtime_kind`, `cluster_ref` | Use `"cluster"` plus a stored Cluster ref for Cluster targets; omit `runtime_ref` and `capability`. |
 | `capability` | Optional local/cloud endpoint family; CLI values are listed above. |
 | `host`, `port` | Optional interface string and integer port; omitted port enables auto-selection. |
-| `lazy_load` | Local/Cluster boolean, default `false`. Local eagerly validates loading when false; image-generation requires `true`. Cloud rejects the field. |
+| `lazy_load` | Local/Cluster boolean, default `false`. Eagerly validate local loading when false; image-generation requires `true`. Cloud rejects the field. |
 | `runtime_idle_seconds`, `model_idle_seconds` | Optional non-negative integer timeouts for Local/Cluster runtimes. |
 | `idle_seconds` | Deprecated runtime timeout alias; it must match the canonical field when both are present. |
 | `allow_unverified` | Optional boolean launch admission override; only unknown/stale evidence can be bypassed. |
@@ -271,9 +271,12 @@ retention, subject to the existing runtime's first-spawner policy.
 
 ### Current Lifecycle Limits
 
-Cluster proxies still load on demand regardless of stored `lazy_load`; eager
-Cluster startup/reload remain later [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
-slices. These target rules also apply:
+Cluster startup now honors `lazy_load`: eager mode validates all configured local
+routes before readiness, with `503 cluster_starting` during loading. It shares
+the observation/proof rules above; unresolved preload claims remain protected
+for recovery after failure/stop. See [Clusters](./clusters.md).
+Eager hot reload remains [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
+Steps 5-6; this intermediate branch is not release-ready. These target rules also apply:
 
 - New Cloud creation/run rejects explicit `lazy_load`, `runtime_idle_seconds`,
   `model_idle_seconds`, and `idle_seconds`, including REST `false`, `0`, or

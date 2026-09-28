@@ -67,8 +67,8 @@ struct DelayedStreamState {
 }
 
 #[derive(Default)]
-struct RecordingRouteOwnership {
-    events: Mutex<Vec<String>>,
+pub(super) struct RecordingRouteOwnership {
+    pub(super) events: Mutex<Vec<String>>,
     release_busy_remaining: Mutex<usize>,
 }
 
@@ -732,7 +732,7 @@ fn cluster_chat_route_resolves_managed_adapter_through_native_boundary() {
     let _ = fs::remove_dir_all(home);
 }
 
-fn definition(
+pub(super) fn definition(
     cluster_ref: &ClusterRef,
     model_ref: &ModelRef,
     include_embedding: bool,
@@ -865,7 +865,7 @@ fn provider_chat_state(label: &str) -> (ClusterServerState, std::path::PathBuf) 
     )
 }
 
-fn state_for_definition(
+pub(super) fn state_for_definition(
     label: &str,
     definition: ClusterDefinition,
 ) -> (ClusterServerState, std::path::PathBuf) {
@@ -892,6 +892,10 @@ fn state_for_definition(
         cluster_ref.clone(),
     );
     let state = ClusterServerState {
+        startup: super::startup::ClusterStartupState::new(
+            definitions.current().unwrap(),
+            tentgent_kernel::features::server::options::LoadMode::Lazy,
+        ),
         config: ClusterServerRuntimeConfig {
             server_ref: "server-ref".to_string(),
             cluster_ref,
@@ -901,6 +905,7 @@ fn state_for_definition(
             runtime_idle_seconds: 300,
             model_idle_seconds: 0,
             allow_unverified: true,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::Lazy,
         },
         runtime: PythonRuntimeLayout {
             project_dir: layout.runtime_dir.join("project"),

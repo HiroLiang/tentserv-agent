@@ -75,6 +75,21 @@ Use `--allow-unverified` only when unknown or stale local support evidence is
 acceptable for the launch. It never bypasses failed, unsupported, or
 unavailable route state.
 
+Omitting `--lazy-load` eagerly validates every configured local route before
+the Cluster accepts inference. While loading, `/healthz` shows `ready:false`
+and `status:"starting"`; inference returns `503 cluster_starting`. Any declared
+local route failure prevents readiness and identifies the route in worker logs.
+`--lazy-load` instead loads each route on its first request. Health polling does
+not load models. Provider routes remain non-executable and do not preload.
+
+Eager means "loading was validated", not "all weights stay in memory".
+The default `--model-idle-seconds 0` releases each model after preload; use a
+positive value for retention, subject to an existing runtime's idle policy.
+Detached CLI/REST wait expiry does not cancel startup or write failed proof.
+Stop drains accepted work for up to 30 seconds; if completion cannot be confirmed,
+claims remain for ownership inspection and reconciliation after work finishes.
+See [startup and readiness](./servers.md#local-startup-and-readiness).
+
 The Cluster server maps these request families to the matching configured
 route:
 
@@ -94,6 +109,11 @@ chat `adapter_ref` field. A Cluster does not store a fixed model-plus-adapter
 target, and adapter compatibility is checked against the selected chat model.
 
 ## Updates, Ownership, And Removal
+
+Eager startup is implemented; eager hot-reload staging remains #132 Steps 5-6.
+On this development branch, restart an eager Cluster after changing its routes
+to validate the full replacement before serving it. The existing reload behavior
+below is not an eager validation guarantee.
 
 `cluster apply` replaces the complete stored definition. The currently stored
 `route_update_policy` controls target changes:
@@ -137,7 +157,7 @@ Use the installed command’s `-h` or `--help` for required arguments and versio
 | `cluster run` | `-H, --home <HOME>` | Optional Tentgent runtime home override for cluster and server state |
 | `cluster run` | `-a, --host <HOST>` | Interface for the active HTTP listener; use 127.0.0.1 for loopback. |
 | `cluster run` | `-p, --port <PORT>` | Fixed TCP port. Omit to auto-scan from 8780 |
-| `cluster run` | `-l, --lazy-load` | Record the shared server lazy-load preference in the stored spec |
+| `cluster run` | `-l, --lazy-load` | Load routes on first request; omitted means eager validation of all configured local routes before ready |
 | `cluster run` | `-i, --idle-seconds <N>` | Deprecated alias for --runtime-idle-seconds |
 | `cluster run` | `--runtime-idle-seconds <N>` | Shut down each managed Python runtime after N workload-idle seconds |
 | `cluster run` | `--model-idle-seconds <N>` | Release each loaded local model after N model-idle seconds. Defaults to 0 |

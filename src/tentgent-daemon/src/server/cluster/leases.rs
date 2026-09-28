@@ -38,6 +38,7 @@ struct RouteGenerationEntry {
     claim: RouteGenerationClaim,
     active_requests: usize,
     retiring: bool,
+    unresolved_preload: bool,
 }
 
 #[derive(Clone)]
@@ -148,6 +149,7 @@ impl RouteGenerationManager {
                     claim: claim.clone(),
                     active_requests: 0,
                     retiring: true,
+                    unresolved_preload: false,
                 },
             );
             drop(state);
@@ -163,6 +165,7 @@ impl RouteGenerationManager {
                 claim,
                 active_requests: 0,
                 retiring: false,
+                unresolved_preload: false,
             });
         entry.active_requests += 1;
         Ok(self.lease(entry.claim.owner_id.clone()))
@@ -180,7 +183,7 @@ impl RouteGenerationManager {
                     entry.retiring = true;
                     retiring.push((
                         entry.claim.owner_id.clone(),
-                        entry.active_requests == 0,
+                        entry.active_requests == 0 && !entry.unresolved_preload,
                         newly_retiring,
                     ));
                 }
@@ -224,10 +227,26 @@ impl RouteGenerationManager {
             });
             if let Some(owner_ids) = idle_owner_ids {
                 for owner_id in owner_ids {
-                    self.release_claim_if_available(&owner_id)?;
+                    let unresolved = self
+                        .lock_state()?
+                        .entries
+                        .get(&owner_id)
+                        .is_some_and(|entry| entry.unresolved_preload);
+                    if !unresolved {
+                        self.release_claim_if_available(&owner_id)?;
+                    }
                 }
                 if self.active_claim_count() == 0 {
                     return Ok(());
+                }
+                if self
+                    .lock_state()?
+                    .entries
+                    .values()
+                    .any(|entry| entry.unresolved_preload)
+                {
+                    return Err(ClusterServerError::route_unavailable(
+                        "preload completion is unknown; retained route claims protect accepted Python work. Inspect runtime ownership and run `tentgent runtime reconcile --apply` after work finishes".into()));
                 }
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -238,6 +257,13 @@ impl RouteGenerationManager {
         if let Ok(mut state) = self.state.lock() {
             state.preserve_claims = true;
         }
+    }
+
+    pub(super) fn is_accepting(&self) -> bool {
+        self.state
+            .lock()
+            .map(|state| state.accepting)
+            .unwrap_or(false)
     }
 
     pub(super) fn active_claim_count(&self) -> usize {
@@ -270,7 +296,10 @@ impl RouteGenerationManager {
                 return;
             };
             entry.active_requests = entry.active_requests.saturating_sub(1);
-            entry.retiring && entry.active_requests == 0 && !preserve_claims
+            entry.retiring
+                && entry.active_requests == 0
+                && !preserve_claims
+                && !entry.unresolved_preload
         };
         if should_release {
             let _ = self.release_claim_if_available(owner_id);
@@ -320,6 +349,16 @@ impl super::watch::port::DefinitionRevisionObserver for RouteGenerationManager {
 impl Drop for RouteRequestLeaseInner {
     fn drop(&mut self) {
         self.manager.release_request(&self.owner_id);
+    }
+}
+
+impl RouteRequestLease {
+    pub(super) fn preserve_unresolved_preload(&self) {
+        if let Ok(mut state) = self.lease.manager.state.lock() {
+            if let Some(entry) = state.entries.get_mut(&self.lease.owner_id) {
+                entry.unresolved_preload = true;
+            }
+        }
     }
 }
 

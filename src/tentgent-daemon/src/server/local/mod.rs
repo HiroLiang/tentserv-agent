@@ -1,4 +1,4 @@
-mod capability;
+pub(in crate::server) mod capability;
 pub(super) mod claude_messages;
 pub(super) mod error;
 mod evidence;

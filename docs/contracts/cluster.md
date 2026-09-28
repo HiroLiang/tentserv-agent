@@ -250,6 +250,7 @@ Route execution uses these error codes:
 
 | Code | HTTP | Meaning |
 | --- | --- | --- |
+| `cluster_starting` | `503` | Eager startup has not finished validating all declared local routes. |
 | `cluster_route_missing` | `400` | The endpoint family has no configured route. |
 | `cluster_route_target_unsupported` | `400` | The route currently selects a provider target. |
 | `cluster_route_not_ready` | `409` | Current support evidence does not allow execution. |
@@ -259,6 +260,39 @@ Route execution uses these error codes:
 | `cluster_route_unavailable` | `503` | Required local model state cannot be loaded. |
 | `cluster_definition_reload_failed` | `503` | The stored definition changed but could not be safely reloaded. |
 
+### Startup And Load Mode
+
+Stored `lazy_load=false` means eager startup, including for existing specs.
+After binding the listener, the worker resolves every configured local route
+from one definition snapshot, acquires route-generation claims, and sequentially
+preloads each distinct physical key (model, capability, resolved profile ID and
+version). Reused Python generations also receive preload; their first-spawner
+idle policy does not change. No image route or provider execution is added.
+Optional provider routes skip preload; `chat` must still be a local target.
+An unconfigured route is allowed, but any declared local route that cannot be
+resolved or loaded fails the entire startup with route-specific diagnostics.
+
+During preload, health uses the startup snapshot without refreshing it and
+returns `ok:false`, `ready:false`, `status:"starting"`. Inference admission is
+closed. Only completion of all local preloads sets `ok:true`, `ready:true`,
+`status:"ready"`; CLI/REST readiness requires these explicit fields. A changed
+definition at the final startup check fails startup and requires a restart.
+The watcher starts only after readiness. Lazy startup opens admission without
+preloading; health never loads models. Eager validation does not promise
+simultaneous residency: model idle `0` releases each model after its final lease.
+
+Terminal preload completion writes per-route `server-start` proof through the
+same boundary as Local startup. Observation/transport failures write no failed
+proof. Bind failure creates no claims or Python workers. Failure/stop drains
+accepted work for up to 30 seconds and releases confirmed-complete claims.
+Explicit pre-admission rejection also releases its claim without failed proof.
+Uncertain preload completion or drain timeout retains unresolved claims for
+ownership inspection/reconciliation, never killing a shared Python runtime.
+
+### Reload And Drain
+
+Eager candidate staging/preload on hot reload is not yet implemented (issue #132
+Steps 5-6); the following remains the current post-start reload behavior.
 The server keeps one parsed definition snapshot. A cancellable watcher checks
 file metadata every second, hashes after detected changes, and performs a
 forced hash every 30 seconds. Requests and health checks also perform an
@@ -268,7 +302,7 @@ definition is valid again. The server never silently uses the previous target
 after a failed reload. `/healthz` exposes the cluster ref, current definition
 hash, and route keys without loading model runtimes.
 
-On first use, each server/route/definition/target generation creates one
+On eager startup or first lazy use, each server/route/definition/target generation creates one
 durable route claim. Requests reuse that claim and hold only an in-process RAII
 lease. A reload directs new requests to the new generation and retires the old
 claim after its leases reach zero. Server stop closes admission and drains
