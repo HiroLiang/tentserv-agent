@@ -1,7 +1,7 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: Steps 1-6 implemented and validated; continuing Step 7.
-This branch is not ready for release.
+Status: Steps 1-7 implemented and validated; awaiting human review and PR/merge.
+Not pushed, merged, or released. See [final evidence](./issue-132-validation-evidence.md).
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
 
@@ -377,12 +377,20 @@ Real-model/GPU and complete regression evidence remain Step 7.
 - Run Rust formatting/check/workspace tests, Python runtime tests, and release
   readiness checks after all slices. Each earlier step runs only its affected
   test modules and compile checks; do not repeatedly run the complete matrix.
-- Live smoke uses an existing small local model: eager with model idle 0 and
+- Live smoke uses one authorized small test model: eager with model idle 0 and
   positive retention, lazy first request, runtime reuse/restart, and health
   polling without retention. Use fake multi-route models for deterministic
   reload/race tests; do not require paid providers or all image workflows.
 - Record exact commands, model/backend, exit results, resource counts and
   process/ownership cleanup. Commit evidence and prepare one final #132 PR.
+
+Step 7 checkpoint (`2026-10-01`, base `3346c5e`): complete regression matrix,
+24 subprocess integration cases, and three real MLX smoke cases passed.
+Added eight image workflow dispatch/lease tests and two CLI help regressions;
+reconciled contracts, user docs and Unreleased notes. All D1-D9 and GitHub #132
+acceptance criteria are mapped in the [validation record](./issue-132-validation-evidence.md),
+including commands, cleanup, limits and a draft PR message. User-authorized
+download remains only in the ignored test store. No external publication.
 
 Focused commands (run the relevant subset for each slice):
 
@@ -428,11 +436,11 @@ actually execute; a zero-test filtered run is not evidence.
 - [x] Settle D1-D9, including explicit lazy for Diffusers and MLX/MFLUX images.
 - [x] Confirm current issue/branch and define independently reviewable slices.
 - [x] Implement and validate Steps 1-3.
-- [x] Implement and validate Step 4; awaiting Step 4 review.
+- [x] Implement and validate Step 4; retain its review checkpoint.
 - [x] Implement, validate and internally review Step 5.
 - [x] Implement, validate and internally review Step 6.
-- [ ] Complete Step 7 with intermediate checks before human review.
-- [ ] Every accepted decision D1-D9 is implemented and verified.
-- [ ] Each review step records its focused test result and remaining risk.
-- [ ] All #132 issue acceptance criteria pass and user-facing docs match.
+- [x] Complete Step 7 with intermediate checks before human review.
+- [x] Every accepted decision D1-D9 is implemented and verified within the recorded test scope.
+- [x] Each review step records its focused test result and remaining risk.
+- [x] All #132 issue implementation acceptance criteria pass and user-facing docs match.
 - [ ] PR review and merge are complete; #132 can then be closed.

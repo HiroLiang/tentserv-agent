@@ -54,7 +54,7 @@ pub enum ServerCommands {
     #[command(
         name = "run",
         about = "Create a server spec and launch it in foreground mode by default.",
-        long_about = "Create or reuse one stored server spec for a local model reference or cloud runtime reference and launch it immediately. `RUNTIME_REF` can be a full Tentgent model reference, a unique short-ref prefix, `openai:<MODEL_NAME>`, `anthropic:<MODEL_NAME>`, or `claude:<MODEL_NAME>`.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address. When `--port` is omitted, Tentgent starts scanning at 8780 and records the actual bound port in process metadata.\n`--capability` selects the endpoint family. When omitted for a local model, Tentgent infers it from stored model capabilities.\n`--lazy-load` is required for local image-generation (Diffusers and MLX/MFLUX); other Local/Cluster proxies currently load on demand even when it is omitted. Eager startup is pending. Cloud targets reject explicit --lazy-load and all idle options; omit them entirely.\n`--runtime-idle-seconds` controls managed Python runtime shutdown after workload idleness (default 300); deprecated `--idle-seconds` is an alias. `--model-idle-seconds` releases the loaded model after its final lease (default 0).\n`--detach` launches the initial server process in background mode and returns immediately."
+        long_about = "Create or reuse one stored server spec for a local model reference or cloud runtime reference and launch it immediately. `RUNTIME_REF` can be a full Tentgent model reference, a unique short-ref prefix, `openai:<MODEL_NAME>`, `anthropic:<MODEL_NAME>`, or `claude:<MODEL_NAME>`.\n\n`--home` points to the Tentgent runtime home, not the repository workspace.\n`--host` and `--port` define the HTTP bind address. When `--port` is omitted, Tentgent starts scanning at 8780 and records the actual bound port in process metadata.\n`--capability` selects the endpoint family. When omitted for a local model, Tentgent infers it from stored model capabilities.\n`--lazy-load` defers loading to the first request. Omitting it validates base-model loading before readiness; model idle 0 still releases weights after preload. Local image-generation (Diffusers and MLX/MFLUX) requires --lazy-load. Cloud targets reject explicit --lazy-load and all idle options; omit them entirely.\n`--runtime-idle-seconds` controls managed Python runtime shutdown after workload idleness (default 300); deprecated `--idle-seconds` is an alias. `--model-idle-seconds` releases the loaded model after its final lease (default 0).\n`--detach` launches in background mode and observes readiness briefly; observation expiry does not cancel startup."
     )]
     Run(ServerRunCommand),
     /// List registered server specs and their current runtime state.
@@ -165,7 +165,7 @@ pub struct ServerRunCommand {
     /// Fixed TCP port for the HTTP listener. Omit to auto-scan from 8780.
     #[arg(short = 'p', long, value_name = "PORT")]
     pub port: Option<u16>,
-    /// Local/Cluster load preference; required for local images, rejected for Cloud.
+    /// Load on first request instead of validating at startup; required for images, rejected for Cloud.
     #[arg(short = 'l', long)]
     pub lazy_load: bool,
     /// Deprecated alias for --runtime-idle-seconds.

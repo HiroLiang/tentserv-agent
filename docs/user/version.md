@@ -5,7 +5,25 @@ limits for current and historical Tentgent versions.
 
 ## Unreleased
 
-No changes are recorded after `v1.1.1` yet.
+- Fixed #132: Local/Cluster `lazy_load=false` now validates base-model loading
+  before readiness, including reused Python generations. Lazy mode defers load
+  to inference; health polling remains observational.
+- Cluster eager reload preloads candidate routes before guarded promotion,
+  keeps old routes on failure, and retains old streaming leases until completion.
+  Health includes pending/failed reload diagnostics.
+- New Cloud requests reject explicit local lifecycle fields, including REST
+  `false`, `0`, and `null`. Existing Cloud specs retain their refs and remain
+  startable; inspect explains ignored legacy values.
+- Diffusers and MLX/MFLUX image servers require explicit lazy loading. Existing
+  eager image specs must be recreated with `--lazy-load` before starting.
+- Preserved #131's model-idle `0` and runtime-idle `300` defaults. Eager success
+  validates loading, not permanent residency. Unknown preload completion keeps
+  ownership protection until safe reconciliation.
+
+Upgrade the Python runtime with `tentgent runtime bootstrap --profile local-model`
+when an older environment lacks internal preload support. Restart affected old
+runtime processes when safe. No storage/identity migration or proof-v2 change
+is required. These changes are not yet released.
 
 ## v1.1.1
 

@@ -87,6 +87,20 @@ GPU-memory evidence.
 Run the subprocess suites sequentially: isolated homes still share the
 host's TCP port allocation space. Failed cases print worker logs before cleanup.
 
+Opt-in real-model lifecycle smoke (use a dedicated test data root, not production):
+
+```bash
+uv run --project python/tentgent-model-runtime python scripts/test-server-lifecycle-live.py \
+  --data-root "$PWD/.tentgent-test" --model-ref <full-test-model-ref>
+```
+
+Import one small chat model first and ensure the selected Python environment
+has its backend installed. This script does not download models. It creates
+temporary server/runtime homes, uses the supplied model store, and prints
+resource counts, idle policies, PID/RSS and real inference evidence. It checks
+eager zero/positive retention, reuse, lazy first use and idle restart, then stops
+only its own processes. The model/proofs remain in the test store for reuse.
+
 Use the Makefile wrappers:
 
 ```bash

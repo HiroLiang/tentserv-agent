@@ -110,16 +110,19 @@ target, and adapter compatibility is checked against the selected chat model.
 
 ## Updates, Ownership, And Removal
 
-Eager startup is implemented; eager hot-reload staging remains #132 Steps 5-6.
-On this development branch, restart an eager Cluster after changing its routes
-to validate the full replacement before serving it. The existing reload behavior
-below is not an eager validation guarantee.
+Eager reload validates the entire candidate before switching new requests.
+During preload, old routes keep serving. Failed, invalid, or superseded
+candidates never replace the committed routes. `/healthz` stays ready and its
+`reload` object reports `status`, `candidate_hash`, and `diagnostic`; inspect
+this object or worker logs when an apply has not taken effect. An unchanged
+failed candidate is not retried every second: fix/reapply it or restart after
+recovery. Lazy reload still rejects routing while a changed definition is invalid.
 
 `cluster apply` replaces the complete stored definition. The currently stored
 `route_update_policy` controls target changes:
 
-- `drain` sends new requests to the new route generation while existing
-  requests finish on the old generation.
+- `drain` sends new requests to the new route generation after preparation,
+  while existing requests finish on the old generation.
 - `block` rejects target-changing replacement. Change only the policy to
   `drain`, then apply the target change separately.
 

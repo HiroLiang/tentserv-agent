@@ -56,8 +56,9 @@ endpoint family from the model's stored capabilities. The priority is
 `video-understanding`, or `image-generation` to override that choice. Local
 servers bind the selected model in their Rust proxy spec, so the direct server
 request body does not need `model_ref`, `model`, or `model_kind` fields. The
-proxy starts or reuses the shared Python model runtime on demand; that Python
-runtime may idle-shutdown and be started again on a later request. Health and
+proxy starts or reuses the shared Python model runtime at eager startup or on
+the first lazy request; that Python runtime may idle-shutdown and be started
+again on a later request. Health and
 inspect operations do not extend either idle clock. Direct Python runtime
 callers that do not start a model-bound server may still send explicit `model`
 and `model_kind` fields.
@@ -275,8 +276,9 @@ Cluster startup now honors `lazy_load`: eager mode validates all configured loca
 routes before readiness, with `503 cluster_starting` during loading. It shares
 the observation/proof rules above; unresolved preload claims remain protected
 for recovery after failure/stop. See [Clusters](./clusters.md).
-Eager hot reload remains [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
-Steps 5-6; this intermediate branch is not release-ready. These target rules also apply:
+Eager reload preloads candidates before promotion and keeps the old routes on
+failure; the `/healthz` response's `reload` object explains pending or failed
+changes. These target rules also apply:
 
 - New Cloud creation/run rejects explicit `lazy_load`, `runtime_idle_seconds`,
   `model_idle_seconds`, and `idle_seconds`, including REST `false`, `0`, or

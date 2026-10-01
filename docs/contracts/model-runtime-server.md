@@ -272,6 +272,11 @@ canonical names.
 
 ## Managed Preload
 
+Local eager startup and Cluster eager startup/reload use this same operation.
+Rust owns snapshot promotion and staged/active/retiring route claims; Python
+owns accepted tasks and resource leases. Cancelling a Rust observer is not
+cancellation of accepted Python work. See [Cluster reload](./cluster.md#reload-and-drain).
+
 `POST /v1/lifecycle/preload` is an internal, model-bound load validation operation.
 Its JSON body contains only required, non-empty string `task_ref` and
 `process_token` fields. The token must match this runtime's launcher-supplied

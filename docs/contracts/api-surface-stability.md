@@ -56,7 +56,7 @@ These routes are exposed by `tentgent server run <model-ref>`.
 
 | Tier | Routes | Notes |
 | --- | --- | --- |
-| `stable` | `GET /healthz` | Local server process health and bound-model metadata. |
+| `stable` | `GET /healthz` | Local process health and bound-model metadata, with explicit eager startup `ready`, `status`, and `load_mode`. Process reachability alone is not readiness. |
 | `stable` | `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1beta/models/{*operation}`, `POST /v1/embeddings`, `POST /v1/images/generations` | Provider-shaped local ingress routes. The server is bound to one model and rejects incompatible capabilities before runtime execution. |
 | `stable` | Native proxied routes supported by the bound capability, including `/v1/chat`, `/v1/chat/stream`, `/v1/embeddings`, and `/v1/images/generations` | The proxy forwards matching native Tentgent bodies to the Python runtime. |
 | `internal` | Local proxy fallback behavior for unlisted paths | Fallback forwarding is an implementation convenience, not a public promise that every Python runtime path is exposed. |
@@ -78,8 +78,8 @@ These routes are exposed by `tentgent cluster run <cluster-ref>`.
 
 | Tier | Routes | Notes |
 | --- | --- | --- |
-| `experimental` | `GET /healthz` | Cluster proxy process health, definition hash, configured route keys, guarded hot reload, and bounded shutdown drain. |
-| `experimental` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1beta/models/{*operation}`, `POST /v1/embeddings`, `POST /v1/rerank`, `POST /v1/audio/transcriptions`, `POST /v1/vision/chat` | Endpoint families select declared local cluster routes and create internal route ownership on first use. Provider targets, cross-route fallback, and broader provider-shaped multimodal routing are not supported yet. |
+| `experimental` | `GET /healthz` | Cluster readiness, committed definition hash, route keys, staged eager reload diagnostics, and bounded shutdown drain. |
+| `experimental` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1beta/models/{*operation}`, `POST /v1/embeddings`, `POST /v1/rerank`, `POST /v1/audio/transcriptions`, `POST /v1/vision/chat` | Declared local routes gain ownership during eager preparation or first lazy use. Provider targets, cross-route fallback, and broader provider-shaped multimodal routing remain unsupported. |
 
 ## Python Model Runtime Surface
 

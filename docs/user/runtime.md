@@ -168,6 +168,13 @@ later request reloads the model or restarts the process. Health, inspect, and
 ownership probes are read-only and do not postpone those transitions. Use
 `tentgent server inspect <server-ref>` to see both effective values.
 
+Eager startup/reload validates loading through a managed preload lease; it does
+not override these idle clocks. With model idle `0`, ready models may already
+be unloaded. A reused Python generation keeps its first-spawner policy. See
+[server startup](./servers.md#local-startup-and-readiness) and
+[Cluster updates](./clusters.md#updates-ownership-and-removal) for readiness,
+failed-candidate recovery, and retained claims after uncertain preload completion.
+
 Package-manager installs such as Homebrew prepare this environment with:
 
 ```bash

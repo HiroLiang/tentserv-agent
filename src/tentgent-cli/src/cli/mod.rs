@@ -33,5 +33,7 @@ mod vision;
 
 #[cfg(test)]
 mod parsing_tests;
+#[cfg(test)]
+mod server_help_tests;
 
 pub use runner::run;

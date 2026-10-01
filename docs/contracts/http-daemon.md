@@ -1674,8 +1674,8 @@ capability before launching a Rust local-server proxy on the requested port.
 The proxy forwards matching `chat`, `embedding`, `rerank`, audio, vision,
 video, and image-generation paths to the shared Python model runtime daemon
 supervisor. The supervisor starts or reuses the capability/model-bound Python
-runtime on demand and lets that Python runtime follow its normal idle shutdown
-lifecycle. Requests to those model-bound server ports omit `model` and
+runtime at eager startup or on first lazy use, then lets Python follow its
+normal idle shutdown lifecycle. Requests to those model-bound server ports omit `model` and
 `model_kind`; direct Python runtime callers may still provide those fields
 explicitly. The server process remains a server lifecycle resource, not a job
 record. Local and Cluster specs use two finite policies:
