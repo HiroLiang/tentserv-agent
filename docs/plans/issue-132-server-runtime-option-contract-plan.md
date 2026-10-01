@@ -1,7 +1,7 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: Steps 1-4 implemented and validated; awaiting Step 4 review.
-Steps 5-7 have not started. This branch is not ready for release.
+Status: Steps 1-5 implemented and validated; continuing Steps 6-7.
+This branch is not ready for release.
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
 
@@ -126,9 +126,9 @@ this decision does not add one.
 
 ## Reviewable Steps
 
-Keep one issue and branch. Once implementation is requested, complete one step,
-provide its commit/diff, focused test results, and remaining risks, then stop
-for review before the next step. A step must compile and include its own tests
+Keep one issue and branch. On `2026-10-01` the user authorized completing the
+remaining steps with internal review/test checkpoints and independent commits,
+then handing them back together for human review. A step must compile and include its own tests
 and affected contract/user docs. Do not merge intermediate steps to `main` or
 publish a release as part of implementation. Step 0 is this planning checkpoint.
 
@@ -328,6 +328,16 @@ Step 4 review; no push, merge, release, or stale-ownership remediation.
   snapshot state; wire asynchronous preload in Step 6.
 - Review result: no candidate can become routable before explicit promotion.
 
+Step 5 checkpoint (`2026-10-01`, base `f6b1780`): separated committed reads,
+candidate reads and conditional promotion with monotonic base revisions (ABA
+protection) and a final disk hash check. Eager request/health/watcher reads cannot
+publish a candidate; lazy invalid-reload behavior remains unchanged. Five new
+tests cover staging, supersession/ABA, rejected promotion, invalid files,
+block policy, and eager health retention. `cargo test -p tentgent-daemon
+server::cluster --lib`: 32 passed, 1 existing manual benchmark ignored.
+Workspace all-target check, format/diff checks and internal diff review passed.
+Eager watcher preparation remains deliberately unwired until Step 6.
+
 ### Step 6: Cluster Reload And Drain
 
 - Wire asynchronous preparation into `server/cluster/watch/{port,runner}.rs`
@@ -406,7 +416,8 @@ actually execute; a zero-test filtered run is not evidence.
 - [x] Confirm current issue/branch and define independently reviewable slices.
 - [x] Implement and validate Steps 1-3.
 - [x] Implement and validate Step 4; awaiting Step 4 review.
-- [ ] Complete Steps 5-7, stopping for review at each checkpoint.
+- [x] Implement, validate and internally review Step 5.
+- [ ] Complete Steps 6-7 with intermediate checks before human review.
 - [ ] Every accepted decision D1-D9 is implemented and verified.
 - [ ] Each review step records its focused test result and remaining risk.
 - [ ] All #132 issue acceptance criteria pass and user-facing docs match.

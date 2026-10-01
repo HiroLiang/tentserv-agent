@@ -64,6 +64,15 @@ pub(super) struct PreparedClusterRoute {
 }
 
 impl ClusterServerState {
+    pub(super) fn definition_snapshot(
+        &self,
+    ) -> Result<super::cache::ClusterDefinitionSnapshot, ClusterServerError> {
+        match self.config.load_mode {
+            LoadMode::Eager => self.definitions.committed(),
+            LoadMode::Lazy => self.definitions.current(),
+        }
+    }
+
     pub(super) fn resolve_local_state(
         &self,
         route: ClusterRouteKey,
@@ -71,7 +80,7 @@ impl ClusterServerState {
         if !self.startup.is_ready() {
             return Err(ClusterServerError::starting());
         }
-        let snapshot = self.definitions.current()?;
+        let snapshot = self.definition_snapshot()?;
         self.routes.reconcile_definition(&snapshot.hash);
         let prepared = self.prepare_route(route, &snapshot.definition)?;
         let lease = self

@@ -291,8 +291,10 @@ ownership inspection/reconciliation, never killing a shared Python runtime.
 
 ### Reload And Drain
 
-Eager candidate staging/preload on hot reload is not yet implemented (issue #132
-Steps 5-6); the following remains the current post-start reload behavior.
+Eager reads use an immutable committed snapshot. Candidate reads cannot publish
+new routes; promotion compares the committed revision and current disk hash.
+Asynchronous eager reload preparation remains Step 6; this intermediate worker
+retains its startup snapshot. The following describes lazy reload behavior.
 The server keeps one parsed definition snapshot. A cancellable watcher checks
 file metadata every second, hashes after detected changes, and performs a
 forced hash every 30 seconds. Requests and health checks also perform an

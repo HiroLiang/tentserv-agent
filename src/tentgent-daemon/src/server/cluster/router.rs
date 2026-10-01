@@ -38,7 +38,7 @@ pub(super) fn cluster_router(state: ClusterServerState) -> Router {
 async fn healthz(State(state): State<ClusterServerState>) -> Response {
     let ready = state.startup.is_ready();
     let snapshot = if ready {
-        state.definitions.current()
+        state.definition_snapshot()
     } else {
         Ok(state.startup.snapshot.clone())
     };

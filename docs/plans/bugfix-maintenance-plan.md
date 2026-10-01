@@ -40,7 +40,7 @@ queue that should stay visible from the active plan.
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
 | [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
-| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Steps 1-4 implemented; awaiting Step 4 review | `v1.2.0` | Local and Cluster eager/lazy startup, truthful readiness, worker-owned proof, and protected startup draining. Eager Cluster hot reload remains pending. See the [Step 4 evidence](./issue-132-server-runtime-option-contract-plan.md#step-4-evidence-2026-09-28). |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Steps 1-5 checked; continuing Steps 6-7 | `v1.2.0` | Local/Cluster startup and candidate/committed snapshot isolation are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) for intermediate review evidence. |
 | [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State

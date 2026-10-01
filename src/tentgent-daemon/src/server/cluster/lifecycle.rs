@@ -36,7 +36,7 @@ pub(super) async fn serve_cluster(
                 if let Err(error) = result { break Err(error); }
                 state.startup.mark_ready();
                 watcher = Some(tokio::spawn(watch::run_definition_watcher(
-                    state.definitions.clone(), state.routes.clone(), watch_cancel_rx.clone(),
+                    state.definitions.clone(), state.routes.clone(), watch_cancel_rx.clone(), state.config.load_mode,
                 )));
             }
         }

@@ -137,7 +137,7 @@ where
         .await
         .map_err(|error| route_error(&keys, error))?;
     }
-    if state.definitions.refresh(true)?.hash != snapshot.hash {
+    if state.definitions.candidate(true)?.is_some() {
         return Err(ClusterServerError::definition_reload_failed(
             "definition changed during eager startup; restart to validate the new routes".into(),
         ));

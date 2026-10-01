@@ -17,13 +17,14 @@ pub(crate) async fn run_definition_watcher(
     cache: ClusterDefinitionCache,
     routes: RouteGenerationManager,
     cancelled: watch::Receiver<bool>,
+    mode: tentgent_kernel::features::server::options::LoadMode,
 ) {
     let schedule = DefinitionWatchSchedule::default();
     run_definition_watcher_with_dependencies(
         cache,
         cancelled,
         DefinitionWatcherDependencies {
-            probe: Arc::new(PlatformDefinitionRevisionProbe),
+            probe: Arc::new(StartupModeProbe(mode)),
             observer: Arc::new(routes),
             ticks: Box::new(TokioDefinitionWatchTickSource::new(
                 schedule.metadata_interval,
@@ -32,6 +33,24 @@ pub(crate) async fn run_definition_watcher(
         },
     )
     .await;
+}
+
+struct StartupModeProbe(tentgent_kernel::features::server::options::LoadMode);
+
+impl DefinitionRevisionProbe for StartupModeProbe {
+    fn refresh(
+        &self,
+        cache: &ClusterDefinitionCache,
+        force_hash: bool,
+    ) -> Result<String, crate::server::cluster::error::ClusterServerError> {
+        if self.0 == tentgent_kernel::features::server::options::LoadMode::Eager {
+            // Step 5 only stages reads. Step 6 owns asynchronous preparation/promotion.
+            let _ = cache.candidate(force_hash)?;
+            Ok(cache.committed()?.hash)
+        } else {
+            PlatformDefinitionRevisionProbe.refresh(cache, force_hash)
+        }
+    }
 }
 
 pub(super) struct DefinitionWatcherDependencies {
