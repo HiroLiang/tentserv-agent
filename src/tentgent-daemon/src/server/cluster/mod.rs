@@ -4,6 +4,7 @@ mod error;
 mod handlers;
 mod leases;
 mod lifecycle;
+mod reload_status;
 mod router;
 mod runtime;
 mod startup;

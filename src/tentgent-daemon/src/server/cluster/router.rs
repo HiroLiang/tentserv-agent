@@ -75,6 +75,7 @@ async fn healthz(State(state): State<ClusterServerState>) -> Response {
                     "runtime_home": state.layout.home_dir.display().to_string(),
                     "cluster_ref": state.config.cluster_ref,
                     "definition_hash": snapshot.hash,
+                    "reload": state.reload_status.snapshot(),
                     "routes": snapshot.definition.routes.keys().map(|route| route.as_str()).collect::<Vec<_>>(),
                     "route_update_policy": snapshot.definition.route_update_policy,
                     "ownership": {

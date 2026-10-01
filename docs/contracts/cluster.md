@@ -291,18 +291,22 @@ ownership inspection/reconciliation, never killing a shared Python runtime.
 
 ### Reload And Drain
 
-Eager reads use an immutable committed snapshot. Candidate reads cannot publish
-new routes; promotion compares the committed revision and current disk hash.
-Asynchronous eager reload preparation remains Step 6; this intermediate worker
-retains its startup snapshot. The following describes lazy reload behavior.
-The server keeps one parsed definition snapshot. A cancellable watcher checks
-file metadata every second, hashes after detected changes, and performs a
-forced hash every 30 seconds. Requests and health checks also perform an
-immediate revision check. Changed definitions are reloaded and assigned a
-SHA-256 definition hash. Reload failures stop request routing until the
-definition is valid again. The server never silently uses the previous target
-after a failed reload. `/healthz` exposes the cluster ref, current definition
-hash, and route keys without loading model runtimes.
+A cancellable watcher checks metadata every second and forces a hash every 30
+seconds. Eager requests/health use only the committed snapshot. A candidate
+resolves all local routes, acquires staged claims, and sequentially preloads
+distinct physical keys while old traffic continues. Promotion compares the
+committed revision and latest disk hash under the same gate as request admission
+and stop; a request selected before promotion retries admission afterward.
+Old traffic cannot retire staged claims. Failure or supersession discards only
+candidate claims; unknown completion retains them for reconciliation. B finishes
+accepted work before a superseding C starts. An unchanged failed candidate is
+not retried every tick: fix/reapply the definition or restart after recovery.
+Health stays ready on the committed revision and exposes `reload.status`
+(`idle`, `preparing`, `failed`, `superseded`), `candidate_hash`, and `diagnostic`.
+
+Lazy requests/health also check revisions and publish valid changes immediately.
+Invalid lazy reloads still fail closed until the file is valid. Both modes
+expose the committed definition hash and route keys without loading models.
 
 On eager startup or first lazy use, each server/route/definition/target generation creates one
 durable route claim. Requests reuse that claim and hold only an in-process RAII

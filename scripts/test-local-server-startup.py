@@ -384,6 +384,7 @@ class LocalStartupTests(unittest.TestCase):
         # Open fixture gates before stopping hosts; only touch this test's home.
         (self.home / "allow-load").touch()
         try:
+            (self.home / "allow-stream").touch()
             for path in (self.home / "servers").glob("*/server.toml"):
                 spec = tomllib.loads(path.read_text())
                 self.command("server", "stop", spec["server_ref"], check=False)

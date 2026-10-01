@@ -18,12 +18,20 @@ from tentgent.runtime.server.app import create_app
 
 HOME_DIR = Path(os.environ["TENTGENT_HOME"])
 CAPABILITY = "chat"
+MODEL = None
 
 
 def event(name):
     with (HOME_DIR / "backend-events.jsonl").open("a") as output:
         output.write(
-            json.dumps({"event": name, "pid": os.getpid(), "capability": CAPABILITY})
+            json.dumps(
+                {
+                    "event": name,
+                    "pid": os.getpid(),
+                    "capability": CAPABILITY,
+                    "model_ref": MODEL,
+                }
+            )
             + "\n"
         )
 
@@ -39,13 +47,19 @@ class FixtureChatModel(ChatBackendModel):
         control = json.loads((HOME_DIR / "control.json").read_text())
         deadline = time.monotonic() + 40
         blocked = (
-            control.get("blocked") or control.get("block_capability") == CAPABILITY
+            control.get("blocked")
+            or control.get("block_capability") == CAPABILITY
+            or control.get("block_model") == MODEL
         )
         while blocked and not (HOME_DIR / "allow-load").exists():
             if time.monotonic() > deadline:
                 raise RuntimeError("fixture load gate was not opened")
             time.sleep(0.02)
-        if control.get("fail") or control.get("fail_capability") == CAPABILITY:
+        if (
+            control.get("fail")
+            or control.get("fail_capability") == CAPABILITY
+            or control.get("fail_model") == MODEL
+        ):
             raise RuntimeError("injected backend load failure")
         self.loaded = True
         event("loaded")
@@ -61,15 +75,30 @@ class FixtureChatModel(ChatBackendModel):
     def generate(self, request):
         assert self.is_loaded
         event("generate")
-        return ChatResult(text="fixture response")
+        control = json.loads((HOME_DIR / "control.json").read_text())
+        return ChatResult(
+            text=f"fixture {MODEL}"
+            if control.get("include_model")
+            else "fixture response"
+        )
 
     def stream_generate(self, request):
         yield self.generate(request).text
+        control = json.loads((HOME_DIR / "control.json").read_text())
+        if control.get("block_stream"):
+            event("stream_wait")
+            deadline = time.monotonic() + 40
+            while not (HOME_DIR / "allow-stream").exists():
+                if time.monotonic() > deadline:
+                    raise RuntimeError("fixture stream gate was not opened")
+                time.sleep(0.02)
+            yield " end"
 
 
 def fixture_app(config, **kwargs):
-    global CAPABILITY
+    global CAPABILITY, MODEL
     CAPABILITY = config.capability.value
+    MODEL = config.model_ref
     assert config.lazy_load, "managed Python launch must stay lazy"
     event("spawn")
     control = json.loads((HOME_DIR / "control.json").read_text())

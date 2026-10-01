@@ -37,6 +37,11 @@ pub(super) struct DefinitionCandidate {
 }
 
 impl DefinitionCandidate {
+    pub(super) fn same_attempt(&self, other: &Self) -> bool {
+        self.base_revision == other.base_revision
+            && self.loaded.snapshot.hash == other.loaded.snapshot.hash
+            && self.loaded.stamp == other.loaded.stamp
+    }
     pub(super) fn snapshot(&self) -> &ClusterDefinitionSnapshot {
         &self.loaded.snapshot
     }

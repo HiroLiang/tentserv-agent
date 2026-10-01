@@ -21,3 +21,14 @@ pub(super) trait DefinitionWatchTickSource: Send {
     fn origin(&self) -> Instant;
     fn next_tick(&mut self) -> DefinitionWatchTickFuture<'_>;
 }
+
+pub(super) type CandidatePrepareFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(), ClusterServerError>> + Send + 'a>>;
+
+pub(super) trait CandidatePreparer: Send + Sync {
+    fn prepare<'a>(
+        &'a self,
+        state: &'a super::super::state::ClusterServerState,
+        snapshot: &'a super::super::cache::ClusterDefinitionSnapshot,
+    ) -> CandidatePrepareFuture<'a>;
+}

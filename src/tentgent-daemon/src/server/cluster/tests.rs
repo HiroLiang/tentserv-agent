@@ -73,7 +73,7 @@ pub(super) struct RecordingRouteOwnership {
 }
 
 impl RecordingRouteOwnership {
-    fn busy_on_next_release(&self) {
+    pub(super) fn busy_on_next_release(&self) {
         *self.release_busy_remaining.lock().unwrap() = 1;
     }
 }
@@ -772,7 +772,7 @@ fn unique_home(label: &str) -> std::path::PathBuf {
     ))
 }
 
-fn write_mlx_chat_model_fixture(home: &std::path::Path, model_ref: &str) {
+pub(super) fn write_mlx_chat_model_fixture(home: &std::path::Path, model_ref: &str) {
     let store_dir = home.join("models/store").join(model_ref);
     let source_dir = store_dir.join("variants/mlx/source");
     fs::create_dir_all(&source_dir).expect("model source dir");
@@ -892,6 +892,7 @@ pub(super) fn state_for_definition(
         cluster_ref.clone(),
     );
     let state = ClusterServerState {
+        reload_status: Default::default(),
         startup: super::startup::ClusterStartupState::new(
             definitions.current().unwrap(),
             tentgent_kernel::features::server::options::LoadMode::Lazy,

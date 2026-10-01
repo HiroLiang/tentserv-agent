@@ -41,6 +41,7 @@ pub async fn run_cluster_server_runtime(config: ClusterServerRuntimeConfig) -> m
         config.cluster_ref.clone(),
     );
     let state = ClusterServerState {
+        reload_status: Default::default(),
         startup: ClusterStartupState::new(
             definitions
                 .current()

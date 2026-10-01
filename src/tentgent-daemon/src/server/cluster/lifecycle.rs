@@ -36,14 +36,15 @@ pub(super) async fn serve_cluster(
                 if let Err(error) = result { break Err(error); }
                 state.startup.mark_ready();
                 watcher = Some(tokio::spawn(watch::run_definition_watcher(
-                    state.definitions.clone(), state.routes.clone(), watch_cancel_rx.clone(), state.config.load_mode,
+                    state.clone(), watch_cancel_rx.clone(),
                 )));
             }
         }
     };
     let _ = watch_cancel_tx.send(true);
-    state.routes.begin_drain();
+    state.begin_drain();
     let _ = graceful_tx.send(());
+    let mut watcher_joined = false;
     let cleanup = async {
         // Observe accepted Python work during drain, but never publish readiness
         // or start the next route after a stop request.
@@ -59,7 +60,14 @@ pub(super) async fn serve_cluster(
                     .map_err(|error| ClusterServerError::route_unavailable(error.to_string()))
             }
         };
-        let (server_result, drain_result) = tokio::join!(server_done, state.routes.finish_drain());
+        let watcher_done = async {
+            if let Some(watcher) = &mut watcher {
+                let _ = watcher.await;
+            }
+            watcher_joined = true;
+        };
+        let (server_result, drain_result, _) =
+            tokio::join!(server_done, state.routes.finish_drain(), watcher_done);
         drain_result.and(server_result)
     };
     let cleanup_result = match tokio::time::timeout(drain_timeout, cleanup).await {
@@ -72,8 +80,11 @@ pub(super) async fn serve_cluster(
             ))
         }
     };
-    if let Some(watcher) = watcher {
-        let _ = watcher.await;
+    if !watcher_joined {
+        if let Some(watcher) = watcher {
+            watcher.abort();
+            let _ = watcher.await;
+        }
     }
     match (outcome, cleanup_result) {
         (Err(startup_error), Err(cleanup_error)) => Err(ClusterServerError::route_unavailable(

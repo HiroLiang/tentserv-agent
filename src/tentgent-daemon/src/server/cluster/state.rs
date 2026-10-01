@@ -50,6 +50,7 @@ pub(super) struct ClusterServerState {
     pub(super) definitions: ClusterDefinitionCache,
     pub(super) routes: RouteGenerationManager,
     pub(super) startup: super::startup::ClusterStartupState,
+    pub(super) reload_status: super::reload_status::ReloadStatus,
 }
 
 pub(super) struct ResolvedClusterRoute {
@@ -64,6 +65,21 @@ pub(super) struct PreparedClusterRoute {
 }
 
 impl ClusterServerState {
+    pub(super) fn begin_drain(&self) {
+        // Stop and promotion share the admission gate. A completed candidate
+        // cannot be published after stop has closed admission.
+        if self
+            .definitions
+            .with_committed(|_| {
+                self.routes.begin_drain();
+                Ok(())
+            })
+            .is_err()
+        {
+            self.routes.begin_drain();
+        }
+    }
+
     pub(super) fn definition_snapshot(
         &self,
     ) -> Result<super::cache::ClusterDefinitionSnapshot, ClusterServerError> {
@@ -79,6 +95,18 @@ impl ClusterServerState {
     ) -> Result<ResolvedClusterRoute, ClusterServerError> {
         if !self.startup.is_ready() {
             return Err(ClusterServerError::starting());
+        }
+        if self.config.load_mode == LoadMode::Eager {
+            for _ in 0..4 {
+                let snapshot = self.definitions.committed()?;
+                let prepared = self.prepare_route(route, &snapshot.definition);
+                if let Some(admitted) = self.admit_prepared(&snapshot, prepared)? {
+                    return Ok(admitted);
+                }
+            }
+            return Err(ClusterServerError::route_unavailable(
+                "cluster revision kept changing during admission; retry".into(),
+            ));
         }
         let snapshot = self.definition_snapshot()?;
         self.routes.reconcile_definition(&snapshot.hash);
@@ -153,6 +181,26 @@ impl ClusterServerState {
                     tentgent_kernel::features::server::options::LoadMode::Lazy,
                 ),
             },
+        })
+    }
+
+    pub(super) fn admit_prepared(
+        &self,
+        selected: &super::cache::ClusterDefinitionSnapshot,
+        prepared: Result<PreparedClusterRoute, ClusterServerError>,
+    ) -> Result<Option<ResolvedClusterRoute>, ClusterServerError> {
+        self.definitions.with_committed(|current| {
+            if current.revision != selected.revision {
+                return Ok(None);
+            }
+            let prepared = prepared?;
+            let lease = self
+                .routes
+                .acquire(prepared.route, &current.hash, prepared.identity)?;
+            Ok(Some(ResolvedClusterRoute {
+                local: prepared.local,
+                lease,
+            }))
         })
     }
 }

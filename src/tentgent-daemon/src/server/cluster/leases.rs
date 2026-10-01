@@ -38,6 +38,7 @@ struct RouteGenerationEntry {
     claim: RouteGenerationClaim,
     active_requests: usize,
     retiring: bool,
+    staged: bool,
     unresolved_preload: bool,
 }
 
@@ -90,6 +91,25 @@ impl RouteGenerationManager {
         definition_hash: &str,
         target: RuntimeExecutionIdentity,
     ) -> Result<RouteRequestLease, ClusterServerError> {
+        self.acquire_with_stage(route, definition_hash, target, false)
+    }
+
+    pub(super) fn acquire_staged(
+        &self,
+        route: ClusterRouteKey,
+        definition_hash: &str,
+        target: RuntimeExecutionIdentity,
+    ) -> Result<RouteRequestLease, ClusterServerError> {
+        self.acquire_with_stage(route, definition_hash, target, true)
+    }
+
+    fn acquire_with_stage(
+        &self,
+        route: ClusterRouteKey,
+        definition_hash: &str,
+        target: RuntimeExecutionIdentity,
+        staged: bool,
+    ) -> Result<RouteRequestLease, ClusterServerError> {
         let claim = RouteGenerationClaim::new(
             self.server_ref.clone(),
             self.cluster_ref.clone(),
@@ -106,7 +126,7 @@ impl RouteGenerationManager {
                 ));
             }
             if let Some(entry) = state.entries.get_mut(&claim.owner_id) {
-                if entry.retiring {
+                if entry.retiring || entry.unresolved_preload {
                     return Err(ClusterServerError::route_unavailable(
                         "cluster route generation is retiring; retry against the current definition"
                             .to_string(),
@@ -149,6 +169,7 @@ impl RouteGenerationManager {
                     claim: claim.clone(),
                     active_requests: 0,
                     retiring: true,
+                    staged,
                     unresolved_preload: false,
                 },
             );
@@ -165,6 +186,7 @@ impl RouteGenerationManager {
                 claim,
                 active_requests: 0,
                 retiring: false,
+                staged,
                 unresolved_preload: false,
             });
         entry.active_requests += 1;
@@ -178,7 +200,7 @@ impl RouteGenerationManager {
             };
             let mut retiring = Vec::new();
             for entry in state.entries.values_mut() {
-                if entry.claim.definition_hash != current_hash {
+                if !entry.staged && entry.claim.definition_hash != current_hash {
                     let newly_retiring = !entry.retiring;
                     entry.retiring = true;
                     retiring.push((
@@ -196,6 +218,60 @@ impl RouteGenerationManager {
             }
             if idle {
                 let _ = self.release_claim_if_available(&owner_id);
+            }
+        }
+    }
+
+    pub(super) fn commit_staged(&self, hash: &str) -> Result<(), ClusterServerError> {
+        {
+            let mut state = self.lock_state()?;
+            if !state.accepting {
+                return Err(ClusterServerError::route_unavailable(
+                    "cluster is draining".into(),
+                ));
+            }
+            if state.entries.values().any(|entry| {
+                entry.claim.definition_hash == hash && (entry.retiring || entry.unresolved_preload)
+            }) {
+                return Err(ClusterServerError::route_unavailable(
+                    "candidate claim is still retiring or unresolved; retry after recovery".into(),
+                ));
+            }
+            for entry in state
+                .entries
+                .values_mut()
+                .filter(|entry| entry.claim.definition_hash == hash)
+            {
+                entry.staged = false;
+            }
+        }
+        self.reconcile_definition(hash);
+        Ok(())
+    }
+
+    pub(super) fn discard_staged(&self, hash: &str) {
+        let retiring = {
+            let Ok(mut state) = self.state.lock() else {
+                return;
+            };
+            state
+                .entries
+                .values_mut()
+                .filter(|entry| entry.staged && entry.claim.definition_hash == hash)
+                .map(|entry| {
+                    entry.staged = false;
+                    entry.retiring = true;
+                    (
+                        entry.claim.owner_id.clone(),
+                        entry.active_requests == 0 && !entry.unresolved_preload,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        for (id, idle) in retiring {
+            let _ = self.ownership.retire_route_claim(&self.layout, &id);
+            if idle {
+                let _ = self.release_claim_if_available(&id);
             }
         }
     }

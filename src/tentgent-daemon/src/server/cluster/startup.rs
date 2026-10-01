@@ -61,28 +61,46 @@ pub(super) async fn admit_ready_request(
 pub(super) async fn prepare_cluster_startup(
     state: &ClusterServerState,
 ) -> Result<(), ClusterServerError> {
-    prepare_with(state, |route, leases| async move {
-        let endpoint = ensure_model_endpoint(&route.local)
-            .await
-            .map_err(|error| ClusterServerError::route_unavailable(error.message))?;
-        // Dropping an HTTP waiter cannot cancel Python's accepted native work.
-        let mut pending = PendingPreload {
-            leases,
-            completed: false,
-        };
-        let result = preload_and_record(&route.local, &endpoint).await;
-        pending.completed = result.as_ref().err().is_none_or(|error| {
-            matches!(
-                error.kind,
-                ModelRuntimePreloadFailureKind::LoadFailed
-                    | ModelRuntimePreloadFailureKind::NotAccepted
-            )
-        });
-        result.map_err(|error| ClusterServerError::route_unavailable(error.to_string()))
-    })
-    .await
+    if state.config.load_mode == LoadMode::Lazy {
+        return Ok(());
+    }
+    prepare_snapshot_with(state, &state.startup.snapshot, false, preload_route).await?;
+    check_startup_snapshot(state)
 }
 
+pub(super) async fn preload_route(
+    route: PreparedClusterRoute,
+    leases: Vec<RouteRequestLease>,
+) -> Result<(), ClusterServerError> {
+    let endpoint = ensure_model_endpoint(&route.local)
+        .await
+        .map_err(|error| ClusterServerError::route_unavailable(error.message))?;
+    // Dropping an HTTP waiter cannot cancel Python's accepted native work.
+    let mut pending = PendingPreload {
+        leases,
+        completed: false,
+    };
+    let result = preload_and_record(&route.local, &endpoint).await;
+    pending.completed = result.as_ref().err().is_none_or(|error| {
+        matches!(
+            error.kind,
+            ModelRuntimePreloadFailureKind::LoadFailed
+                | ModelRuntimePreloadFailureKind::NotAccepted
+        )
+    });
+    result.map_err(|error| ClusterServerError::route_unavailable(error.to_string()))
+}
+
+fn check_startup_snapshot(state: &ClusterServerState) -> Result<(), ClusterServerError> {
+    if state.definitions.candidate(true)?.is_some() {
+        return Err(ClusterServerError::definition_reload_failed(
+            "definition changed during eager startup; restart to validate the new routes".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 pub(super) async fn prepare_with<F, Fut>(
     state: &ClusterServerState,
     preload: F,
@@ -94,7 +112,20 @@ where
     if state.config.load_mode == LoadMode::Lazy {
         return Ok(());
     }
-    let snapshot = &state.startup.snapshot;
+    prepare_snapshot_with(state, &state.startup.snapshot, false, preload).await?;
+    check_startup_snapshot(state)
+}
+
+pub(super) async fn prepare_snapshot_with<F, Fut>(
+    state: &ClusterServerState,
+    snapshot: &ClusterDefinitionSnapshot,
+    staged: bool,
+    preload: F,
+) -> Result<(), ClusterServerError>
+where
+    F: Fn(PreparedClusterRoute, Vec<RouteRequestLease>) -> Fut,
+    Fut: Future<Output = Result<(), ClusterServerError>>,
+{
     if !matches!(
         snapshot.definition.routes.get(&ClusterRouteKey::Chat),
         Some(ClusterRouteTarget::LocalModel { .. })
@@ -123,12 +154,16 @@ where
         let keys = group.iter().map(|route| route.route).collect::<Vec<_>>();
         let mut leases = Vec::new();
         for route in &group {
-            leases.push(
+            let lease = if staged {
+                state
+                    .routes
+                    .acquire_staged(route.route, &snapshot.hash, route.identity.clone())
+            } else {
                 state
                     .routes
                     .acquire(route.route, &snapshot.hash, route.identity.clone())
-                    .map_err(|error| route_error(&keys, error))?,
-            );
+            };
+            leases.push(lease.map_err(|error| route_error(&keys, error))?);
         }
         preload(
             group.into_iter().next().expect("nonempty route group"),
@@ -136,11 +171,6 @@ where
         )
         .await
         .map_err(|error| route_error(&keys, error))?;
-    }
-    if state.definitions.candidate(true)?.is_some() {
-        return Err(ClusterServerError::definition_reload_failed(
-            "definition changed during eager startup; restart to validate the new routes".into(),
-        ));
     }
     Ok(())
 }

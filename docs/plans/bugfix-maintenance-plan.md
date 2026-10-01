@@ -40,7 +40,7 @@ queue that should stay visible from the active plan.
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
 | [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
-| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Steps 1-5 checked; continuing Steps 6-7 | `v1.2.0` | Local/Cluster startup and candidate/committed snapshot isolation are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) for intermediate review evidence. |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Steps 1-6 checked; continuing Step 7 | `v1.2.0` | Local/Cluster startup and staged eager reload are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) for intermediate review evidence. |
 | [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State
@@ -50,11 +50,10 @@ smoke procedure remain in
 [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md).
 Issue `#132` has a [decision register and review checkpoints](./issue-132-server-runtime-option-contract-plan.md).
 Its decisions include lazy-only Diffusers and MLX/MFLUX image generation, with
-implementation split into seven reviewable steps. Steps 1-4 (validation, legacy
-compatibility, internal preload/cleanup, public lifecycle isolation, and Local
-and Cluster startup/readiness) are implemented and validated. Step 4 is ready
-for review; the issue plan records focused and subprocess test evidence.
-Steps 5-7 have not started; this intermediate branch is not release-ready.
+implementation split into seven reviewable steps. As of `2026-10-01`, Steps 1-6
+(validation, compatibility, preload, startup/readiness, and staged eager reload)
+are implemented and checked. Step 7 integration/documentation/live evidence is
+in progress; this intermediate branch is not release-ready.
 It is independent of `#127` and precedes `#128` and `#130` implementation.
 
 The completed `v1.1.0` Cluster issue flow is archived under

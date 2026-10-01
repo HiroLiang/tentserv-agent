@@ -1,6 +1,6 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: Steps 1-5 implemented and validated; continuing Steps 6-7.
+Status: Steps 1-6 implemented and validated; continuing Step 7.
 This branch is not ready for release.
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
@@ -355,6 +355,19 @@ Eager watcher preparation remains deliberately unwired until Step 6.
 - Review result: failed or stale candidates cannot replace working routes;
   completed promotion drains only the previous generation.
 
+Step 6 checkpoint (`2026-10-01`, base `1217166`): added asynchronous staged
+preload, compare-before-promotion, admission retry, committed-route fallback,
+failed-candidate diagnostics, and bounded stop observation. Staged claims are
+isolated from old traffic; retired claims retry transient busy releases even
+without another revision. No lock spans a preload await. Cluster tests: 40
+passed, 1 existing manual benchmark ignored. Five subprocess reload tests passed
+with real Python lifecycle and fake models, including old streaming responses,
+partial failure/recovery, supersession, stop, and unknown-completion retention.
+The initial stream test incorrectly expected concurrent generation on a backend
+held by a long stream; its ordering was corrected, not the backend serialization.
+Workspace all-target check, binary builds, formatting, Ruff, diff review passed.
+Real-model/GPU and complete regression evidence remain Step 7.
+
 ### Step 7: Integration And Evidence
 
 - Reconcile `docs/contracts/{model-runtime-server,http-daemon,cluster,
@@ -417,7 +430,8 @@ actually execute; a zero-test filtered run is not evidence.
 - [x] Implement and validate Steps 1-3.
 - [x] Implement and validate Step 4; awaiting Step 4 review.
 - [x] Implement, validate and internally review Step 5.
-- [ ] Complete Steps 6-7 with intermediate checks before human review.
+- [x] Implement, validate and internally review Step 6.
+- [ ] Complete Step 7 with intermediate checks before human review.
 - [ ] Every accepted decision D1-D9 is implemented and verified.
 - [ ] Each review step records its focused test result and remaining risk.
 - [ ] All #132 issue acceptance criteria pass and user-facing docs match.
