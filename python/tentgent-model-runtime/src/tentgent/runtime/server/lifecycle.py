@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import os
 from collections.abc import Callable
@@ -12,7 +13,10 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any
 
 from tentgent.runtime import __version__
-from tentgent.runtime.backends.resource_manager import ResourceManager
+from tentgent.runtime.backends.resource_manager import (
+    ModelResourceCleanupError,
+    ResourceManager,
+)
 from tentgent.runtime.task.manager import TaskManager, TaskManagerState
 
 if TYPE_CHECKING:
@@ -46,6 +50,11 @@ class RuntimeServerConfig:
     task_poll_interval_seconds: float = 0.5
 
     def __post_init__(self) -> None:
+        if self.capability == RuntimeCapability.IMAGE_GENERATION and not self.lazy_load:
+            raise ValueError(
+                "image-generation requires --lazy-load (lazy_load=True); "
+                "workflow-aware eager loading is not supported"
+            )
         for name, value in (
             ("runtime_idle_seconds", self.runtime_idle_seconds),
             ("model_idle_seconds", self.model_idle_seconds),
@@ -54,8 +63,7 @@ class RuntimeServerConfig:
                 raise ValueError(f"{name} must be finite and non-negative")
         if self.model_idle_seconds > self.runtime_idle_seconds:
             raise ValueError(
-                "model_idle_seconds must be less than or equal to "
-                "runtime_idle_seconds"
+                "model_idle_seconds must be less than or equal to runtime_idle_seconds"
             )
 
 
@@ -89,6 +97,10 @@ class RuntimeLifecycleState:
         self._task_manager.touch_activity()
         self._watcher = asyncio.create_task(self._watch_idle())
 
+    @property
+    def process_token(self) -> str | None:
+        return self._process_token
+
     async def stop(self) -> None:
         if self._watcher is not None:
             self._watcher.cancel()
@@ -96,8 +108,10 @@ class RuntimeLifecycleState:
                 await self._watcher
             except asyncio.CancelledError:
                 pass
-        self._resource_manager.release_all()
-        self._task_manager.shutdown()
+        try:
+            self._resource_manager.release_all()
+        finally:
+            self._task_manager.shutdown()
 
     def snapshot(self) -> dict[str, Any]:
         task_snapshot = self._task_manager.snapshot()
@@ -143,12 +157,14 @@ class RuntimeLifecycleState:
         while True:
             await asyncio.sleep(self._config.task_poll_interval_seconds)
             self._task_manager.poll_completed()
-            self._resource_manager.release_idle()
+            try:
+                self._resource_manager.release_idle()
+            except ModelResourceCleanupError as error:
+                # Quarantine must not disable runtime-idle shutdown/recovery.
+                logging.getLogger(__name__).error("%s", error)
 
             if self._task_manager.state == TaskManagerState.OPEN:
-                if self._task_manager.is_idle_for(
-                    self._config.runtime_idle_seconds
-                ):
+                if self._task_manager.is_idle_for(self._config.runtime_idle_seconds):
                     self._task_manager.begin_closing()
                     self._closing_started_at = monotonic()
                 continue

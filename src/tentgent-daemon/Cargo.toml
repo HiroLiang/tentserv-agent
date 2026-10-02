@@ -30,4 +30,5 @@ tentgent-kernel = { path = "../tentgent-kernel" }
 tower-http.workspace = true
 
 [dev-dependencies]
+toml.workspace = true
 tower.workspace = true

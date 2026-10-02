@@ -82,6 +82,11 @@ Default CLI output should show:
 - final result: run ref, adapter ref, adapter path, and final status
 - final summary: peak training memory, final train loss, best eval loss, throughput, and trained tokens when reported
 
+Memory telemetry is optional. PEFT omits `peak_memory_gb` when the platform
+cannot measure it (including CPU training without Python's `resource` module
+on Windows); unknown memory is never reported as a measured zero. CUDA/MPS
+backend measurements remain available independently of that process metric.
+
 Local run state should record:
 
 - process state: pid, start time, end time, exit code, and signal or interrupt status when available

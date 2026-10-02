@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 $DefaultBaseUrl = "https://agent.tentserv.com/releases"
 $UvVersion = "0.11.7"
 $UvSha256SumSha256 = "2d56c5c54e3027c2c26e4f0cc1383be99a7af0a6b39dc7f2a5c6f2e5aa8878e4"
-$PythonVersion = if ($env:TENTGENT_BOOTSTRAP_PYTHON_VERSION) { $env:TENTGENT_BOOTSTRAP_PYTHON_VERSION } else { "3.13" }
+$PythonVersion = if ($env:TENTGENT_BOOTSTRAP_PYTHON_VERSION) { $env:TENTGENT_BOOTSTRAP_PYTHON_VERSION } else { "3.12" }
 
 function Fail($Message) {
     Write-Error "error: $Message"
@@ -228,9 +228,9 @@ function Bootstrap-PythonEnv($RuntimeHome, $ShareDir, $BootstrapTarget) {
     $env:UV_PROJECT_ENVIRONMENT = $envDir
     $env:UV_MANAGED_PYTHON = "1"
     $env:UV_CACHE_DIR = $uvCacheDir
-    & $uvPath --no-config sync --project $projectDir --managed-python --python $PythonVersion --frozen --no-editable
+    & $uvPath --no-config sync --project $projectDir --managed-python --python $PythonVersion --frozen --no-editable --reinstall-package tentgent-model-runtime
     if ($LASTEXITCODE -ne 0) {
-        Fail "uv sync failed with exit code $LASTEXITCODE"
+        Fail "uv sync failed with exit code $LASTEXITCODE. Stop affected Tentgent workloads and rerun the installer. This release defaults to Python 3.12 and supports 3.11/3.12; remove an incompatible TENTGENT_BOOTSTRAP_PYTHON_VERSION override. Do not delete TENTGENT_HOME or user model stores."
     }
 
     $scriptsDir = Join-Path $envDir "Scripts"

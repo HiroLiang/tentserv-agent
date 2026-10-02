@@ -203,8 +203,17 @@ It downloads a pinned `uv` release archive, verifies the pinned `sha256.sum` man
 It resolves the packaged or development Python project, ensures pinned `uv` is cached, and runs against the workspace lockfile:
 
 ```text
-UV_PROJECT_ENVIRONMENT=<python-env> UV_CACHE_DIR=<bootstrap-uv-cache> uv --no-config sync --project <python-project> --managed-python --python 3.13 --frozen --no-editable --reinstall-package tentgent-model-runtime
+UV_PROJECT_ENVIRONMENT=<python-env> UV_CACHE_DIR=<bootstrap-uv-cache> uv --no-config sync --project <python-project> --managed-python --python 3.12 --frozen --no-editable --reinstall-package tentgent-model-runtime
 ```
+
+Managed bootstrap defaults to Python 3.12; the current runtime source supports
+`>=3.11,<3.13` because its supported media dependency set is not compatible
+with Python 3.13. This does not change system Python. If an existing managed
+environment uses another interpreter, `uv sync` may recreate that environment
+at the selected path; it must not delete sibling models, adapters, datasets,
+server records, or other runtime-home state. Stop affected workloads first.
+Bootstrap does not implement its own recursive environment deletion, and a
+failed sync is repaired by retrying bootstrap, not deleting runtime home.
 
 Default managed Python environment:
 

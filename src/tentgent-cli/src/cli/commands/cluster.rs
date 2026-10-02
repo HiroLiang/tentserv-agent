@@ -105,7 +105,7 @@ pub struct ClusterRunCommand {
     /// Fixed TCP port. Omit to auto-scan from 8780.
     #[arg(short = 'p', long, value_name = "PORT")]
     pub port: Option<u16>,
-    /// Record the shared server lazy-load preference in the stored spec.
+    /// Load routes on first use instead of validating all local routes before ready.
     #[arg(short = 'l', long)]
     pub lazy_load: bool,
     /// Deprecated alias for --runtime-idle-seconds.

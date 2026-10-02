@@ -227,7 +227,7 @@ cat <<NEXT
 
 Next validation commands:
   cd "${tap_repo}"
-  brew audit --formula Formula/tentgent.rb
-  brew install --formula Formula/tentgent.rb
-  brew test tentgent
+  brew audit --formula hiroliang/tap/tentgent
+  brew upgrade --formula hiroliang/tap/tentgent  # use install for a fresh machine
+  brew test hiroliang/tap/tentgent
 NEXT

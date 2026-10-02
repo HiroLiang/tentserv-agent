@@ -11,9 +11,10 @@ mod state;
 pub use bootstrap::{StdRuntimeBootstrapExecutor, StdRuntimeBootstrapPlanner};
 pub use executable::StdRuntimeExecutableResolver;
 pub use model_daemon::{
-    http_error_detail, ModelRuntimeBinding, ModelRuntimeCapability, ModelRuntimeDaemonEndpoint,
-    ModelRuntimeDaemonLaunchPolicy, ModelRuntimeDaemonSupervisor,
-    ModelRuntimeDaemonSupervisorDependencies,
+    http_error_detail, preload_model_runtime, ModelRuntimeBinding, ModelRuntimeCapability,
+    ModelRuntimeDaemonEndpoint, ModelRuntimeDaemonLaunchPolicy, ModelRuntimeDaemonSupervisor,
+    ModelRuntimeDaemonSupervisorDependencies, ModelRuntimePreloadError,
+    ModelRuntimePreloadFailureKind, ModelRuntimePreloadResult,
 };
 pub use resolver::StdPythonRuntimeResolver;
 pub use state::StdRuntimeStateProbe;

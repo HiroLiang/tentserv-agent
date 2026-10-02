@@ -7,15 +7,16 @@ use axum::{
 
 use super::{
     capability::ensure_model_endpoint, error::LocalServerError,
-    evidence::record_runtime_execution_result, LocalServerState, PROXY_BODY_LIMIT_BYTES,
-    RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH, RUNTIME_EMBEDDINGS_PATH,
-    RUNTIME_IMAGE_GENERATIONS_PATH,
+    evidence::record_runtime_execution_result, ingress::ensure_public_runtime_request,
+    LocalServerState, PROXY_BODY_LIMIT_BYTES, RUNTIME_CHAT_PATH, RUNTIME_CHAT_STREAM_PATH,
+    RUNTIME_EMBEDDINGS_PATH, RUNTIME_IMAGE_GENERATIONS_PATH,
 };
 
 pub(in crate::server) async fn proxy_request(
     State(state): State<LocalServerState>,
     request: AxumRequest,
 ) -> Result<Response, LocalServerError> {
+    ensure_public_runtime_request(request.method(), request.uri().path())?;
     let endpoint = ensure_model_endpoint(&state).await?;
     let path_and_query = request
         .uri()
@@ -31,6 +32,12 @@ pub(in crate::server) async fn proxy_request(
     let result = forward_to_runtime(&state.client, request, &target_url).await;
     record_runtime_execution_result(&state, &result);
     result
+}
+
+pub(in crate::server) fn runtime_http_client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
 }
 
 pub(super) async fn forward_to_runtime(
@@ -88,6 +95,11 @@ pub(super) fn response_from_upstream(
     upstream: reqwest::Response,
 ) -> Result<Response, LocalServerError> {
     let status = upstream.status();
+    if status.is_redirection() {
+        return Err(LocalServerError::bad_gateway(
+            "model runtime redirects are not allowed".to_string(),
+        ));
+    }
     let status = StatusCode::from_u16(status.as_u16())
         .map_err(|err| LocalServerError::bad_gateway(format!("invalid upstream status: {err}")))?;
     let mut response = Response::builder().status(status);

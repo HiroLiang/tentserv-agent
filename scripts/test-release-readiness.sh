@@ -71,12 +71,40 @@ assert_macos_release_signing_avoids_restricted_keychain_entitlements() {
   assert_not_contains "${root_dir}/scripts/macos-notarize-package.sh" 'keychain-access-groups'
 }
 
+assert_rust_toolchains_match() {
+  local pinned_version
+  local minimum_version
+  local workflow
+  local expected_count
+  local actual_count
+  local version
+
+  pinned_version="$(sed -n 's/^channel = "\([^"]*\)"$/\1/p' "${root_dir}/rust-toolchain.toml")"
+  minimum_version="$(sed -n 's/^rust-version = "\([^"]*\)"$/\1/p' "${root_dir}/Cargo.toml")"
+  [[ "${pinned_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Rust toolchain must pin a stable patch version"
+  [[ "${minimum_version}" == "${pinned_version}" ]] || fail "Rust MSRV and pinned toolchain differ"
+
+  for workflow in release runtime-ownership-windows; do
+    expected_count=1
+    [[ "${workflow}" != "release" ]] || expected_count=2
+    actual_count="$(sed -n 's/^[[:space:]]*toolchain: "\([^"]*\)"$/\1/p' "${root_dir}/.github/workflows/${workflow}.yml")"
+    [[ "$(printf '%s\n' "${actual_count}" | wc -l | tr -d ' ')" == "${expected_count}" ]] || fail "${workflow} must explicitly install Rust in every build job"
+    while IFS= read -r version; do
+      [[ "${version}" == "${pinned_version}" ]] || fail "${workflow} Rust toolchain differs from repository pin"
+    done <<<"${actual_count}"
+  done
+}
+
+echo "==> Checking Rust MSRV, repository and CI/release toolchains match"
+assert_rust_toolchains_match
+
 run bash -n "${script_dir}/install.sh"
 run bash -n "${script_dir}/bootstrap-uv.sh"
 run bash -n "${script_dir}/bootstrap-python-env.sh"
 run bash -n "${script_dir}/package-local.sh"
 run bash -n "${script_dir}/release-metadata.sh"
 run bash -n "${script_dir}/test-release-metadata.sh"
+run bash -n "${script_dir}/test-release-source.sh"
 run bash -n "${script_dir}/test-install-upgrade-readiness.sh"
 run bash -n "${script_dir}/test-package-python-layout.sh"
 run bash -n "${script_dir}/test-update-homebrew-formula.sh"
@@ -90,6 +118,8 @@ run bash "${script_dir}/test-install-upgrade-readiness.sh"
 run bash "${script_dir}/test-update-homebrew-formula.sh"
 run bash "${script_dir}/test-linux-release-targets.sh"
 run bash "${script_dir}/test-package-python-layout.sh"
+run python3 "${script_dir}/test-release-package-guards.py"
+run python3 "${script_dir}/test-installed-release-unit.py"
 
 run bash "${script_dir}/install.sh" \
   --dry-run \
@@ -114,9 +144,15 @@ run bash "${script_dir}/install.sh" \
 
 if command -v pwsh >/dev/null 2>&1; then
   run pwsh -NoProfile -ExecutionPolicy Bypass \
+    -File "${script_dir}/test-windows-runtime-upgrade.ps1"
+  # PowerShell can be installed on POSIX without Windows LOCALAPPDATA. Keep
+  # dry-run destinations explicit and isolated instead of using host defaults.
+  run env TENTGENT_HOME="${TMPDIR:-/tmp}/tentgent-readiness-dry-run-home" \
+    pwsh -NoProfile -ExecutionPolicy Bypass \
     -File "${script_dir}/install.ps1" \
     -DryRun \
     -Version "0.0.0" \
+    -Prefix "${TMPDIR:-/tmp}/tentgent-readiness-dry-run-prefix" \
     -Target "x86_64-pc-windows-msvc" \
     -SkipPythonBootstrap \
     -SkipDoctor

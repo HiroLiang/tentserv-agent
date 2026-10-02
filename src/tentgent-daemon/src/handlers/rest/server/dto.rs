@@ -92,6 +92,8 @@ pub struct ServerInspectionItem {
     pub port_auto: bool,
     pub bound_port: Option<u16>,
     pub lazy_load: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lifecycle_options_applicability: Option<&'static str>,
     pub runtime_idle_seconds: Option<u64>,
     pub model_idle_seconds: Option<u64>,
     pub idle_seconds: Option<u64>,
@@ -144,6 +146,7 @@ pub struct ServerHealthResponse {
     pub server: ServerHealthServerItem,
     pub running: bool,
     pub reachable: bool,
+    pub ready: bool,
     pub target_url: String,
     pub target_status: Option<u16>,
     pub target_health: Option<serde_json::Value>,
@@ -251,8 +254,13 @@ pub fn server_inspection_item_with_ownership(
 ) -> ServerInspectionItem {
     let port = inspection.effective_port();
     let bound_port = inspection.bound_port();
+    let lifecycle_options_applicability = inspection
+        .spec
+        .is_cloud()
+        .then_some("not_applicable_legacy_ignored");
     let fields = server_fields(inspection.spec);
     ServerInspectionItem {
+        lifecycle_options_applicability,
         server_ref: fields.server_ref,
         short_ref: fields.short_ref,
         runtime_kind: fields.runtime_kind,

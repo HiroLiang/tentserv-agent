@@ -155,6 +155,19 @@ The managed install default for the Python environment is:
 TENTGENT_HOME/runtime/python-env
 ```
 
+Managed bootstrap selects Python 3.12; this release supports Python 3.11 and
+3.12, not 3.13, to keep the supported media dependencies compatible. It does
+not change your system Python. `TENTGENT_BOOTSTRAP_PYTHON_VERSION` can select a
+supported version; remove a previous `3.13` override before upgrading.
+
+Before rebuilding an older managed environment, stop the affected servers,
+chat/train work, and daemon. Bootstrap lets `uv` replace an incompatible
+interpreter environment at the same path; models, adapters, datasets, and
+server records outside that environment remain intact. If sync fails, stop
+remaining processes and retry the same bootstrap/profile. Do not delete
+`TENTGENT_HOME` or model stores to repair Python. On Windows, rerun the native
+PowerShell installer; the CLI bootstrap executor is currently POSIX-only.
+
 The actual path shown by `runtime status` or `doctor` may differ when
 `TENTGENT_PYTHON_ENV_DIR` is set. Treat this environment as required runtime
 state. Do not remove it unless you are intentionally repairing or reinstalling
@@ -167,6 +180,13 @@ idle Python process exits after 300 seconds (`runtime_idle_seconds = 300`). A
 later request reloads the model or restarts the process. Health, inspect, and
 ownership probes are read-only and do not postpone those transitions. Use
 `tentgent server inspect <server-ref>` to see both effective values.
+
+Eager startup/reload validates loading through a managed preload lease; it does
+not override these idle clocks. With model idle `0`, ready models may already
+be unloaded. A reused Python generation keeps its first-spawner policy. See
+[server startup](./servers.md#local-startup-and-readiness) and
+[Cluster updates](./clusters.md#updates-ownership-and-removal) for readiness,
+failed-candidate recovery, and retained claims after uncertain preload completion.
 
 Package-manager installs such as Homebrew prepare this environment with:
 
@@ -266,8 +286,11 @@ See [Store cleanup](./maintenance.md#store-staging-cleanup) for dry-run and appl
 - Cloud provider chat, embedding, image generation, and provider-backed dataset
   workflows use Rust cloud clients and provider keys from env/keychain. They do
   not start Python model-runtime workers.
-- Windows x86_64 is packaged, but MLX is blocked on Windows.
-- Linux x86_64 is available as a prerelease GitHub Release install path. The
+- Windows x86_64 is packaged, but MLX is blocked on Windows. Native CLI Python
+  bootstrap and server process termination remain unsupported; use the
+  PowerShell installer for base runtime setup. Packaging and process-identity
+  tests do not establish full Local/Cluster lifecycle parity on Windows.
+- Linux x86_64 is available as a GitHub Release install path. The
   default base Python runtime has been smoke-tested on Ubuntu 24.04 without
   build tools. Local-model, training, GPU, and distro-package parity remain
   dependency-gated.

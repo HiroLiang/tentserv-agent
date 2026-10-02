@@ -140,11 +140,32 @@ ditto -c -k --sequesterRsrc --keepParent "${payload_dir}" "${notary_archive}"
 write_base64_env_to_file APPLE_NOTARY_KEY_BASE64 "${notary_key_path}"
 chmod 600 "${notary_key_path}"
 
-xcrun notarytool submit "${notary_archive}" \
+notary_result="${tmp_dir}/notary-result.json"
+if ! xcrun notarytool submit "${notary_archive}" \
   --key "${notary_key_path}" \
   --key-id "${APPLE_NOTARY_KEY_ID}" \
   --issuer "${APPLE_NOTARY_ISSUER_ID}" \
-  --wait
+  --wait --output-format json >"${notary_result}"; then
+  fail "notarytool submission failed; package is not accepted"
+fi
+
+python3 - "${notary_result}" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+try:
+    result = json.loads(Path(sys.argv[1]).read_text())
+except (OSError, ValueError) as error:
+    raise SystemExit(f"macos-notarize-package: invalid notarytool JSON: {error}")
+if not isinstance(result, dict) or result.get("status") != "Accepted":
+    status = result.get("status") if isinstance(result, dict) else None
+    raise SystemExit(f"macos-notarize-package: notarization not accepted: {status!r}")
+submission_id = result.get("id")
+if not isinstance(submission_id, str) or not submission_id.strip():
+    raise SystemExit("macos-notarize-package: accepted response is missing a submission id")
+print(f"Apple notarization accepted; submission id: {submission_id}")
+PY
 
 # Bare CLI executables are not app bundles, so Gatekeeper's spctl exec
 # assessment can reject them with "code is valid but does not seem to be an app"

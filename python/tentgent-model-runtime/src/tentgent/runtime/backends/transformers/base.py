@@ -75,11 +75,14 @@ def move_batch_to_device(batch: dict[str, Any], device: Any) -> dict[str, Any]:
 
 
 def load_transformers_component(component_class: Any, load_path: str) -> Any:
-    return component_class.from_pretrained(load_path, trust_remote_code=True)
+    # A downloaded model is data, not consent to execute its Python modules.
+    return component_class.from_pretrained(load_path, trust_remote_code=False)
 
 
 def load_transformers_model(model_class: Any, load_path: str, device: Any) -> Any:
-    model = load_transformers_component(model_class, load_path)
+    model = model_class.from_pretrained(
+        load_path, trust_remote_code=False, use_safetensors=True
+    )
     model.to(device)
     model.eval()
     return model
