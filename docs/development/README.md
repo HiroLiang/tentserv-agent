@@ -22,6 +22,21 @@ Installed binaries should fall back to the default platform-managed runtime home
 
 ## Build And Check
 
+The workspace requires Rust **1.99.0** or newer. `rust-toolchain.toml` selects
+1.99.0 for repository commands; Windows CI and all four native release targets
+use the same pinned version. Install it through rustup before building:
+
+```bash
+rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt
+rustc --version
+cargo --version
+```
+
+The Rust edition remains 2021. When raising the baseline, update the workspace
+`rust-version`, toolchain file and both workflow files together. The release
+readiness checks reject version drift. Installed Tentgent binaries do not
+require a Rust compiler; this minimum applies to source builds.
+
 Build the Rust workspace:
 
 ```bash
@@ -154,7 +169,9 @@ performs `cargo build --release --bin tentgent` as part of artifact packaging.
 gate for changes to resource coordination, runtime ownership, and the platform
 filesystem replacement boundary. It runs repeated atomic replacement and
 `starting -> ready -> closing` ownership tests on a native Windows runner,
-plus the focused coordination and model-daemon suites.
+plus the focused coordination and model-daemon suites. It also checks all
+workspace targets against the pinned minimum Rust version, and runs when the
+toolchain file changes.
 
 Before tagging a release, run the script-level release-readiness checks:
 

@@ -71,6 +71,33 @@ assert_macos_release_signing_avoids_restricted_keychain_entitlements() {
   assert_not_contains "${root_dir}/scripts/macos-notarize-package.sh" 'keychain-access-groups'
 }
 
+assert_rust_toolchains_match() {
+  local pinned_version
+  local minimum_version
+  local workflow
+  local expected_count
+  local actual_count
+  local version
+
+  pinned_version="$(sed -n 's/^channel = "\([^"]*\)"$/\1/p' "${root_dir}/rust-toolchain.toml")"
+  minimum_version="$(sed -n 's/^rust-version = "\([^"]*\)"$/\1/p' "${root_dir}/Cargo.toml")"
+  [[ "${pinned_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Rust toolchain must pin a stable patch version"
+  [[ "${minimum_version}" == "${pinned_version}" ]] || fail "Rust MSRV and pinned toolchain differ"
+
+  for workflow in release runtime-ownership-windows; do
+    expected_count=1
+    [[ "${workflow}" != "release" ]] || expected_count=2
+    actual_count="$(sed -n 's/^[[:space:]]*toolchain: "\([^"]*\)"$/\1/p' "${root_dir}/.github/workflows/${workflow}.yml")"
+    [[ "$(printf '%s\n' "${actual_count}" | wc -l | tr -d ' ')" == "${expected_count}" ]] || fail "${workflow} must explicitly install Rust in every build job"
+    while IFS= read -r version; do
+      [[ "${version}" == "${pinned_version}" ]] || fail "${workflow} Rust toolchain differs from repository pin"
+    done <<<"${actual_count}"
+  done
+}
+
+echo "==> Checking Rust MSRV, repository and CI/release toolchains match"
+assert_rust_toolchains_match
+
 run bash -n "${script_dir}/install.sh"
 run bash -n "${script_dir}/bootstrap-uv.sh"
 run bash -n "${script_dir}/bootstrap-python-env.sh"

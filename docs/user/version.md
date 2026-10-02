@@ -5,6 +5,9 @@ limits for current and historical Tentgent versions.
 
 ## Unreleased
 
+- Raised the source-build minimum Rust version to 1.99.0 and pinned local,
+  Windows CI and native release builds to that version. Rust edition and
+  dependency lockfile are unchanged; binary installations need no compiler.
 - Fixed #132: Local/Cluster `lazy_load=false` now validates base-model loading
   before readiness, including reused Python generations. Lazy mode defers load
   to inference; health polling remains observational.

@@ -6,6 +6,7 @@ on:
       - ".github/workflows/runtime-ownership-windows.yml"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "rust-toolchain.toml"
       - "src/tentgent-kernel/**"
       - "src/tentgent-platform-fs/**"
   workflow_dispatch:
@@ -18,12 +19,13 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.81.0"
+          toolchain: "1.99.0"
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Check workspace MSRV
-        run: cargo check --workspace --locked
+        run: cargo check --workspace --all-targets --locked
       - name: Test atomic replacement repeatedly
         shell: pwsh
         run: |

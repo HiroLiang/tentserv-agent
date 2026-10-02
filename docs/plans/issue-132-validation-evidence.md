@@ -2,7 +2,47 @@
 
 Date: `2026-10-01`. Branch: `bug/132-server-runtime-option-noops`.
 Scope and decisions: [implementation plan](./issue-132-server-runtime-option-contract-plan.md).
-Implementation is ready for human review, not merged or released.
+Implementation and Rust 1.99.0 revalidation are ready for human review, not
+merged or released.
+
+## Compiler Baseline Follow-Up
+
+Closeout audit on `2026-10-02` exposed a gap in the original matrix: it ran with
+Rust 1.96.0, not the declared 1.81 minimum. An actual 1.81 workspace check failed
+on `Option::is_none_or`; Clippy also identified its use in Cluster startup.
+The user approved raising local, workspace, CI/release and minimum versions
+together, selecting stable 1.99.0 instead of the initially considered 1.98.1.
+Edition 2021, the dependency lockfile and runtime behavior remain unchanged.
+
+Revalidation completed on `2026-10-03` using rustc 1.99.0
+(`b940084d7`, LLVM 23.1.1) and Cargo 1.99.0. All four workspace packages inherit
+the new minimum; the repository pin, Windows gate and both native release
+build jobs select 1.99.0. The local default was verified outside the repository
+as well. Existing toolchains are retained for rollback, not used by this branch.
+
+| Check | Result |
+| --- | --- |
+| `cargo check --workspace --all-targets --locked` | Passed, no compile warnings; repeated after component installation completed. |
+| `cargo fmt --all -- --check` | Passed, no source formatting changes. |
+| `cargo clippy --workspace --all-targets --locked -- -A clippy::all -D clippy::incompatible_msrv` | Passed; this checks MSRV, not the full Clippy style backlog. |
+| `cargo test --workspace --locked -q` | 917 passed, 9 existing ignored entries. |
+| `cargo test --workspace --release --locked -q` | 917 passed, the same 9 ignored entries. |
+| Debug CLI/daemon and `cargo build --workspace --release --locked` | Passed; release CLI version and daemon help also executed successfully. |
+| `cargo check -p tentgent-platform-fs --all-targets --target x86_64-pc-windows-msvc --locked` | Passed; cross-compilation check only, not native Windows execution. |
+| Python regression | 122 passed, 11 subtests passed. |
+| Local startup / Cluster startup / Cluster reload scripts | 8 / 11 / 5 passed with rebuilt debug binaries. |
+| Real MLX lifecycle script, same fixture below | 3 passed in 46.5 seconds; zero remaining test processes in every case. |
+| Release readiness / workflow syntax / shell syntax | Passed; optional PowerShell dry-run still skipped. ShellCheck excludes only pre-existing intentional literal-string SC2016 notices. |
+
+The live rerun again observed model count 0 after eager zero-retention loading
+and real inference, successful restart with a new PID/token, lazy first use,
+and shared 4-second model / 12-second runtime retention. Resource count fell
+from 1 to 0 under health polling, then the runtime exited. Exact RSS is not an
+acceptance threshold. No new model download was needed.
+
+The toolchain consistency check also rejected floating-channel, MSRV-mismatch
+and release-version-mismatch fixtures. Native Windows/Linux CI execution,
+publication and the existing remaining boundaries below are still pending.
 
 ## Review Checkpoints
 
@@ -135,5 +175,8 @@ Body:
 - Preserve #131 idle defaults, shared-generation ownership and scoped cleanup.
 - Include full Rust/Python regression, 24 subprocess and 3 real MLX smoke cases,
   aligned contracts/help and Unreleased notes.
+- Align the local compiler, workspace minimum and CI/release builds on Rust
+  1.99.0; validate both debug and optimized release tests without changing
+  edition or dependencies.
 
 Validation and limits: link this record in the PR. `Fixes #132` after merge.

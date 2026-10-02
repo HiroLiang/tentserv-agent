@@ -1,6 +1,7 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: Steps 1-7 implemented and validated; awaiting human review and PR/merge.
+Status: Steps 1-7 and the Rust 1.99.0 baseline upgrade are implemented and
+validated; awaiting human review and PR/merge.
 Not pushed, merged, or released. See [final evidence](./issue-132-validation-evidence.md).
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
@@ -19,6 +20,13 @@ Step 2 began from clean Step 1 commit `8a28a68`, without pushing or changing bra
 Step 3 began from clean Step 2 commit `bb283fa`; the user resumed it after a
 pause on `2026-09-28`. Keep each implementation slice in an independent commit.
 Step 4 began from clean Step 3 commit `0316f41` on the same branch.
+Closeout review on `2026-10-02` found two `Option::is_none_or` calls that do not
+compile under the old declared Rust 1.81 minimum. The user approved raising
+the local, workspace, CI/release and minimum compiler baseline together, then
+selected stable Rust 1.99.0. Revalidation completed on `2026-10-03`: debug and
+release each passed 917 tests, all 24 subprocess cases and three real MLX
+cases passed. Edition 2021 and the dependency lockfile are unchanged. Keep
+this upgrade in an independent commit before closing #132.
 Keep the existing issue, labels, project, and
 milestone; no new implementation branch or child issue is needed.
 
