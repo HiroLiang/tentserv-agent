@@ -68,6 +68,13 @@ RC1 at `400f439` was blocked by test portability/environment findings. RC2 at
 fix and validate it before a new candidate. Neither candidate was promoted. See the
 [native feedback](./issue-132-validation-evidence.md#native-rc-feedback).
 
+RC3 at `ccc8351` passed all native source gates and reached notarization. Apple
+returned HTTP 403 because a required agreement is missing or expired. This is
+an Account Holder action, not a code/signing workaround. Keep PR #139 open and
+stable/Homebrew at `v1.1.1` until notarization and remaining artifact checks pass.
+Test-only `8fb389a` fixes bounded-Busy retry coverage; its Windows PR gate passes
+and it does not change RC3 product sources.
+
 Before release:
 
 - Close public-to-internal runtime route bypasses with an exact public route

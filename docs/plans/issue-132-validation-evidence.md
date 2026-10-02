@@ -7,6 +7,16 @@ subsequent release-hardening audit found additional blockers; the current
 branch is not yet approved for release. See the
 [maintenance release checklist](./bugfix-maintenance-plan.md#release-reassessment-2026-10-03).
 
+Current external gate: RC3 passed all four native source suites. Linux and
+Windows passed packaging and actual installed-artifact checks; macOS ARM passed
+those checks and signature verification, but Apple notarization returned HTTP
+403 for a required missing/expired agreement. The Account Holder must resolve
+the agreement in the [Apple Developer account](https://developer.apple.com/account/)
+before retrying notarization. Do not bypass this gate, merge the release PR,
+promote stable, update Homebrew, or close #132 while acceptance is missing.
+macOS Intel packaging was still running when this checkpoint was recorded.
+No RC GitHub Release has been published; latest stable remains `v1.1.1`.
+
 ## Release Audit Follow-Up
 
 On `2026-10-03`, public runtime ingress and transient Cluster reload recovery
@@ -124,6 +134,16 @@ MLX cases passed again in 48.0 seconds, with zero remaining test processes.
 Native Unix/Windows validation and RC3's installed-artifact checks remain
 required; local PowerShell is unavailable, so the POSIX PowerShell dry-run
 correction still needs its real runner check.
+
+RC3 subsequently passed the complete native source gate on every platform,
+including both real macOS PowerShell dry-runs. The separate repeated Windows
+PR gate exposed a concurrency-test assumption: a bounded coordinator attempt
+may return `Busy`. Test-only `8fb389a` now mirrors the existing supervisor's
+20-second/150-ms retry policy, retains strict one-generation/first-policy
+assertions, and adds forced-contention/deadline regressions. No production
+locking or timeout changed. This file is `#[cfg(test)]`; it is the only source
+difference from RC3. Local debug/release matrices each pass 951 tests (9 ignored);
+the updated native Windows PR gate passes three ownership runs of 31 tests each.
 
 ## Compiler Baseline Follow-Up
 
