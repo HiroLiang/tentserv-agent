@@ -7,15 +7,17 @@ subsequent release-hardening audit found additional blockers; the current
 branch is not yet approved for release. See the
 [maintenance release checklist](./bugfix-maintenance-plan.md#release-reassessment-2026-10-03).
 
-Current external gate: RC3 passed all four native source suites. Linux and
-Windows passed packaging and actual installed-artifact checks; macOS ARM passed
-those checks and signature verification, but Apple notarization returned HTTP
-403 for a required missing/expired agreement. The Account Holder must resolve
+Current external gate: [RC3](https://github.com/HiroLiang/tentserv-agent/actions/runs/37050779331)
+finished with all four native source, packaging and actual installed-artifact
+checks passed. Both macOS architectures passed signature verification, but
+Apple notarization returned HTTP 403 for a required missing/expired agreement
+on both. The Account Holder must resolve
 the agreement in the [Apple Developer account](https://developer.apple.com/account/)
 before retrying notarization. Do not bypass this gate, merge the release PR,
 promote stable, update Homebrew, or close #132 while acceptance is missing.
-macOS Intel packaging was still running when this checkpoint was recorded.
-No RC GitHub Release has been published; latest stable remains `v1.1.1`.
+The release-creation job was skipped. No RC GitHub Release has been published;
+latest stable remains `v1.1.1`. Workflow artifact installation is not a
+substitute for the pending published-release MLX and Homebrew verification.
 
 ## Release Audit Follow-Up
 

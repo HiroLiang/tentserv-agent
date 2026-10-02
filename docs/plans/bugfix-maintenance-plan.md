@@ -40,7 +40,7 @@ queue that should stay visible from the active plan.
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
 | [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
-| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Steps 1-7 checked; release-hardening fixes in progress | `v1.2.0` (patch selection pending) | Local/Cluster startup, staged eager reload, Cloud validation and lazy-only images are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) and [validation](./issue-132-validation-evidence.md). |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Implemented; release blocked by Apple agreement | `v1.2.0` (patch selection pending) | Local/Cluster startup, staged eager reload, Cloud validation and lazy-only images are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) and [validation](./issue-132-validation-evidence.md). |
 | [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State
@@ -64,14 +64,15 @@ updating Homebrew, including related maintenance issues. Target train:
 `#126`-`#130` remain in `v1.2.0`; they are not prerequisites for this patch.
 The earlier matrix is baseline evidence, not approval of the new changes.
 RC1 at `400f439` was blocked by test portability/environment findings. RC2 at
-`11eb52d` reached Linux kernel tests and exposed an invalid-PID probe boundary;
-fix and validate it before a new candidate. Neither candidate was promoted. See the
+`11eb52d` reached Linux kernel tests and exposed an invalid-PID probe boundary,
+corrected in RC3. Neither candidate was promoted. See the
 [native feedback](./issue-132-validation-evidence.md#native-rc-feedback).
 
-RC3 at `ccc8351` passed all native source gates and reached notarization. Apple
-returned HTTP 403 because a required agreement is missing or expired. This is
-an Account Holder action, not a code/signing workaround. Keep PR #139 open and
-stable/Homebrew at `v1.1.1` until notarization and remaining artifact checks pass.
+RC3 at `ccc8351` completed all four native source, package and installed-artifact
+gates. Both macOS architectures failed notarization with HTTP 403 because a
+required agreement is missing or expired; release creation was skipped. This
+is an Account Holder action, not a code/signing workaround. Keep PR #139 open
+and stable/Homebrew at `v1.1.1` until notarization and published-release checks pass.
 Test-only `8fb389a` fixes bounded-Busy retry coverage; its Windows PR gate passes
 and it does not change RC3 product sources.
 
