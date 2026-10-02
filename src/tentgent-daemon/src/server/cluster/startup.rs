@@ -21,7 +21,7 @@ use tentgent_kernel::features::{
 use super::{
     cache::ClusterDefinitionSnapshot,
     error::ClusterServerError,
-    leases::RouteRequestLease,
+    leases::{unresolved_preload_recovery, RouteRequestLease},
     state::{ClusterServerState, PreparedClusterRoute},
 };
 use crate::server::local::{capability::ensure_model_endpoint, startup::preload_and_record};
@@ -88,7 +88,17 @@ pub(super) async fn preload_route(
                 | ModelRuntimePreloadFailureKind::NotAccepted
         )
     });
-    result.map_err(|error| ClusterServerError::route_unavailable(error.to_string()))
+    result.map_err(|error| {
+        let message = if pending.completed {
+            error.to_string()
+        } else {
+            format!(
+                "{error}; {}",
+                unresolved_preload_recovery(&route.local.config.server_ref)
+            )
+        };
+        ClusterServerError::route_unavailable(message)
+    })
 }
 
 fn check_startup_snapshot(state: &ClusterServerState) -> Result<(), ClusterServerError> {
@@ -190,8 +200,8 @@ fn group_routes(routes: Vec<PreparedClusterRoute>) -> Vec<Vec<PreparedClusterRou
 }
 
 fn route_error(routes: &[ClusterRouteKey], error: ClusterServerError) -> ClusterServerError {
-    ClusterServerError::route_unavailable(format!(
-        "eager startup route(s) [{}]: {error}",
+    error.with_context(format!(
+        "eager startup route(s) [{}]",
         routes
             .iter()
             .map(|route| route.as_str())

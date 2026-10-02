@@ -69,10 +69,15 @@ struct DelayedStreamState {
 #[derive(Default)]
 pub(super) struct RecordingRouteOwnership {
     pub(super) events: Mutex<Vec<String>>,
+    acquire_busy_remaining: Mutex<usize>,
     release_busy_remaining: Mutex<usize>,
 }
 
 impl RecordingRouteOwnership {
+    pub(super) fn busy_on_next_acquire(&self) {
+        *self.acquire_busy_remaining.lock().unwrap() = 1;
+    }
+
     pub(super) fn busy_on_next_release(&self) {
         *self.release_busy_remaining.lock().unwrap() = 1;
     }
@@ -88,6 +93,22 @@ impl RouteClaimOwnershipUseCase for RecordingRouteOwnership {
             .lock()
             .unwrap()
             .push(format!("acquire:{}", request.claim.owner_id));
+        let mut remaining = self.acquire_busy_remaining.lock().unwrap();
+        if *remaining > 0 {
+            *remaining -= 1;
+            return Ok(RouteClaimTransition::Busy(
+                tentgent_kernel::features::resource_coordination::ResourceBusy {
+                    code: tentgent_kernel::features::resource_coordination::ResourceCoordinationCode::ResourceBusy,
+                    operation_id: "busy-acquire".to_string(),
+                    key: request.claim.claim_key(),
+                    attempts: 1,
+                    waited_millis: 1,
+                    holders: Vec::new(),
+                    retry_after_millis: 1,
+                    description: "route claim is temporarily busy".to_string(),
+                },
+            ));
+        }
         Ok(RouteClaimTransition::Acquired(request.claim))
     }
 

@@ -301,8 +301,21 @@ Old traffic cannot retire staged claims. Failure or supersession discards only
 candidate claims; unknown completion retains them for reconciliation. B finishes
 accepted work before a superseding C starts. An unchanged failed candidate is
 not retried every tick: fix/reapply the definition or restart after recovery.
+Known transient claim-lock contention or a previous generation's draining
+requests are different: `waiting` retries the unchanged candidate on the next
+one-second watcher tick. This allows A-to-B-to-A rollback after A's old stream
+finishes, without repeatedly retrying terminal load failures or unknown work.
 Health stays ready on the committed revision and exposes `reload.status`
-(`idle`, `preparing`, `failed`, `superseded`), `candidate_hash`, and `diagnostic`.
+(`idle`, `preparing`, `waiting`, `failed`, `superseded`), `candidate_hash`, and
+`diagnostic`.
+
+After unknown preload completion, the candidate claim remains owned by the
+live Cluster worker even if the Python task subsequently finishes. Reapplying
+that candidate or running reconciliation alone cannot release it. Stop the
+owning server, let its accepted Python work finish (or its runtime exit), then
+run `tentgent runtime reconcile --apply` and restart the server. Stopping the
+Rust worker does not cancel or terminate that shared Python work. Reconciliation
+only removes claims proven stale; it never bypasses a live owner.
 
 Lazy requests/health also check revisions and publish valid changes immediately.
 Invalid lazy reloads still fail closed until the file is valid. Both modes

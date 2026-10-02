@@ -59,7 +59,8 @@ pub async fn run_cluster_server_runtime(config: ClusterServerRuntimeConfig) -> m
         runtime,
         executable_resolver: StdRuntimeExecutableResolver,
         supervisor: tentgent_kernel::features::runtime::infra::ModelRuntimeDaemonSupervisor::new(),
-        client: reqwest::Client::new(),
+        client: crate::server::local::proxy::runtime_http_client()
+            .map_err(|err| miette::miette!("{err}"))?,
         definitions,
         routes,
     };

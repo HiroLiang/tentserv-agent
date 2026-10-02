@@ -116,7 +116,26 @@ candidates never replace the committed routes. `/healthz` stays ready and its
 `reload` object reports `status`, `candidate_hash`, and `diagnostic`; inspect
 this object or worker logs when an apply has not taken effect. An unchanged
 failed candidate is not retried every second: fix/reapply it or restart after
-recovery. Lazy reload still rejects routing while a changed definition is invalid.
+recovery. Temporary ownership contention or old requests still draining report
+`waiting` and retry automatically once per second; an A-to-B-to-A rollback can
+therefore resume after A's old stream finishes without another apply. Lazy
+reload still rejects routing while a changed definition is invalid.
+
+If the diagnostic says preload completion is unknown, the original Python
+load may still be running. Reapplying or reconciling while the owning Cluster
+server is live will not clear its protected claim. Stop that server first,
+wait for accepted Python work to finish or the runtime to exit, then reconcile
+and restart:
+
+```bash
+tentgent server stop <server-ref>
+# Confirm accepted Python work has finished (runtime health/tasks or worker logs).
+tentgent runtime reconcile --apply
+tentgent server start <server-ref>
+```
+
+Stopping the Rust server does not cancel shared Python loading. Do not remove
+ownership files manually or terminate another server's shared runtime.
 
 `cluster apply` replaces the complete stored definition. The currently stored
 `route_update_policy` controls target changes:

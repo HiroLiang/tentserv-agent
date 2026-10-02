@@ -208,6 +208,56 @@ impl Harness {
 }
 
 #[tokio::test]
+async fn rollback_retries_after_old_stream_drains_without_reapplying_definition() {
+    let mut h = Harness::new("reload-rollback-drain");
+    let old_stream = h.state.resolve_local_state(ClusterRouteKey::Chat).unwrap();
+    h.save("b");
+    h.tick();
+    h.load("b").await.send(true).unwrap();
+    h.status("idle").await;
+    assert_eq!(h.routed(), "b".repeat(64));
+
+    h.save("a");
+    h.tick();
+    h.status("waiting").await;
+    assert!(
+        h.loads.try_recv().is_err(),
+        "retiring A cannot start a loader"
+    );
+    assert_eq!(h.routed(), "b".repeat(64));
+    assert_eq!(h.state.routes.active_claim_count(), 2);
+    drop(old_stream);
+    h.tick();
+    h.load("a").await.send(true).unwrap();
+    h.status("idle").await;
+    assert_eq!(h.routed(), "a".repeat(64));
+    assert_eq!(h.state.routes.active_claim_count(), 1);
+    h.close().await;
+}
+
+#[tokio::test]
+async fn transient_claim_acquisition_retries_same_candidate_on_next_tick() {
+    let ownership =
+        std::sync::Arc::new(crate::server::cluster::tests::RecordingRouteOwnership::default());
+    let mut h = Harness::with_ownership("reload-busy-acquire", Some(ownership.clone()));
+    h.routed();
+    h.save("b");
+    ownership.busy_on_next_acquire();
+    h.tick();
+    h.status("waiting").await;
+    assert!(
+        h.loads.try_recv().is_err(),
+        "busy claims cannot start a loader"
+    );
+    assert_eq!(h.routed(), "a".repeat(64));
+    h.tick();
+    h.load("b").await.send(true).unwrap();
+    h.status("idle").await;
+    assert_eq!(h.routed(), "b".repeat(64));
+    h.close().await;
+}
+
+#[tokio::test]
 async fn idle_ticks_retry_busy_retired_claim_release_without_a_new_revision() {
     let ownership =
         std::sync::Arc::new(crate::server::cluster::tests::RecordingRouteOwnership::default());

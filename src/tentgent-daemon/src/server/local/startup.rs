@@ -7,7 +7,7 @@ use std::{
 };
 
 use axum::{
-    extract::{Request, State},
+    extract::{MatchedPath, Request, State},
     http::StatusCode,
     middleware::Next,
     response::Response,
@@ -35,7 +35,7 @@ use tentgent_kernel::{
 };
 
 use super::{
-    capability::ensure_model_endpoint, error::LocalServerError, ingress::reject_lifecycle_path,
+    capability::ensure_model_endpoint, error::LocalServerError, ingress::reject_unknown_route,
     LocalServerState,
 };
 
@@ -60,7 +60,11 @@ pub(super) async fn admit_ready_request(
     request: Request,
     next: Next,
 ) -> Result<Response, LocalServerError> {
-    reject_lifecycle_path(request.uri().path())?;
+    // Unknown paths must stay private even during eager startup. Only paths
+    // matched by the explicit public router may reach readiness admission.
+    if request.extensions().get::<MatchedPath>().is_none() {
+        return Err(reject_unknown_route().await);
+    }
     if request.uri().path() != "/healthz" && !state.readiness.is_ready() {
         return Err(LocalServerError {
             status: StatusCode::SERVICE_UNAVAILABLE,

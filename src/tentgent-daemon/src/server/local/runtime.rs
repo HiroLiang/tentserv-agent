@@ -31,8 +31,11 @@ use tentgent_kernel::{
 use super::{
     claude_messages,
     error::LocalServerError,
-    gemini_generate_content, image_generations, managed_native_chat, managed_native_chat_stream,
-    openai_chat_completions, openai_embeddings, proxy_request,
+    gemini_generate_content, image_generations,
+    ingress::{reject_unknown_route, PUBLIC_RUNTIME_PATHS},
+    managed_native_chat, managed_native_chat_stream, openai_chat_completions, openai_embeddings,
+    proxy::runtime_http_client,
+    proxy_request,
     startup::{admit_ready_request, prepare_local_startup, StartupReadiness},
 };
 
@@ -98,7 +101,8 @@ pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miett
         runtime,
         executable_resolver: StdRuntimeExecutableResolver,
         supervisor: ModelRuntimeDaemonSupervisor::new(),
-        client: reqwest::Client::new(),
+        client: runtime_http_client()
+            .map_err(|err| miette::miette!("local runtime HTTP client failed: {err}"))?,
     };
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -107,7 +111,7 @@ pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miett
 }
 
 pub(super) fn local_router(state: LocalServerState) -> Router {
-    Router::new()
+    let mut router = Router::new()
         .route("/healthz", get(healthz))
         .route("/v1/chat/completions", post(openai_chat_completions))
         .route("/v1/chat", post(managed_native_chat))
@@ -115,8 +119,12 @@ pub(super) fn local_router(state: LocalServerState) -> Router {
         .route("/v1/messages", post(claude_messages))
         .route("/v1beta/models/{*operation}", post(gemini_generate_content))
         .route("/v1/embeddings", post(openai_embeddings))
-        .route("/v1/images/generations", post(image_generations))
-        .fallback(proxy_request)
+        .route("/v1/images/generations", post(image_generations));
+    for path in PUBLIC_RUNTIME_PATHS {
+        router = router.route(path, post(proxy_request));
+    }
+    router
+        .fallback(reject_unknown_route)
         .layer(middleware::from_fn_with_state(
             state.clone(),
             admit_ready_request,

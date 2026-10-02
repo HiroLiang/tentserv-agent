@@ -330,9 +330,15 @@ object and rejects reuse, without global release or shared-runtime termination.
 Idle cleanup skips quarantine, but runtime-idle shutdown still runs and retries
 cleanup for all resources; one cleanup failure does not skip other resources.
 
-The public Local proxy returns `404` for the entire `/v1/lifecycle` and
-`/internal/v1/lifecycle` namespaces, including slash, query, encoded, and
-URL-normalized equivalents, before runtime resolution or proof recording.
+The public Local proxy routes only explicitly registered endpoints. Native
+chat and provider routes always pass through their Rust validation handlers;
+transparent forwarding is limited to exact `POST` routes for rerank, audio,
+vision, video, and image editing. Unknown routes, `/internal/*`, lifecycle,
+OpenAPI, and trailing-slash/encoded/dot-segment aliases return `404` before
+runtime resolution or proof recording. Wrong methods do not reach Python.
+The runtime HTTP client does not follow redirects, and upstream redirects
+return `502` without exposing their `Location` to callers. Direct Python
+execution routes remain a trusted loopback boundary, not a public proxy API.
 This blocks existing shutdown as well as preload. The Local worker invokes
 preload after the supervisor's existing health/generation check, including on
 reuse; managed Python launch itself stays lazy. Rust allows 305 seconds for the

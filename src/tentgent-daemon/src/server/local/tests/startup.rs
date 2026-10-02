@@ -215,7 +215,6 @@ async fn starting_health_is_observational_and_admission_blocks_every_inference_f
         "/v1/embeddings",
         "/v1/rerank",
         "/v1/audio/transcriptions",
-        "/internal/v1/chat",
         "/v1/images/generations",
     ] {
         let response = router
@@ -231,18 +230,25 @@ async fn starting_health_is_observational_and_admission_blocks_every_inference_f
             .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE, "{path}");
     }
-    let private = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/lifecycle/preload")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(private.status(), StatusCode::NOT_FOUND);
+    for path in [
+        "/v1/lifecycle/preload",
+        "/internal/v1/chat",
+        "/v1/chat/",
+        "/openapi.json",
+    ] {
+        let private = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(private.status(), StatusCode::NOT_FOUND);
+    }
     let health = router
         .clone()
         .oneshot(

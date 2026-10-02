@@ -122,6 +122,16 @@ pub(super) async fn run_eager_watcher(
                 Some(&staged.hash),
                 Some("candidate changed before promotion; keeping committed routes".into()),
             ),
+            Err(error) if error.is_retryable_transition() => {
+                // A rollback can meet its own previous stream's retiring claim.
+                // Retry only known ownership contention/drain, once per watcher
+                // tick; terminal loading/validation and unknown completion stay
+                // memoized so native loaders cannot be retried accidentally.
+                attempted = None;
+                state
+                    .reload_status
+                    .set("waiting", Some(&staged.hash), Some(error.to_string()));
+            }
             Err(error) => {
                 tracing::warn!(%error, candidate_hash = %staged.hash, "cluster reload failed; keeping committed routes");
                 state

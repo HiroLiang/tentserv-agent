@@ -7,6 +7,7 @@ Only the chat backend is faked. All state belongs to temporary runtime homes.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import shlex
@@ -38,6 +39,22 @@ def request(port, path, body=None):
             return response.status, json.load(response)
     except HTTPError as error:
         return error.code, json.load(error)
+
+
+def raw_request(port, path, body=None, *, method="POST"):
+    """Keep encoded/dot/slash paths intact and never follow a redirect."""
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        connection.request(
+            method,
+            path,
+            body=None if body is None else json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        response = connection.getresponse()
+        return response.status, response.read().decode()
+    finally:
+        connection.close()
 
 
 def free_port():
@@ -267,6 +284,85 @@ class LocalStartupTests(unittest.TestCase):
         self.assertEqual(len(self.events("release")), 1)
         wait_for(lambda: self.proofs())
         self.assert_proof("verified", "runtime-execution")
+
+    def test_public_ingress_rejects_internal_aliases_without_starting_runtime(self):
+        port, _ = self.cli_start(lazy=True)
+        wait_for(lambda: self.ready(port))
+        untrusted = {
+            "messages": [{"role": "user", "content": "hi"}],
+            "adapter": {
+                "adapter_ref": "unmanaged",
+                "source_path": "/not-a-managed-adapter",
+                "adapter_format": "peft",
+            },
+        }
+        for path in [
+            "/internal/v1/chat",
+            "/internal/v1/chat/stream",
+            "/internal/v1/rerank",
+            "/v1/chat/",
+            "/v1/chat/stream/",
+            "/v1/%63hat",
+            "/prefix/../v1/chat",
+            "/prefix/%2e%2e/v1/chat",
+            "//v1//chat",
+            "/v1/embeddings/",
+            "/v1/images/generations/",
+            "/healthz/",
+            "/%68ealthz",
+            "/openapi.json",
+            "/v1/tuning/lora/runs",
+            "/v1/lifecycle/preload",
+            "/internal/v1/lifecycle/shutdown",
+            "/v1/%6cifecycle/shutdown",
+        ]:
+            for method in ["POST", "GET", "DELETE"]:
+                with self.subTest(path=path, method=method):
+                    code, body = raw_request(port, path, untrusted, method=method)
+                    self.assertEqual(code, 404, body)
+                    self.assertEqual(json.loads(body)["error"], "not_found")
+                    self.assertNotIn("process_token", body)
+        code, body = raw_request(port, "/v1/chat", untrusted)
+        self.assertEqual(code, 422, body)
+        code, body = raw_request(
+            port,
+            "/v1/chat",
+            {"messages": untrusted["messages"], "adapter_ref": "not-a-managed-ref"},
+        )
+        self.assertEqual(code, 400, body)
+        self.assertEqual(self.events("spawn"), [])
+        self.assertEqual(self.proofs(), [])
+
+    def test_public_routes_preserve_native_and_provider_boundaries(self):
+        port, _ = self.cli_start(lazy=True)
+        wait_for(lambda: self.ready(port))
+        paths = [
+            "/v1/audio/transcriptions",
+            "/v1/audio/speech",
+            "/v1/images/transforms",
+            "/v1/images/inpaint",
+            "/v1/images/control",
+            "/v1/rerank",
+            "/v1/video/understanding",
+            "/v1/vision/chat",
+        ]
+        for path in [*paths, "/v1/chat", "/v1/chat/stream"]:
+            for method in ["GET", "DELETE", "PUT"]:
+                with self.subTest(path=path, method=method):
+                    self.assertEqual(raw_request(port, path, {}, method=method)[0], 405)
+        self.assertEqual(self.events("spawn"), [])
+        payload = {"messages": [{"role": "user", "content": "hi"}]}
+        self.assertEqual(request(port, "/v1/chat", payload)[0], 200)
+        code, body = raw_request(port, "/v1/chat/stream", payload)
+        self.assertEqual(code, 200, body)
+        self.assertIn("fixture response", body)
+        self.assertEqual(request(port, "/v1/chat/completions", payload)[0], 200)
+        for path in paths:
+            with self.subTest(path=path):
+                code, body = request(port, path, {})
+                self.assertEqual(code, 400, body)
+                self.assertIn("runtime capability `chat`", body["detail"])
+        self.assertEqual(len(self.events("spawn")), 1)
 
     def test_eager_positive_model_idle_releases_despite_health_polling(self):
         port, _ = self.cli_start(model_idle=2)

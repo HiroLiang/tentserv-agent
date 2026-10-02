@@ -126,10 +126,14 @@ impl RouteGenerationManager {
                 ));
             }
             if let Some(entry) = state.entries.get_mut(&claim.owner_id) {
-                if entry.retiring || entry.unresolved_preload {
+                if entry.unresolved_preload {
                     return Err(ClusterServerError::route_unavailable(
-                        "cluster route generation is retiring; retry against the current definition"
-                            .to_string(),
+                        unresolved_preload_recovery(&self.server_ref),
+                    ));
+                }
+                if entry.retiring {
+                    return Err(ClusterServerError::route_transition_busy(
+                        "cluster route generation is still draining; waiting to retry after its requests and ownership transition finish".into(),
                     ));
                 }
                 entry.active_requests += 1;
@@ -157,7 +161,7 @@ impl RouteGenerationManager {
                 }
             }
             RouteClaimTransition::Busy(busy) => {
-                return Err(ClusterServerError::route_unavailable(busy.description))
+                return Err(ClusterServerError::route_transition_busy(busy.description))
             }
         }
 
@@ -322,7 +326,8 @@ impl RouteGenerationManager {
                     .any(|entry| entry.unresolved_preload)
                 {
                     return Err(ClusterServerError::route_unavailable(
-                        "preload completion is unknown; retained route claims protect accepted Python work. Inspect runtime ownership and run `tentgent runtime reconcile --apply` after work finishes".into()));
+                        unresolved_preload_recovery(&self.server_ref),
+                    ));
                 }
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -414,6 +419,12 @@ impl RouteGenerationManager {
             )
         })
     }
+}
+
+pub(super) fn unresolved_preload_recovery(server_ref: &str) -> String {
+    format!(
+        "preload completion is unknown; retained route claims protect accepted Python work. Stop the owning server with `tentgent server stop {server_ref}`, wait for its accepted Python work to finish, then run `tentgent runtime reconcile --apply` and restart the server. Reconciliation cannot remove claims while their owning server is still running"
+    )
 }
 
 impl super::watch::port::DefinitionRevisionObserver for RouteGenerationManager {
