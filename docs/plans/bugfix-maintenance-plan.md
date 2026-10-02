@@ -76,6 +76,12 @@ and stable/Homebrew at `v1.1.1` until notarization and published-release checks 
 Test-only `8fb389a` fixes bounded-Busy retry coverage; its Windows PR gate passes
 and it does not change RC3 product sources.
 
+After Account Holder confirmation, prefer a new `v1.1.2-rc.132.4` tag at the
+reviewed branch head. This includes the improved test fixture and gives the
+workflow a fresh artifact namespace; preserve RC1-RC3 tags and artifacts.
+Require both macOS notarization results to be `Accepted`, then verify the
+published RC with the real model before merging and promoting stable.
+
 Before release:
 
 - Close public-to-internal runtime route bypasses with an exact public route

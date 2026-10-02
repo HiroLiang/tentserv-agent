@@ -189,9 +189,8 @@ The Linux x86_64 package job installs `libdbus-1-dev` and `pkg-config` before
 packaging because the native Linux keychain backend links `libdbus-sys` through
 the Secret Service/D-Bus stack.
 
-The current release workflow does not run `cargo fmt`, `cargo check`,
-`cargo test`, or Python unit tests before packaging. `scripts/package-local.sh`
-performs `cargo build --release --bin tentgent` as part of artifact packaging.
+After the source gates above, `scripts/package-local.sh` performs
+`cargo build --release --locked --bin tentgent` for artifact packaging.
 
 `.github/workflows/runtime-ownership-windows.yml` is a focused pull-request
 gate for changes to resource coordination, runtime ownership, and the platform
