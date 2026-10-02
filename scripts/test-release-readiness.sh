@@ -104,6 +104,7 @@ run bash -n "${script_dir}/bootstrap-python-env.sh"
 run bash -n "${script_dir}/package-local.sh"
 run bash -n "${script_dir}/release-metadata.sh"
 run bash -n "${script_dir}/test-release-metadata.sh"
+run bash -n "${script_dir}/test-release-source.sh"
 run bash -n "${script_dir}/test-install-upgrade-readiness.sh"
 run bash -n "${script_dir}/test-package-python-layout.sh"
 run bash -n "${script_dir}/test-update-homebrew-formula.sh"
@@ -117,6 +118,8 @@ run bash "${script_dir}/test-install-upgrade-readiness.sh"
 run bash "${script_dir}/test-update-homebrew-formula.sh"
 run bash "${script_dir}/test-linux-release-targets.sh"
 run bash "${script_dir}/test-package-python-layout.sh"
+run python3 "${script_dir}/test-release-package-guards.py"
+run python3 "${script_dir}/test-installed-release-unit.py"
 
 run bash "${script_dir}/install.sh" \
   --dry-run \
@@ -140,6 +143,8 @@ run bash "${script_dir}/install.sh" \
   --skip-doctor
 
 if command -v pwsh >/dev/null 2>&1; then
+  run pwsh -NoProfile -ExecutionPolicy Bypass \
+    -File "${script_dir}/test-windows-runtime-upgrade.ps1"
   run pwsh -NoProfile -ExecutionPolicy Bypass \
     -File "${script_dir}/install.ps1" \
     -DryRun \

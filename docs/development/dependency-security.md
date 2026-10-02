@@ -132,6 +132,12 @@ This does not change the machine's global Python installations. The separate
 MLX real-model smoke passed; native release runners and installed artifact
 tests remain additional gates, not implied by this local environment.
 
+The declared minimum, Python 3.11.15, also passed a fresh frozen base/dev
+install and dependency check (33 packages), with 177 tests and 11 subtests
+passed. The one optional real-Transformers test was skipped because the base
+profile does not install Transformers; the full Python 3.12 run above executes
+it. Neither environment replaces the repository or system Python.
+
 ## Reproduce The Universal Audit
 
 Run from the repository root. These commands query vulnerability metadata;

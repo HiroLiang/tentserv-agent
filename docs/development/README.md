@@ -79,6 +79,9 @@ TENTGENT_RUN_KEYCHAIN_TESTS=1 cargo test -p tentgent-kernel -- --show-output
 
 Run Python unit tests that do not require provider network access:
 
+Use Python 3.11 or 3.12; managed bootstrap and the native release gate use
+3.12 for the complete media dependency set. The system Python is not changed.
+
 ```bash
 uv run --project python/tentgent-model-runtime pytest
 ```
@@ -134,6 +137,23 @@ checksums. The release job downloads those artifacts, prepares installer
 assets and release notes, creates or updates the GitHub Release, and verifies
 prerelease/latest release state.
 
+Before packaging, each native runner executes `scripts/test-release-source.sh`:
+Rust formatting, warning-free all-target checks and workspace tests, plus a
+fresh Python 3.12 base/dev environment, dependency check and runtime tests.
+POSIX runners also execute the three lifecycle subprocess suites in sequence;
+Windows runs the native installer bootstrap invocation test. Base-only CI
+deliberately does not claim GPU, optional backend ABI, or real-model coverage;
+the optional Transformers trust test is skipped there and must run in the
+separate full-profile validation environment before release.
+
+After packaging, `scripts/test-installed-release.py` verifies the native
+archive checksum and runs the real installer in an isolated prefix/runtime
+home outside the repository. It checks the binary version, packaged layout,
+managed Python 3.12, non-editable site-packages imports and installed dependency
+compatibility. POSIX hosts also run the installed CLI's base bootstrap;
+Windows uses the installer's native bootstrap. No models are downloaded.
+Both source and installed-artifact gates must pass before publication.
+
 GitHub Release notes use the matching stable-version section from
 `docs/user/version.md`. For example, `v1.1.1-rc.131.1` and `v1.1.1` both use
 the `## v1.1.1` section. The release fails before publication when that section
@@ -187,6 +207,21 @@ installers point at the tag-specific GitHub Release asset URL. If PowerShell
 Core is installed, it also dry-runs `install.ps1`; when `pwsh` is absent, that
 optional local check is skipped.
 
+The native source gate can also be run locally with
+`bash scripts/test-release-source.sh`. An already packaged native archive can
+be checked with:
+
+```bash
+python3 scripts/test-installed-release.py \
+  --archive dist/tentgent-X.Y.Z-aarch64-apple-darwin.tar.gz \
+  --checksums dist/checksums.txt \
+  --target aarch64-apple-darwin --version X.Y.Z
+```
+
+Use the actual host target and version. This downloads the pinned bootstrap
+tool, managed Python and base dependencies into temporary directories; it does
+not use or repair the user's existing runtime environment.
+
 For the `1.0.0` readiness promise, contributor checklist, and post-1.0 routing,
 see [1.0-readiness.md](../user/1.0-readiness.md). The detailed stable,
 experimental, internal, and deprecated inventory lives in
@@ -229,6 +264,9 @@ bash -n scripts/test-update-homebrew-formula.sh
 
 ## Compatibility Audits
 
+- [dependency-security.md](./dependency-security.md)
+  Exact-version dependency review, unresolved upstream advisories and their
+  application boundaries, and managed Python interpreter compatibility gates.
 - [provider-compatibility-audit/README.md](./provider-compatibility-audit/README.md)
   Engineering audit of current OpenAI, Claude/Anthropic, and Gemini-shaped
   daemon and direct cloud server routes, plus the native local model-bound

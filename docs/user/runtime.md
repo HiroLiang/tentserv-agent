@@ -155,6 +155,19 @@ The managed install default for the Python environment is:
 TENTGENT_HOME/runtime/python-env
 ```
 
+Managed bootstrap selects Python 3.12; this release supports Python 3.11 and
+3.12, not 3.13, to keep the supported media dependencies compatible. It does
+not change your system Python. `TENTGENT_BOOTSTRAP_PYTHON_VERSION` can select a
+supported version; remove a previous `3.13` override before upgrading.
+
+Before rebuilding an older managed environment, stop the affected servers,
+chat/train work, and daemon. Bootstrap lets `uv` replace an incompatible
+interpreter environment at the same path; models, adapters, datasets, and
+server records outside that environment remain intact. If sync fails, stop
+remaining processes and retry the same bootstrap/profile. Do not delete
+`TENTGENT_HOME` or model stores to repair Python. On Windows, rerun the native
+PowerShell installer; the CLI bootstrap executor is currently POSIX-only.
+
 The actual path shown by `runtime status` or `doctor` may differ when
 `TENTGENT_PYTHON_ENV_DIR` is set. Treat this environment as required runtime
 state. Do not remove it unless you are intentionally repairing or reinstalling

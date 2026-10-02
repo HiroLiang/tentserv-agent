@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-DEFAULT_PYTHON_VERSION="3.13"
+DEFAULT_PYTHON_VERSION="3.12"
 
 usage() {
   cat <<'USAGE'
@@ -31,7 +31,8 @@ Environment:
   TENTGENT_PYTHON_ENV_DIR             Override managed Python environment path.
   TENTGENT_BOOTSTRAP_UV               Override pinned uv executable path.
   TENTGENT_BOOTSTRAP_UV_CACHE_DIR     Override uv package/cache directory.
-  TENTGENT_BOOTSTRAP_PYTHON_VERSION   Override managed Python version. Defaults to 3.13.
+  TENTGENT_BOOTSTRAP_PYTHON_VERSION   Override managed Python version. Defaults to 3.12.
+                                   The packaged runtime supports Python 3.11 and 3.12.
   TENTGENT_BOOTSTRAP_PROFILE          Override runtime dependency profile. Defaults to base.
 USAGE
 }
@@ -291,7 +292,13 @@ append_profile_sync_args
 UV_PROJECT_ENVIRONMENT="${ENV_DIR}" \
   UV_MANAGED_PYTHON=1 \
   UV_CACHE_DIR="${UV_CACHE_DIR}" \
-  "${UV_PATH}" "${SYNC_ARGS[@]}"
+  "${UV_PATH}" "${SYNC_ARGS[@]}" || {
+    sync_status=$?
+    echo "error: managed Python sync failed. Stop affected Tentgent workloads and retry the same bootstrap." >&2
+    echo "This release defaults to Python 3.12 and supports 3.11/3.12; remove an incompatible TENTGENT_BOOTSTRAP_PYTHON_VERSION override." >&2
+    echo "Do not delete TENTGENT_HOME, models, or other user stores to repair the Python environment." >&2
+    exit "${sync_status}"
+  }
 
 if [[ "${DRY_RUN}" == "true" ]]; then
   echo "==> Dry run complete"
