@@ -2,8 +2,48 @@
 
 Date: `2026-10-01`. Branch: `bug/132-server-runtime-option-noops`.
 Scope and decisions: [implementation plan](./issue-132-server-runtime-option-contract-plan.md).
-Implementation and Rust 1.99.0 revalidation are ready for human review, not
-merged or released.
+Implementation and Rust 1.99.0 revalidation passed the initial matrix. A
+subsequent release-hardening audit found additional blockers; the current
+branch is not yet approved for release. See the
+[maintenance release checklist](./bugfix-maintenance-plan.md#release-reassessment-2026-10-03).
+
+## Release Audit Follow-Up
+
+On `2026-10-03`, public runtime ingress and transient Cluster reload recovery
+were corrected in `deac594`. Exact route allowlisting preserves public DTO
+validation; upstream redirects are rejected. A rollback waiting on old stream
+leases retries without another definition edit, while unknown/terminal native
+loads are not retried. The unknown-completion subprocess case proves the
+documented stop, settle, reconcile, restart sequence actually clears claims.
+
+Focused results: Local Rust 34 passed, Cluster Rust 42 passed/1 existing manual
+ignored; Local subprocess 10 passed, Cluster reload subprocess 6 passed. Full
+Rust workspace: 920 passed, the same 9 ignored entries. All-target check and
+format passed without compile warnings. The initial sandbox-only run failed
+to bind a loopback test listener; the permitted rerun executed successfully.
+
+Packaging guards passed 8 offline tests plus the existing readiness suite.
+Model asset safety and platform imports were corrected in `c7c56be`: the
+supported Python 3.12 full-profile environment passed 178 tests + 11 subtests,
+150-package dependency compatibility checks, and native backend imports.
+The updated Rust dependency graph passed 922 workspace tests (9 ignored),
+all-target checks without warnings, and an exact-version 313-package OSV audit.
+See [dependency review](../development/dependency-security.md) for the two
+remaining Python upstream advisories and tested application boundaries.
+
+Real MLX lifecycle reran on Python 3.12.13 with the same pinned fixture: all
+three tests passed in 48.2 seconds. Model counts dropped to zero, health polls
+did not prevent process exit, restart changed the PID/token, and all isolated
+processes were cleaned up. Native platform CI and installed-release smoke
+remain pending; the older evidence below is retained as historical baseline.
+
+The final local native-source gate also passed: warning-denying Rust debug
+checks/tests (922 passed, 9 ignored), a fresh Python 3.12 base/dev environment
+(177 passed, 1 optional test skipped, 11 subtests), all 27 lifecycle subprocess
+cases, 6 artifact-smoke unit cases, and release-readiness fixtures. Optimized
+Rust release tests separately passed the same 922/9 matrix with `-D warnings`.
+Python 3.11 minimum-version base/dev checks passed the same 177/1/11 matrix.
+The local RC archive builds successfully; its real installer smoke is pending.
 
 ## Compiler Baseline Follow-Up
 
@@ -155,9 +195,11 @@ release, real reload/reuse, and OS process exit, not per-allocation GPU telemetr
 - Image dispatch uses fake backends/pixel decoding; no Diffusers/MFLUX weights
   or paid Cloud inference were downloaded/executed.
 - Confirmed preload failure releases only candidate resources. Unknown
-  completion intentionally retains claims; inspect/reconcile after work ends.
-- No architecture cleanup, proof-v2 migration, ownership redesign, PR creation,
-  push, merge, version bump, Homebrew update, or release publication occurred.
+  completion intentionally retains claims; stop its owning server, wait for
+  accepted work, reconcile, then restart.
+- No architecture cleanup, proof-v2 migration or ownership redesign is included.
+- Version preparation targets `v1.1.2`; PR/merge, native release verification,
+  Homebrew update, and publication are separate pending gates.
 - The GitHub issue remains open for review/merge; this local record supersedes
   its earlier "implementation has not started" progress prose.
 
@@ -173,10 +215,11 @@ Body:
 - Reject unsupported new Cloud lifecycle inputs while retaining old specs/refs;
   enforce lazy-only Diffusers and MLX/MFLUX image servers.
 - Preserve #131 idle defaults, shared-generation ownership and scoped cleanup.
-- Include full Rust/Python regression, 24 subprocess and 3 real MLX smoke cases,
-  aligned contracts/help and Unreleased notes.
+- Include full Rust/Python regression, 27 subprocess and 3 real MLX smoke cases,
+  aligned contracts/help and version notes.
 - Align the local compiler, workspace minimum and CI/release builds on Rust
-  1.99.0; validate both debug and optimized release tests without changing
-  edition or dependencies.
+  1.99.0 and managed Python on 3.12; patch known dependency advisories, enforce
+  model asset safety, and validate native packages before publication.
 
-Validation and limits: link this record in the PR. `Fixes #132` after merge.
+Validation and limits: link this record in the PR using `Refs #132`. Close the
+issue after installed stable release and Homebrew verification, not on merge.

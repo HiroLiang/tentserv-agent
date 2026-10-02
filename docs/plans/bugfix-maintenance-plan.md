@@ -40,7 +40,7 @@ queue that should stay visible from the active plan.
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
 | [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
-| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Steps 1-7 checked; awaiting review/merge | `v1.2.0` | Local/Cluster startup, staged eager reload, Cloud validation and lazy-only images are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) and [validation](./issue-132-validation-evidence.md). |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Steps 1-7 checked; release-hardening fixes in progress | `v1.2.0` (patch selection pending) | Local/Cluster startup, staged eager reload, Cloud validation and lazy-only images are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) and [validation](./issue-132-validation-evidence.md). |
 | [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State
@@ -55,6 +55,35 @@ are implemented and checked, including integration, documentation and real MLX
 load/release/restart evidence. Independent commits await human review; no push,
 PR creation, merge or release was performed. GitHub issue status remains open.
 It is independent of `#127` and precedes `#128` and `#130` implementation.
+
+### Release Reassessment (`2026-10-03`)
+
+The user authorized fixing release blockers, publishing when verified, and
+updating Homebrew, including related maintenance issues. Target train:
+`v1.1.2-rc.132.1` then `v1.1.2` from the same verified source. Feature issues
+`#126`-`#130` remain in `v1.2.0`; they are not prerequisites for this patch.
+The earlier matrix is baseline evidence, not approval of the new changes.
+
+Before release:
+
+- Close public-to-internal runtime route bypasses with an exact public route
+  allowlist and no upstream redirects. Preserve managed DTO validation.
+- Retry only known transient Cluster ownership contention; keep terminal
+  load failures memoized and retain unknown-work claims. Document the actual
+  stop, settle, reconcile, restart recovery sequence.
+- Remove implicit model-repository code execution, audit locked dependencies,
+  and verify mitigations for advisories without upstream fixes. Document the
+  trusted-host deployment boundary; no Internet-service security claim.
+- Require explicit accepted Apple notarization, correct Windows runtime
+  refresh, locked/version-consistent packages, and stable release metadata.
+- Run affected/full regressions, native platform CI, artifact installation and
+  real-model idle/restart tests. No skipped test counts as native validation.
+- Publish RC, validate installed artifacts, then stable and the Homebrew tap.
+  Close issues only after release and installed-version verification.
+
+New milestone/issue creation awaits explicit approval after the permission
+reviewer rejected that metadata write. No general PR CI implementation or
+public vulnerability details are published while this approval is pending.
 
 The completed `v1.1.0` Cluster issue flow is archived under
 [archive/cluster-roadmap.md](./archive/cluster-roadmap.md). Future feature work

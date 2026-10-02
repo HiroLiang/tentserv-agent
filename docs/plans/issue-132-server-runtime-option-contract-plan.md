@@ -1,8 +1,10 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: Steps 1-7 and the Rust 1.99.0 baseline upgrade are implemented and
-validated; awaiting human review and PR/merge.
-Not pushed, merged, or released. See [final evidence](./issue-132-validation-evidence.md).
+Status: Steps 1-7 and the Rust 1.99.0 baseline upgrade passed the initial
+validation. User-authorized release hardening now targets `v1.1.2`, with
+native package and installed-release gates still required before closeout.
+See [validation evidence](./issue-132-validation-evidence.md) and the
+[release checklist](./bugfix-maintenance-plan.md#release-reassessment-2026-10-03).
 
 Issue: [#132](https://github.com/HiroLiang/tentserv-agent/issues/132)
 
@@ -437,7 +439,8 @@ actually execute; a zero-test filtered run is not evidence.
 - #129 adapter/load identity remains responsible for adapter-specific preload
   and proof semantics. This issue validates only the base model for each route.
 - Do not add Cloud retention, model prefetch, new public lifecycle controls,
-  new backend families, or release publication in this issue.
+  or new backend families. The subsequent user-authorized publication is
+  tracked by the maintenance release checklist, not an extra #132 feature.
 
 ## Completion
 
@@ -451,4 +454,5 @@ actually execute; a zero-test filtered run is not evidence.
 - [x] Every accepted decision D1-D9 is implemented and verified within the recorded test scope.
 - [x] Each review step records its focused test result and remaining risk.
 - [x] All #132 issue implementation acceptance criteria pass and user-facing docs match.
-- [ ] PR review and merge are complete; #132 can then be closed.
+- [ ] PR review and merge are complete.
+- [ ] Installed stable release and Homebrew verification pass; then close #132.

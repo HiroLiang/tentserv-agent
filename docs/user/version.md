@@ -3,17 +3,40 @@
 This document summarizes user-facing release notes, stable promises, and known
 limits for current and historical Tentgent versions.
 
-## Unreleased
+## v1.1.2
+
+Server lifecycle correctness, model-loading safety, and release reliability.
 
 - Raised the source-build minimum Rust version to 1.99.0 and pinned local,
   Windows CI and native release builds to that version. Rust edition and
-  dependency lockfile are unchanged; binary installations need no compiler.
+  source language remain unchanged; binary installations need no compiler.
 - Fixed #132: Local/Cluster `lazy_load=false` now validates base-model loading
   before readiness, including reused Python generations. Lazy mode defers load
   to inference; health polling remains observational.
 - Cluster eager reload preloads candidate routes before guarded promotion,
   keeps old routes on failure, and retains old streaming leases until completion.
   Health includes pending/failed reload diagnostics.
+- Cluster reload retries known transient claim contention after old streams
+  drain. Unknown preload work remains protected; recovery requires stopping
+  its owning server, waiting for accepted work, reconciling, then restarting.
+- Model servers forward only explicitly supported public endpoints and reject
+  upstream redirects. Internal Python routes, schemas and path aliases are
+  not exposed through the public listener.
+- Release packaging verifies workspace, archive and binary version agreement;
+  Apple notarization must explicitly report acceptance. Windows installation
+  refreshes the Python runtime even when its package version is unchanged.
+- Managed model loading rejects implicit repository code and unsafe asset
+  references, and uses safetensors for Transformers/Diffusers model weights.
+  Models requiring custom Python code are no longer silently trusted.
+- Updated Rust/Python dependencies for known security advisories. Two upstream
+  findings remain explicitly reviewed with application-level restrictions;
+  see [dependency security review](../development/dependency-security.md).
+- Managed Python now defaults to 3.12, with source support for 3.11–3.12, to
+  satisfy the speech dependency requirements. Stop workloads before rebuilding
+  an older 3.13 environment; model and application stores are preserved.
+- Fixed Windows Python runtime imports when Unix process-memory APIs are
+  unavailable. Unavailable training memory metrics are omitted and displayed
+  as unavailable rather than a false zero.
 - New Cloud requests reject explicit local lifecycle fields, including REST
   `false`, `0`, and `null`. Existing Cloud specs retain their refs and remain
   startable; inspect explains ignored legacy values.
@@ -23,10 +46,13 @@ limits for current and historical Tentgent versions.
   validates loading, not permanent residency. Unknown preload completion keeps
   ownership protection until safe reconciliation.
 
-Upgrade the Python runtime with `tentgent runtime bootstrap --profile local-model`
-when an older environment lacks internal preload support. Restart affected old
-runtime processes when safe. No storage/identity migration or proof-v2 change
-is required. These changes are not yet released.
+Rebuild older Python environments before using internal preload support. On
+POSIX, use `tentgent runtime bootstrap --profile local-model`; on Windows,
+rerun the published PowerShell installer (CLI bootstrap is POSIX-only).
+Stop affected workloads first and restart them after upgrading. No
+storage/identity migration or proof-v2 change is required. See the
+[installation upgrade notes](./install.md#upgrade) before rebuilding the
+managed Python environment.
 
 ## v1.1.1
 
