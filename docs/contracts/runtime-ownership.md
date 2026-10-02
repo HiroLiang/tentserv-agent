@@ -115,6 +115,13 @@ Each spawned worker receives an opaque process-instance token and returns it in
 internal health state. A PID without the matching token cannot prove ownership,
 which prevents PID reuse from validating the wrong process.
 
+Unix process probes accept only positive, signed PID values. Zero and values
+outside that range cannot identify an individual process and must not reach an
+OS signal operation. Signal-zero probes distinguish absent processes from
+permission denial using OS error codes; other errors remain unknown, not stale.
+Daemon/server termination rejects invalid PIDs. Process-group cleanup is only
+for an owned spawned child, never a group selector derived from stored metadata.
+
 A `starting` record may also contain optional `launch_target` and `endpoint`
 evidence. Launch preparation stores host and port before spawn; successful
 spawn attaches PID, endpoint, and process token before metadata and health

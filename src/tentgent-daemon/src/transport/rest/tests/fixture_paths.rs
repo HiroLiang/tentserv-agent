@@ -42,7 +42,7 @@ fn metadata_fixture_writers_preserve_source_paths() {
         let parsed: toml::Value = toml::from_str(&text).expect("valid fixture TOML");
         assert_eq!(
             parsed["source_path"].as_str(),
-            Some(path_string(home.join("fixtures").join(source)).as_str())
+            Some(path_string(home.join(format!("fixtures/{source}"))).as_str())
         );
     }
     fs::remove_dir_all(home).expect("remove fixture");

@@ -145,10 +145,14 @@ run bash "${script_dir}/install.sh" \
 if command -v pwsh >/dev/null 2>&1; then
   run pwsh -NoProfile -ExecutionPolicy Bypass \
     -File "${script_dir}/test-windows-runtime-upgrade.ps1"
-  run pwsh -NoProfile -ExecutionPolicy Bypass \
+  # PowerShell can be installed on POSIX without Windows LOCALAPPDATA. Keep
+  # dry-run destinations explicit and isolated instead of using host defaults.
+  run env TENTGENT_HOME="${TMPDIR:-/tmp}/tentgent-readiness-dry-run-home" \
+    pwsh -NoProfile -ExecutionPolicy Bypass \
     -File "${script_dir}/install.ps1" \
     -DryRun \
     -Version "0.0.0" \
+    -Prefix "${TMPDIR:-/tmp}/tentgent-readiness-dry-run-prefix" \
     -Target "x86_64-pc-windows-msvc" \
     -SkipPythonBootstrap \
     -SkipDoctor

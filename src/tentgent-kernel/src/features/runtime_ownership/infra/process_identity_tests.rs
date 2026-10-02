@@ -1,6 +1,90 @@
 use crate::foundation::error::KernelError;
 
-use super::process_identity::parse_tasklist_output;
+use super::process_identity::{
+    parse_tasklist_output, parse_unix_process_state, unix_liveness_from_state,
+};
+
+#[cfg(unix)]
+#[test]
+fn unix_invalid_single_process_ids_are_dead_without_group_probes() {
+    use crate::features::runtime_ownership::OwnershipProcessProbe;
+
+    for pid in [0, i32::MAX as u32 + 1, u32::MAX] {
+        assert!(!super::StdOwnershipProcessProbe
+            .is_process_running(pid)
+            .expect("invalid single-process PID must not invoke kill or ps"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn unix_ownership_probe_detects_current_process() {
+    use crate::features::runtime_ownership::OwnershipProcessProbe;
+
+    assert!(super::StdOwnershipProcessProbe
+        .is_process_running(std::process::id())
+        .expect("current process must be live"));
+}
+
+#[test]
+fn unix_state_probe_recognizes_zombies_without_changing_live_states() {
+    for state in ["Z", "Z+", "ZN", " Zs\n"] {
+        assert!(parse_unix_process_state(true, state, "").unwrap());
+    }
+    for state in ["R+", "Ss", "D", "T", "t", "I", "U", "W", "X"] {
+        assert!(!parse_unix_process_state(true, state, "").unwrap());
+    }
+}
+
+#[test]
+fn unix_state_probe_failure_is_unknown_even_with_zombie_stdout() {
+    for stderr in ["", "Access denied", "拒絕存取"] {
+        let error = parse_unix_process_state(false, "Z-private-output", stderr)
+            .expect_err("failed ps must not prove that a process is dead");
+        assert!(matches!(error, KernelError::RuntimeOwnershipUnavailable(_)));
+        assert!(!error.to_string().contains("private-output"));
+    }
+}
+
+#[test]
+fn unix_state_probe_empty_or_ambiguous_success_is_unknown() {
+    for stdout in ["", "  \n", "123", "S Z", "Z\nR"] {
+        assert!(parse_unix_process_state(true, stdout, "").is_err());
+    }
+}
+
+#[test]
+fn unix_state_probe_failure_limits_stderr_details() {
+    let stderr = format!("{}do-not-include", "拒".repeat(256));
+    let error = parse_unix_process_state(false, "", &stderr).unwrap_err();
+    assert!(error.to_string().contains(&"拒".repeat(256)));
+    assert!(!error.to_string().contains("do-not-include"));
+}
+
+#[test]
+fn unix_failed_state_probe_only_accepts_independently_verified_exit() {
+    let unknown_state = || parse_unix_process_state(false, "", "ps failed");
+    assert!(!unix_liveness_from_state(unknown_state(), || Ok(false)).unwrap());
+    let live = unix_liveness_from_state(unknown_state(), || Ok(true)).unwrap_err();
+    assert!(live.to_string().contains("ps failed"));
+    let unknown = unix_liveness_from_state(unknown_state(), || {
+        Err(KernelError::RuntimeOwnershipUnavailable(
+            "signal probe failed".to_string(),
+        ))
+    })
+    .unwrap_err();
+    assert!(unknown.to_string().contains("signal probe failed"));
+}
+
+#[test]
+fn unix_successful_state_probe_needs_no_second_signal_probe() {
+    for zombie in [false, true] {
+        assert_eq!(
+            unix_liveness_from_state(Ok(zombie), || panic!("unexpected second probe")).unwrap(),
+            !zombie
+        );
+    }
+}
 
 #[test]
 fn tasklist_matches_only_the_exact_pid_field() {

@@ -79,14 +79,14 @@ fn terminate_process(child: &mut Child) -> KernelResult<()> {
     use nix::{
         errno::Errno,
         sys::signal::{killpg, Signal},
-        unistd::Pid,
     };
 
     let pid = child.id();
+    let process_group = crate::foundation::process::unix_pid(pid)
+        .ok_or_else(|| runtime_error(format!("invalid runtime process group pid {pid}")))?;
     if child.try_wait().map_err(runtime_error)?.is_some() {
         return Ok(());
     }
-    let process_group = Pid::from_raw(pid as i32);
     if let Err(error) = killpg(process_group, Signal::SIGTERM) {
         if error != Errno::ESRCH {
             return Err(runtime_error(format!(

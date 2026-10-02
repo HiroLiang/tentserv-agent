@@ -1,8 +1,5 @@
 use std::process::Command;
 
-#[cfg(unix)]
-use std::process::Stdio;
-
 use crate::{
     features::runtime_ownership::OwnershipProcessProbe,
     foundation::error::{KernelError, KernelResult},
@@ -15,17 +12,12 @@ impl OwnershipProcessProbe for StdOwnershipProcessProbe {
     fn is_process_running(&self, pid: u32) -> KernelResult<bool> {
         #[cfg(unix)]
         {
-            let output = Command::new("kill")
-                .arg("-0")
-                .arg(pid.to_string())
-                .stdout(Stdio::null())
-                .output()
-                .map_err(ownership_error)?;
-            if output.status.success() {
-                return Ok(!is_zombie(pid)?);
+            if !crate::foundation::process::is_unix_process_running(pid).map_err(ownership_error)? {
+                return Ok(false);
             }
-            let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
-            Ok(stderr.contains("not permitted"))
+            unix_liveness_from_state(is_zombie(pid), || {
+                crate::foundation::process::is_unix_process_running(pid).map_err(ownership_error)
+            })
         }
         #[cfg(target_os = "windows")]
         {
@@ -112,14 +104,66 @@ fn quoted_csv_field(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Opt
 
 #[cfg(unix)]
 fn is_zombie(pid: u32) -> KernelResult<bool> {
+    let pid = crate::foundation::process::unix_pid(pid)
+        .ok_or_else(|| ownership_error("process state requires a positive Unix PID"))?;
     let output = Command::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "stat="])
+        .args(["-p", &pid.as_raw().to_string(), "-o", "stat="])
         .output()
         .map_err(ownership_error)?;
-    Ok(output.status.success()
-        && String::from_utf8_lossy(&output.stdout)
-            .trim_start()
-            .starts_with('Z'))
+    parse_unix_process_state(
+        output.status.success(),
+        &String::from_utf8_lossy(&output.stdout),
+        &String::from_utf8_lossy(&output.stderr),
+    )
+}
+
+#[cfg(any(unix, test))]
+pub(super) fn unix_liveness_from_state(
+    zombie: KernelResult<bool>,
+    recheck: impl FnOnce() -> KernelResult<bool>,
+) -> KernelResult<bool> {
+    match zombie {
+        Ok(zombie) => Ok(!zombie),
+        // The process may have exited between signal 0 and ps. Only a second
+        // typed probe proving absence permits stale-state cleanup.
+        Err(error) => {
+            if recheck()? {
+                Err(error)
+            } else {
+                Ok(false)
+            }
+        }
+    }
+}
+
+#[cfg(any(unix, test))]
+pub(super) fn parse_unix_process_state(
+    success: bool,
+    stdout: &str,
+    stderr: &str,
+) -> KernelResult<bool> {
+    if !success {
+        let detail: String = stderr.trim().chars().take(256).collect();
+        return Err(ownership_error(format!(
+            "Unix process state probe failed: {}",
+            if detail.is_empty() {
+                "command exited unsuccessfully"
+            } else {
+                &detail
+            }
+        )));
+    }
+    let mut states = stdout.split_whitespace();
+    let state = states
+        .next()
+        .filter(|state| state.starts_with(|character: char| character.is_ascii_alphabetic()))
+        .ok_or_else(|| ownership_error("Unix process state probe returned no valid state"))?;
+    if states.next().is_some() {
+        return Err(ownership_error(
+            "Unix process state probe returned multiple states for one PID",
+        ));
+    }
+    Ok(state.starts_with('Z'))
 }
 
 fn ownership_error(error: impl std::fmt::Display) -> KernelError {

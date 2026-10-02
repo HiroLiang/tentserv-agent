@@ -41,6 +41,9 @@ Server lifecycle correctness, model-loading safety, and release reliability.
   every process is stopped. Ownership probes match exact PID fields and retain
   unknown state on command/parse failure. Rooted Windows model shard paths are
   rejected before joining them to a model directory.
+- Unix process probes and termination validate individual PID bounds before
+  signaling, so invalid stored values cannot acquire process-group semantics.
+  Permission denial remains live/unknown evidence rather than proof of exit.
 - New Cloud requests reject explicit local lifecycle fields, including REST
   `false`, `0`, and `null`. Existing Cloud specs retain their refs and remain
   startable; inspect explains ignored legacy values.

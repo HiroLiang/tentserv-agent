@@ -97,6 +97,34 @@ matrix, all 27 lifecycle subprocess cases, both six-case artifact/source guard
 suites and release readiness. Native RC2 and published-artifact checks remain
 required before merging or promoting to stable.
 
+RC2 (`11eb52d`, [workflow](https://github.com/HiroLiang/tentserv-agent/actions/runs/37048494235))
+reached the Linux kernel suite and blocked publication on three stale-process
+tests. Their invalid PID sentinel exposed a real Unix process-probe boundary,
+not another timing assumption. The follow-up validates individual PID bounds
+before probing or signaling and uses typed OS errors for existence checks.
+The same boundary must cover daemon/server termination and training probes;
+tests must never send real termination signals to invalid PIDs. The next
+candidate will use a new tag after focused and full validation.
+macOS ARM and Intel again passed source/lifecycle tests, then their optional PowerShell
+dry-run exposed a POSIX-host fixture assumption (`LOCALAPPDATA`). The dry-run
+now supplies an explicit isolated prefix/runtime home; installer defaults and
+the actual Windows install path are unchanged.
+Windows PR ownership checks passed. The RC2 daemon suite passed its previous
+42 failures; one newly added fixture test compared two equivalent Windows path
+spellings as different strings. Its expected value now uses the exact input
+spelling to test lossless serialization. Kernel/Python/artifact checks on
+Windows still require the next native run.
+
+The PID follow-up passes 17 focused ownership tests and the complete 478-test
+kernel library suite locally. Debug and optimized release workspace matrices
+each pass 949 tests with the same 9 ignored entries; source-matched Python base
+remains 181 passed, one optional skip and 11 subtests. The complete source gate,
+all 27 lifecycle subprocess cases and release readiness passed. All three real
+MLX cases passed again in 48.0 seconds, with zero remaining test processes.
+Native Unix/Windows validation and RC3's installed-artifact checks remain
+required; local PowerShell is unavailable, so the POSIX PowerShell dry-run
+correction still needs its real runner check.
+
 ## Compiler Baseline Follow-Up
 
 Closeout audit on `2026-10-02` exposed a gap in the original matrix: it ran with
