@@ -191,7 +191,9 @@ filesystem replacement boundary. It runs repeated atomic replacement and
 `starting -> ready -> closing` ownership tests on a native Windows runner,
 plus the focused coordination and model-daemon suites. It also checks all
 workspace targets against the pinned minimum Rust version, and runs when the
-toolchain file changes.
+toolchain file changes. Builds deny warnings. Native server process identity
+tests cover a live process, an exited child, metadata/health identity, and the
+REST already-running conflict; failures cannot be hidden as stopped processes.
 
 Before tagging a release, run the script-level release-readiness checks:
 

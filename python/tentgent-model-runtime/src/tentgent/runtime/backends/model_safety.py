@@ -178,7 +178,9 @@ def _relative_asset_path(value: Any, parent: Path) -> Path:
             "model asset reference must be a nonempty relative path"
         )
     relative = Path(value)
-    if relative.is_absolute() or PureWindowsPath(value).drive or ".." in relative.parts:
+    # Windows rooted paths such as /weights reset the parent's path even though
+    # is_absolute() is false without a drive. Reject every anchor before joining.
+    if relative.anchor or PureWindowsPath(value).drive or ".." in relative.parts:
         raise ModelAssetSafetyError(
             f"model asset reference escapes its source: {value}"
         )

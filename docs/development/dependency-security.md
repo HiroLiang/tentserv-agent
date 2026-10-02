@@ -138,6 +138,12 @@ passed. The one optional real-Transformers test was skipped because the base
 profile does not install Transformers; the full Python 3.12 run above executes
 it. Neither environment replaces the repository or system Python.
 
+The final cross-platform review added four Windows path-semantic regressions:
+rooted and drive-qualified shard paths are rejected before path joining on
+every host. The expanded asset guard passed 38 tests; the full Python 3.12
+suite passed 182 tests plus 11 subtests. Python 3.11 base passed 181 tests plus
+11 subtests with the same one optional Transformers skip.
+
 ## Reproduce The Universal Audit
 
 Run from the repository root. These commands query vulnerability metadata;

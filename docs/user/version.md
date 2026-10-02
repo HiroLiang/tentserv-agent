@@ -37,6 +37,10 @@ Server lifecycle correctness, model-loading safety, and release reliability.
 - Fixed Windows Python runtime imports when Unix process-memory APIs are
   unavailable. Unavailable training memory metrics are omitted and displayed
   as unavailable rather than a false zero.
+- Windows server inspection now probes process liveness instead of assuming
+  every process is stopped. Ownership probes match exact PID fields and retain
+  unknown state on command/parse failure. Rooted Windows model shard paths are
+  rejected before joining them to a model directory.
 - New Cloud requests reject explicit local lifecycle fields, including REST
   `false`, `0`, and `null`. Existing Cloud specs retain their refs and remain
   startable; inspect explains ignored legacy values.

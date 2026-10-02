@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -10,6 +10,7 @@ import pytest
 from tentgent.runtime.backends.mlx.lora_tuning import MlxLoraTuningModel
 from tentgent.runtime.backends.model_safety import (
     ModelAssetSafetyError,
+    _relative_asset_path,
     validate_local_model_assets,
     validate_model_assets,
 )
@@ -98,6 +99,27 @@ def test_shard_traversal_and_absolute_paths_are_rejected(tmp_path, reference):
     )
     with pytest.raises(ModelAssetSafetyError, match="relative path|escapes"):
         validate_model_assets(record(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "reference",
+    ["/rooted.safetensors", "C:drive-relative.safetensors", "C:/absolute.safetensors"],
+)
+def test_windows_rooted_and_drive_paths_are_rejected_before_join(reference):
+    # Exercise Windows joining semantics on every host, not only Windows CI.
+    with (
+        patch("tentgent.runtime.backends.model_safety.Path", PureWindowsPath),
+        pytest.raises(ModelAssetSafetyError, match="escapes"),
+    ):
+        _relative_asset_path(reference, PureWindowsPath("C:/managed/model"))
+
+
+def test_windows_relative_shard_path_stays_under_selected_source():
+    with patch("tentgent.runtime.backends.model_safety.Path", PureWindowsPath):
+        source = PureWindowsPath("C:/managed/model")
+        result = _relative_asset_path("shards/weights.safetensors", source)
+        assert result == source / "shards/weights.safetensors"
+        assert result.is_relative_to(source)
 
 
 @pytest.mark.parametrize(

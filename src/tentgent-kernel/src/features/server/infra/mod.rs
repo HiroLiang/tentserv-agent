@@ -10,6 +10,8 @@ mod runtime;
 mod store;
 mod time;
 
+#[cfg(all(test, windows))]
+mod process_tests;
 #[cfg(test)]
 mod tests;
 

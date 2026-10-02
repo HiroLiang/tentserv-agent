@@ -43,7 +43,21 @@ checks/tests (922 passed, 9 ignored), a fresh Python 3.12 base/dev environment
 cases, 6 artifact-smoke unit cases, and release-readiness fixtures. Optimized
 Rust release tests separately passed the same 922/9 matrix with `-D warnings`.
 Python 3.11 minimum-version base/dev checks passed the same 177/1/11 matrix.
-The local RC archive builds successfully; its real installer smoke is pending.
+The local RC archive passed the real isolated installer: SHA, version/layout,
+managed Python 3.12.13, installed CLI bootstrap resolution, non-editable
+site-packages imports and all 33 base/dev dependencies checked successfully.
+The first Windows PR ownership run also passed before the final probe changes.
+
+Final cross-platform review corrected the Windows server liveness fallback,
+made `tasklist` PID parsing exact and fail-closed, and rejected Windows-rooted
+model shard paths before joining. Existing identity and REST conflict tests
+remain enabled; nine parser and four path-semantic regressions were added.
+Python 3.12 full now passes 182 tests + 11 subtests; Python 3.11 base passes
+181 tests + 11 subtests with one optional Transformers skip. Native Windows
+live/exited-process tests and the final four-platform release gate remain
+required. Windows termination/bootstrap parity is not added by this patch.
+The final Rust debug and optimized release matrices both passed 931 tests
+with the same 9 ignored entries; warning-denying all-target checks also passed.
 
 ## Compiler Baseline Follow-Up
 

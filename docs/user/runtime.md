@@ -286,8 +286,11 @@ See [Store cleanup](./maintenance.md#store-staging-cleanup) for dry-run and appl
 - Cloud provider chat, embedding, image generation, and provider-backed dataset
   workflows use Rust cloud clients and provider keys from env/keychain. They do
   not start Python model-runtime workers.
-- Windows x86_64 is packaged, but MLX is blocked on Windows.
-- Linux x86_64 is available as a prerelease GitHub Release install path. The
+- Windows x86_64 is packaged, but MLX is blocked on Windows. Native CLI Python
+  bootstrap and server process termination remain unsupported; use the
+  PowerShell installer for base runtime setup. Packaging and process-identity
+  tests do not establish full Local/Cluster lifecycle parity on Windows.
+- Linux x86_64 is available as a GitHub Release install path. The
   default base Python runtime has been smoke-tested on Ubuntu 24.04 without
   build tools. Local-model, training, GPU, and distro-package parity remain
   dependency-gated.

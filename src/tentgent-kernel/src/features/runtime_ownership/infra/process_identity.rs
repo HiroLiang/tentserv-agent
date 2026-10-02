@@ -29,12 +29,18 @@ impl OwnershipProcessProbe for StdOwnershipProcessProbe {
         }
         #[cfg(target_os = "windows")]
         {
+            // A filtered no-match result is localized prose, not CSV. Read the
+            // full table so an absent PID is determined without parsing it.
             let output = Command::new("tasklist")
-                .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+                .args(["/FO", "CSV", "/NH"])
                 .output()
                 .map_err(ownership_error)?;
-            return Ok(output.status.success()
-                && String::from_utf8_lossy(&output.stdout).contains(&pid.to_string()));
+            parse_tasklist_output(
+                pid,
+                output.status.success(),
+                &String::from_utf8_lossy(&output.stdout),
+                &String::from_utf8_lossy(&output.stderr),
+            )
         }
         #[cfg(not(any(unix, target_os = "windows")))]
         {
@@ -42,6 +48,66 @@ impl OwnershipProcessProbe for StdOwnershipProcessProbe {
             Err(ownership_error("process liveness probe is unsupported"))
         }
     }
+}
+
+#[cfg(any(windows, test))]
+pub(super) fn parse_tasklist_output(
+    pid: u32,
+    success: bool,
+    stdout: &str,
+    stderr: &str,
+) -> KernelResult<bool> {
+    if !success {
+        let detail: String = stderr.trim().chars().take(256).collect();
+        return Err(ownership_error(format!(
+            "tasklist process probe for pid {pid} failed: {}",
+            if detail.is_empty() {
+                "command exited unsuccessfully"
+            } else {
+                &detail
+            }
+        )));
+    }
+
+    let mut found = false;
+    for line in stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        if line.starts_with("INFO:") {
+            continue;
+        }
+        let mut fields = line.chars().peekable();
+        let parsed_pid = quoted_csv_field(&mut fields)
+            .and_then(|_| quoted_csv_field(&mut fields))
+            .and_then(|field| field.parse::<u32>().ok())
+            .ok_or_else(|| ownership_error("tasklist returned an invalid process CSV row"))?;
+        found |= parsed_pid == pid;
+    }
+    Ok(found)
+}
+
+#[cfg(any(windows, test))]
+fn quoted_csv_field(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Option<String> {
+    if chars.next()? != '"' {
+        return None;
+    }
+    let mut field = String::new();
+    while let Some(character) = chars.next() {
+        if character != '"' {
+            field.push(character);
+        } else if chars.peek() == Some(&'"') {
+            chars.next();
+            field.push('"');
+        } else {
+            return match chars.next() {
+                Some(',') | None => Some(field),
+                _ => None,
+            };
+        }
+    }
+    None
 }
 
 #[cfg(unix)]

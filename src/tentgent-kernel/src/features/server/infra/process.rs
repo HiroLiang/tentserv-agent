@@ -46,7 +46,18 @@ impl ServerProcessProbe for StdServerProcessProbe {
             Ok(false)
         }
 
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            use crate::features::runtime_ownership::{
+                OwnershipProcessProbe, StdOwnershipProcessProbe,
+            };
+
+            StdOwnershipProcessProbe
+                .is_process_running(pid)
+                .map_err(|err| server_runtime_error(format!("probe process {pid} failed: {err}")))
+        }
+
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = pid;
             Ok(false)
