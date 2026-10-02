@@ -720,10 +720,12 @@ fn cluster_chat_route_resolves_managed_adapter_through_native_boundary() {
     let cluster_ref = ClusterRef::parse("adapter-cluster").expect("cluster ref");
     let model_ref = ModelRef::parse("d".repeat(64)).expect("model ref");
     let adapter_ref = "e".repeat(64);
-    let (state, home) = state_for_definition(
-        "managed-adapter",
-        definition(&cluster_ref, &model_ref, false),
-    );
+    let label = if cfg!(unix) {
+        r#"managed-adapter\quote"path"#
+    } else {
+        "managed-adapter"
+    };
+    let (state, home) = state_for_definition(label, definition(&cluster_ref, &model_ref, false));
     write_mlx_chat_model_fixture(&home, model_ref.as_str());
     write_mlx_chat_adapter_fixture(&home, &adapter_ref, model_ref.as_str());
 
@@ -808,9 +810,9 @@ pub(super) fn write_mlx_chat_model_fixture(home: &std::path::Path, model_ref: &s
     fs::write(
         store_dir.join("model.toml"),
         format!(
-            "model_ref = \"{model_ref}\"\nshort_ref = \"{}\"\nsource_kind = \"local\"\nsource_path = \"{}\"\nprimary_format = \"mlx\"\ndetected_formats = [\"mlx\"]\nmodel_capabilities = [\"chat\"]\nmodel_capability_source = \"explicit-user\"\nfile_count = 2\ntotal_bytes = 4\nimported_at = \"2026-07-21T00:00:00Z\"\n",
+            "model_ref = \"{model_ref}\"\nshort_ref = \"{}\"\nsource_kind = \"local\"\nsource_path = {}\nprimary_format = \"mlx\"\ndetected_formats = [\"mlx\"]\nmodel_capabilities = [\"chat\"]\nmodel_capability_source = \"explicit-user\"\nfile_count = 2\ntotal_bytes = 4\nimported_at = \"2026-07-21T00:00:00Z\"\n",
             &model_ref[..12],
-            source_dir.display()
+            toml::Value::String(source_dir.display().to_string())
         ),
     )
     .expect("model metadata");
@@ -825,9 +827,9 @@ fn write_mlx_chat_adapter_fixture(home: &std::path::Path, adapter_ref: &str, mod
     fs::write(
         store_dir.join("adapter.toml"),
         format!(
-            "adapter_ref = \"{adapter_ref}\"\nshort_ref = \"{}\"\nadapter_format = \"mlx\"\nadapter_type = \"lora\"\ntarget_capability = \"chat\"\nbase_model_ref = \"{model_ref}\"\nbackend_support = [\"mlx\"]\nsource_kind = \"local\"\nsource_path = \"{}\"\nfile_count = 1\ntotal_bytes = 7\nimported_at = \"2026-07-21T00:00:00Z\"\n",
+            "adapter_ref = \"{adapter_ref}\"\nshort_ref = \"{}\"\nadapter_format = \"mlx\"\nadapter_type = \"lora\"\ntarget_capability = \"chat\"\nbase_model_ref = \"{model_ref}\"\nbackend_support = [\"mlx\"]\nsource_kind = \"local\"\nsource_path = {}\nfile_count = 1\ntotal_bytes = 7\nimported_at = \"2026-07-21T00:00:00Z\"\n",
             &adapter_ref[..12],
-            source_dir.display()
+            toml::Value::String(source_dir.display().to_string())
         ),
     )
     .expect("adapter metadata");

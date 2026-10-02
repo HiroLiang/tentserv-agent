@@ -87,10 +87,16 @@ fn proofs(state: &LocalServerState) -> Vec<ModelCapabilityProof> {
         .unwrap()
 }
 
+#[derive(Default)]
+struct PreloadGate {
+    requested: Notify,
+    complete: Notify,
+}
+
 async fn endpoint(
     state: &LocalServerState,
     status: StatusCode,
-    gate: Option<Arc<Notify>>,
+    gate: Option<Arc<PreloadGate>>,
 ) -> (
     ModelRuntimeDaemonEndpoint,
     tokio::task::JoinHandle<()>,
@@ -104,7 +110,10 @@ async fn endpoint(
             let (model_ref, requested, gate) = (model_ref.clone(), requested.clone(), gate.clone());
             async move {
                 requested.fetch_add(1, Ordering::SeqCst);
-                if let Some(gate) = gate { gate.notified().await; }
+                if let Some(gate) = gate {
+                    gate.requested.notify_one();
+                    gate.complete.notified().await;
+                }
                 let body = if status == StatusCode::OK {
                     json!({"status":"done", "task_ref":payload["task_ref"], "process_token":payload["process_token"],
                         "model_ref":model_ref, "capability":"chat"})
@@ -147,20 +156,27 @@ async fn lazy_start_never_resolves_or_preloads_a_runtime_and_writes_no_proof() {
 #[tokio::test]
 async fn eager_first_start_and_reuse_both_preload_and_record_only_completion() {
     let state = state("startup-eager-reuse", LoadMode::Eager);
-    let gate = Arc::new(Notify::new());
+    let gate = Arc::new(PreloadGate::default());
     let (endpoint, worker, count) = endpoint(&state, StatusCode::OK, Some(gate.clone())).await;
-    for _ in 0..2 {
+    assert!(proofs(&state).is_empty());
+    for attempt in 1..=2 {
+        let previous_proofs = proofs(&state);
         assert!(!state.readiness.is_ready());
         let startup = prepare_with_endpoint(&state, std::future::ready(Ok(endpoint.clone())));
         tokio::pin!(startup);
         tokio::select! {
             result = &mut startup => panic!("must wait for model completion: {result:?}"),
-            _ = tokio::time::sleep(std::time::Duration::from_millis(25)) => {}
+            arrived = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                gate.requested.notified(),
+            ) => arrived.expect("preload request must reach the fixture"),
         }
-        if count.load(Ordering::SeqCst) == 1 {
-            assert!(proofs(&state).is_empty());
-        }
-        gate.notify_one();
+        assert_eq!(count.load(Ordering::SeqCst), attempt);
+        // Reuse retains the first successful proof while its next preload is
+        // pending. Only a completed response may create or replace evidence.
+        assert_eq!(proofs(&state), previous_proofs);
+        assert!(!state.readiness.is_ready());
+        gate.complete.notify_one();
         startup.await.unwrap();
         let proofs = proofs(&state);
         assert_eq!(proofs.len(), 1);

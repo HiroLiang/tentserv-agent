@@ -59,6 +59,44 @@ required. Windows termination/bootstrap parity is not added by this patch.
 The final Rust debug and optimized release matrices both passed 931 tests
 with the same 9 ignored entries; warning-denying all-target checks also passed.
 
+## Native RC Feedback
+
+[PR #139](https://github.com/HiroLiang/tentserv-agent/pull/139) is open; the
+first candidate tag is `v1.1.2-rc.132.1` at `400f439`.
+[RC1 workflow](https://github.com/HiroLiang/tentserv-agent/actions/runs/37044944968)
+blocked publication before packaging. No RC Release or stable update was made.
+
+- Linux: a startup test inferred the iteration from a request count after a
+  25 ms sleep. Under load, the second request had not arrived yet, so the test
+  mistook the previous valid proof for an early write. Request/completion
+  handshakes now test the invariant deterministically; 100 repeated runs pass.
+- Windows: both native live/exited server probes and process identity tests
+  passed. REST/Cluster tests exposed unescaped Windows paths in hand-written
+  TOML fixtures; fix the fixtures, not production metadata serialization or
+  expected HTTP errors. The full native suite remains a required rerun.
+- macOS ARM and Intel: all Rust/Python/lifecycle cases passed, then readiness fixtures
+  failed because the runner did not include `rg`. Release jobs now install
+  ripgrep explicitly. No readiness assertions were skipped.
+
+The next candidate uses a new tag (`v1.1.2-rc.132.2`); never move the failed
+candidate tag. Installed real-model smoke can explicitly select the packaged
+Python project as well as the installed CLI, with Python path overrides cleared.
+Its health-poll loop no longer issues a duplicate request that could race the
+expected runtime exit; the rerun passed all three real MLX cases in 47.6 seconds.
+Rust debug and optimized release regression after the fixture fixes each
+passed 933 tests (9 ignored).
+A fresh local Python gate exposed a cached non-editable wheel from before the
+Windows path fix. Source validation must rebuild the runtime package and verify
+installed source contents before accepting its test results; the failed run is
+not counted as a passing Python matrix. Forced rebuilding now produces an
+85-file exact source match; six source-guard regressions pass. The refreshed
+base suite passes 181 tests, one optional Transformers skip and 11 subtests;
+the full-profile source suite passes 182 tests and 11 subtests.
+The final local native-source gate then passed end to end: the refreshed Python
+matrix, all 27 lifecycle subprocess cases, both six-case artifact/source guard
+suites and release readiness. Native RC2 and published-artifact checks remain
+required before merging or promoting to stable.
+
 ## Compiler Baseline Follow-Up
 
 Closeout audit on `2026-10-02` exposed a gap in the original matrix: it ran with

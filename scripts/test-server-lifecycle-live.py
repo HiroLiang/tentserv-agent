@@ -23,7 +23,7 @@ spec = importlib.util.spec_from_file_location(
 )
 local = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(local)
-request, wait_for, free_port = local.request, local.wait_for, local.free_port
+wait_for, free_port = local.wait_for, local.free_port
 
 
 class LiveLifecycleTests(local.LocalStartupTests):
@@ -31,6 +31,11 @@ class LiveLifecycleTests(local.LocalStartupTests):
         super().setUp()
         self.env["TENTGENT_DATA_ROOT"] = str(args.data_root.resolve())
         self.env["TENTGENT_PYTHON_ENV_DIR"] = str(Path(sys.prefix).resolve())
+        self.env["TENTGENT_PYTHON_DIR"] = str(args.python_project.resolve())
+        # An installed-artifact smoke must not import the developer's source
+        # through inherited Python overrides.
+        for name in ("PYTHONPATH", "PYTHONHOME"):
+            self.env.pop(name, None)
 
     def tearDown(self):
         pids = [
@@ -132,9 +137,10 @@ class LiveLifecycleTests(local.LocalStartupTests):
         deadline = time.monotonic() + 22
         while time.monotonic() < deadline:
             self.assertTrue(self.ready(proxy))
+            # This already polls Python health and handles a reset/refusal as
+            # shutdown; a second unguarded request races the expected exit.
             if self.runtime_stopped(meta["port"]):
                 break
-            request(meta["port"], "/healthz")
             time.sleep(0.2)
         self.assertTrue(self.runtime_stopped(meta["port"]))
         wait_for(
@@ -232,6 +238,12 @@ if __name__ == "__main__":
     parser.add_argument("--model-ref", required=True)
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--cli", type=Path, default=local.CLI)
+    parser.add_argument(
+        "--python-project",
+        type=Path,
+        default=local.ROOT / "python/tentgent-model-runtime",
+        help="packaged Python project when testing an installed release",
+    )
     args, tests = parser.parse_known_args()
     local.CLI = args.cli.resolve()
     if os.name != "posix" or not local.CLI.is_file():
@@ -239,6 +251,10 @@ if __name__ == "__main__":
     if not (args.data_root / "models/store" / args.model_ref / "model.toml").is_file():
         parser.error(
             "model-ref must be a full reference present in the supplied test data root"
+        )
+    if not (args.python_project / "pyproject.toml").is_file():
+        parser.error(
+            "python-project must contain the installed or source pyproject.toml"
         )
     loader = unittest.TestLoader()
     loader.testMethodPrefix = "test_live_"

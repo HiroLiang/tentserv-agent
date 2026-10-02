@@ -103,6 +103,10 @@ cmp "${formula_path}" "${before_dry_run}" >/dev/null \
   || fail "dry-run diff did not include updated ARM URL"
 [[ "${dry_run_output}" == *"+      sha256 \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\""* ]] \
   || fail "dry-run diff did not include updated Intel sha"
+[[ "${dry_run_output}" == *"brew audit --formula hiroliang/tap/tentgent"* ]] \
+  || fail "validation guidance must use the supported tap formula name"
+[[ "${dry_run_output}" != *"brew audit --formula Formula/"* ]] \
+  || fail "validation guidance must not use removed formula-file audit syntax"
 
 missing_arm_checksums="${tmp_dir}/missing-arm-checksums.txt"
 cat >"${missing_arm_checksums}" <<'SHA'

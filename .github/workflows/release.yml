@@ -94,6 +94,10 @@ jobs:
           version: "0.11.7"
           python-version: "3.12"
 
+      - name: Install release validation dependencies
+        shell: bash
+        run: brew install ripgrep
+
       - name: Verify native release source
         shell: bash
         run: bash scripts/test-release-source.sh
@@ -235,7 +239,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev pkg-config
+          sudo apt-get install -y libdbus-1-dev pkg-config ripgrep
 
       - name: Install pinned uv for native validation
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0

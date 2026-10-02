@@ -6,6 +6,8 @@ async fn dataset_sync_import_stores_local_dataset() {
     let state = rest_state_for_home(requested_home);
     let home = state.app().layout().home_dir.canonicalize().expect("home");
     let source_dir = home.join("fixtures/importable-dataset");
+    #[cfg(unix)]
+    let source_dir = source_dir.join(r#"windows\style"path"#);
     fs::create_dir_all(&source_dir).expect("source dataset");
     fs::write(source_dir.join("train.jsonl"), sample_dataset_record()).expect("train jsonl");
 
@@ -15,10 +17,9 @@ async fn dataset_sync_import_stores_local_dataset() {
                 .method("POST")
                 .uri("/v1/datasets/import")
                 .header("content-type", "application/json")
-                .body(Body::from(format!(
-                    r#"{{"path":"{}"}}"#,
-                    path_string(&source_dir)
-                )))
+                .body(Body::from(
+                    serde_json::json!({ "path": source_dir }).to_string(),
+                ))
                 .expect("request"),
         )
         .await
@@ -631,6 +632,10 @@ async fn server_remove_deletes_stopped_spec() {
 #[tokio::test]
 async fn server_start_returns_conflict_for_running_server() {
     let requested_home = unique_home("servers-start-running");
+    // Exercise TOML-sensitive path characters on Unix too; Windows roots
+    // already contain backslashes (including canonical UNC-style prefixes).
+    #[cfg(unix)]
+    let requested_home = requested_home.join(r#"windows\style"path"#);
     let state = rest_state_for_home(requested_home);
     let home = state.app().layout().home_dir.canonicalize().expect("home");
     let server_ref = "d".repeat(64);
@@ -651,9 +656,10 @@ async fn server_start_returns_conflict_for_running_server() {
         .await
         .expect("response");
 
-    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let status = response.status();
     let body = json_body(response).await;
-    assert_eq!(body["error"], "already_running");
+    assert_eq!(status, StatusCode::CONFLICT, "response body: {body}");
+    assert_eq!(body["error"], "already_running", "response body: {body}");
 
     let _ = fs::remove_dir_all(home);
 }

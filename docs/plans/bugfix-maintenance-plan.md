@@ -60,9 +60,12 @@ It is independent of `#127` and precedes `#128` and `#130` implementation.
 
 The user authorized fixing release blockers, publishing when verified, and
 updating Homebrew, including related maintenance issues. Target train:
-`v1.1.2-rc.132.1` then `v1.1.2` from the same verified source. Feature issues
+`v1.1.2-rc.132.N` then `v1.1.2` from the same verified source. Feature issues
 `#126`-`#130` remain in `v1.2.0`; they are not prerequisites for this patch.
 The earlier matrix is baseline evidence, not approval of the new changes.
+RC1 at `400f439` was blocked by native validation before release publication;
+fix its test portability/environment findings and use RC2. See the
+[native feedback](./issue-132-validation-evidence.md#native-rc-feedback).
 
 Before release:
 

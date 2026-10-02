@@ -48,6 +48,7 @@ mod server_options;
 mod auth_and_chat;
 mod clusters_and_sessions;
 mod datasets_and_servers;
+mod fixture_paths;
 mod fixtures;
 mod media_and_jobs;
 mod model_capabilities;

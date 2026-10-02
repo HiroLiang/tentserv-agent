@@ -119,6 +119,12 @@ resource counts, idle policies, PID/RSS and real inference evidence. It checks
 eager zero/positive retention, reuse, lazy first use and idle restart, then stops
 only its own processes. The model/proofs remain in the test store for reuse.
 
+For an installed release, run the script with that release's bootstrapped
+Python interpreter and pass both `--cli <prefix>/bin/tentgent` and
+`--python-project <prefix>/share/tentgent/python/tentgent-model-runtime`.
+The script clears inherited Python path overrides; check the environment's
+runtime imports resolve to installed site-packages before running it.
+
 Use the Makefile wrappers:
 
 ```bash
@@ -140,6 +146,8 @@ prerelease/latest release state.
 Before packaging, each native runner executes `scripts/test-release-source.sh`:
 Rust formatting, warning-free all-target checks and workspace tests, plus a
 fresh Python 3.12 base/dev environment, dependency check and runtime tests.
+The runtime wheel is forcibly rebuilt and its installed Python sources must
+match the checkout; a same-version cached wheel cannot count as validation.
 POSIX runners also execute the three lifecycle subprocess suites in sequence;
 Windows runs the native installer bootstrap invocation test. Base-only CI
 deliberately does not claim GPU, optional backend ABI, or real-model coverage;

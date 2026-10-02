@@ -21,13 +21,18 @@ cargo check --workspace --all-targets --locked
 cargo test --workspace --locked
 cargo build --locked -p tentgent-cli -p tentgent-daemon --bins
 
-uv sync --project python/tentgent-model-runtime --frozen --no-editable --group dev --python 3.12
+# uv's local-project cache need not notice source-only changes when package
+# metadata is unchanged. Build this checkout again, not a cached 0.1.0 wheel.
+uv sync --project python/tentgent-model-runtime --frozen --no-editable \
+  --reinstall-package tentgent-model-runtime --group dev --python 3.12
 uv pip check --python "${UV_PROJECT_ENVIRONMENT}"
+uv run --no-sync --project python/tentgent-model-runtime python -I scripts/check-release-python-source.py
 uv run --no-sync --project python/tentgent-model-runtime python -c \
   'from tentgent.runtime.server.app import create_app; print("Python runtime import passed")'
 uv run --no-sync --project python/tentgent-model-runtime python -m pytest \
   python/tentgent-model-runtime/tests -q -ra
 uv run --no-sync --project python/tentgent-model-runtime python scripts/test-installed-release-unit.py
+uv run --no-sync --project python/tentgent-model-runtime python scripts/test-release-source-unit.py
 
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)

@@ -107,7 +107,7 @@ pub(super) fn write_model_fixture_with_capabilities(
             r#"model_ref = "{model_ref}"
 short_ref = "{}"
 source_kind = "local"
-source_path = "{}"
+source_path = {}
 primary_format = "mlx"
 detected_formats = ["mlx"]
 model_capabilities = [{capabilities}]
@@ -117,7 +117,7 @@ total_bytes = 10
 imported_at = "2026-05-01T00:00:00Z"
 "#,
             &model_ref[..12],
-            path_string(home.join("fixtures/model"))
+            toml_path(home.join("fixtures/model"))
         ),
     )
     .expect("model metadata");
@@ -143,7 +143,7 @@ pub(super) fn write_safetensors_model_fixture_with_capabilities(
             r#"model_ref = "{model_ref}"
 short_ref = "{}"
 source_kind = "local"
-source_path = "{}"
+source_path = {}
 primary_format = "safetensors"
 detected_formats = ["safetensors"]
 model_capabilities = [{capabilities}]
@@ -153,7 +153,7 @@ total_bytes = 10
 imported_at = "2026-05-01T00:00:00Z"
 "#,
             &model_ref[..12],
-            path_string(home.join("fixtures/model"))
+            toml_path(home.join("fixtures/model"))
         ),
     )
     .expect("model metadata");
@@ -251,7 +251,7 @@ base_model_source_revision = "resolved-sha"
 model_family = "qwen"
 backend_support = ["mlx"]
 source_kind = "local"
-source_path = "{}"
+source_path = {}
 training_dataset_ref = "dataset-ref"
 training_run_ref = "run-ref"
 training_config_ref = "config-ref"
@@ -260,7 +260,7 @@ total_bytes = 10
 imported_at = "2026-05-01T00:00:00Z"
 "#,
             &adapter_ref[..12],
-            path_string(home.join("fixtures/adapter"))
+            toml_path(home.join("fixtures/adapter"))
         ),
     )
     .expect("adapter metadata");
@@ -276,7 +276,7 @@ pub(super) fn write_dataset_fixture(home: &std::path::Path, dataset_ref: &str) {
             r#"dataset_ref = "{dataset_ref}"
 short_ref = "{}"
 source_kind = "local"
-source_path = "{}"
+source_path = {}
 dataset_format = "directory"
 file_count = 2
 total_bytes = 20
@@ -294,7 +294,7 @@ eval_cases = "eval_cases.jsonl"
 source_manifest = "manifest.json"
 "#,
             &dataset_ref[..12],
-            path_string(home.join("fixtures/dataset"))
+            toml_path(home.join("fixtures/dataset"))
         ),
     )
     .expect("dataset metadata");
@@ -460,4 +460,8 @@ pub(super) fn multipart_body(boundary: &str, parts: &[MultipartPart]) -> Vec<u8>
 
 pub(super) fn path_string(path: impl AsRef<std::path::Path>) -> String {
     path.as_ref().display().to_string()
+}
+
+pub(super) fn toml_path(path: impl AsRef<std::path::Path>) -> toml::Value {
+    toml::Value::String(path_string(path))
 }
