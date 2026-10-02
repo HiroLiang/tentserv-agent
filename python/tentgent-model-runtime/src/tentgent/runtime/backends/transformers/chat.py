@@ -8,7 +8,8 @@ from typing import Any
 
 from ..chat import ChatBackendModel, ChatMessage, ChatRequest, ChatResult
 from ..errors import missing_backend_dependency
-from ..records import AdapterRecord, ModelRecord
+from ..model_safety import validate_local_model_assets
+from ..records import AdapterRecord, ModelFormat, ModelRecord
 from .base import (
     TransformersBackendModel,
     clear_torch_device_cache,
@@ -85,6 +86,11 @@ class TransformersChatModel(TransformersBackendModel, ChatBackendModel):
         peft_model_class = _load_peft_model_class()
         adapter_name = self._loaded_adapters.get(adapter.adapter_ref)
         if adapter_name is None:
+            validate_local_model_assets(adapter.source_path, ModelFormat.SAFETENSORS)
+            if not (adapter.source_path / "adapter_model.safetensors").is_file():
+                raise ValueError(
+                    "managed PEFT adapters require adapter_model.safetensors"
+                )
             adapter_name = adapter.short_ref or adapter.adapter_ref[:12]
             if isinstance(model, peft_model_class):
                 model.load_adapter(
@@ -214,8 +220,11 @@ class TransformersChatModel(TransformersBackendModel, ChatBackendModel):
 def _load_transformers_deps() -> _TransformersDeps:
     try:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-        from transformers import TextIteratorStreamer
+        from transformers import (
+            AutoModelForCausalLM,
+            AutoTokenizer,
+            TextIteratorStreamer,
+        )
     except ModuleNotFoundError as exc:
         if exc.name in {"torch", "transformers"}:
             raise missing_backend_dependency(exc.name) from exc
@@ -244,8 +253,7 @@ def _render_prompt(tokenizer: Any, messages: tuple[ChatMessage, ...]) -> str:
         raise ValueError("chat requests must contain at least one message")
 
     rendered_messages = [
-        {"role": message.role, "content": message.content}
-        for message in messages
+        {"role": message.role, "content": message.content} for message in messages
     ]
     apply_chat_template = getattr(tokenizer, "apply_chat_template", None)
     if callable(apply_chat_template):

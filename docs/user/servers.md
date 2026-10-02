@@ -2,6 +2,21 @@
 
 Create a persistent HTTP entry point for one local model or cloud provider model. The daemon is optional for CLI server management. Use [Clusters](./clusters.md) for multiple capability routes on one port.
 
+## Security Boundary
+
+Local, Cluster, and Cloud server ports are for trusted callers; they do not
+inherit the daemon's API token. Bind to `127.0.0.1` by default. Do not expose
+them directly to the Internet or an untrusted LAN. Remote access needs a
+separately authenticated, access-controlled proxy and firewall rules. Native
+media operations can read or write paths with the runtime user's permissions;
+these endpoints are not a sandbox for untrusted users or files.
+
+Managed Python runtimes listen on loopback. Their ownership tokens identify
+process generations; they are not authentication credentials. Only documented
+public endpoints are forwarded by model servers, not Python lifecycle, task,
+schema, or internal routes. Keep the operating-system user account and runtime
+home private.
+
 ## Examples And Common Operations
 
 Launch a stable local server proxy:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -149,9 +150,11 @@ class RuntimeDaemonArgumentTests(unittest.TestCase):
 
 class ResourceManagerLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
+        source = TemporaryDirectory(prefix="tentgent-resource-lifecycle-")
+        self.addCleanup(source.cleanup)
         self.record = ModelRecord(
             model_ref="a" * 64,
-            source_path=Path("/tmp/model"),
+            source_path=Path(source.name),
             primary_format=ModelFormat.MLX,
         )
 
@@ -289,6 +292,8 @@ class TaskActivityTests(unittest.TestCase):
 
 class RuntimeLifecycleWatcherTests(unittest.IsolatedAsyncioTestCase):
     async def test_runtime_stop_releases_all_retained_models(self) -> None:
+        source = TemporaryDirectory(prefix="tentgent-runtime-stop-")
+        self.addCleanup(source.cleanup)
         model = _FakeModel()
         manager = TaskManager()
         resources = ResourceManager(
@@ -299,7 +304,7 @@ class RuntimeLifecycleWatcherTests(unittest.IsolatedAsyncioTestCase):
             "chat",
             ModelRecord(
                 model_ref="a" * 64,
-                source_path=Path("/tmp/model"),
+                source_path=Path(source.name),
                 primary_format=ModelFormat.MLX,
             ),
         ):

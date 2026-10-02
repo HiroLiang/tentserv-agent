@@ -15,7 +15,8 @@ from ..image_generation import (
     load_normalized_inpaint_images,
     write_image_generation_output,
 )
-from ..records import ModelRecord
+from ..model_safety import validate_local_model_assets
+from ..records import ModelFormat, ModelRecord
 from .base import (
     DiffusersBackendModel,
     clear_torch_device_cache,
@@ -155,7 +156,12 @@ class DiffusersImageGenerationModel(
         pipeline_kwargs: dict[str, object] = dict(load_kwargs)
         if workflow == ImageGenerationWorkflowKind.CONTROL:
             if request.control is None:
-                raise ValueError("Diffusers ControlNet generation requires a control adapter")
+                raise ValueError(
+                    "Diffusers ControlNet generation requires a control adapter"
+                )
+            validate_local_model_assets(
+                request.control.source_path, ModelFormat.SAFETENSORS
+            )
             controlnet = self._deps.ControlNetModel.from_pretrained(
                 str(request.control.source_path),
                 local_files_only=True,
@@ -172,8 +178,15 @@ class DiffusersImageGenerationModel(
             pipeline.enable_attention_slicing()
 
         self._pipeline = pipeline
+        try:
+            self._apply_selected_adapter()
+        except BaseException:
+            # A partially configured pipeline must never satisfy the reuse path
+            # on the next request (including positive model idle retention).
+            self._pipeline = None
+            self._pipeline_workflow = None
+            raise
         self._pipeline_workflow = pipeline_key
-        self._apply_selected_adapter()
         return pipeline
 
     def _apply_selected_adapter(self) -> None:
@@ -187,13 +200,26 @@ class DiffusersImageGenerationModel(
                 "support LoRA weights."
             )
         weight_path = _adapter_weight_path(self._adapter)
+        validate_local_model_assets(self._adapter.source_path, ModelFormat.SAFETENSORS)
+        if weight_path.suffix != ".safetensors":
+            raise ValueError("managed image LoRA adapters require .safetensors weights")
+        source_root = self._adapter.source_path.resolve()
+        if source_root.is_file():
+            source_root = source_root.parent
+        if not weight_path.resolve(strict=True).is_relative_to(source_root):
+            raise ValueError(
+                "image LoRA weight path escapes the managed adapter source"
+            )
         pipeline.load_lora_weights(
             str(weight_path.parent),
             weight_name=weight_path.name,
             adapter_name="tentgent",
+            use_safetensors=True,
         )
         if hasattr(pipeline, "set_adapters"):
-            pipeline.set_adapters(["tentgent"], adapter_weights=[self._adapter.lora_scale])
+            pipeline.set_adapters(
+                ["tentgent"], adapter_weights=[self._adapter.lora_scale]
+            )
 
     def _require_pipeline(self) -> Any:
         if self._record is None or self._pipeline is None:

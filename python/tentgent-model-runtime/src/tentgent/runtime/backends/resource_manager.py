@@ -9,6 +9,7 @@ from time import monotonic
 from typing import Any, Generic, TypeVar
 
 from .base import BackendModel
+from .model_safety import validate_model_assets
 from .records import ModelRecord
 
 ModelT = TypeVar("ModelT", bound=BackendModel)
@@ -87,6 +88,7 @@ class ResourceManager(Generic[ModelT]):
             self._check_resource(resource)
             try:
                 if not resource.model.is_loaded:
+                    validate_model_assets(record)
                     resource.model.load(record)
                 if not resource.model.is_loaded:
                     raise RuntimeError("backend load completed without a loaded model")

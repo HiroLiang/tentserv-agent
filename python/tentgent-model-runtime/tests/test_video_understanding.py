@@ -323,7 +323,8 @@ class FakeMlxDeps:
         self.video_module = FakeMlxVideoModule()
         self._model = SimpleNamespace(config=SimpleNamespace(model_type=model_type))
 
-    def load(self, _path: str) -> tuple[object, object]:
+    def load(self, _path: str, *, trust_remote_code: bool) -> tuple[object, object]:
+        assert trust_remote_code is False
         return self._model, FakeMlxProcessor()
 
     @staticmethod

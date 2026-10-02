@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import Event
 from unittest.mock import patch
 
@@ -13,6 +14,8 @@ from tentgent.runtime.server.app import create_app
 from tentgent.runtime.server.lifecycle import RuntimeCapability, RuntimeServerConfig
 from tentgent.runtime.server.managed_models import BoundModelContext
 from tentgent.runtime.task.manager import TaskManager
+
+_MODEL_SOURCES = TemporaryDirectory(prefix="tentgent-preload-fixtures-")
 
 
 class Clock:
@@ -61,9 +64,11 @@ class FakeModel(BackendModel):
 
 
 def record(model_ref="model-ref", primary_format=ModelFormat.MLX):
+    source = Path(_MODEL_SOURCES.name) / model_ref
+    source.mkdir(exist_ok=True)
     return ModelRecord(
         model_ref=model_ref,
-        source_path=Path("/unused") / model_ref,
+        source_path=source,
         primary_format=primary_format,
     )
 
