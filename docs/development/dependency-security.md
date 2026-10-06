@@ -44,7 +44,12 @@ Pinned uv 0.11.7 passed frozen full/dev installation, lock consistency, all
 validation of 85 installed runtime source files. Python 3.12.13 passed all
 196 tests and 11 subtests with no skips. The same environment passed all
 three real MLX release/reuse/restart cases in 47.6 seconds; every case left
-zero test processes. Native RC and published-artifact gates remain required.
+zero test processes. Python 3.11.15 separately passed all 14 new regressions
+without skips, using multidict's native C extension; its dependency check passed.
+RC5 subsequently passed all four native gates and both Apple notarizations.
+The actual published RC5 full-profile installation also passed 196 tests plus
+11 subtests and all three real MLX cases. Final stable and Homebrew evidence is
+recorded in the [release validation](../plans/issue-132-validation-evidence.md).
 
 ## 2026-10-03 Rust Review
 
