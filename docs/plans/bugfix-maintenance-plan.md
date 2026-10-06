@@ -1,8 +1,8 @@
 # Bugfix And Maintenance Plan
 
 Status: active post-`v1.0.0` maintenance and patch planning record. Issues
-`#103`-`#107` are completed; `#131` is implemented and validated pending
-review and merge, and `#132` tracks a separate server-option no-op follow-up.
+`#103`-`#107`, `#131`, and `#136` are complete. `#132` tracks the remaining
+server-option no-op follow-up.
 
 This plan tracks released-product cleanup: bugs, diagnostics gaps, stale
 documentation, release follow-up, repository hygiene, and small hardening work.
@@ -39,19 +39,71 @@ queue that should stay visible from the active plan.
 | [#105](https://github.com/HiroLiang/tentserv-agent/issues/105) | Completed | `v1.0.1 Patch` | Fix signed Homebrew macOS Keychain prompt behavior and keep the release path aligned with the existing signing setup. |
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
-| [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Implemented; pending review and merge | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
-| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Planning | `v1.2.0` | Honor Local/Cluster lazy-load configuration and stop Cloud targets from silently accepting unsupported local-runtime lifecycle options. |
-
-| [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Implemented; pending review | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
+| [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Implemented; refreshed dependency and RC gates pending | `v1.2.0` (patch selection pending) | Local/Cluster startup, staged eager reload, Cloud validation and lazy-only images are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) and [validation](./issue-132-validation-evidence.md). |
+| [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State
 
-As of `2026-08-08`, `#131` is implemented and validated on its bug branch. Its
-detailed diagnosis, decisions, implementation evidence, and smoke procedure are in
+As of `2026-09-28`, `#131` is merged and released in `v1.1.1`; its evidence and
+smoke procedure remain in
 [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md).
-Review and merge that fix before resuming `#127` implementation. Issue `#132`
-remains a separate follow-up and should receive its own issue-level planning
-before its branch is implemented.
+Issue `#132` has a [decision register and review checkpoints](./issue-132-server-runtime-option-contract-plan.md).
+Its decisions include lazy-only Diffusers and MLX/MFLUX image generation, with
+implementation split into seven reviewable steps. As of `2026-10-01`, Steps 1-7
+are implemented and checked, including integration, documentation and real MLX
+load/release/restart evidence. Independent commits await human review; no push,
+PR creation, merge or release was performed. GitHub issue status remains open.
+It is independent of `#127` and precedes `#128` and `#130` implementation.
+
+### Release Reassessment (`2026-10-03`)
+
+The user authorized fixing release blockers, publishing when verified, and
+updating Homebrew, including related maintenance issues. Target train:
+`v1.1.2-rc.132.N` then `v1.1.2` from the same verified source. Feature issues
+`#126`-`#130` remain in `v1.2.0`; they are not prerequisites for this patch.
+The earlier matrix is baseline evidence, not approval of the new changes.
+RC1 at `400f439` was blocked by test portability/environment findings. RC2 at
+`11eb52d` reached Linux kernel tests and exposed an invalid-PID probe boundary,
+corrected in RC3. Neither candidate was promoted. See the
+[native feedback](./issue-132-validation-evidence.md#native-rc-feedback).
+
+RC3 at `ccc8351` completed all four native source, package and installed-artifact
+gates. Both macOS architectures failed notarization with HTTP 403 because a
+required agreement is missing or expired; release creation was skipped. This
+is an Account Holder action, not a code/signing workaround. Keep PR #139 open
+and stable/Homebrew at `v1.1.1` until notarization and published-release checks pass.
+Test-only `8fb389a` fixes bounded-Busy retry coverage; its Windows PR gate passes
+and it does not change RC3 product sources.
+
+The Account Holder confirmed agreement acceptance on `2026-10-06`. RC4 was
+started at `e7a1ae5`, then cancelled before publication because the refreshed
+audit found two newly reviewed Python advisories. Update the fsspec/multidict
+constraints and lock, verify their behavior, then create a new RC5 without
+moving old tags. Require both macOS notarization results to be `Accepted`,
+then verify the published RC with the real model before merging and promoting
+stable. The completed agreement does not replace a successful notarization.
+
+Before release:
+
+- Close public-to-internal runtime route bypasses with an exact public route
+  allowlist and no upstream redirects. Preserve managed DTO validation.
+- Retry only known transient Cluster ownership contention; keep terminal
+  load failures memoized and retain unknown-work claims. Document the actual
+  stop, settle, reconcile, restart recovery sequence.
+- Remove implicit model-repository code execution, audit locked dependencies,
+  and verify mitigations for advisories without upstream fixes. Document the
+  trusted-host deployment boundary; no Internet-service security claim.
+- Require explicit accepted Apple notarization, correct Windows runtime
+  refresh, locked/version-consistent packages, and stable release metadata.
+- Run affected/full regressions, native platform CI, artifact installation and
+  real-model idle/restart tests. No skipped test counts as native validation.
+- Publish RC, validate installed artifacts, then stable and the Homebrew tap.
+  Close issues only after release and installed-version verification.
+
+New milestone/issue creation awaits explicit approval after the permission
+reviewer rejected that metadata write. No general PR CI implementation or
+public vulnerability details are published while this approval is pending.
 
 The completed `v1.1.0` Cluster issue flow is archived under
 [archive/cluster-roadmap.md](./archive/cluster-roadmap.md). Future feature work

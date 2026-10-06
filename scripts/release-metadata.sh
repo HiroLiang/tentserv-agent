@@ -91,7 +91,7 @@ release_edit_flags() {
       printf '%s\n' "--draft=false" "--prerelease"
       ;;
     false)
-      printf '%s\n' "--draft=false" "--latest"
+      printf '%s\n' "--draft=false" "--prerelease=false" "--latest"
       ;;
     *)
       release_metadata_error "is_prerelease must be true or false: ${is_prerelease}"

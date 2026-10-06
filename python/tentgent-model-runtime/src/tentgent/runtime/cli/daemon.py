@@ -76,6 +76,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Seconds between task cleanup and idle lifecycle polls.",
     )
     args = parser.parse_args(argv)
+    if args.capability == RuntimeCapability.IMAGE_GENERATION.value and not args.lazy_load:
+        parser.error(
+            "image-generation requires --lazy-load; "
+            "workflow-aware eager loading is not supported"
+        )
     args.runtime_idle_seconds = _resolve_timeout_alias(
         parser,
         canonical_name="--runtime-idle-seconds",

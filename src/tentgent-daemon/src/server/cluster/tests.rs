@@ -67,13 +67,18 @@ struct DelayedStreamState {
 }
 
 #[derive(Default)]
-struct RecordingRouteOwnership {
-    events: Mutex<Vec<String>>,
+pub(super) struct RecordingRouteOwnership {
+    pub(super) events: Mutex<Vec<String>>,
+    acquire_busy_remaining: Mutex<usize>,
     release_busy_remaining: Mutex<usize>,
 }
 
 impl RecordingRouteOwnership {
-    fn busy_on_next_release(&self) {
+    pub(super) fn busy_on_next_acquire(&self) {
+        *self.acquire_busy_remaining.lock().unwrap() = 1;
+    }
+
+    pub(super) fn busy_on_next_release(&self) {
         *self.release_busy_remaining.lock().unwrap() = 1;
     }
 }
@@ -88,6 +93,22 @@ impl RouteClaimOwnershipUseCase for RecordingRouteOwnership {
             .lock()
             .unwrap()
             .push(format!("acquire:{}", request.claim.owner_id));
+        let mut remaining = self.acquire_busy_remaining.lock().unwrap();
+        if *remaining > 0 {
+            *remaining -= 1;
+            return Ok(RouteClaimTransition::Busy(
+                tentgent_kernel::features::resource_coordination::ResourceBusy {
+                    code: tentgent_kernel::features::resource_coordination::ResourceCoordinationCode::ResourceBusy,
+                    operation_id: "busy-acquire".to_string(),
+                    key: request.claim.claim_key(),
+                    attempts: 1,
+                    waited_millis: 1,
+                    holders: Vec::new(),
+                    retry_after_millis: 1,
+                    description: "route claim is temporarily busy".to_string(),
+                },
+            ));
+        }
         Ok(RouteClaimTransition::Acquired(request.claim))
     }
 
@@ -699,10 +720,12 @@ fn cluster_chat_route_resolves_managed_adapter_through_native_boundary() {
     let cluster_ref = ClusterRef::parse("adapter-cluster").expect("cluster ref");
     let model_ref = ModelRef::parse("d".repeat(64)).expect("model ref");
     let adapter_ref = "e".repeat(64);
-    let (state, home) = state_for_definition(
-        "managed-adapter",
-        definition(&cluster_ref, &model_ref, false),
-    );
+    let label = if cfg!(unix) {
+        r#"managed-adapter\quote"path"#
+    } else {
+        "managed-adapter"
+    };
+    let (state, home) = state_for_definition(label, definition(&cluster_ref, &model_ref, false));
     write_mlx_chat_model_fixture(&home, model_ref.as_str());
     write_mlx_chat_adapter_fixture(&home, &adapter_ref, model_ref.as_str());
 
@@ -732,7 +755,7 @@ fn cluster_chat_route_resolves_managed_adapter_through_native_boundary() {
     let _ = fs::remove_dir_all(home);
 }
 
-fn definition(
+pub(super) fn definition(
     cluster_ref: &ClusterRef,
     model_ref: &ModelRef,
     include_embedding: bool,
@@ -772,7 +795,7 @@ fn unique_home(label: &str) -> std::path::PathBuf {
     ))
 }
 
-fn write_mlx_chat_model_fixture(home: &std::path::Path, model_ref: &str) {
+pub(super) fn write_mlx_chat_model_fixture(home: &std::path::Path, model_ref: &str) {
     let store_dir = home.join("models/store").join(model_ref);
     let source_dir = store_dir.join("variants/mlx/source");
     fs::create_dir_all(&source_dir).expect("model source dir");
@@ -787,9 +810,9 @@ fn write_mlx_chat_model_fixture(home: &std::path::Path, model_ref: &str) {
     fs::write(
         store_dir.join("model.toml"),
         format!(
-            "model_ref = \"{model_ref}\"\nshort_ref = \"{}\"\nsource_kind = \"local\"\nsource_path = \"{}\"\nprimary_format = \"mlx\"\ndetected_formats = [\"mlx\"]\nmodel_capabilities = [\"chat\"]\nmodel_capability_source = \"explicit-user\"\nfile_count = 2\ntotal_bytes = 4\nimported_at = \"2026-07-21T00:00:00Z\"\n",
+            "model_ref = \"{model_ref}\"\nshort_ref = \"{}\"\nsource_kind = \"local\"\nsource_path = {}\nprimary_format = \"mlx\"\ndetected_formats = [\"mlx\"]\nmodel_capabilities = [\"chat\"]\nmodel_capability_source = \"explicit-user\"\nfile_count = 2\ntotal_bytes = 4\nimported_at = \"2026-07-21T00:00:00Z\"\n",
             &model_ref[..12],
-            source_dir.display()
+            toml::Value::String(source_dir.display().to_string())
         ),
     )
     .expect("model metadata");
@@ -804,9 +827,9 @@ fn write_mlx_chat_adapter_fixture(home: &std::path::Path, adapter_ref: &str, mod
     fs::write(
         store_dir.join("adapter.toml"),
         format!(
-            "adapter_ref = \"{adapter_ref}\"\nshort_ref = \"{}\"\nadapter_format = \"mlx\"\nadapter_type = \"lora\"\ntarget_capability = \"chat\"\nbase_model_ref = \"{model_ref}\"\nbackend_support = [\"mlx\"]\nsource_kind = \"local\"\nsource_path = \"{}\"\nfile_count = 1\ntotal_bytes = 7\nimported_at = \"2026-07-21T00:00:00Z\"\n",
+            "adapter_ref = \"{adapter_ref}\"\nshort_ref = \"{}\"\nadapter_format = \"mlx\"\nadapter_type = \"lora\"\ntarget_capability = \"chat\"\nbase_model_ref = \"{model_ref}\"\nbackend_support = [\"mlx\"]\nsource_kind = \"local\"\nsource_path = {}\nfile_count = 1\ntotal_bytes = 7\nimported_at = \"2026-07-21T00:00:00Z\"\n",
             &adapter_ref[..12],
-            source_dir.display()
+            toml::Value::String(source_dir.display().to_string())
         ),
     )
     .expect("adapter metadata");
@@ -865,7 +888,7 @@ fn provider_chat_state(label: &str) -> (ClusterServerState, std::path::PathBuf) 
     )
 }
 
-fn state_for_definition(
+pub(super) fn state_for_definition(
     label: &str,
     definition: ClusterDefinition,
 ) -> (ClusterServerState, std::path::PathBuf) {
@@ -892,6 +915,11 @@ fn state_for_definition(
         cluster_ref.clone(),
     );
     let state = ClusterServerState {
+        reload_status: Default::default(),
+        startup: super::startup::ClusterStartupState::new(
+            definitions.current().unwrap(),
+            tentgent_kernel::features::server::options::LoadMode::Lazy,
+        ),
         config: ClusterServerRuntimeConfig {
             server_ref: "server-ref".to_string(),
             cluster_ref,
@@ -901,6 +929,7 @@ fn state_for_definition(
             runtime_idle_seconds: 300,
             model_idle_seconds: 0,
             allow_unverified: true,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::Lazy,
         },
         runtime: PythonRuntimeLayout {
             project_dir: layout.runtime_dir.join("project"),

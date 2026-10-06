@@ -44,7 +44,8 @@ class TransformersAudioTranscriptionModel(
             device=pipeline_device(self._deps.torch),
             chunk_length_s=30,
             stride_length_s=5,
-            trust_remote_code=True,
+            trust_remote_code=False,
+            model_kwargs={"use_safetensors": True},
         )
         self._record = record
 

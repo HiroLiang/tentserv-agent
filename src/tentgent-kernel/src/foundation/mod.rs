@@ -9,3 +9,5 @@ pub mod fs;
 pub mod layout;
 pub mod net;
 pub mod platform;
+#[cfg(unix)]
+pub(crate) mod process;

@@ -409,6 +409,10 @@ pub(super) fn render_server_table_with_model_support(
     ]);
     if inspection.spec.is_cloud() {
         table.add_row(vec![
+            Cell::new("lifecycle_options"),
+            Cell::new("not applicable (legacy stored values ignored)"),
+        ]);
+        table.add_row(vec![
             Cell::new("idle_seconds"),
             Cell::new(
                 inspection

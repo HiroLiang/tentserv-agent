@@ -40,6 +40,7 @@ use super::{
 
 mod fixtures;
 mod lifecycle;
+mod options;
 mod support_gate;
 
 use fixtures::*;

@@ -5,6 +5,7 @@ use crate::features::server::domain::{
     LaunchMode, ServerInspection, ServerPrepareOutcome, ServerPrepareTarget, ServerRef,
     ServerRefSelector, ServerRemoveOutcome, ServerStopOutcome, ServerStoreLayout, ServerSummary,
 };
+use crate::features::server::options::LifecycleInput;
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutInput};
 
@@ -15,9 +16,9 @@ pub struct ServerPrepareRequest {
     pub target: ServerPrepareTarget,
     pub host: Option<String>,
     pub port: Option<u16>,
-    pub lazy_load: bool,
-    pub idle_seconds: Option<u64>,
-    pub model_idle_seconds: Option<u64>,
+    pub lazy_load: LifecycleInput<bool>,
+    pub idle_seconds: LifecycleInput<u64>,
+    pub model_idle_seconds: LifecycleInput<u64>,
     pub allow_unverified: bool,
 }
 

@@ -46,6 +46,8 @@ def diffusers_load_kwargs(
 ) -> dict[str, object]:
     kwargs: dict[str, object] = {
         "torch_dtype": torch_dtype_for_device(torch, device),
+        "use_safetensors": True,
+        "trust_remote_code": False,
     }
     if declares_missing_safety_checker(record.source_path):
         kwargs["safety_checker"] = None
@@ -55,6 +57,7 @@ def diffusers_load_kwargs(
 def controlnet_load_kwargs(torch: Any, device: Any) -> dict[str, object]:
     return {
         "torch_dtype": torch_dtype_for_device(torch, device),
+        "use_safetensors": True,
     }
 
 
@@ -83,8 +86,7 @@ def requested_torch_device(torch: Any, requested: str, env_var: str) -> Any:
             f"{env_var}=mps was requested, but PyTorch MPS is not available"
         )
     raise RuntimeError(
-        f"unsupported {env_var} value `{requested}`; "
-        "expected one of: cpu, mps, cuda"
+        f"unsupported {env_var} value `{requested}`; expected one of: cpu, mps, cuda"
     )
 
 

@@ -6,6 +6,8 @@ on:
       - ".github/workflows/runtime-ownership-windows.yml"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "src/tentgent-daemon/**"
       - "src/tentgent-kernel/**"
       - "src/tentgent-platform-fs/**"
   workflow_dispatch:
@@ -16,14 +18,17 @@ permissions:
 jobs:
   runtime-ownership:
     runs-on: windows-latest
+    env:
+      RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.81.0"
+          toolchain: "1.99.0"
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Check workspace MSRV
-        run: cargo check --workspace --locked
+        run: cargo check --workspace --all-targets --locked
       - name: Test atomic replacement repeatedly
         shell: pwsh
         run: |
@@ -42,3 +47,12 @@ jobs:
           }
       - name: Test model runtime process ownership
         run: cargo test -p tentgent-kernel model_daemon
+      - name: Test Windows server process identity
+        shell: pwsh
+        run: |
+          cargo test --locked -p tentgent-kernel windows_server_probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked -p tentgent-kernel process_identity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked -p tentgent-daemon server_start_returns_conflict_for_running_server
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -11,20 +11,32 @@ use super::{
     probes::PlatformDefinitionRevisionProbe,
     strategy::HybridWatchStrategy,
 };
-use crate::server::cluster::{cache::ClusterDefinitionCache, leases::RouteGenerationManager};
+use crate::server::cluster::{cache::ClusterDefinitionCache, state::ClusterServerState};
 
 pub(crate) async fn run_definition_watcher(
-    cache: ClusterDefinitionCache,
-    routes: RouteGenerationManager,
+    state: ClusterServerState,
     cancelled: watch::Receiver<bool>,
 ) {
     let schedule = DefinitionWatchSchedule::default();
+    if state.config.load_mode == tentgent_kernel::features::server::options::LoadMode::Eager {
+        super::reload::run_eager_watcher(
+            state,
+            cancelled,
+            Box::new(TokioDefinitionWatchTickSource::new(
+                schedule.metadata_interval,
+            )),
+            schedule,
+            &super::reload::RuntimeCandidatePreparer,
+        )
+        .await;
+        return;
+    }
     run_definition_watcher_with_dependencies(
-        cache,
+        state.definitions,
         cancelled,
         DefinitionWatcherDependencies {
             probe: Arc::new(PlatformDefinitionRevisionProbe),
-            observer: Arc::new(routes),
+            observer: Arc::new(state.routes),
             ticks: Box::new(TokioDefinitionWatchTickSource::new(
                 schedule.metadata_interval,
             )),
@@ -78,9 +90,11 @@ struct TokioDefinitionWatchTickSource {
 
 impl TokioDefinitionWatchTickSource {
     fn new(interval: std::time::Duration) -> Self {
+        let mut interval = tokio::time::interval(interval);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         Self {
             origin: Instant::now(),
-            interval: tokio::time::interval(interval),
+            interval,
         }
     }
 }

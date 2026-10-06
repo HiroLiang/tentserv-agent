@@ -20,6 +20,7 @@ use crate::features::server::domain::{
     ServerRuntimeProfileSelection, ServerRuntimeSelection, ServerRuntimeTarget, ServerSpec,
     ServerStoreLayout, DEFAULT_SERVER_PORT,
 };
+use crate::features::server::options::{LifecycleInput, LoadMode};
 use crate::features::server::ports::ServerIdentityGenerator;
 use crate::features::server::profile::local_server_runtime_profile_for;
 use crate::foundation::error::{KernelError, KernelResult};
@@ -153,6 +154,8 @@ pub(super) fn ensure_server_spec_launchable(
             Ok(())
         }
         ServerRuntimeKind::Local => {
+            LoadMode::from_lazy_load(spec.lazy_load)
+                .ensure_supported(required_spec_capability(spec)?)?;
             let Some(model_ref) = spec.model_ref.as_ref() else {
                 return Err(KernelError::ServerStoreUnavailable(format!(
                     "local server spec `{}` is missing model_ref",
@@ -211,12 +214,37 @@ pub(super) fn build_server_spec(
     target: ServerRuntimeTarget,
     host: Option<&str>,
     port: Option<u16>,
-    lazy_load: bool,
-    idle_seconds: Option<u64>,
-    model_idle_seconds: Option<u64>,
+    lazy_load: LifecycleInput<bool>,
+    idle_seconds: LifecycleInput<u64>,
+    model_idle_seconds: LifecycleInput<u64>,
     created_at: String,
     identity: &dyn ServerIdentityGenerator,
 ) -> KernelResult<ServerSpec> {
+    if matches!(target, ServerRuntimeTarget::CloudProvider { .. }) {
+        let unsupported: Vec<_> = [
+            ("lazy_load", lazy_load.is_provided()),
+            (
+                "runtime_idle_seconds / idle_seconds",
+                idle_seconds.is_provided(),
+            ),
+            ("model_idle_seconds", model_idle_seconds.is_provided()),
+        ]
+        .into_iter()
+        .filter_map(|(name, provided)| provided.then_some(name))
+        .collect();
+        if !unsupported.is_empty() {
+            return Err(KernelError::UnsupportedTarget(format!(
+                "Cloud lifecycle options are not applicable: {}; omit these fields",
+                unsupported.join(", ")
+            )));
+        }
+    }
+    let lazy_load = lazy_load.value().unwrap_or(false);
+    let idle_seconds = idle_seconds.value();
+    let model_idle_seconds = model_idle_seconds.value();
+    if let ServerRuntimeTarget::LocalModel { capability, .. } = &target {
+        LoadMode::from_lazy_load(lazy_load).ensure_supported(*capability)?;
+    }
     let host = normalize_server_host(host)
         .map_err(|err| KernelError::UnsupportedTarget(err.to_string()))?;
     let port_auto = port.is_none();
@@ -237,15 +265,7 @@ pub(super) fn build_server_spec(
                     .then_some(policy.model_idle_seconds),
             )
         }
-        ServerRuntimeTarget::CloudProvider { .. } => {
-            if model_idle_seconds.is_some() {
-                return Err(KernelError::UnsupportedTarget(
-                    "model_idle_seconds applies only to Local and Cluster server targets"
-                        .to_string(),
-                ));
-            }
-            (idle_seconds, None)
-        }
+        ServerRuntimeTarget::CloudProvider { .. } => (None, None),
     };
     let server_ref = identity.server_ref_for_target_with_model_idle(
         &target,

@@ -1,9 +1,8 @@
 #[cfg(unix)]
-use std::{
-    process::{Command, Stdio},
-    thread,
-    time::Duration,
-};
+use std::{thread, time::Duration};
+
+#[cfg(unix)]
+use crate::foundation::process::{is_unix_process_running, send_unix_process_signal, unix_pid};
 
 use crate::features::daemon::ports::{DaemonProcessController, DaemonProcessProbe};
 use crate::foundation::error::KernelResult;
@@ -18,25 +17,9 @@ impl DaemonProcessProbe for StdDaemonProcessProbe {
     fn is_process_running(&self, pid: u32) -> KernelResult<bool> {
         #[cfg(unix)]
         {
-            let output = Command::new("kill")
-                .arg("-0")
-                .arg(pid.to_string())
-                .stdout(Stdio::null())
-                .stderr(Stdio::piped())
-                .output()
-                .map_err(|err| {
-                    daemon_runtime_error(format!("probe daemon process {pid} failed: {err}"))
-                })?;
-            if output.status.success() {
-                return Ok(true);
-            }
-
-            let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
-            if stderr.contains("operation not permitted") || stderr.contains("not permitted") {
-                return Ok(true);
-            }
-
-            Ok(false)
+            is_unix_process_running(pid).map_err(|err| {
+                daemon_runtime_error(format!("probe daemon process {pid} failed: {err}"))
+            })
         }
 
         #[cfg(not(unix))]
@@ -76,19 +59,14 @@ where
     fn terminate_process(&self, pid: u32) -> KernelResult<()> {
         #[cfg(unix)]
         {
-            let status = Command::new("kill")
-                .arg(pid.to_string())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .map_err(|err| {
-                    daemon_runtime_error(format!("terminate daemon process {pid} failed: {err}"))
-                })?;
-            if !status.success() {
+            if unix_pid(pid).is_none() {
                 return Err(daemon_runtime_error(format!(
-                    "failed to send TERM to daemon pid {pid}"
+                    "invalid individual daemon pid {pid}"
                 )));
             }
+            send_unix_process_signal(pid, nix::sys::signal::Signal::SIGTERM).map_err(|err| {
+                daemon_runtime_error(format!("terminate daemon process {pid} failed: {err}"))
+            })?;
 
             for _ in 0..30 {
                 if !self._process_probe.is_process_running(pid)? {
@@ -109,5 +87,39 @@ where
                 "daemon process termination is unsupported on this platform",
             ))
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    struct ProbeMustNotRun;
+
+    impl DaemonProcessProbe for ProbeMustNotRun {
+        fn is_process_running(&self, _: u32) -> KernelResult<bool> {
+            panic!("invalid PID reached post-signal probe");
+        }
+    }
+
+    #[test]
+    fn invalid_daemon_pids_are_not_processes_and_cannot_be_terminated() {
+        // The controller guard and shared checked signal boundary both reject
+        // these values before any OS call. Never invoke an external kill tool.
+        for pid in [0, i32::MAX as u32 + 1, u32::MAX] {
+            assert!(!StdDaemonProcessProbe.is_process_running(pid).unwrap());
+            assert!(StdDaemonProcessController::new(ProbeMustNotRun)
+                .terminate_process(pid)
+                .unwrap_err()
+                .to_string()
+                .contains("invalid individual daemon pid"));
+        }
+    }
+
+    #[test]
+    fn daemon_probe_recognizes_current_process() {
+        assert!(StdDaemonProcessProbe
+            .is_process_running(std::process::id())
+            .unwrap());
     }
 }

@@ -5,7 +5,8 @@ from typing import Any
 
 from ..chat import ChatBackendModel, ChatMessage, ChatRequest, ChatResult
 from ..errors import missing_backend_dependency
-from ..records import AdapterRecord, ModelRecord
+from ..model_safety import validate_local_model_assets
+from ..records import AdapterRecord, ModelFormat, ModelRecord
 from .base import MlxBackendModel, clear_mlx_cache, require_mlx_model
 
 
@@ -54,6 +55,7 @@ class MlxChatModel(MlxBackendModel, ChatBackendModel):
             return
 
         _validate_mlx_adapter_source(adapter)
+        validate_local_model_assets(adapter.source_path, ModelFormat.MLX)
         self._load_model(adapter_path=str(adapter.source_path))
         self._active_adapter_ref = adapter.adapter_ref
 
@@ -98,7 +100,11 @@ class MlxChatModel(MlxBackendModel, ChatBackendModel):
             raise RuntimeError("MLX chat model has no model path to load.")
 
         load, _, _, _ = _load_mlx_symbols()
-        model, tokenizer = load(self._load_path, adapter_path=adapter_path)
+        model, tokenizer = load(
+            self._load_path,
+            adapter_path=adapter_path,
+            tokenizer_config={"trust_remote_code": False},
+        )
         self._model = model
         self._tokenizer = tokenizer
         if adapter_path is None:
@@ -123,8 +129,7 @@ def _render_prompt(tokenizer: Any, messages: tuple[ChatMessage, ...]) -> str:
         raise ValueError("chat requests must contain at least one message")
 
     rendered_messages = [
-        {"role": message.role, "content": message.content}
-        for message in messages
+        {"role": message.role, "content": message.content} for message in messages
     ]
 
     if getattr(tokenizer, "has_chat_template", False):

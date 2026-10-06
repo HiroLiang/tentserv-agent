@@ -22,6 +22,21 @@ Installed binaries should fall back to the default platform-managed runtime home
 
 ## Build And Check
 
+The workspace requires Rust **1.99.0** or newer. `rust-toolchain.toml` selects
+1.99.0 for repository commands; Windows CI and all four native release targets
+use the same pinned version. Install it through rustup before building:
+
+```bash
+rustup toolchain install 1.99.0 --profile minimal --component clippy,rustfmt
+rustc --version
+cargo --version
+```
+
+The Rust edition remains 2021. When raising the baseline, update the workspace
+`rust-version`, toolchain file and both workflow files together. The release
+readiness checks reject version drift. Installed Tentgent binaries do not
+require a Rust compiler; this minimum applies to source builds.
+
 Build the Rust workspace:
 
 ```bash
@@ -64,9 +79,51 @@ TENTGENT_RUN_KEYCHAIN_TESTS=1 cargo test -p tentgent-kernel -- --show-output
 
 Run Python unit tests that do not require provider network access:
 
+Use Python 3.11 or 3.12; managed bootstrap and the native release gate use
+3.12 for the complete media dependency set. The system Python is not changed.
+
 ```bash
 uv run --project python/tentgent-model-runtime pytest
 ```
+
+Local and Cluster startup subprocess integration (POSIX, no model downloads):
+
+```bash
+cargo build -p tentgent-cli -p tentgent-daemon --bins
+uv run --project python/tentgent-model-runtime python scripts/test-local-server-startup.py
+uv run --project python/tentgent-model-runtime python scripts/test-cluster-server-startup.py
+uv run --project python/tentgent-model-runtime python scripts/test-cluster-server-reload.py
+```
+
+This runs both Rust hosts against the real Python HTTP/task/resource lifecycle
+with instrumented fake load/chat backends and isolated temporary homes. It covers
+eager/lazy startup, reused generations, readiness/proof timing, idle release,
+and interrupted startup. Cluster coverage adds all five local routes, partial
+failure, bind failure, staged reload, streaming promotion, supersession, and
+claim cleanup/preservation. It is not real-model or
+GPU-memory evidence.
+Run the subprocess suites sequentially: isolated homes still share the
+host's TCP port allocation space. Failed cases print worker logs before cleanup.
+
+Opt-in real-model lifecycle smoke (use a dedicated test data root, not production):
+
+```bash
+uv run --project python/tentgent-model-runtime python scripts/test-server-lifecycle-live.py \
+  --data-root "$PWD/.tentgent-test" --model-ref <full-test-model-ref>
+```
+
+Import one small chat model first and ensure the selected Python environment
+has its backend installed. This script does not download models. It creates
+temporary server/runtime homes, uses the supplied model store, and prints
+resource counts, idle policies, PID/RSS and real inference evidence. It checks
+eager zero/positive retention, reuse, lazy first use and idle restart, then stops
+only its own processes. The model/proofs remain in the test store for reuse.
+
+For an installed release, run the script with that release's bootstrapped
+Python interpreter and pass both `--cli <prefix>/bin/tentgent` and
+`--python-project <prefix>/share/tentgent/python/tentgent-model-runtime`.
+The script clears inherited Python path overrides; check the environment's
+runtime imports resolve to installed site-packages before running it.
 
 Use the Makefile wrappers:
 
@@ -85,6 +142,25 @@ Intel, Linux x86_64, and Windows x86_64, then uploads the archives and
 checksums. The release job downloads those artifacts, prepares installer
 assets and release notes, creates or updates the GitHub Release, and verifies
 prerelease/latest release state.
+
+Before packaging, each native runner executes `scripts/test-release-source.sh`:
+Rust formatting, warning-free all-target checks and workspace tests, plus a
+fresh Python 3.12 base/dev environment, dependency check and runtime tests.
+The runtime wheel is forcibly rebuilt and its installed Python sources must
+match the checkout; a same-version cached wheel cannot count as validation.
+POSIX runners also execute the three lifecycle subprocess suites in sequence;
+Windows runs the native installer bootstrap invocation test. Base-only CI
+deliberately does not claim GPU, optional backend ABI, or real-model coverage;
+the optional Transformers trust test is skipped there and must run in the
+separate full-profile validation environment before release.
+
+After packaging, `scripts/test-installed-release.py` verifies the native
+archive checksum and runs the real installer in an isolated prefix/runtime
+home outside the repository. It checks the binary version, packaged layout,
+managed Python 3.12, non-editable site-packages imports and installed dependency
+compatibility. POSIX hosts also run the installed CLI's base bootstrap;
+Windows uses the installer's native bootstrap. No models are downloaded.
+Both source and installed-artifact gates must pass before publication.
 
 GitHub Release notes use the matching stable-version section from
 `docs/user/version.md`. For example, `v1.1.1-rc.131.1` and `v1.1.1` both use
@@ -113,15 +189,18 @@ The Linux x86_64 package job installs `libdbus-1-dev` and `pkg-config` before
 packaging because the native Linux keychain backend links `libdbus-sys` through
 the Secret Service/D-Bus stack.
 
-The current release workflow does not run `cargo fmt`, `cargo check`,
-`cargo test`, or Python unit tests before packaging. `scripts/package-local.sh`
-performs `cargo build --release --bin tentgent` as part of artifact packaging.
+After the source gates above, `scripts/package-local.sh` performs
+`cargo build --release --locked --bin tentgent` for artifact packaging.
 
 `.github/workflows/runtime-ownership-windows.yml` is a focused pull-request
 gate for changes to resource coordination, runtime ownership, and the platform
 filesystem replacement boundary. It runs repeated atomic replacement and
 `starting -> ready -> closing` ownership tests on a native Windows runner,
-plus the focused coordination and model-daemon suites.
+plus the focused coordination and model-daemon suites. It also checks all
+workspace targets against the pinned minimum Rust version, and runs when the
+toolchain file changes. Builds deny warnings. Native server process identity
+tests cover a live process, an exited child, metadata/health identity, and the
+REST already-running conflict; failures cannot be hidden as stopped processes.
 
 Before tagging a release, run the script-level release-readiness checks:
 
@@ -136,6 +215,21 @@ install-doc shell usage, and the release workflow patches that make published
 installers point at the tag-specific GitHub Release asset URL. If PowerShell
 Core is installed, it also dry-runs `install.ps1`; when `pwsh` is absent, that
 optional local check is skipped.
+
+The native source gate can also be run locally with
+`bash scripts/test-release-source.sh`. An already packaged native archive can
+be checked with:
+
+```bash
+python3 scripts/test-installed-release.py \
+  --archive dist/tentgent-X.Y.Z-aarch64-apple-darwin.tar.gz \
+  --checksums dist/checksums.txt \
+  --target aarch64-apple-darwin --version X.Y.Z
+```
+
+Use the actual host target and version. This downloads the pinned bootstrap
+tool, managed Python and base dependencies into temporary directories; it does
+not use or repair the user's existing runtime environment.
 
 For the `1.0.0` readiness promise, contributor checklist, and post-1.0 routing,
 see [1.0-readiness.md](../user/1.0-readiness.md). The detailed stable,
@@ -179,6 +273,9 @@ bash -n scripts/test-update-homebrew-formula.sh
 
 ## Compatibility Audits
 
+- [dependency-security.md](./dependency-security.md)
+  Exact-version dependency review, unresolved upstream advisories and their
+  application boundaries, and managed Python interpreter compatibility gates.
 - [provider-compatibility-audit/README.md](./provider-compatibility-audit/README.md)
   Engineering audit of current OpenAI, Claude/Anthropic, and Gemini-shaped
   daemon and direct cloud server routes, plus the native local model-bound

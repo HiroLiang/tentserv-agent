@@ -15,14 +15,25 @@ pub(super) struct ClusterServerError {
     status: StatusCode,
     code: String,
     message: String,
+    retryable_transition: bool,
 }
 
 impl ClusterServerError {
+    pub(super) fn starting() -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "cluster_starting".into(),
+            message: "cluster server is still validating eager route loading; retry after health reports ready".into(),
+            retryable_transition: false,
+        }
+    }
+
     pub(super) fn definition_reload_failed(message: String) -> Self {
         Self {
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "cluster_definition_reload_failed".to_string(),
             message,
+            retryable_transition: false,
         }
     }
 
@@ -33,7 +44,23 @@ impl ClusterServerError {
                 .as_str()
                 .to_string(),
             message,
+            retryable_transition: false,
         }
+    }
+
+    pub(super) fn route_transition_busy(message: String) -> Self {
+        let mut error = Self::route_unavailable(message);
+        error.retryable_transition = true;
+        error
+    }
+
+    pub(super) fn is_retryable_transition(&self) -> bool {
+        self.retryable_transition
+    }
+
+    pub(super) fn with_context(mut self, context: String) -> Self {
+        self.message = format!("{context}: {}", self.message);
+        self
     }
 
     pub(super) fn unsupported_path(path: &str) -> Self {
@@ -41,6 +68,7 @@ impl ClusterServerError {
             status: StatusCode::NOT_FOUND,
             code: "cluster_route_unsupported".to_string(),
             message: format!("cluster server path `{path}` is not supported"),
+            retryable_transition: false,
         }
     }
 
@@ -66,6 +94,7 @@ impl ClusterServerError {
             status,
             code: code.as_str().to_string(),
             message: description,
+            retryable_transition: false,
         }
     }
 }
@@ -79,6 +108,7 @@ impl From<LocalServerError> for ClusterServerError {
             status: error.status,
             code: error.code.to_string(),
             message: error.message,
+            retryable_transition: false,
         }
     }
 }

@@ -33,7 +33,9 @@ class MlxVlmVisionChatModel(MlxBackendModel, VisionChatBackendModel):
     def load(self, record: ModelRecord) -> None:
         require_mlx_model(record, "MLX VLM vision chat model")
 
-        model, processor = self._deps.load(str(record.source_path))
+        model, processor = self._deps.load(
+            str(record.source_path), trust_remote_code=False
+        )
         config = getattr(model, "config", None)
         if config is None:
             config = self._deps.load_config(str(record.source_path))

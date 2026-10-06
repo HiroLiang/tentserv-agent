@@ -46,7 +46,7 @@ These routes are exposed by `tentgent daemon`.
 | `experimental` | `POST /v1/datasets/synth/jobs`, `POST /v1/datasets/eval/jobs` | Provider-backed dataset tools. Prompt contracts and provider output diagnostics may tighten in later releases. |
 | `experimental` | `GET /v1/train/lora/plans`, `POST /v1/train/lora/plans/preview`, `POST /v1/train/lora/plans`, `GET /v1/train/lora/plans/{reference}`, `DELETE /v1/train/lora/plans/{reference}` | Managed LoRA plan surface. Plan identity is contracted; training readiness remains model/backend dependent. |
 | `experimental` | `POST /v1/train/lora/plans/{reference}/runs`, `GET /v1/train/lora/plans/{reference}/runs`, `GET /v1/train/lora/runs`, `GET /v1/train/lora/runs/{reference}`, `GET /v1/train/lora/runs/{reference}/metrics`, `GET /v1/train/lora/runs/{reference}/logs`, `GET /v1/train/lora/runs/{reference}/logs/raw` | Managed LoRA run surface. Plan identity is contracted; run execution, stale process handling, and diagnostics remain experimental. |
-| `stable` | `GET /v1/servers`, `POST /v1/servers`, `GET /v1/servers/{reference}`, `DELETE /v1/servers/{reference}`, `POST /v1/servers/{reference}/start`, `POST /v1/servers/{reference}/stop`, `GET /v1/servers/{reference}/health`, `GET /v1/servers/{reference}/logs`, `GET /v1/servers/{reference}/logs/stdout`, `GET /v1/servers/{reference}/logs/stderr` | Stored server registry and lifecycle route names. Existing local/cloud target behavior remains stable; the additive `runtime_kind: "cluster"` target is experimental. |
+| `stable` | `GET /v1/servers`, `POST /v1/servers`, `GET /v1/servers/{reference}`, `DELETE /v1/servers/{reference}`, `POST /v1/servers/{reference}/start`, `POST /v1/servers/{reference}/stop`, `GET /v1/servers/{reference}/health`, `GET /v1/servers/{reference}/logs`, `GET /v1/servers/{reference}/logs/stdout`, `GET /v1/servers/{reference}/logs/stderr` | Stored server registry and lifecycle route names. #132 rejects formerly ignored new Cloud lifecycle inputs and requires lazy local image servers; see the [lifecycle contract](./http-daemon.md#server-lifecycle) for legacy compatibility. The additive `runtime_kind: "cluster"` target is experimental. |
 | `experimental` | `GET /v1/clusters`, `PUT /v1/clusters/{cluster_ref}`, `GET /v1/clusters/{cluster_ref}`, `DELETE /v1/clusters/{cluster_ref}` | Stored cluster definition CRUD, read-only readiness and ownership summaries, guarded replacement, and removal protection. |
 | `stable` | `GET /v1/sessions`, `POST /v1/sessions`, `GET /v1/sessions/{reference}`, `PATCH /v1/sessions/{reference}`, `DELETE /v1/sessions/{reference}`, `GET /v1/sessions/{reference}/messages`, `POST /v1/sessions/{reference}/messages`, `POST /v1/sessions/{reference}/compact` | Local session metadata and transcript management surface. Compaction is explicit and destructive. |
 
@@ -56,7 +56,7 @@ These routes are exposed by `tentgent server run <model-ref>`.
 
 | Tier | Routes | Notes |
 | --- | --- | --- |
-| `stable` | `GET /healthz` | Local server process health and bound-model metadata. |
+| `stable` | `GET /healthz` | Local process health and bound-model metadata, with explicit eager startup `ready`, `status`, and `load_mode`. Process reachability alone is not readiness. |
 | `stable` | `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1beta/models/{*operation}`, `POST /v1/embeddings`, `POST /v1/images/generations` | Provider-shaped local ingress routes. The server is bound to one model and rejects incompatible capabilities before runtime execution. |
 | `stable` | Native proxied routes supported by the bound capability, including `/v1/chat`, `/v1/chat/stream`, `/v1/embeddings`, and `/v1/images/generations` | The proxy forwards matching native Tentgent bodies to the Python runtime. |
 | `internal` | Local proxy fallback behavior for unlisted paths | Fallback forwarding is an implementation convenience, not a public promise that every Python runtime path is exposed. |
@@ -78,8 +78,8 @@ These routes are exposed by `tentgent cluster run <cluster-ref>`.
 
 | Tier | Routes | Notes |
 | --- | --- | --- |
-| `experimental` | `GET /healthz` | Cluster proxy process health, definition hash, configured route keys, guarded hot reload, and bounded shutdown drain. |
-| `experimental` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1beta/models/{*operation}`, `POST /v1/embeddings`, `POST /v1/rerank`, `POST /v1/audio/transcriptions`, `POST /v1/vision/chat` | Endpoint families select declared local cluster routes and create internal route ownership on first use. Provider targets, cross-route fallback, and broader provider-shaped multimodal routing are not supported yet. |
+| `experimental` | `GET /healthz` | Cluster readiness, committed definition hash, route keys, staged eager reload diagnostics, and bounded shutdown drain. |
+| `experimental` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1beta/models/{*operation}`, `POST /v1/embeddings`, `POST /v1/rerank`, `POST /v1/audio/transcriptions`, `POST /v1/vision/chat` | Declared local routes gain ownership during eager preparation or first lazy use. Provider targets, cross-route fallback, and broader provider-shaped multimodal routing remain unsupported. |
 
 ## Python Model Runtime Surface
 
@@ -90,7 +90,7 @@ routes rather than caller-facing API surfaces.
 
 | Tier | Routes | Notes |
 | --- | --- | --- |
-| `internal` | `GET /healthz`, `POST /v1/lifecycle/shutdown` | Rust supervisor health and graceful shutdown boundary for one runtime process. |
+| `internal` | `GET /healthz`, `POST /v1/lifecycle/shutdown`, `POST /v1/lifecycle/preload` | Supervisor health, graceful shutdown, and generation-checked bound-model preload for one runtime process. Public Local forwarding rejects the lifecycle namespace before runtime creation. |
 | `internal` | `POST /v1/chat`, `POST /v1/chat/stream`, `POST /v1/embeddings`, `POST /v1/rerank`, plus mirrored `/internal/v1/...` aliases where mounted | Direct local inference execution routes called by Rust. |
 | `internal` | `POST /v1/audio/transcriptions`, `POST /v1/audio/speech`, `POST /v1/images/generations`, `POST /v1/images/transforms`, `POST /v1/images/inpaint`, `POST /v1/images/control`, `POST /v1/video/understanding`, `POST /v1/vision/chat`, plus mirrored `/internal/v1/...` aliases where mounted | Direct media execution routes. Rust owns upload handling, job workspaces, and public result routes. |
 | `internal` | `POST /v1/tuning/lora/runs`, plus mirrored `/internal/v1/...` aliases where mounted | Direct LoRA execution route. Rust owns managed plan identity, durable run records, and adapter import. |

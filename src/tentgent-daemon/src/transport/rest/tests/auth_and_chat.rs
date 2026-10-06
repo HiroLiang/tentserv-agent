@@ -767,10 +767,10 @@ async fn audio_transcription_job_accepts_multipart_upload_request() {
     ));
     assert_eq!(body["job"]["target"]["section"], "audio");
     assert_eq!(body["job"]["target"]["reference"], model_ref);
-    assert!(body["job"]["target"]["path"]
-        .as_str()
-        .expect("target path")
-        .ends_with("/input/input_file.mp3"));
+    assert!(
+        std::path::Path::new(body["job"]["target"]["path"].as_str().expect("target path"))
+            .ends_with("input/input_file.mp3")
+    );
     assert_eq!(body["job"]["workspace"]["input"]["state"], "done");
     assert_eq!(body["job"]["workspace"]["input"]["done"], true);
     assert_eq!(body["job"]["workspace"]["input"]["chunk_count"], 1);

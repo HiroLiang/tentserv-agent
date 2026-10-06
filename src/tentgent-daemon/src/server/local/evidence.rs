@@ -217,6 +217,7 @@ mod tests {
                 runtime_home: Some(layout.home_dir.clone()),
                 runtime_idle_seconds: 300,
                 model_idle_seconds: 0,
+                load_mode: tentgent_kernel::features::server::options::LoadMode::Lazy,
             },
             runtime: PythonRuntimeLayout {
                 project_dir: layout.runtime_dir.join("project"),
@@ -229,6 +230,9 @@ mod tests {
             supervisor: ModelRuntimeDaemonSupervisor::new(),
             client: reqwest::Client::new(),
             launch_policy: ModelRuntimeDaemonLaunchPolicy::default(),
+            readiness: super::super::startup::StartupReadiness::new(
+                tentgent_kernel::features::server::options::LoadMode::Lazy,
+            ),
         }
     }
 

@@ -207,9 +207,12 @@ Runtime tuple fields explain how the model was run:
 If any recorded tuple field changes and the old proof cannot safely apply to
 the new tuple, the effective status should become `stale`.
 
-Local model-bound server starts record `server-start` proofs after launch
-success or failure. Those records include the selected runtime profile id and
-version when the server spec has one. Runtime launch errors are normalized for
+Local eager workers record `server-start` proofs only after confirmed terminal
+preload success or accepted-task load failure. Process launch, lazy startup,
+readiness observation expiry, transport failure, and missing/stale Python
+endpoints write no proof. CLI/REST callers do not duplicate worker writes.
+Records include the selected runtime profile id and version when the server spec
+has one. Runtime errors are normalized for
 display: multi-line output is compacted, common secret environment variable
 names are redacted, and long messages are truncated.
 

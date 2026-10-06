@@ -1,6 +1,52 @@
 use super::*;
 
 #[tokio::test]
+async fn runtime_redirects_are_not_followed_or_exposed_to_callers() {
+    use crate::server::local::proxy::runtime_http_client;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = calls.clone();
+    let (base_url, task) = spawn_test_server(
+        Router::new()
+            .route(
+                "/v1/rerank",
+                post(|| async {
+                    Response::builder()
+                        .status(StatusCode::TEMPORARY_REDIRECT)
+                        .header(header::LOCATION, "/v1/lifecycle/shutdown")
+                        .body(Body::empty())
+                        .unwrap()
+                }),
+            )
+            .route(
+                "/v1/lifecycle/shutdown",
+                post(move || async move {
+                    observed.fetch_add(1, Ordering::SeqCst);
+                    "must not execute"
+                }),
+            ),
+    )
+    .await;
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/v1/rerank")
+        .body(Body::from("{}"))
+        .unwrap();
+    let error = forward_to_runtime(
+        &runtime_http_client().unwrap(),
+        request,
+        &format!("{base_url}/v1/rerank"),
+    )
+    .await
+    .expect_err("redirect must fail closed");
+    assert_eq!(error.status, StatusCode::BAD_GATEWAY);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(!error.message.contains("lifecycle"));
+    task.abort();
+}
+
+#[tokio::test]
 async fn forward_to_runtime_preserves_path_query_body_and_headers() {
     async fn echo(OriginalUri(uri): OriginalUri, headers: HeaderMap, body: String) -> Json<Value> {
         Json(json!({

@@ -2,6 +2,12 @@
 
 Use an `image-generation` model compatible with the requested workflow. Prepare `tentgent runtime bootstrap --profile local-model` first. Diffusers and Apple Silicon MFLUX paths have different model requirements; see the [fixture guide](../../model-fixtures.md).
 
+Local image servers require `tentgent server run <model-ref> --lazy-load`
+(REST creation: `lazy_load:true`). This applies to Diffusers and MLX/MFLUX;
+startup does not preload every workflow. Existing eager image specs cannot
+start: create a lazy replacement with the desired settings. See
+[server options and recovery](../../servers.md#current-lifecycle-limits).
+
 | Goal | Command | Example and parameters |
 | --- | --- | --- |
 | Create an image from text | `image generate` | [Generation](./generate.md) |

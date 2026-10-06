@@ -38,7 +38,8 @@ class TransformersAudioSpeechModel(TransformersBackendModel, AudioSpeechBackendM
             "text-to-speech",
             model=str(record.source_path),
             device=pipeline_device(self._deps.torch),
-            trust_remote_code=True,
+            trust_remote_code=False,
+            model_kwargs={"use_safetensors": True},
         )
         self._record = record
 

@@ -111,6 +111,12 @@ an `adapter` object containing trusted local source fields. Rust constructs the
 internal runtime adapter record only after managed lookup and compatibility
 validation.
 
+Local chat routes match their public paths exactly. Internal runtime aliases,
+trailing slashes, percent-encoded path aliases, and dot-segment aliases do not
+bypass managed validation: the Local proxy returns `404` without launching a
+runtime or recording support proof. It never forwards arbitrary fallback
+routes or follows runtime redirects.
+
 Compatibility is considered proven when:
 
 - `base_model_ref` matches the server model, or

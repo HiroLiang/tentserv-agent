@@ -97,10 +97,11 @@ hard limits, and verification stale rules. Local server starts require available
 runtime profiles for covered local chat and embedding backends before
 support-status gates are evaluated.
 
-Local server launch outcomes are recorded as model capability proofs. When a
-local server spec includes runtime profile metadata, the `server-start` proof
+Local and Cluster eager workers record terminal preload outcomes as model
+capability proofs, not process launch or caller readiness observations. Lazy startup writes none.
+When a local server spec includes runtime profile metadata, the `server-start` proof
 stores both `runtime_profile` and `runtime_profile_version`. A later profile
-version for the same model, capability, and backend makes the older launch
+version for the same model, capability, and backend makes the older startup
 proof stale instead of silently reusing it.
 
 ## Operator Visibility

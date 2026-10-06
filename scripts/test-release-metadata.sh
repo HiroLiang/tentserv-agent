@@ -62,7 +62,7 @@ assert_invalid_tag "refs/tags/v0.3.0"
 
 assert_flags "$(release_create_flags false)" "--latest" "stable create"
 assert_flags "$(release_create_flags true)" $'--prerelease\n--latest=false' "prerelease create"
-assert_flags "$(release_edit_flags false)" $'--draft=false\n--latest' "stable edit"
+assert_flags "$(release_edit_flags false)" $'--draft=false\n--prerelease=false\n--latest' "stable edit"
 assert_flags "$(release_edit_flags true)" $'--draft=false\n--prerelease' "prerelease edit"
 
 github_output_file="$(mktemp)"

@@ -2,6 +2,26 @@
 
 Import a complete local model or pull a Hugging Face snapshot. Prepare the [runtime](./runtime.md) and any required [HF credentials](./auth.md) first. Short refs must be unique; use full refs in stored definitions.
 
+## Model Trust
+
+Import and capability verification are not a security audit of a model's
+contents. Use trusted publishers and pinned revisions; a runtime environment
+is not an operating-system sandbox. Transformers inference and PEFT training
+do not enable `trust_remote_code`, and require safetensors model weights.
+MLX chat tokenizers and MLX VLM processors likewise receive an explicit
+no-remote-code policy. Models that require custom repository Python code fail
+instead of executing it; select an architecture supported by the installed
+backend. `--allow-unverified` bypasses support-evidence gating only, not this
+code-execution policy. There is no remote-code opt-in in the managed API.
+
+Managed loads also reject custom `auto_map` metadata, repository Python in
+Diffusers models, unsafe shard references, symlink escapes, and special files.
+This applies before preload/inference and MLX training, including selected
+adapter and ControlNet assets. Importing raw Hugging Face cache directories
+with external blob symlinks is not supported; use `model pull` or materialize
+the model files first. These checks do not isolate a hostile local OS user who
+can modify the files after validation.
+
 ## Examples And Common Operations
 
 Import a local model:
