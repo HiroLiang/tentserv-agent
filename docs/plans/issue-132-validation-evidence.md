@@ -7,7 +7,7 @@ subsequent release-hardening audit found additional blockers; the current
 branch is not yet approved for release. See the
 [maintenance release checklist](./bugfix-maintenance-plan.md#release-reassessment-2026-10-03).
 
-Current external gate: [RC3](https://github.com/HiroLiang/tentserv-agent/actions/runs/37050779331)
+RC3 checkpoint: [RC3](https://github.com/HiroLiang/tentserv-agent/actions/runs/37050779331)
 finished with all four native source, packaging and actual installed-artifact
 checks passed. Both macOS architectures passed signature verification, but
 Apple notarization returned HTTP 403 for a required missing/expired agreement
@@ -18,6 +18,21 @@ promote stable, update Homebrew, or close #132 while acceptance is missing.
 The release-creation job was skipped. No RC GitHub Release has been published;
 latest stable remains `v1.1.1`. Workflow artifact installation is not a
 substitute for the pending published-release MLX and Homebrew verification.
+
+On `2026-10-06`, the Account Holder confirmed acceptance of the updated Apple
+agreement. RC4 at `e7a1ae5` was started, then cancelled before publication when
+a fresh dependency audit found newly reviewed fsspec/multidict advisories.
+RC5 must include the patched lock and behavioral regressions, pass notarization
+on both macOS targets, and complete published-release verification before
+stable promotion. Agreement confirmation alone is not notarization evidence.
+
+The RC5 dependency update changes only fsspec to 2026.6.0 and multidict to
+6.9.1. Fourteen new security regressions pass on those versions and detect
+the old behavior. The frozen full/dev environment passes 196 Python tests
+plus 11 subtests without skips, all 150 dependency checks and 20 imports.
+The three real MLX cases passed again in 47.6 seconds with release, timeout,
+restart and zero leftover test processes. Release-readiness/profile checks
+also passed. See the [refreshed security review](../development/dependency-security.md#2026-10-06-publication-recheck).
 
 ## Release Audit Follow-Up
 

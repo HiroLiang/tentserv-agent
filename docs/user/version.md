@@ -31,6 +31,8 @@ Server lifecycle correctness, model-loading safety, and release reliability.
 - Updated Rust/Python dependencies for known security advisories. Two upstream
   findings remain explicitly reviewed with application-level restrictions;
   see [dependency security review](../development/dependency-security.md).
+- Refreshed dependency security floors for fsspec template handling and
+  multidict items-view reference leaks before stable publication.
 - Managed Python now defaults to 3.12, with source support for 3.11–3.12, to
   satisfy the speech dependency requirements. Stop workloads before rebuilding
   an older 3.13 environment; model and application stores are preserved.

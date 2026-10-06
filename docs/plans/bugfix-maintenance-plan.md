@@ -40,7 +40,7 @@ queue that should stay visible from the active plan.
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
 | [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
-| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Implemented; release blocked by Apple agreement | `v1.2.0` (patch selection pending) | Local/Cluster startup, staged eager reload, Cloud validation and lazy-only images are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) and [validation](./issue-132-validation-evidence.md). |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Implemented; refreshed dependency and RC gates pending | `v1.2.0` (patch selection pending) | Local/Cluster startup, staged eager reload, Cloud validation and lazy-only images are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) and [validation](./issue-132-validation-evidence.md). |
 | [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State
@@ -76,11 +76,13 @@ and stable/Homebrew at `v1.1.1` until notarization and published-release checks 
 Test-only `8fb389a` fixes bounded-Busy retry coverage; its Windows PR gate passes
 and it does not change RC3 product sources.
 
-After Account Holder confirmation, prefer a new `v1.1.2-rc.132.4` tag at the
-reviewed branch head. This includes the improved test fixture and gives the
-workflow a fresh artifact namespace; preserve RC1-RC3 tags and artifacts.
-Require both macOS notarization results to be `Accepted`, then verify the
-published RC with the real model before merging and promoting stable.
+The Account Holder confirmed agreement acceptance on `2026-10-06`. RC4 was
+started at `e7a1ae5`, then cancelled before publication because the refreshed
+audit found two newly reviewed Python advisories. Update the fsspec/multidict
+constraints and lock, verify their behavior, then create a new RC5 without
+moving old tags. Require both macOS notarization results to be `Accepted`,
+then verify the published RC with the real model before merging and promoting
+stable. The completed agreement does not replace a successful notarization.
 
 Before release:
 

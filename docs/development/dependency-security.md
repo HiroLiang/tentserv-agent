@@ -5,6 +5,47 @@ of vulnerabilities. Frozen Python installs use the workspace `uv.lock`; review
 all platform and optional-dependency resolutions, not only the developer's
 installed environment.
 
+## 2026-10-06 Publication Recheck
+
+The resumed release audit queried every exact lockfile pair again. Rust still
+had no OSV findings across 313 registry pairs. Two newly reviewed Python
+advisories affected the unchanged candidate lock and were patched before
+stable promotion:
+
+| Package | Before | After | Advisory |
+| --- | --- | --- | --- |
+| fsspec | 2026.2.0 / 2026.4.0 | 2026.6.0 | [GHSA-27vj-qcqg-25rc](https://github.com/advisories/GHSA-27vj-qcqg-25rc), unsafe reference-filesystem templates |
+| multidict | 6.7.1 | 6.9.1 | [GHSA-54p9-h82j-f925](https://github.com/advisories/GHSA-54p9-h82j-f925), items-view reference leaks |
+
+Only these dependency versions and their workspace security floors changed.
+Datasets 5.0.1 already permits fsspec 2026.6.0, and aiohttp permits multidict
+6.9.1; no upstream metadata override or broader dependency upgrade was needed.
+The fsspec resolution is now shared across platforms, reducing the universal
+Python graph from 171 to 170 registry package/version pairs.
+
+The post-update OSV query covered all 313 Rust and 170 Python pairs and no
+longer reports either new advisory. Accelerate and Diskcache remain reported
+with the application boundaries below; their GHSA/PYSEC aliases are not
+additional unique vulnerabilities. Pre/post evidence includes both lockfile
+SHA-256 values and every queried pair under ignored release-review data.
+This is a point-in-time advisory review, not a vulnerability-free guarantee.
+
+Fourteen optional-dependency behavioral regressions pass with the patched
+versions, with no skips: six unsafe-template sinks, default generator
+handling, three ordinary reference reads, and both items-view operations for
+MultiDict/CIMultiDict. Against the old versions, 11 protection cases fail and
+the three ordinary-read controls pass. The tests use harmless literal
+introspection and bounded reference counts, not executable payloads or a
+memory stress test. Base-only environments explicitly skip missing optional
+dependencies; a full profile must execute these cases before publication.
+
+Pinned uv 0.11.7 passed frozen full/dev installation, lock consistency, all
+150 installed dependency checks, 20 backend/runtime imports, and byte-for-byte
+validation of 85 installed runtime source files. Python 3.12.13 passed all
+196 tests and 11 subtests with no skips. The same environment passed all
+three real MLX release/reuse/restart cases in 47.6 seconds; every case left
+zero test processes. Native RC and published-artifact gates remain required.
+
 ## 2026-10-03 Rust Review
 
 All **313 registry package/version pairs** in `Cargo.lock` were queried against
@@ -155,18 +196,15 @@ uv lock --check
 uv export --format requirements-txt --all-extras --all-packages \
   --no-hashes --no-emit-workspace --frozen --no-header \
   | sed -e 's/ ; .*//' -e '/^[[:space:]]*#/d' \
-      -e '/^fsspec==2026\.2\.0$/d' \
   | sort -u \
-  | uvx pip-audit --requirement /dev/stdin --no-deps --disable-pip \
-      --strict --format json
-printf '%s\n' 'fsspec==2026.2.0' \
   | uvx pip-audit --requirement /dev/stdin --no-deps --disable-pip \
       --strict --format json
 ```
 
 Recheck duplicate package versions and coverage whenever the lock changes;
-the fsspec split is specific to this review. Also run `uv pip check`, runtime
-imports, the full Python tests, and real-model smoke after syncing the lock.
+the current lock no longer needs the historical fsspec split. Also run
+`uv pip check`, runtime imports, the full Python tests, and real-model smoke
+after syncing the lock.
 Resolution and vulnerability metadata alone do not prove backend compatibility.
 
 Selected primary evidence:
