@@ -1,30 +1,75 @@
 # Issue #132: Final Validation
 
-Date: `2026-10-01`. Branch: `bug/132-server-runtime-option-noops`.
+Updated: `2026-10-06`. Branch: `bug/132-server-runtime-option-noops`.
 Scope and decisions: [implementation plan](./issue-132-server-runtime-option-contract-plan.md).
-Implementation and Rust 1.99.0 revalidation passed the initial matrix. A
-subsequent release-hardening audit found additional blockers; the current
-branch is not yet approved for release. See the
+Steps 1-7 and release hardening are merged through
+[PR #139](https://github.com/HiroLiang/tentserv-agent/pull/139). The merged
+`main` commit `0ea91c7` has exactly the same tree as verified RC5 `8eef2f8`.
+Issue #132 is closed; published stable and Homebrew installation checks passed.
+See the
 [maintenance release checklist](./bugfix-maintenance-plan.md#release-reassessment-2026-10-03).
 
-RC3 checkpoint: [RC3](https://github.com/HiroLiang/tentserv-agent/actions/runs/37050779331)
-finished with all four native source, packaging and actual installed-artifact
-checks passed. Both macOS architectures passed signature verification, but
-Apple notarization returned HTTP 403 for a required missing/expired agreement
-on both. The Account Holder must resolve
-the agreement in the [Apple Developer account](https://developer.apple.com/account/)
-before retrying notarization. Do not bypass this gate, merge the release PR,
-promote stable, update Homebrew, or close #132 while acceptance is missing.
-The release-creation job was skipped. No RC GitHub Release has been published;
-latest stable remains `v1.1.1`. Workflow artifact installation is not a
-substitute for the pending published-release MLX and Homebrew verification.
+## Published Candidate And Stable Follow-Up
+
+[RC5](https://github.com/HiroLiang/tentserv-agent/actions/runs/37418479120)
+passed native source, package and installed-artifact gates on macOS ARM/Intel,
+Linux x86_64 and Windows x86_64. Both macOS notarizations explicitly returned
+`Accepted`: ARM `4842378f-5a2b-49a5-aeaa-2ea8006e7e3c`, Intel
+`f04050dc-c31e-4f76-b0ed-8380cd077930`. All four published archive checksums
+matched, with seven assets in the
+[RC5 release](https://github.com/HiroLiang/tentserv-agent/releases/tag/v1.1.2-rc.132.5).
+
+The actual published ARM installer passed in a fresh isolated prefix/runtime
+home: strict code signature, package layout/version, pinned uv 0.11.7, managed
+Python 3.12.13, frozen full profile, 150 compatible packages and all 85 runtime
+source files matching the release. The installed non-editable runtime passed
+196 tests plus 11 subtests without skips, then all three real MLX lifecycle
+cases in 54.9 seconds. Model counts reached zero, health polling did not prevent
+runtime exit, restart changed PID/token, and every case left zero test processes.
+
+Stable [v1.1.2](https://github.com/HiroLiang/tentserv-agent/releases/tag/v1.1.2)
+was tagged at merged `main` `0ea91c7`, without changing the RC5 tree. Its
+[release workflow](https://github.com/HiroLiang/tentserv-agent/actions/runs/37420417403)
+passed all four native gates. Both notarizations were `Accepted`: ARM
+`f3792674-e568-4f4b-9446-7baf1b58ea18`, Intel
+`ece1fb50-7a3d-4190-acd7-a8d78d6469ec`. All four downloaded archive checksums
+matched; the seven-asset release is published, non-prerelease and latest.
+The published stable ARM installer repeated the isolated full-profile checks:
+strict signature, version/layout, 85 source files, 150 compatible packages,
+196 tests plus 11 subtests without skips, and all three real MLX cases in
+54.8 seconds. Release, idle process exit, restart, retained first-spawner policy
+and zero leftover test processes were confirmed again.
+
+Homebrew [tap commit `14020d9`](https://github.com/HiroLiang/homebrew-tap/commit/14020d9ad31a30ca5dff93116be81dfbbcc07d02)
+is pushed and matches the tested formula. `audit`, upgrade and formula test
+passed. The installed `1.1.2` CLI
+matches the official archive byte-for-byte; the `1.1.1` keg was retained.
+A fresh isolated Homebrew full-profile runtime passed the same 150-package,
+85-source-file and 196-test/11-subtest checks, then all three real MLX cases in
+54.9 seconds with zero leftover test processes. Production Python environments
+and model stores were not modified.
+
+An initial sandboxed signature check could not access the certificate chain.
+Strict verification of both identical binaries passed with normal system
+certificate access. No binary was modified or re-signed to resolve that check.
+Release notes retain the versioned change summary and use tag-pinned absolute
+links to security and upgrade guidance. Final documentation diff and release
+readiness checks passed; local PowerShell remained unavailable, with its native
+runner checks already passed in the release workflow.
+
+## Agreement And Dependency Resume History
+
+[RC3](https://github.com/HiroLiang/tentserv-agent/actions/runs/37050779331)
+passed all four native source/package/installed-artifact gates, but both macOS
+notarizations returned HTTP 403 for a missing/expired required agreement.
+Release creation was skipped; no signing or notarization gate was bypassed.
 
 On `2026-10-06`, the Account Holder confirmed acceptance of the updated Apple
 agreement. RC4 at `e7a1ae5` was started, then cancelled before publication when
 a fresh dependency audit found newly reviewed fsspec/multidict advisories.
-RC5 must include the patched lock and behavioral regressions, pass notarization
-on both macOS targets, and complete published-release verification before
-stable promotion. Agreement confirmation alone is not notarization evidence.
+RC5 included the patched lock and behavioral regressions, then passed both
+notarizations and published-release verification before the normal PR merge.
+Agreement confirmation alone was not counted as notarization evidence.
 
 The RC5 dependency update changes only fsspec to 2026.6.0 and multidict to
 6.9.1. Fourteen new security regressions pass on those versions and detect
@@ -35,6 +80,9 @@ restart and zero leftover test processes. Release-readiness/profile checks
 also passed. See the [refreshed security review](../development/dependency-security.md#2026-10-06-publication-recheck).
 
 ## Release Audit Follow-Up
+
+The following audit and candidate sections preserve historical checkpoints;
+their pending gates and test counts describe that checkpoint, not final status.
 
 On `2026-10-03`, public runtime ingress and transient Cluster reload recovery
 were corrected in `deac594`. Exact route allowlisting preserves public DTO
@@ -88,8 +136,8 @@ with the same 9 ignored entries; warning-denying all-target checks also passed.
 
 ## Native RC Feedback
 
-[PR #139](https://github.com/HiroLiang/tentserv-agent/pull/139) is open; the
-first candidate tag is `v1.1.2-rc.132.1` at `400f439`.
+[PR #139](https://github.com/HiroLiang/tentserv-agent/pull/139) was open during
+these checkpoints; the first candidate tag was `v1.1.2-rc.132.1` at `400f439`.
 [RC1 workflow](https://github.com/HiroLiang/tentserv-agent/actions/runs/37044944968)
 blocked publication before packaging. No RC Release or stable update was made.
 
@@ -217,11 +265,11 @@ Each checkpoint passed its focused tests, compile/format checks and internal
 diff review before the next step. The plan retains intermediate evidence and
 test-fixture corrections; this file records the final state.
 
-## Final Automated Matrix
+## Original Step 7 Automated Matrix (2026-10-01)
 
 Run from the repository root. Subprocess suites must run sequentially.
 
-| Command | Final result |
+| Command | Checkpoint result |
 | --- | --- |
 | `cargo test --workspace -q` | 917 passed across workspace targets; 9 ignored entries listed below. |
 | `cargo check --workspace --all-targets` | Passed, no compile warnings. |
@@ -258,7 +306,7 @@ worker-owned proof, stale/unsupported preload endpoints, and internal lifecycle
 namespace rejection. Uncertain accepted work retains protection instead of
 being cancelled or reported as freed.
 
-## Real Model And Resource Evidence
+## Original Real Model And Resource Evidence (2026-10-01)
 
 User authorized one small download into the ignored `.tentgent-test` store.
 Model: [mlx-community/Qwen2.5-0.5B-Instruct-4bit](https://huggingface.co/mlx-community/Qwen2.5-0.5B-Instruct-4bit),
@@ -308,19 +356,21 @@ release, real reload/reuse, and OS process exit, not per-allocation GPU telemetr
 
 ## Remaining Boundaries
 
-- Native Windows/Linux execution and their CI gates were not run on this Mac.
+- Native Windows/Linux and both macOS release gates passed on GitHub runners;
+  real MLX model execution was validated only on the local Apple Silicon Mac.
 - Image dispatch uses fake backends/pixel decoding; no Diffusers/MFLUX weights
   or paid Cloud inference were downloaded/executed.
 - Confirmed preload failure releases only candidate resources. Unknown
   completion intentionally retains claims; stop its owning server, wait for
   accepted work, reconcile, then restart.
 - No architecture cleanup, proof-v2 migration or ownership redesign is included.
-- Version preparation targets `v1.1.2`; PR/merge, native release verification,
-  Homebrew update, and publication are separate pending gates.
-- The GitHub issue remains open for review/merge; this local record supersedes
-  its earlier "implementation has not started" progress prose.
+- Published `v1.1.2` and Homebrew installation checks passed. Issue #132 is
+  closed; #126-#130 remain separate work.
+- Two unpatched upstream advisories retain documented application restrictions;
+  see the [security review](../development/dependency-security.md). This is not
+  a vulnerability-free or Internet-service deployment claim.
 
-## Draft PR
+## Historical Draft PR
 
 Title: `fix: honor server load modes and safely stage Cluster reloads (#132)`
 

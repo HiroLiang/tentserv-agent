@@ -1,8 +1,9 @@
 # Issue #132: Server Runtime Option Contract
 
-Status: Steps 1-7 and the Rust 1.99.0 baseline upgrade passed the initial
-validation. User-authorized release hardening now targets `v1.1.2`, with
-native package and installed-release gates still required before closeout.
+Status: Steps 1-7, Rust 1.99.0 and release hardening are merged through
+[PR #139](https://github.com/HiroLiang/tentserv-agent/pull/139) and released in
+`v1.1.2`. Native, published stable and Homebrew installation gates passed.
+Issue #132 is closed; its existing tracking milestone remains unchanged.
 See [validation evidence](./issue-132-validation-evidence.md) and the
 [release checklist](./bugfix-maintenance-plan.md#release-reassessment-2026-10-03).
 
@@ -434,8 +435,8 @@ actually execute; a zero-test filtered run is not evidence.
 
 - #131 is merged and released in v1.1.1; preserve its `runtime_idle_seconds=300`
   and `model_idle_seconds=0` defaults, finite policy, and observational health.
-- #127 proof v2 can progress independently. Land #132 before #128 server/Cluster
-  tuple gates and #130 diagnostics to avoid conflicting edits.
+- #127 proof v2 can progress independently. The merged #132 prerequisite for
+  #128 server/Cluster tuple gates and #130 diagnostics is now satisfied.
 - #129 adapter/load identity remains responsible for adapter-specific preload
   and proof semantics. This issue validates only the base model for each route.
 - Do not add Cloud retention, model prefetch, new public lifecycle controls,
@@ -454,5 +455,5 @@ actually execute; a zero-test filtered run is not evidence.
 - [x] Every accepted decision D1-D9 is implemented and verified within the recorded test scope.
 - [x] Each review step records its focused test result and remaining risk.
 - [x] All #132 issue implementation acceptance criteria pass and user-facing docs match.
-- [ ] PR review and merge are complete.
-- [ ] Installed stable release and Homebrew verification pass; then close #132.
+- [x] PR review and merge are complete.
+- [x] Installed stable release and Homebrew verification pass; #132 closeout is recorded.

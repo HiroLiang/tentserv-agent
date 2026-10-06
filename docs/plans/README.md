@@ -38,13 +38,14 @@ or too cross-cutting to track only in GitHub issues.
   health probes keep the shared Python runtime alive indefinitely. Merged and
   released in `v1.1.1`.
 - [issue-132-server-runtime-option-contract-plan.md](./issue-132-server-runtime-option-contract-plan.md)
-  Accepted Local/Cluster eager-load and Cloud option decisions, with reviewable
-  implementation checkpoints. Complete before `#128` and `#130`.
+  Completed Local/Cluster eager-load and Cloud option decisions, reviewable
+  checkpoints and release evidence. Released in `v1.1.2`; the `#128`/`#130`
+  prerequisite is satisfied.
 - [v1.2.0-local-compatibility-state-plan.md](./v1.2.0-local-compatibility-state-plan.md)
   Active execution plan for issues `#126`-`#130`: complete compatibility
   tuples, proof v2 persistence, local model and Cluster gates, LoRA adapter
   gates, diagnostics, recovery, documentation, and release closeout. The
-  separate `#132` fix precedes server/Cluster gates and diagnostics.
+  separate `#132` prerequisite is complete and released in `v1.1.2`.
 - [v1.x-roadmap.md](./v1.x-roadmap.md)
   Long-term post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is
   complete; the active `v1.2.0` compatibility-state slice is detailed in its
@@ -52,8 +53,8 @@ or too cross-cutting to track only in GitHub issues.
   context, provider orchestration, and later 1.x work.
 - [bugfix-maintenance-plan.md](./bugfix-maintenance-plan.md)
   Active maintenance queue for post-`v1.0.0` bug fixes, diagnostics polish,
-  release follow-up, documentation cleanup, and repository hygiene. Its current
-  open server-option follow-up is `#132`.
+  release follow-up, documentation cleanup, and repository hygiene. The `#132`
+  server-option fix is released in `v1.1.2`.
 
 ## Deferred Plans
 
