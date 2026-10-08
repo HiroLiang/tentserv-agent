@@ -35,7 +35,8 @@ or too cross-cutting to track only in GitHub issues.
 - [issue-127-compatibility-tuple-proof-v2-plan.md](./issue-127-compatibility-tuple-proof-v2-plan.md)
   Reviewable compatibility-tuple/proof-v2 steps, accepted decisions, and safe
   legacy persistence on the merged `v1.1.2` baseline. Includes a linked risk,
-  transaction, migration, and regression checklist; implementation is active.
+  transaction, migration, and regression evidence; implementation is complete
+  with final native validation and PR review pending.
 - [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md)
   Implemented and validated issue-level contract, decision register, evidence,
   and live smoke runbook for restoring model idle release without letting

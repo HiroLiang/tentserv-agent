@@ -225,20 +225,66 @@ limitation. Stop on changed stable output, self-Busy/deadlock, corrupted proof,
 unreleased fixture process, source/schema mismatch, or an unexplained skip.
 Do not update expected snapshots merely to conceal a compatibility regression.
 
-## Intermediate Execution Evidence
+## Execution Evidence (2026-10-08)
 
-Initial integration checkpoint on 2026-10-08 (macOS arm64, working tree after
-the independent #141 commit `e1c4226`; not final issue closeout):
+Native host: macOS arm64, Rust 1.99.0, Python 3.12.13. Isolated synthetic
+stores and fixture-owned processes only; no user models or production runtime
+were modified. No new model download was needed for this storage foundation.
 
-- `cargo check --locked --workspace --all-targets`: passed, no warnings.
-- `cargo test --locked -p tentgent-kernel features::model --lib`: 112 passed,
-  0 failed/ignored, including legacy storage/use cases and #141 synthetic
-  write/read/parse-error cases. Later domain changes require another run.
-- `cargo test --locked -p tentgent-daemon model_resources -- --nocapture`:
-  21 library tests passed; the separate binary target has no matching tests
-  and is not counted as evidence.
-- Pure tuple refinement: 36 focused domain tests passed; the fixed canonical
-  JSON vector's SHA-256 was independently checked outside the Rust code.
+- `bash scripts/test-release-source.sh`: passed. Warning-denied workspace
+  all-target compilation, formatting, complete Rust tests, fresh non-editable
+  Python source install/import parity (85 files), dependency consistency,
+  Python tests, lifecycle subprocess suites, and release-readiness dry runs.
+- Final product-source Rust rerun at `f6ca67a`:
+  `RUSTFLAGS='-D warnings' cargo test --workspace --locked`: CLI 119, daemon
+  library 349, daemon binary 2, kernel 592, platform-fs 1 passed; no failures.
+- Python: 181 passed, 11 subtests passed, 15 skipped. Skips require optional
+  Transformers (1), Jinja2 (10), or multidict extension (4), absent from the
+  isolated base/dev environment. These are not claimed as validated.
+- Actual Rust/HTTP/Python fixture processes: Local startup 10, Cluster startup
+  11, Cluster reload 6 passed, sequentially. Covers lazy/eager readiness,
+  health-observation behavior, model-idle release, first-spawner policy,
+  timeout/stop handling, ownership, candidate rollback and old-stream drain.
+- Domain/key: 39 tests; resolver: 23; v2 store: 18; import coordination: 3.
+  Two canonical JSON/SHA-256 golden vectors were independently checked.
+- Proof transactions/processes: 16; complete proof suite: 34; coordinator: 11;
+  server use cases: 33. Native CI will rerun final fixtures.
+- The isolated `44dc105` archive independently passed warning-denied workspace
+  all-target compilation, verifying the legacy-only commit remains buildable.
 
-Native CI, full source regression, concurrency/crash coverage, and final diff
-review are still pending. Intermediate green checks do not complete #127.
+Rust ignored entries are two subprocess helpers actually invoked by parent
+tests, one optional watcher cost benchmark, and seven manual macOS Keychain
+probes unrelated to #127. Zero-test binary/doc targets are not added to counts.
+The source gate's PowerShell installer dry-run was unavailable on this host;
+native Windows coverage is supplied by CI, not simulated by POSIX scripts.
+
+The first source-gate attempt stopped on formatting differences (edition-aware
+`cargo fmt` corrected them). A later Rust rerun inside the restricted sandbox
+could not bind localhost; the same suite passed with fixture-network access.
+Neither was concealed by skipping tests or changing runtime expectations.
+An additional Clippy audit found ten existing/out-of-scope style lints; it is
+not a passed gate. Warning-denied `cargo check` and `cargo test` both pass.
+
+Fault evidence covers failed primary replacement, committed-primary/mirror
+failure with retry, process exit before mirror replacement and during bulk
+clear, an orphan temporary, OS lock release, and concurrent v1/v2
+same-key/different-key/read/clear operations. Checkpoints
+are deterministic fixture states, not arbitrary interruption inside fsync or
+rename, and do not establish power-loss multi-file atomicity.
+
+## Native CI And Handoff
+
+`model-proof-native.yml` runs macOS, Linux, and Windows atomic replacement,
+long paths, model/proof/process tests, coordination, server/Cluster callers,
+Local evidence/eager startup, REST proofs, and CLI compatibility. PR/native
+results are pending; local success alone does not close this checklist.
+
+#128 must collect authoritative selected-runtime facts before adopting v2.
+#129 owns adapter load identity and serving gates; #130 owns exact-query UX
+and corruption recovery. Existing gates, schema producers, idle clocks and
+runtime ownership keys remain unchanged.
+
+Known separate maintenance risk: deduplicated import/pull can replace a
+capability set without dependency-blocker authorization. This pre-existing
+policy is recorded in the [maintenance queue](./bugfix-maintenance-plan.md);
+the new short Model lock prevents races but does not claim to fix that policy.

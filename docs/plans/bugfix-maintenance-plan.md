@@ -42,6 +42,7 @@ queue that should stay visible from the active plan.
 | [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
 | [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Completed; released in `v1.1.2` | `v1.2.0` (existing tracking) | Local/Cluster startup, staged eager reload, Cloud validation and lazy-only images are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) and [validation](./issue-132-validation-evidence.md). |
 | [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
+| [#141](https://github.com/HiroLiang/tentserv-agent/issues/141) | Implemented; PR validation/review pending | `v1.2.0` | Redact credential values in persisted/displayed proof errors. Independent commit `e1c4226` accompanies #127; no evidence of an actual credential leak. |
 
 ## Current Handoff State
 
@@ -122,8 +123,16 @@ before implementation when a candidate is selected.
 - Add a general pull-request CI gate that runs the Rust workspace, Python
   runtime tests, formatting, Clippy, and documentation/release-readiness
   checks. `#113` runs this matrix locally, but the repository currently has
-  only the focused Windows ownership pull-request workflow. Open a maintenance
+  focused Windows ownership and #127 native proof workflows, not a general
+  Python/Clippy PR gate. Open a maintenance
   issue before implementing this repository-wide CI change.
+- Align deduplicated import/pull capability replacement with dependency
+  blockers. Reimporting identical content with an explicit different
+  capability currently replaces metadata without `ReplaceModelCapabilities`
+  authorization, unlike the capability-update command. #127 adds a short
+  coordination lock but intentionally does not change this existing policy.
+  Confirm Server/Cluster/Adapter/ownership dependencies are rejected before
+  changing the capability set; track a separate bug before implementation.
 
 ## Patch Boundary
 

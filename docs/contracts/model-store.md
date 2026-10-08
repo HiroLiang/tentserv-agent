@@ -130,6 +130,12 @@ input preserves the stored metadata. Explicit capability input updates the
 existing stored model metadata before returning the deduplicated outcome. This
 metadata update does not copy content and does not change `model_ref`.
 
+Finalization holds shared runtime maintenance and exclusive canonical model
+coordination after staging/hashing. It rereads existence and rejects metadata
+whose body reference differs from the manifest-derived reference before any
+write. This excludes proof snapshots and deletion during the filesystem
+commit; it does not change the existing deduplication capability policy.
+
 Hugging Face pull uses compact registry and snapshot metadata as best-effort
 evidence. `feature-extraction`, `sentence-similarity`,
 `sentence-transformers`, or `sentence_bert_config.json` can classify

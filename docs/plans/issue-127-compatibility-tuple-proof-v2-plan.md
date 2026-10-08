@@ -1,14 +1,14 @@
 # Issue 127 Compatibility Tuple And Proof v2 Sub-Plan
 
-Status: active implementation; recommended user decisions accepted.
-Updated: 2026-10-08. Steps are being implemented with intermediate checks.
+Status: implementation complete; final native validation and PR review pending.
+Updated: 2026-10-08. User decisions and intermediate checks are recorded below.
 
 - Issue: [#127](https://github.com/HiroLiang/tentserv-agent/issues/127)
 - Parent: [v1.2.0 Local Compatibility State Plan](./v1.2.0-local-compatibility-state-plan.md)
 - Branch: `feature/127-compatibility-tuple-proof-v2`
 - Main baseline: `8c5d215595379a3b6e10a1b5c1da36efdf7d76f0`
 - Main integration: merge commit `4f38069`; only two documentation-router
-  conflicts required resolution. Product source matches the main baseline.
+  conflicts required resolution. Product source matched main at that checkpoint.
 - Companion: [risk, transaction, and validation checklist](./issue-127-risk-and-validation.md)
 
 This refresh replaces the old six-phase checklist with reviewable steps that
@@ -67,7 +67,7 @@ unannounced addition to this issue (see X127-01 below).
 Code locations and risk priorities are in the companion. These are source
 findings, not a claim that corruption or credential leakage occurred locally.
 
-## Proposed Tuple Contract
+## Accepted Tuple Contract
 
 | Dimension | Required representation / fact source |
 | --- | --- |
@@ -98,10 +98,10 @@ Stronger environment fingerprinting requires an explicit schema/scope decision.
 
 ## Internal Design Decisions
 
-These are proposed implementation defaults. Freeze them in Step 1; escalate
-only if the implementation needs materially different behavior.
+These implementation decisions were frozen in Step 1. Escalate only if later
+integration needs materially different behavior.
 
-| ID | Proposed decision |
+| ID | Accepted decision |
 | --- | --- |
 | D127-01 | Separate v2 tuple/proof/evidence types; retain legacy domain types and wire formats. Use focused modules; keep composition files free of implementation. |
 | D127-02 | TOML `schema_version = 2`, `record_kind = local-proof`; SHA-256 of canonical tuple JSON including an explicit identity-version marker. A normalization change requires a new identity version. |
@@ -113,7 +113,7 @@ only if the implementation needs materially different behavior.
 | D127-08 | Current producers retain source, schema, and trigger timing, but adopt safe persistence. Only callers with complete observed facts may write v2. |
 | D127-09 | Promise per-file atomic replacement and coordinated operations, not power-loss all-or-nothing across legacy dual writes or bulk clear. Report partial failure and allow safe retry. |
 
-Proposed v2 path:
+V2 path:
 
 ```text
 models/store/<model_ref>/support-proofs/v2/<capability>/<tuple_sha256>.toml
@@ -193,13 +193,13 @@ changing persistence.
 
 ### Step 2 — Make Existing Proof Persistence Safe
 
-- [ ] Introduce runtime/store context and owned/borrowed proof transactions;
+- [x] Introduce runtime/store context and owned/borrowed proof transactions;
   private raw helpers prevent nested public-method lock acquisition.
-- [ ] Coordinate list, v1 save, legacy mirror, and capability clear; count and
+- [x] Coordinate list, v1 save, legacy mirror, and capability clear; count and
   mutation use the same snapshot. Revalidate model identity under the lock.
-- [ ] Replace both legacy direct writes with the existing atomic primitive.
+- [x] Replace both legacy direct writes with the existing atomic primitive.
   Surface partial mirror failure without claiming rollback.
-- [ ] Wire existing callers without changing proof source/trigger timing,
+- [x] Wire existing callers without changing proof source/trigger timing,
   best-effort inference policy, stable response shape, or gate policy.
 
 Check: same/different-key writers, reader/write, clear/write, model-delete/write,
@@ -209,11 +209,11 @@ Review legacy-only fixture diffs; no v2 or startup-policy change in this step.
 
 ### Step 3 — Add Complete Tuple And Deterministic Identity
 
-- [ ] Add focused tuple/component, v2 proof, evidence, key, and filter types.
-- [ ] Validate paired adapter/profile fields, explicit absence, typed shapes,
+- [x] Add focused tuple/component, v2 proof, evidence, key, and filter types.
+- [x] Validate paired adapter/profile fields, explicit absence, typed shapes,
   runtime-version provenance, and size limits.
-- [ ] Freeze canonical JSON/identity-version golden vectors and SHA-256 keys.
-- [ ] Test every dimension independently, aliases, ordering, round-trip,
+- [x] Freeze canonical JSON/identity-version golden vectors and SHA-256 keys.
+- [x] Test every dimension independently, aliases, ordering, round-trip,
   normalization idempotence, and old filename collision counterexamples.
 
 Check: pure domain tests; no new runtime calls, store mutation, or gate wiring.
@@ -221,13 +221,13 @@ Review readable examples for base, adapter, and changed-runtime tuples.
 
 ### Step 4 — Add v2 Storage And Three-Generation Operations
 
-- [ ] Implement exact get/save/replace/remove and typed list/filter using
+- [x] Implement exact get/save/replace/remove and typed list/filter using
   Step 2 transactions; retain v1 path/key compatibility.
-- [ ] Add explicit three-generation evidence reading and consistent model-wide
+- [x] Add explicit three-generation evidence reading and consistent model-wide
   snapshots; do not expose mixed-generation results through legacy gate APIs.
-- [ ] Cover body/path validation, deterministic ordering, ignored temporary
+- [x] Cover body/path validation, deterministic ordering, ignored temporary
   files, parse limits, corrupt/unknown schema, and interrupted operations.
-- [ ] Extend capability clear/count to all generations without touching other
+- [x] Extend capability clear/count to all generations without touching other
   capabilities or model assets. Validate rollback limitations with fixtures.
 
 Check: atomic/concurrent/crash cases in the companion; fixture demonstration of
@@ -236,11 +236,11 @@ layout and error results, including partial failure, not only the happy path.
 
 ### Step 5 — Add Exact Resolution Without Migrating Existing Gates
 
-- [ ] Implement complete-query precedence and stable missing-dimension reasons.
-- [ ] Keep legacy gate adapters behavior-compatible; no v2-to-legacy flattening.
-- [ ] Prove base/adapter/runtime/profile/platform/shape isolation, exact failure
+- [x] Implement complete-query precedence and stable missing-dimension reasons.
+- [x] Keep legacy gate adapters behavior-compatible; no v2-to-legacy flattening.
+- [x] Prove base/adapter/runtime/profile/platform/shape isolation, exact failure
   precedence, and no authorization from a broad filter result.
-- [ ] Recheck manual verify, runtime execution, and eager writer timing through
+- [x] Recheck manual verify, runtime execution, and eager writer timing through
   CLI/REST/Local/Cluster callers after persistence wiring changes.
 
 Check: model resolver, server/Cluster gates, CLI/REST fixtures, chat/embedding/
@@ -249,15 +249,15 @@ blocked is a regression to investigate, not a snapshot to approve silently.
 
 ### Step 6 — Native Regression, Evidence, And Handoff
 
-- [ ] Run the full Rust/Python source gate and sequential subprocess suites
+- [x] Run the full Rust/Python source gate and sequential subprocess suites
   listed in the companion; inspect all skipped/ignored/zero-test results.
 - [ ] Validate new persistence tests on native macOS, Linux, and Windows;
   add focused PR coverage where the existing workflow would not execute them.
-- [ ] Record test counts, commands, environment, fault-injection outcomes, and
+- [x] Record test counts, commands, environment, fault-injection outcomes, and
   unchanged runtime cleanup behavior. No additional model download is required
   for a storage-only change; rerun isolated live lifecycle smoke if relevant
   runtime wiring changes or a regression makes it necessary.
-- [ ] Update contracts and parent progress, summarize remaining limitations,
+- [x] Update contracts and parent progress, summarize remaining limitations,
   and hand exact tuple/store/query APIs to `#128`/`#129`, diagnostics to `#130`.
 
 Close `#127` only after accepted decisions, implementation, and evidence agree.
@@ -270,3 +270,25 @@ Passing storage tests alone does not complete `#126` or authorize publication.
 - [x] Refreshed scope, risks, decisions, review steps, and validation plan.
 - [x] User decision/review checkpoint; recommended options accepted.
 - [ ] Steps 1–6 implementation and validation.
+
+## Implementation Review Map
+
+| Checkpoint | Commit / boundary |
+| --- | --- |
+| Separate #141 | `e1c4226`: bounded credential-value redaction at write/read boundaries. |
+| Step 1 | `52c233e`: frozen tuple, proof, migration, and transaction contracts. |
+| Step 3 | `fe64e86`: pure validated types, canonical keys, and 39 domain tests. |
+| Step 2 | `44dc105`: safe legacy transactions, permit borrowing, and caller integration. |
+| Step 4 | `19c9a5b`: v2 storage, generation-aware evidence, and process/fault fixtures. |
+| Step 5 | `f6ca67a`: complete-query resolver and 23 precedence/isolation tests. |
+
+Pure types landed before transaction integration so every commit remains
+buildable; the legacy transaction commit was separately compiled from an
+isolated archive with warnings denied. No runtime facts or gate policies were
+migrated. Final counts, native CI, and remaining limitations belong in the
+[validation checklist](./issue-127-risk-and-validation.md).
+
+Handoff: #128 collects actual selected-runtime facts and adopts complete model
+and Cluster queries; #129 defines adapter load identity and serving checks;
+#130 adds exact-query diagnostics and recovery UX. This branch does not publish
+or merge itself. #127/#141 stay open until the reviewed PR is merged.

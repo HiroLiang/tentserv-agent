@@ -18,7 +18,7 @@ the same validation and reject unknown fields.
 | `model_ref` | Canonical managed content reference. Source names and short refs are not substitutes. |
 | `capability` | Existing model capability enum. |
 | `primary_format` | Existing model format enum. |
-| `quantization` | `kind: unquantized`, or `kind: quantized` with registered `method`, opaque `variant`, optional `bits` and `group_size`. |
+| `quantization` | `kind: unquantized`, or `kind: quantized` with registered `method`, opaque `variant`, and mandatory typed `bits` and `group_size`. |
 | `backend`, `runtime_family` | Registered labels with a validated backend/family/package combination. |
 | `runtime` | Selected backend `package` and observed `version`. |
 | `profile` | `kind: no-profile`, or `kind: selected` with execution-profile `id` and positive `version`. |
@@ -60,16 +60,18 @@ Execution shapes contain:
 - Output: `family`, nonempty set of `modalities`, explicit `streaming`, and
   `format`.
 - Both families must equal the tuple capability. Modalities are sorted and
-  deduplicated in canonical enum order: text, image, audio, video.
+  deduplicated in canonical enum order: text, image, audio, video, file.
 - Provider labels are `native`, `openai`, `claude`, and `gemini`.
 - Output formats are `text`, `json`, `float-vector`, `ranked-documents`, `wav`,
-  `pcm`, `mp3`, `png`, and `jpeg`.
+  `pcm`, `mp3`, `png`, `jpeg`, and `base64`.
 - Attributes are the fixed allowlist `tool_calls`, `structured_output`,
   optional `image_workflow`, and optional `embedding_input`. The first two
   booleans are explicit, including false.
 - Tool/structured flags are limited to chat, vision-chat, and
-  video-understanding. Image workflow is limited to image-generation;
-  embedding input is limited to embedding.
+  video-understanding. Image-generation execution requires an explicit image
+  workflow; other capabilities reject it. Embedding input is limited to
+  embedding, where absence means an observed request without query/document
+  distinction, not an unknown value.
 - Image workflow values are `text-to-image`, `image-to-image`, `inpainting`,
   and `controlnet`. Embedding input values are `query` and `document`.
 
@@ -99,7 +101,12 @@ Opaque identifiers and versions preserve case and never trim or guess values.
 - `mps` canonicalizes to device class `metal`; `llama_cpp` and
   `llama_cpp_python` are registered aliases for their hyphenated labels.
 - Quantization methods: `mlx`, `gguf`, `bitsandbytes`, `gptq`, `awq`.
-  If present, bits are 1-64 and group size is positive.
+  Bits are `{ kind: fixed, bits: 1..64 }` or `{ kind: mixed }`; group size is
+  `{ kind: fixed, size: positive }`, `{ kind: per-channel }`, or
+  `{ kind: not-applicable }`. Neither field may be omitted or null for a
+  quantized model. MLX requires fixed groups; GGUF/BitsAndBytes allow explicit
+  not-applicable; GPTQ/AWQ allow fixed or per-channel groups. These states
+  describe established facts, never unknown values.
 - Opaque identifiers: 1-128 ASCII bytes, alphanumeric or `._-:/+`.
   Empty, `unknown`, `latest`, `n/a`, and `not-applicable` are rejected.
 - Runtime version: 1-128 ASCII bytes, alphanumeric or `._+-!`, with at least
@@ -150,6 +157,9 @@ They map to fixed safe summaries. V2 has no arbitrary exception string field.
 The store bounds persisted v2 input to 16 KiB before parsing. Unsupported
 schema/identity versions, unknown fields, invalid values, and body/key
 mismatch return explicit errors; they do not become verified results.
+Save and exact removal validate any existing record under the same exclusive
+transaction before changing it. Invalid existing bytes remain untouched;
+these operations do not provide an implicit repair or quarantine path.
 
 This synthetic TOML illustrates the wire shape, not evidence of a real run:
 
@@ -205,6 +215,18 @@ cannot authorize execution; exact resolution compares the complete tuple and
 observation. Missing old dimensions remain stale evidence. A current exact v2
 record outranks less-specific old evidence; unrelated newer proof cannot
 override it. Hard incompatibility and applicable failure precedence remain.
+Without an exact proof, related incomplete or different-tuple evidence is
+stale. Only when no related evidence exists may a complete-tuple hint supply
+supported/unsupported status; it never supplies verified status. Opposing
+exact hints prefer unsupported. Legacy partial hints are not automatically
+converted into complete hints, and duplicate current exact proofs are errors,
+not timestamp-based tie-breaks.
+
+Model-wide v2 list/evidence snapshots reject unknown capability directories
+without reading their records. Exact and capability-scoped operations use only
+the selected known namespace. The existing clear API is capability-scoped,
+not model-wide: it preserves unknown namespaces. Legacy-only gate readers do
+not inspect v2, so unknown or malformed v2 files do not break those readers.
 
 V2 and old files coexist without backfill or v2-to-legacy projection. Existing
 gate adapters keep their old behavior until #128/#129. Exact removal deletes

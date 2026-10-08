@@ -77,6 +77,12 @@ lock root from a model-directory parent: the data root may be separate from
 | Model-wide snapshot | Shared | Shared | Shared for every capability in the kernel enum, acquired together. |
 | Save/replace/exact removal/capability clear | Shared | Shared | Exclusive for the selected capability. |
 | Existing model deletion/capability replacement | Existing guard policy | Exclusive | Existing guard policy is unchanged. |
+| Model import/pull finalization, including deduplicated metadata writes | Shared | Exclusive | No capability lock is needed while the model is exclusively held. |
+
+Import/pull copies, downloads, and hashes outside this short commit boundary.
+After acquiring the canonical model key, recheck existence and metadata
+identity before installing staged content or updating deduplicated metadata.
+This coordination does not add dependency-blocker policy to import.
 
 An independent operation acquires its complete set once. Model-wide reads lock
 all known capability keys, not only directories discovered before acquisition.

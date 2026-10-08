@@ -1,0 +1,57 @@
+name: Model proof native regression
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/model-proof-native.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "src/tentgent-kernel/**"
+      - "src/tentgent-platform-fs/**"
+      - "src/tentgent-cli/**"
+      - "src/tentgent-daemon/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proof-regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check all workspace targets
+        run: cargo check --locked --workspace --all-targets
+      - name: Test kernel atomic replacement and long paths
+        run: cargo test --locked -p tentgent-kernel atomic_write --lib
+      - name: Test platform filesystem replacement and long paths
+        run: cargo test --locked -p tentgent-platform-fs --lib
+      - name: Test model domain, proof storage, processes, and recovery
+        run: cargo test --locked -p tentgent-kernel features::model --lib
+      - name: Test coordination modes and scope
+        run: cargo test --locked -p tentgent-kernel resource_coordination --lib
+      - name: Test server transactions and legacy support gates
+        run: cargo test --locked -p tentgent-kernel features::server::usecases --lib
+      - name: Test Cluster legacy readiness and execution
+        run: cargo test --locked -p tentgent-kernel features::cluster --lib
+      - name: Test Local execution evidence and worker-owned eager startup
+        run: cargo test --locked -p tentgent-daemon server::local --lib
+      - name: Test stable REST model proof behavior
+        run: cargo test --locked -p tentgent-daemon model_resources
+      - name: Test CLI model proof and diagnostic compatibility
+        run: cargo test --locked -p tentgent-cli
