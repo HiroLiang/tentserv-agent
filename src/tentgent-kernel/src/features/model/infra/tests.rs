@@ -374,6 +374,109 @@ fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[test]
+fn filesystem_model_proof_direct_writes_redact_error_values() {
+    let root = unique_path("model-proof-write-redaction");
+    let layout = ModelStoreLayout::from_models_dir(root.join("models"));
+    let model_ref = ModelRef::parse("b".repeat(64)).expect("model ref");
+    let proof = proof_fixture(
+        model_ref.clone(),
+        ModelCapability::Chat,
+        "llama.cpp",
+        ModelCapabilityProofStatus::Failed,
+        Some("HF_TOKEN=synthetic-write-secret".into()),
+    );
+    let store = FileModelCapabilityProofStore;
+    let support_path = layout.support_proof_path(
+        &crate::features::model::domain::ModelCapabilityProofKey::from_proof(&proof),
+    );
+    store
+        .save_support_proof(&layout, &proof)
+        .expect("direct tuple save");
+    assert!(!fs::read_to_string(&support_path)
+        .expect("support TOML")
+        .contains("synthetic-write-secret"));
+    store
+        .save_capability_proof(&layout, &proof)
+        .expect("direct compatible save");
+    for path in [
+        support_path,
+        layout.capability_proof_path(&model_ref, proof.capability),
+    ] {
+        let body = fs::read_to_string(path).expect("persisted TOML");
+        assert!(!body.contains("synthetic-write-secret"));
+        assert!(body.contains("[redacted]"));
+    }
+    fs::remove_dir_all(root).expect("fixture cleanup");
+}
+
+#[test]
+fn filesystem_model_proof_parse_errors_do_not_disclose_toml_body() {
+    let root = unique_path("model-proof-invalid-redaction");
+    let layout = ModelStoreLayout::from_models_dir(root.join("models"));
+    let model_ref = ModelRef::parse("c".repeat(64)).expect("model ref");
+    let path = layout.capability_proof_path(&model_ref, ModelCapability::Chat);
+    fs::create_dir_all(path.parent().expect("parent")).expect("proof directory");
+    let malformed = "error = \"HF_TOKEN=synthetic-parse-secret\n";
+    fs::write(&path, malformed).expect("malformed fixture");
+    let error = FileModelCapabilityProofStore
+        .list_capability_proofs(&layout, &model_ref)
+        .expect_err("invalid proof")
+        .to_string();
+    assert!(error.contains("invalid model proof TOML"));
+    assert!(!error.contains("synthetic-parse-secret"));
+    assert!(!error.contains("HF_TOKEN"));
+    assert_eq!(
+        fs::read_to_string(path).expect("unchanged malformed fixture"),
+        malformed
+    );
+    fs::remove_dir_all(root).expect("fixture cleanup");
+}
+
+#[test]
+fn filesystem_model_proof_reads_redact_legacy_errors_without_rewriting_files() {
+    let root = unique_path("model-proof-read-redaction");
+    let layout = ModelStoreLayout::from_models_dir(root.join("models"));
+    let model_ref = ModelRef::parse("a".repeat(64)).expect("model ref");
+    let mut proof = proof_fixture(
+        model_ref.clone(),
+        ModelCapability::Chat,
+        "llama.cpp",
+        ModelCapabilityProofStatus::Failed,
+        None,
+    );
+    proof.error = Some("load failed: HF_TOKEN=synthetic-legacy-secret\nAuthorization: Bearer synthetic-header-secret".into());
+    let body = toml::to_string_pretty(&proof).expect("legacy TOML");
+    let paths = [
+        layout.capability_proof_path(&model_ref, proof.capability),
+        layout.support_proof_path(
+            &crate::features::model::domain::ModelCapabilityProofKey::from_proof(&proof),
+        ),
+    ];
+    for path in &paths {
+        fs::create_dir_all(path.parent().expect("parent")).expect("proof directory");
+        fs::write(path, &body).expect("historical proof fixture");
+    }
+
+    let records = FileModelCapabilityProofStore
+        .list_capability_proofs(&layout, &model_ref)
+        .expect("proofs");
+    assert_eq!(records.len(), 1);
+    let error = records[0].error.as_deref().expect("error");
+    assert!(error.starts_with("load failed:"));
+    assert!(!error.contains("synthetic-legacy-secret"));
+    assert!(!error.contains("synthetic-header-secret"));
+    for path in &paths {
+        assert_eq!(fs::read_to_string(path).expect("unchanged file"), body);
+    }
+    fs::remove_file(&paths[1]).expect("remove tuple fixture");
+    let legacy_only = FileModelCapabilityProofStore
+        .list_capability_proofs(&layout, &model_ref)
+        .expect("legacy only");
+    assert_eq!(legacy_only[0].error, records[0].error);
+    fs::remove_dir_all(root).expect("fixture cleanup");
+}
+
 fn metadata_fixture(model_ref: ModelRef) -> ModelMetadata {
     ModelMetadata {
         short_ref: model_ref.short_ref().to_string(),

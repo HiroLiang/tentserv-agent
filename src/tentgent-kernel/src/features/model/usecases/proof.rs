@@ -232,35 +232,7 @@ fn build_proof(metadata: &ModelMetadata, input: ProofBuildInput) -> ModelCapabil
 }
 
 fn sanitize_proof_error(error: String) -> String {
-    const MAX_PROOF_ERROR_CHARS: usize = 500;
-    let mut sanitized = error
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    for marker in [
-        "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "GEMINI_API_KEY",
-        "GOOGLE_API_KEY",
-        "HF_TOKEN",
-        "HUGGING_FACE_HUB_TOKEN",
-    ] {
-        sanitized = sanitized.replace(marker, "[redacted-env]");
-    }
-
-    if sanitized.chars().count() > MAX_PROOF_ERROR_CHARS {
-        let mut truncated = sanitized
-            .chars()
-            .take(MAX_PROOF_ERROR_CHARS)
-            .collect::<String>();
-        truncated.push_str("...");
-        truncated
-    } else {
-        sanitized
-    }
+    super::sanitize_proof_error(error)
 }
 
 fn backend_label(

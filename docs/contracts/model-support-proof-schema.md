@@ -213,8 +213,10 @@ readiness observation expiry, transport failure, and missing/stale Python
 endpoints write no proof. CLI/REST callers do not duplicate worker writes.
 Records include the selected runtime profile id and version when the server spec
 has one. Runtime errors are normalized for
-display: multi-line output is compacted, common secret environment variable
-names are redacted, and long messages are truncated.
+display: multi-line output is compacted, common credential assignment/header
+values are redacted, and long messages are truncated. Existing proof errors are
+also sanitized when read, without rewriting historical files; malformed-proof
+diagnostics never include the raw TOML body.
 
 Direct local runtime attempts record `runtime-execution` proofs after model
 resolution and runtime dispatch. These records are for concrete execution

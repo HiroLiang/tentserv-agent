@@ -39,14 +39,15 @@ impl ModelCapabilityProofStore for FileModelCapabilityProofStore {
         layout: &ModelStoreLayout,
         proof: &ModelCapabilityProof,
     ) -> KernelResult<()> {
-        let key = ModelCapabilityProofKey::from_proof(proof);
+        let proof = sanitized_proof(proof);
+        let key = ModelCapabilityProofKey::from_proof(&proof);
         let path = layout.support_proof_path(&key);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|err| {
                 path_error("create model support proof parent directory", parent, err)
             })?;
         }
-        let body = toml::to_string_pretty(proof).map_err(|err| {
+        let body = toml::to_string_pretty(&proof).map_err(|err| {
             model_store_error(format!("serialize model support proof failed: {err}"))
         })?;
         fs::write(&path, body)
@@ -97,7 +98,8 @@ impl ModelCapabilityProofStore for FileModelCapabilityProofStore {
         layout: &ModelStoreLayout,
         proof: &ModelCapabilityProof,
     ) -> KernelResult<()> {
-        self.save_support_proof(layout, proof)?;
+        let proof = sanitized_proof(proof);
+        self.save_support_proof(layout, &proof)?;
 
         let path = layout.capability_proof_path(&proof.model_ref, proof.capability);
         if let Some(parent) = path.parent() {
@@ -109,7 +111,7 @@ impl ModelCapabilityProofStore for FileModelCapabilityProofStore {
                 )
             })?;
         }
-        let body = toml::to_string_pretty(proof).map_err(|err| {
+        let body = toml::to_string_pretty(&proof).map_err(|err| {
             model_store_error(format!("serialize model capability proof failed: {err}"))
         })?;
         fs::write(&path, body)
@@ -141,6 +143,14 @@ impl ModelCapabilityProofStore for FileModelCapabilityProofStore {
             )),
         }
     }
+}
+
+fn sanitized_proof(proof: &ModelCapabilityProof) -> ModelCapabilityProof {
+    let mut proof = proof.clone();
+    proof.error = proof
+        .error
+        .map(crate::features::model::usecases::sanitize_proof_error);
+    proof
 }
 
 fn list_legacy_capability_proofs(
@@ -180,12 +190,15 @@ fn read_proofs_from_dir(path: &Path, proofs: &mut Vec<ModelCapabilityProof>) -> 
 
         let body = fs::read_to_string(entry.path())
             .map_err(|err| path_error("read model proof", &entry.path(), err))?;
-        let proof = toml::from_str::<ModelCapabilityProof>(&body).map_err(|err| {
+        let mut proof = toml::from_str::<ModelCapabilityProof>(&body).map_err(|_| {
             model_store_error(format!(
-                "parse model proof `{}` failed: {err}",
+                "invalid model proof TOML at `{}`",
                 entry.path().display()
             ))
         })?;
+        proof.error = proof
+            .error
+            .map(crate::features::model::usecases::sanitize_proof_error);
         proofs.push(proof);
     }
 
