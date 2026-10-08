@@ -282,6 +282,9 @@ results are pending; local success alone does not close this checklist. The
 first Linux attempt stopped before tests because the new runner lacked the
 existing keyring dependency's D-Bus headers. The workflow now installs
 `libdbus-1-dev` and `pkg-config`; no Rust dependency or product change was needed.
+The first Windows model suite passed 175 cases and failed only the documentation
+fixture's LF-only fence parser. It now exercises both LF and CRLF checkouts;
+the actual store, lock, process, and crash cases passed before this test fix.
 
 #128 must collect authoritative selected-runtime facts before adopting v2.
 #129 owns adapter load identity and serving gates; #130 owns exact-query UX

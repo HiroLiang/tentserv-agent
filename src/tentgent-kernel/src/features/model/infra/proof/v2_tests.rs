@@ -908,15 +908,16 @@ fn v2_contract_toml_example_deserializes_and_matches_constructed_key() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../docs/contracts/compatibility-tuple-v2.md"
     ));
-    let toml = contract
-        .split_once("```toml\n")
-        .expect("document TOML fence")
-        .1
-        .split_once("\n```")
-        .expect("closing fence")
-        .0;
-    let example: CompatibilityProofV2 = toml::from_str(toml).expect("document proof schema");
     let expected = changed(|input| input.observation = Observation::Load);
+    let lf = contract.replace("\r\n", "\n");
+    for checkout in [lf.clone(), lf.replace('\n', "\r\n")] {
+        let example: CompatibilityProofV2 =
+            toml::from_str(&document_toml(&checkout)).expect("document proof schema");
+        assert_eq!(example, expected);
+        assert_eq!(example.key().unwrap(), expected.key().unwrap());
+    }
+    let example: CompatibilityProofV2 =
+        toml::from_str(&document_toml(contract)).expect("native checkout proof schema");
     assert_eq!(example, expected);
     assert_eq!(example.key().unwrap(), expected.key().unwrap());
     let fixture = Fixture::new("contract");
@@ -927,4 +928,18 @@ fn v2_contract_toml_example_deserializes_and_matches_constructed_key() {
             .unwrap(),
         Some(expected)
     );
+}
+
+fn document_toml(contract: &str) -> String {
+    // str::lines accepts both LF and CRLF without changing the TOML content.
+    let mut lines = contract.lines().skip_while(|line| *line != "```toml");
+    assert_eq!(lines.next(), Some("```toml"), "document TOML fence");
+    let mut body = Vec::new();
+    for line in lines {
+        if line == "```" {
+            return body.join("\n");
+        }
+        body.push(line);
+    }
+    panic!("closing fence");
 }
