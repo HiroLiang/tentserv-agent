@@ -9,6 +9,7 @@ use crate::features::runtime_ownership::new_process_token;
 use crate::features::server::domain::{
     CloudProvider, ServerInspection, ServerRuntimeKind, ServerSpec,
 };
+use crate::features::server::options::LoadMode;
 use crate::foundation::error::{KernelError, KernelResult};
 use crate::foundation::layout::RuntimeLayout;
 
@@ -223,6 +224,9 @@ fn local_model_runtime_command_args(
     home_dir: &std::path::Path,
     bound_port: u16,
 ) -> KernelResult<Vec<String>> {
+    if let Some(capability) = spec.capability {
+        LoadMode::from_lazy_load(spec.lazy_load).ensure_supported(capability)?;
+    }
     let model_ref = spec.local_model_ref().ok_or_else(|| {
         server_runtime_error(format!(
             "local server spec `{}` is missing model_ref",
@@ -261,9 +265,15 @@ fn local_model_runtime_command_args(
     if spec.lazy_load {
         args.push("--lazy-load".to_string());
     }
-    if let Some(idle_seconds) = spec.idle_seconds {
-        args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
-    }
+    let policy = spec
+        .model_runtime_idle_policy()
+        .map_err(server_runtime_error)?;
+    args.extend([
+        "--runtime-idle-seconds".to_string(),
+        policy.runtime_idle_seconds.to_string(),
+        "--model-idle-seconds".to_string(),
+        policy.model_idle_seconds.to_string(),
+    ]);
     Ok(args)
 }
 
@@ -295,9 +305,15 @@ fn cluster_server_runtime_command_args(
     if spec.lazy_load {
         args.push("--lazy-load".to_string());
     }
-    if let Some(idle_seconds) = spec.idle_seconds {
-        args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
-    }
+    let policy = spec
+        .model_runtime_idle_policy()
+        .map_err(server_runtime_error)?;
+    args.extend([
+        "--runtime-idle-seconds".to_string(),
+        policy.runtime_idle_seconds.to_string(),
+        "--model-idle-seconds".to_string(),
+        policy.model_idle_seconds.to_string(),
+    ]);
     if allow_unverified {
         args.push("--allow-unverified".to_string());
     }
@@ -343,7 +359,7 @@ fn cloud_server_runtime_command_args(
         auth.secret().to_string(),
     ));
 
-    let mut args = vec![
+    let args = vec![
         "__cloud-server-runtime".to_string(),
         "--server-ref".to_string(),
         spec.server_ref.to_string(),
@@ -358,12 +374,6 @@ fn cloud_server_runtime_command_args(
         "--provider-model".to_string(),
         provider_model.to_string(),
     ];
-    if spec.lazy_load {
-        args.push("--lazy-load".to_string());
-    }
-    if let Some(idle_seconds) = spec.idle_seconds {
-        args.extend(["--idle-seconds".to_string(), idle_seconds.to_string()]);
-    }
     Ok(args)
 }
 

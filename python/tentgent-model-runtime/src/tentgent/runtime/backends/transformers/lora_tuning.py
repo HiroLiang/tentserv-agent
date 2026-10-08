@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import itertools
-import resource
 import sys
 import time
 from dataclasses import dataclass
@@ -30,6 +29,11 @@ from .base import (
     clear_torch_device_cache,
     require_safetensors_model,
 )
+
+try:
+    import resource
+except ModuleNotFoundError:
+    resource = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +106,9 @@ class TransformersPeftLoraTuningModel(
 
     def _require_loaded(self) -> ModelRecord:
         if self._record is None:
-            raise RuntimeError("PEFT LoRA tuning model is not loaded yet; call load() first.")
+            raise RuntimeError(
+                "PEFT LoRA tuning model is not loaded yet; call load() first."
+            )
         return self._record
 
     def _remember_torch(self, torch: Any) -> None:
@@ -117,7 +123,7 @@ def load_peft_tokenizer(model_path: Path, *, emit: LoraTuningEventSink) -> Any:
             raise missing_backend_dependency(exc.name) from exc
         raise
 
-    tokenizer = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=False)
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
         tokenizer.pad_token = tokenizer.eos_token
     emit({"type": "stage", "name": "load_tokenizer", "status": "completed"})
@@ -129,7 +135,9 @@ def emit_peft_dataset_summary(
     *,
     emit: LoraTuningEventSink,
 ) -> None:
-    validation_examples = len(tokenized.validation.examples) if tokenized.validation else 0
+    validation_examples = (
+        len(tokenized.validation.examples) if tokenized.validation else 0
+    )
     validation_tokens = tokenized.validation.token_count if tokenized.validation else 0
     truncated = tokenized.train.truncated_count
     if tokenized.validation:
@@ -175,17 +183,22 @@ def run_peft_training(
 
     peft_config = request.backend_config.peft
     if peft_config.get("load_in_4bit") or peft_config.get("load_in_8bit"):
-        raise RuntimeError("PEFT quantized loading is not supported in the minimal loop yet")
+        raise RuntimeError(
+            "PEFT quantized loading is not supported in the minimal loop yet"
+        )
     if peft_config.get("save_safetensors") is False:
         raise RuntimeError("PEFT adapter import requires adapter_model.safetensors")
 
     device = detect_device(torch)
     torch.manual_seed(request.optimization.seed)
 
-    emit({"type": "stage", "name": "load_model", "status": "started", "backend": "peft"})
+    emit(
+        {"type": "stage", "name": "load_model", "status": "started", "backend": "peft"}
+    )
     model = AutoModelForCausalLM.from_pretrained(
         str(model_path),
-        trust_remote_code=True,
+        trust_remote_code=False,
+        use_safetensors=True,
         torch_dtype=torch_dtype(torch, peft_config.get("torch_dtype")),
     )
     model.to(device)
@@ -199,7 +212,14 @@ def run_peft_training(
 
     model = get_peft_model(model, lora_config(request))
     model.train()
-    emit({"type": "stage", "name": "load_model", "status": "completed", "backend": "peft"})
+    emit(
+        {
+            "type": "stage",
+            "name": "load_model",
+            "status": "completed",
+            "backend": "peft",
+        }
+    )
     emit_params(model, emit=emit)
 
     optimizer = torch.optim.AdamW(
@@ -216,9 +236,11 @@ def run_peft_training(
     save_every = max(1, request.checkpoint.save_every_steps)
     train_cursor = batch_cursor(tokenized.train.examples, batch_size)
 
-    emit({"type": "stage", "name": "train", "status": "started", "max_steps": max_steps})
+    emit(
+        {"type": "stage", "name": "train", "status": "started", "max_steps": max_steps}
+    )
     trained_tokens = 0
-    peak_memory = 0.0
+    peak_memory: float | None = None
     for step in range(1, max_steps + 1):
         started = time.perf_counter()
         optimizer.zero_grad(set_to_none=True)
@@ -236,7 +258,13 @@ def run_peft_training(
         optimizer.step()
         elapsed = max(time.perf_counter() - started, 1e-9)
         trained_tokens += step_tokens
-        peak_memory = max(peak_memory, memory_gb(torch, device))
+        measured_memory = memory_gb(torch, device)
+        if measured_memory is not None:
+            peak_memory = (
+                measured_memory
+                if peak_memory is None
+                else max(peak_memory, measured_memory)
+            )
 
         if step == 1 or step % log_every == 0 or step == max_steps:
             emit_train(
@@ -327,7 +355,11 @@ def collate(
     torch: Any,
     device: Any,
 ) -> TrainBatch:
-    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    pad_id = (
+        tokenizer.pad_token_id
+        if tokenizer.pad_token_id is not None
+        else tokenizer.eos_token_id
+    )
     width = max(example.token_count for example in examples)
     input_ids: list[list[int]] = []
     attention_mask: list[list[int]] = []
@@ -358,7 +390,9 @@ def batch_tensors(batch: TrainBatch) -> dict[str, Any]:
 
 
 def emit_params(model: Any, *, emit: LoraTuningEventSink) -> None:
-    trainable = sum(param.numel() for param in model.parameters() if param.requires_grad)
+    trainable = sum(
+        param.numel() for param in model.parameters() if param.requires_grad
+    )
     total = sum(param.numel() for param in model.parameters())
     emit(
         {
@@ -379,23 +413,23 @@ def emit_train(
     elapsed: float,
     step_tokens: int,
     trained_tokens: int,
-    peak_memory: float,
+    peak_memory: float | None,
     *,
     emit: LoraTuningEventSink,
 ) -> None:
-    emit(
-        {
-            "type": "train",
-            "step": step,
-            "max_steps": max_steps,
-            "loss": loss,
-            "learning_rate": optimizer.param_groups[0]["lr"],
-            "iterations_per_sec": 1.0 / elapsed,
-            "tokens_per_sec": step_tokens / elapsed,
-            "trained_tokens": trained_tokens,
-            "peak_memory_gb": peak_memory,
-        }
-    )
+    event = {
+        "type": "train",
+        "step": step,
+        "max_steps": max_steps,
+        "loss": loss,
+        "learning_rate": optimizer.param_groups[0]["lr"],
+        "iterations_per_sec": 1.0 / elapsed,
+        "tokens_per_sec": step_tokens / elapsed,
+        "trained_tokens": trained_tokens,
+    }
+    if peak_memory is not None:
+        event["peak_memory_gb"] = peak_memory
+    emit(event)
 
 
 def emit_eval(
@@ -464,7 +498,7 @@ def torch_dtype(torch: Any, value: Any) -> Any:
     }.get(str(value or "auto").lower(), "auto")
 
 
-def memory_gb(torch: Any, device: Any) -> float:
+def memory_gb(torch: Any, device: Any) -> float | None:
     if device.type == "cuda":
         return float(torch.cuda.max_memory_allocated(device) / 1_000_000_000)
     if device.type == "mps" and hasattr(torch, "mps"):
@@ -472,7 +506,11 @@ def memory_gb(torch: Any, device: Any) -> float:
     return process_peak_memory_gb()
 
 
-def process_peak_memory_gb() -> float:
+def process_peak_memory_gb() -> float | None:
+    # Windows has no resource module. Missing telemetry must not prevent any
+    # backend/runtime import or masquerade as a measured zero-byte footprint.
+    if resource is None:
+        return None
     usage = resource.getrusage(resource.RUSAGE_SELF)
     max_rss = float(usage.ru_maxrss)
     if sys.platform != "darwin":

@@ -73,3 +73,13 @@ Write Boundary:
 - If a subproject later defines a more local workflow, link to it from here and keep the root file as the global entry point.
 - If an approved change affects documented structure, contracts, or boundaries, update the affected Markdown in the same turn.
 - Keep Markdown concise and split by folder when scope grows instead of expanding one catch-all file.
+
+## Branch Naming
+
+- Use a purpose-specific prefix instead of an agent or tool name: `feature/`,
+  `bug/`, `test/`, `docs/`, `release/`, or `chore/`.
+- Never create branches with generic actor prefixes such as `codex/`.
+- For issue-backed work, use `<prefix>/<issue-number>-<short-slug>`, for
+  example `bug/132-server-runtime-option-noops`.
+- Reuse a user-selected or existing issue branch when one is already in scope;
+  do not create a replacement branch solely to change its name.

@@ -14,6 +14,8 @@ use tentgent_kernel::{
             ModelRuntimeDaemonLaunchPolicy, ModelRuntimeDaemonSupervisor,
             StdRuntimeExecutableResolver,
         },
+        runtime_ownership::RuntimeExecutionIdentity,
+        server::options::LoadMode,
     },
     foundation::layout::{LayoutResolveMode, RuntimeLayout, RuntimeLayoutInput},
 };
@@ -30,8 +32,10 @@ pub struct ClusterServerRuntimeConfig {
     pub host: String,
     pub port: u16,
     pub runtime_home: Option<std::path::PathBuf>,
-    pub idle_seconds: Option<u64>,
+    pub runtime_idle_seconds: u64,
+    pub model_idle_seconds: u64,
     pub allow_unverified: bool,
+    pub load_mode: LoadMode,
 }
 
 #[derive(Clone)]
@@ -45,6 +49,8 @@ pub(super) struct ClusterServerState {
     pub(super) launch_policy: ModelRuntimeDaemonLaunchPolicy,
     pub(super) definitions: ClusterDefinitionCache,
     pub(super) routes: RouteGenerationManager,
+    pub(super) startup: super::startup::ClusterStartupState,
+    pub(super) reload_status: super::reload_status::ReloadStatus,
 }
 
 pub(super) struct ResolvedClusterRoute {
@@ -52,22 +58,73 @@ pub(super) struct ResolvedClusterRoute {
     pub(super) lease: RouteRequestLease,
 }
 
+pub(super) struct PreparedClusterRoute {
+    pub(super) route: ClusterRouteKey,
+    pub(super) identity: RuntimeExecutionIdentity,
+    pub(super) local: LocalServerState,
+}
+
 impl ClusterServerState {
+    pub(super) fn begin_drain(&self) {
+        // Stop and promotion share the admission gate. A completed candidate
+        // cannot be published after stop has closed admission.
+        if self
+            .definitions
+            .with_committed(|_| {
+                self.routes.begin_drain();
+                Ok(())
+            })
+            .is_err()
+        {
+            self.routes.begin_drain();
+        }
+    }
+
+    pub(super) fn definition_snapshot(
+        &self,
+    ) -> Result<super::cache::ClusterDefinitionSnapshot, ClusterServerError> {
+        match self.config.load_mode {
+            LoadMode::Eager => self.definitions.committed(),
+            LoadMode::Lazy => self.definitions.current(),
+        }
+    }
+
     pub(super) fn resolve_local_state(
         &self,
         route: ClusterRouteKey,
     ) -> Result<ResolvedClusterRoute, ClusterServerError> {
-        let snapshot = self.definitions.current()?;
+        if !self.startup.is_ready() {
+            return Err(ClusterServerError::starting());
+        }
+        if self.config.load_mode == LoadMode::Eager {
+            for _ in 0..4 {
+                let snapshot = self.definitions.committed()?;
+                let prepared = self.prepare_route(route, &snapshot.definition);
+                if let Some(admitted) = self.admit_prepared(&snapshot, prepared)? {
+                    return Ok(admitted);
+                }
+            }
+            return Err(ClusterServerError::route_unavailable(
+                "cluster revision kept changing during admission; retry".into(),
+            ));
+        }
+        let snapshot = self.definition_snapshot()?;
         self.routes.reconcile_definition(&snapshot.hash);
-        self.resolve_local_state_from_definition(route, snapshot.definition, snapshot.hash)
+        let prepared = self.prepare_route(route, &snapshot.definition)?;
+        let lease = self
+            .routes
+            .acquire(route, &snapshot.hash, prepared.identity)?;
+        Ok(ResolvedClusterRoute {
+            local: prepared.local,
+            lease,
+        })
     }
 
-    fn resolve_local_state_from_definition(
+    pub(super) fn prepare_route(
         &self,
         route: ClusterRouteKey,
-        definition: ClusterDefinition,
-        definition_hash: String,
-    ) -> Result<ResolvedClusterRoute, ClusterServerError> {
+        definition: &ClusterDefinition,
+    ) -> Result<PreparedClusterRoute, ClusterServerError> {
         let catalog = FileModelCatalogStore;
         let proofs = FileModelCapabilityProofStore;
         let resolver = StdClusterRouteExecutionUseCase::new(
@@ -82,7 +139,7 @@ impl ClusterServerState {
                     home_dir: Some(self.layout.home_dir.clone()),
                     data_root_dir: Some(self.layout.data_root_dir.clone()),
                 },
-                definition,
+                definition: definition.clone(),
                 route,
                 allow_unverified: self.config.allow_unverified,
             })
@@ -98,9 +155,9 @@ impl ClusterServerState {
             ),
             target.runtime_profile.as_ref(),
         );
-        let lease = self.routes.acquire(route, &definition_hash, identity)?;
-
-        Ok(ResolvedClusterRoute {
+        Ok(PreparedClusterRoute {
+            route,
+            identity,
             local: LocalServerState {
                 config: LocalServerRuntimeConfig {
                     server_ref: self.config.server_ref.clone(),
@@ -110,7 +167,9 @@ impl ClusterServerState {
                     host: self.config.host.clone(),
                     port: self.config.port,
                     runtime_home: Some(self.layout.home_dir.clone()),
-                    idle_seconds: self.config.idle_seconds,
+                    runtime_idle_seconds: self.config.runtime_idle_seconds,
+                    model_idle_seconds: self.config.model_idle_seconds,
+                    load_mode: tentgent_kernel::features::server::options::LoadMode::Lazy,
                 },
                 layout: self.layout.clone(),
                 runtime: self.runtime.clone(),
@@ -118,8 +177,30 @@ impl ClusterServerState {
                 supervisor: self.supervisor.clone(),
                 client: self.client.clone(),
                 launch_policy: self.launch_policy.clone(),
+                readiness: super::super::local::startup::StartupReadiness::new(
+                    tentgent_kernel::features::server::options::LoadMode::Lazy,
+                ),
             },
-            lease,
+        })
+    }
+
+    pub(super) fn admit_prepared(
+        &self,
+        selected: &super::cache::ClusterDefinitionSnapshot,
+        prepared: Result<PreparedClusterRoute, ClusterServerError>,
+    ) -> Result<Option<ResolvedClusterRoute>, ClusterServerError> {
+        self.definitions.with_committed(|current| {
+            if current.revision != selected.revision {
+                return Ok(None);
+            }
+            let prepared = prepared?;
+            let lease = self
+                .routes
+                .acquire(prepared.route, &current.hash, prepared.identity)?;
+            Ok(Some(ResolvedClusterRoute {
+                local: prepared.local,
+                lease,
+            }))
         })
     }
 }

@@ -1,7 +1,8 @@
 # Bugfix And Maintenance Plan
 
-Status: active post-`v1.0.0` maintenance and patch planning record. All
-currently tracked `#103`-`#107` maintenance issues are completed.
+Status: active post-`v1.0.0` maintenance and patch planning record. Issues
+`#103`-`#107`, `#131`, `#132`, and `#136` are complete. The `v1.1.2` stable
+and Homebrew installation gates have passed.
 
 This plan tracks released-product cleanup: bugs, diagnostics gaps, stale
 documentation, release follow-up, repository hygiene, and small hardening work.
@@ -38,13 +39,75 @@ queue that should stay visible from the active plan.
 | [#105](https://github.com/HiroLiang/tentserv-agent/issues/105) | Completed | `v1.0.1 Patch` | Fix signed Homebrew macOS Keychain prompt behavior and keep the release path aligned with the existing signing setup. |
 | [#106](https://github.com/HiroLiang/tentserv-agent/issues/106) | Completed | `v1.0.2 Patch` | Improve user-facing diagnostics when local model execution is blocked by missing runtime-required model files. |
 | [#107](https://github.com/HiroLiang/tentserv-agent/issues/107) | Completed | `v1.0.2 Patch` | Retain local model execution outcomes as inspectable `runtime-execution` support evidence through the existing file-backed proof store. |
+| [#131](https://github.com/HiroLiang/tentserv-agent/issues/131) | Completed; released in `v1.1.1` | `v1.2.0` | Restore explicit model-idle release and runtime process keep-alive semantics; prevent health polling from retaining an idle MLX model/runtime indefinitely. |
+| [#132](https://github.com/HiroLiang/tentserv-agent/issues/132) | Completed; released in `v1.1.2` | `v1.2.0` (existing tracking) | Local/Cluster startup, staged eager reload, Cloud validation and lazy-only images are implemented. See the [issue plan](./issue-132-server-runtime-option-contract-plan.md) and [validation](./issue-132-validation-evidence.md). |
+| [#136](https://github.com/HiroLiang/tentserv-agent/issues/136) | Completed | `v1.2.0` | Make README task navigation lead directly to feature examples, parameters, and HTTP formats; preserve existing documentation links. |
 
 ## Current Handoff State
 
-As of `2026-07-21`, no open maintenance issues are tracked in this plan. A new
-session should create additional maintenance issues only when a concrete patch
-bug, diagnostics gap, install/release follow-up, or stale documentation problem
-is identified.
+As of `2026-10-06`, `#131` is merged and released in `v1.1.1`; its evidence and
+smoke procedure remain in
+[issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md).
+Issue `#132` has a [decision register and review checkpoints](./issue-132-server-runtime-option-contract-plan.md).
+Its seven reviewable steps, lazy-only image decision and release hardening are
+merged through PR #139 and released in `v1.1.2`; the issue and roadmap item are
+closed/Done. Published stable and Homebrew installations passed full Python
+and real MLX release/restart checks. The completed #132 prerequisite does not
+expand `#127` or mark `#128`/`#130` complete.
+
+### Release Reassessment (`2026-10-03`)
+
+The user authorized fixing release blockers, publishing when verified, and
+updating Homebrew, including related maintenance issues. Target train:
+`v1.1.2-rc.132.N` then `v1.1.2` from the same verified source. Feature issues
+`#126`-`#130` remain in `v1.2.0`; they are not prerequisites for this patch.
+The earlier matrix is baseline evidence, not approval of the new changes.
+RC1 at `400f439` was blocked by test portability/environment findings. RC2 at
+`11eb52d` reached Linux kernel tests and exposed an invalid-PID probe boundary,
+corrected in RC3. Neither candidate was promoted. See the
+[native feedback](./issue-132-validation-evidence.md#native-rc-feedback).
+
+RC3 at `ccc8351` completed all four native source, package and installed-artifact
+gates. Both macOS architectures failed notarization with HTTP 403 because a
+required agreement was missing or expired; release creation was skipped.
+PR #139 and stable/Homebrew were held until Account Holder action and successful
+notarization; no code/signing workaround bypassed the gate.
+Test-only `8fb389a` fixes bounded-Busy retry coverage; its Windows PR gate passes
+and it does not change RC3 product sources.
+
+The Account Holder confirmed agreement acceptance on `2026-10-06`. RC4 was
+started at `e7a1ae5`, then cancelled before publication because the refreshed
+audit found two newly reviewed Python advisories. RC5 at `8eef2f8` patched
+fsspec/multidict, passed all four native gates, both `Accepted` notarizations,
+and the actual published full-profile/real-model installation. PR #139 merged
+normally at `0ea91c7`, whose tree exactly matches RC5. Stable `v1.1.2` then
+passed all native gates, both notarizations and published installation checks.
+Old tags were not moved. Homebrew audit, upgrade, formula test and isolated
+full-profile/real-model verification also passed; the old keg was retained.
+The [tap update](https://github.com/HiroLiang/homebrew-tap/commit/14020d9ad31a30ca5dff93116be81dfbbcc07d02)
+is pushed and matches the verified installation.
+
+Verified release controls:
+
+- Close public-to-internal runtime route bypasses with an exact public route
+  allowlist and no upstream redirects. Preserve managed DTO validation.
+- Retry only known transient Cluster ownership contention; keep terminal
+  load failures memoized and retain unknown-work claims. Document the actual
+  stop, settle, reconcile, restart recovery sequence.
+- Remove implicit model-repository code execution, audit locked dependencies,
+  and verify mitigations for advisories without upstream fixes. Document the
+  trusted-host deployment boundary; no Internet-service security claim.
+- Require explicit accepted Apple notarization, correct Windows runtime
+  refresh, locked/version-consistent packages, and stable release metadata.
+- Run affected/full regressions, native platform CI, artifact installation and
+  real-model idle/restart tests. No skipped test counts as native validation.
+- Publish RC, validate installed artifacts, then stable and the Homebrew tap.
+  #132 closed at merge; publication closeout is recorded only after stable
+  and Homebrew installation verification.
+
+New milestone/issue creation still awaits explicit approval after the permission
+reviewer rejected that metadata write. Existing issue labels, project and
+milestone were preserved. No general pull-request CI implementation is included.
 
 The completed `v1.1.0` Cluster issue flow is archived under
 [archive/cluster-roadmap.md](./archive/cluster-roadmap.md). Future feature work

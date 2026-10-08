@@ -102,12 +102,13 @@ fn render_train(event: &Value, progress: &mut Option<ProgressBar>) {
     let memory = event
         .get("peak_memory_gb")
         .and_then(Value::as_f64)
-        .unwrap_or(0.0);
+        .map(|value| format!("peak {value:.2} GB"))
+        .unwrap_or_else(|| "peak unavailable".to_owned());
     let progress = progress.get_or_insert_with(|| ProgressBar::new(max_steps));
     progress.set_length(max_steps);
     progress.set_position(step);
     progress.set_message(format!(
-        "loss {loss:.3} lr {lr:.3e} {tokens:.1} tok/s peak {memory:.2} GB"
+        "loss {loss:.3} lr {lr:.3e} {tokens:.1} tok/s {memory}"
     ));
 }
 
@@ -146,4 +147,29 @@ fn render_error(event: &Value) {
         .and_then(Value::as_str)
         .unwrap_or("training backend reported an error");
     println!("{} {message}", style("×").red().bold());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn unknown_peak_memory_is_not_rendered_as_zero() {
+        for event in [json!({}), json!({ "peak_memory_gb": null })] {
+            let bar = ProgressBar::hidden();
+            render_train(&event, &mut Some(bar.clone()));
+            assert!(bar.message().ends_with("peak unavailable"));
+            assert!(!bar.message().contains("0.00 GB"));
+        }
+    }
+
+    #[test]
+    fn measured_peak_memory_including_zero_is_rendered() {
+        for (value, expected) in [(0.0, "peak 0.00 GB"), (1.25, "peak 1.25 GB")] {
+            let bar = ProgressBar::hidden();
+            render_train(&json!({ "peak_memory_gb": value }), &mut Some(bar.clone()));
+            assert!(bar.message().ends_with(expected));
+        }
+    }
 }

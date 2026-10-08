@@ -4,7 +4,10 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use tentgent_kernel::features::server::domain::ServerInspection;
+use tentgent_kernel::features::server::{
+    domain::ServerInspection,
+    infra::{observe_server_readiness, ServerReadinessObservation},
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -32,6 +35,7 @@ pub async fn health(
         server: server_health_server_item(&inspection),
         running: inspection.running,
         reachable: probe.reachable,
+        ready: probe.ready,
         target_url: server_health_url(&inspection),
         target_status: probe.target_status,
         target_health: probe.target_health,
@@ -47,7 +51,7 @@ pub(super) async fn wait_for_server_ready(
     let deadline = Instant::now() + Duration::from_secs(timeout_seconds);
     loop {
         let probe = probe_server_health(inspection).await;
-        if probe.reachable {
+        if probe.ready {
             return readiness_item(true, probe);
         }
         if Instant::now() >= deadline {
@@ -65,6 +69,7 @@ pub(super) async fn wait_for_server_ready(
 
 struct ServerHealthProbe {
     reachable: bool,
+    ready: bool,
     target_status: Option<u16>,
     target_health: Option<serde_json::Value>,
     checked_at: String,
@@ -86,6 +91,7 @@ async fn probe_server_health(inspection: &ServerInspection) -> ServerHealthProbe
     if !inspection.running {
         return ServerHealthProbe {
             reachable: false,
+            ready: false,
             target_status: None,
             target_health: None,
             checked_at: now_rfc3339(),
@@ -102,8 +108,10 @@ async fn probe_server_health(inspection: &ServerInspection) -> ServerHealthProbe
     };
     let host = host_for_header(&inspection.spec.host, port);
     let request = format!("GET /healthz HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
-    if let Err(err) = timeout(SERVER_HEALTH_TIMEOUT, stream.write_all(request.as_bytes())).await {
-        return health_probe_error(format!("write health request timed out: {err}"));
+    match timeout(SERVER_HEALTH_TIMEOUT, stream.write_all(request.as_bytes())).await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => return health_probe_error(format!("write health request failed: {err}")),
+        Err(_) => return health_probe_error("write health request timed out".to_string()),
     }
     let mut response = String::new();
     match timeout(SERVER_HEALTH_TIMEOUT, stream.read_to_string(&mut response)).await {
@@ -117,8 +125,17 @@ async fn probe_server_health(inspection: &ServerInspection) -> ServerHealthProbe
         .split_once("\r\n\r\n")
         .and_then(|(_, body)| serde_json::from_str::<serde_json::Value>(body.trim()).ok());
     let reachable = target_status.is_some_and(|status| (200..300).contains(&status));
-    let error = if reachable {
+    let observation = target_health
+        .as_ref()
+        .map(|payload| observe_server_readiness(inspection, payload));
+    let ready = reachable && observation == Some(ServerReadinessObservation::Ready);
+    let error = if ready {
         None
+    } else if reachable {
+        Some(match observation {
+            Some(ServerReadinessObservation::Starting) => "server is reachable but startup is not ready",
+            _ => "server health identity or readiness response does not match the requested server",
+        }.to_string())
     } else {
         Some(
             target_status
@@ -131,6 +148,7 @@ async fn probe_server_health(inspection: &ServerInspection) -> ServerHealthProbe
 
     ServerHealthProbe {
         reachable,
+        ready,
         target_status,
         target_health,
         checked_at: now_rfc3339(),
@@ -141,6 +159,7 @@ async fn probe_server_health(inspection: &ServerInspection) -> ServerHealthProbe
 fn health_probe_error(error: String) -> ServerHealthProbe {
     ServerHealthProbe {
         reachable: false,
+        ready: false,
         target_status: None,
         target_health: None,
         checked_at: now_rfc3339(),
@@ -189,3 +208,6 @@ fn host_for_url(host: &str) -> String {
         host.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests;

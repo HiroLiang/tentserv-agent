@@ -3,8 +3,11 @@ mod cache;
 mod error;
 mod handlers;
 mod leases;
+mod lifecycle;
+mod reload_status;
 mod router;
 mod runtime;
+mod startup;
 mod state;
 mod watch;
 

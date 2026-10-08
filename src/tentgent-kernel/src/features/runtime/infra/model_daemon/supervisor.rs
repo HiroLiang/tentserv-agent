@@ -297,8 +297,9 @@ impl ModelRuntimeDaemonSupervisor {
         let metadata_path = daemon_metadata_path(layout, &key);
         let ownership = Arc::clone(&self.inner.ownership);
         let launch_policy = RuntimeLaunchPolicyRecord {
-            idle_keep_alive_seconds: policy.idle_keep_alive_seconds.clone(),
-            model_idle_timeout_seconds: policy.model_idle_timeout_seconds.clone(),
+            runtime_idle_seconds: policy.runtime_idle_seconds,
+            model_idle_seconds: policy.model_idle_seconds,
+            legacy_unbounded_model: false,
         };
         if let Some(endpoint) = self
             .stored_healthy_endpoint(&metadata_path, capability, model_ref)
@@ -406,6 +407,16 @@ impl ModelRuntimeDaemonSupervisor {
                     return Ok(endpoint);
                 }
                 RuntimeGenerationAdmission::Reuse(record) => {
+                    if record.policy.legacy_unbounded_model {
+                        self.retire_legacy_unbounded_generation(
+                            layout,
+                            &identity,
+                            &record,
+                            &metadata_path,
+                        )
+                        .await?;
+                        continue;
+                    }
                     if let Some(mut endpoint) = endpoint_from_generation(&record) {
                         if self.health_matches(&endpoint).await? {
                             endpoint.policy_mismatch =
@@ -515,6 +526,71 @@ impl ModelRuntimeDaemonSupervisor {
                 }
             }
         }
+    }
+
+    async fn retire_legacy_unbounded_generation(
+        &self,
+        layout: &RuntimeLayout,
+        identity: &RuntimeExecutionIdentity,
+        record: &RuntimeGenerationRecord,
+        metadata_path: &Path,
+    ) -> KernelResult<()> {
+        if let Some(endpoint) = endpoint_from_generation(record) {
+            if self.health_matches(&endpoint).await? {
+                let response = self
+                    .inner
+                    .client
+                    .post(endpoint.url("/v1/lifecycle/shutdown"))
+                    .send()
+                    .await
+                    .map_err(|error| {
+                        runtime_error(format!(
+                            "retire legacy unbounded runtime generation failed: {error}"
+                        ))
+                    })?;
+                if !response.status().is_success() {
+                    return Err(runtime_error(format!(
+                        "retire legacy unbounded runtime generation returned HTTP {}",
+                        response.status()
+                    )));
+                }
+                transition_applied(
+                    self.inner.ownership.mark_runtime_closing(
+                        layout,
+                        identity,
+                        &record.generation_id,
+                    )?,
+                    "legacy unbounded runtime generation changed during retirement",
+                )?;
+            } else if generation_process_running(record, self.inner.process_probe.as_ref())? {
+                return Err(runtime_error(format!(
+                    "legacy unbounded runtime generation {} is running but health identity cannot be verified",
+                    record.generation_id
+                )));
+            }
+        }
+
+        let started = std::time::Instant::now();
+        while generation_process_running(record, self.inner.process_probe.as_ref())? {
+            if started.elapsed() > STARTUP_TIMEOUT {
+                return Err(runtime_error(format!(
+                    "legacy unbounded runtime generation {} did not stop within {} seconds",
+                    record.generation_id,
+                    STARTUP_TIMEOUT.as_secs()
+                )));
+            }
+            tokio::time::sleep(STARTUP_POLL_INTERVAL).await;
+        }
+        transition_applied(
+            self.inner.ownership.remove_runtime_generation(
+                layout,
+                identity,
+                &record.generation_id,
+            )?,
+            "legacy unbounded runtime generation changed before removal",
+        )?;
+        let _ = fs::remove_file(metadata_path);
+        Ok(())
     }
 
     pub async fn post_json<Payload, Output, ErrorFn>(
@@ -859,14 +935,14 @@ fn launch_policy_mismatch(
     stored: &RuntimeLaunchPolicyRecord,
     requested: &ModelRuntimeDaemonLaunchPolicy,
 ) -> Option<String> {
-    if stored.idle_keep_alive_seconds == requested.idle_keep_alive_seconds
-        && stored.model_idle_timeout_seconds == requested.model_idle_timeout_seconds
+    if stored.runtime_idle_seconds == requested.runtime_idle_seconds
+        && stored.model_idle_seconds == requested.model_idle_seconds
     {
         return None;
     }
     Some(format!(
-        "runtime generation keeps first-spawner policy idle_keep_alive_seconds={}, model_idle_timeout_seconds={}",
-        stored.idle_keep_alive_seconds, stored.model_idle_timeout_seconds
+        "runtime generation keeps first-spawner policy runtime_idle_seconds={}, model_idle_seconds={}",
+        stored.runtime_idle_seconds, stored.model_idle_seconds
     ))
 }
 

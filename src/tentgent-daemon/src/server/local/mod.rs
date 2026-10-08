@@ -1,8 +1,9 @@
-mod capability;
+pub(in crate::server) mod capability;
 pub(super) mod claude_messages;
 pub(super) mod error;
 mod evidence;
 pub(super) mod gemini_generate;
+mod ingress;
 pub(in crate::server) mod managed_adapter;
 mod native;
 pub(super) mod openai_chat;
@@ -11,6 +12,7 @@ mod openai_images;
 pub(super) mod proxy;
 mod runtime;
 mod sse;
+pub(in crate::server) mod startup;
 
 #[cfg(test)]
 mod tests;

@@ -36,10 +36,20 @@ or too cross-cutting to track only in GitHub issues.
   Draft issue-level decision register and execution checklist for the complete
   compatibility tuple, proof v2 persistence, legacy evidence, exact queries,
   and concurrent file-backed writes.
+- [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md)
+  Implemented and validated issue-level contract, decision register, evidence,
+  and live smoke runbook for restoring model idle release without letting
+  health probes keep the shared Python runtime alive indefinitely. Merged and
+  released in `v1.1.1`.
+- [issue-132-server-runtime-option-contract-plan.md](./issue-132-server-runtime-option-contract-plan.md)
+  Completed Local/Cluster eager-load and Cloud option decisions, reviewable
+  checkpoints and release evidence. Released in `v1.1.2`; the `#128`/`#130`
+  prerequisite is satisfied.
 - [v1.2.0-local-compatibility-state-plan.md](./v1.2.0-local-compatibility-state-plan.md)
   Active execution plan for issues `#126`-`#130`: complete compatibility
   tuples, proof v2 persistence, local model and Cluster gates, LoRA adapter
-  gates, diagnostics, recovery, documentation, and release closeout.
+  gates, diagnostics, recovery, documentation, and release closeout. The
+  separate `#132` prerequisite is complete and released in `v1.1.2`.
 - [v1.x-roadmap.md](./v1.x-roadmap.md)
   Long-term post-`v1.0.0` product roadmap. The `v1.1.0` Cluster MVP is
   complete; the active `v1.2.0` compatibility-state slice is detailed in its
@@ -47,7 +57,8 @@ or too cross-cutting to track only in GitHub issues.
   context, provider orchestration, and later 1.x work.
 - [bugfix-maintenance-plan.md](./bugfix-maintenance-plan.md)
   Active maintenance queue for post-`v1.0.0` bug fixes, diagnostics polish,
-  release follow-up, documentation cleanup, and repository hygiene.
+  release follow-up, documentation cleanup, and repository hygiene. The `#132`
+  server-option fix is released in `v1.1.2`.
 
 ## Deferred Plans
 

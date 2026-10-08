@@ -244,6 +244,7 @@ fn checker_maps_cached_runtime_and_backend_state() {
     assert_eq!(profile.message.as_deref(), Some("ready"));
 }
 
+#[cfg(unix)]
 fn backend_state(capabilities: &MachineCapabilities, backend: BackendKind) -> CapabilityState {
     capabilities
         .backends
@@ -292,6 +293,7 @@ fn linux_platform() -> PlatformFacts {
     }
 }
 
+#[cfg(unix)]
 fn macos_apple_silicon_platform() -> PlatformFacts {
     PlatformFacts {
         os: OperatingSystem::Macos,

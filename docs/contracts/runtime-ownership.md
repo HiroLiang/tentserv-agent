@@ -115,6 +115,13 @@ Each spawned worker receives an opaque process-instance token and returns it in
 internal health state. A PID without the matching token cannot prove ownership,
 which prevents PID reuse from validating the wrong process.
 
+Unix process probes accept only positive, signed PID values. Zero and values
+outside that range cannot identify an individual process and must not reach an
+OS signal operation. Signal-zero probes distinguish absent processes from
+permission denial using OS error codes; other errors remain unknown, not stale.
+Daemon/server termination rejects invalid PIDs. Process-group cleanup is only
+for an owned spawned child, never a group selector derived from stored metadata.
+
 A `starting` record may also contain optional `launch_target` and `endpoint`
 evidence. Launch preparation stores host and port before spawn; successful
 spawn attaches PID, endpoint, and process token before metadata and health
@@ -130,9 +137,16 @@ PID, token, capability, model, and effective profile identity match. Legacy
 daemon metadata remains recovery evidence; port-only or PID-only adoption is
 not permitted.
 
-The first spawner chooses the idle policy for a generation. Later callers reuse
-that generation and receive an idle-policy mismatch diagnostic when their
-requested policy differs.
+The first spawner chooses both `runtime_idle_seconds` and
+`model_idle_seconds` for a generation. Later callers reuse that generation and
+receive an idle-policy mismatch diagnostic when either requested value differs.
+Ownership and health probes are observational and do not refresh either idle
+clock. Legacy ownership records using `idle_keep_alive_seconds` and
+`model_idle_timeout_seconds` remain readable. The former exact `-1` model
+sentinel is migration evidence only: a matching live generation is gracefully
+retired, a dead generation is removed, and replacement uses the bounded new
+policy. New requests can never select a negative value, and new records use the
+canonical names.
 
 ## Cluster Reload Policy
 

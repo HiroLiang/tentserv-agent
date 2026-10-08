@@ -570,7 +570,13 @@ pub struct ServerSpec {
     #[serde(default)]
     pub port_auto: bool,
     pub lazy_load: bool,
+    #[serde(
+        rename = "runtime_idle_seconds",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub idle_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_idle_seconds: Option<u64>,
     pub created_at: String,
 }
 
@@ -602,7 +608,12 @@ impl<'de> Deserialize<'de> for ServerSpec {
             #[serde(default)]
             port_auto: bool,
             lazy_load: bool,
+            #[serde(default)]
+            runtime_idle_seconds: Option<u64>,
+            #[serde(default)]
             idle_seconds: Option<u64>,
+            #[serde(default)]
+            model_idle_seconds: Option<u64>,
             created_at: String,
         }
 
@@ -612,6 +623,15 @@ impl<'de> Deserialize<'de> for ServerSpec {
                 default_server_capability_option()
             }
             (_, capability) => capability,
+        };
+        let idle_seconds = match (stored.runtime_idle_seconds, stored.idle_seconds) {
+            (Some(canonical), Some(legacy)) if canonical != legacy => {
+                return Err(de::Error::custom(format!(
+                    "runtime_idle_seconds ({canonical}) and legacy idle_seconds ({legacy}) must match"
+                )));
+            }
+            (Some(canonical), _) => Some(canonical),
+            (None, legacy) => legacy,
         };
         let spec = Self {
             server_ref: stored.server_ref,
@@ -627,7 +647,8 @@ impl<'de> Deserialize<'de> for ServerSpec {
             port: stored.port,
             port_auto: stored.port_auto,
             lazy_load: stored.lazy_load,
-            idle_seconds: stored.idle_seconds,
+            idle_seconds,
+            model_idle_seconds: stored.model_idle_seconds,
             created_at: stored.created_at,
         };
         spec.validate_target_shape().map_err(de::Error::custom)?;
@@ -636,7 +657,28 @@ impl<'de> Deserialize<'de> for ServerSpec {
 }
 
 impl ServerSpec {
+    pub fn model_runtime_idle_policy(
+        &self,
+    ) -> Result<crate::features::runtime::domain::ModelRuntimeIdlePolicy, String> {
+        crate::features::runtime::domain::ModelRuntimeIdlePolicy::from_overrides(
+            self.idle_seconds,
+            self.model_idle_seconds,
+        )
+    }
+
     pub fn validate_target_shape(&self) -> Result<(), String> {
+        match self.runtime_kind {
+            ServerRuntimeKind::Local | ServerRuntimeKind::Cluster => {
+                self.model_runtime_idle_policy()?;
+            }
+            ServerRuntimeKind::Cloud if self.model_idle_seconds.is_some() => {
+                return Err(
+                    "model_idle_seconds applies only to Local and Cluster server targets"
+                        .to_string(),
+                );
+            }
+            ServerRuntimeKind::Cloud => {}
+        }
         let valid = match self.runtime_kind {
             ServerRuntimeKind::Local => {
                 self.capability.is_some()
@@ -652,6 +694,7 @@ impl ServerSpec {
                     && self.provider_model.is_some()
                     && self.cluster_ref.is_none()
                     && self.runtime_profile.is_none()
+                    && self.model_idle_seconds.is_none()
             }
             ServerRuntimeKind::Cluster => {
                 self.capability.is_none()

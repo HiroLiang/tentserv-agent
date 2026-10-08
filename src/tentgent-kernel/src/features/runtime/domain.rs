@@ -6,6 +6,47 @@ use serde::{Deserialize, Serialize};
 
 pub const PYTHON_PROJECT_ENV: &str = "TENTGENT_PYTHON_DIR";
 pub const PYTHON_ENV_DIR_ENV: &str = "TENTGENT_PYTHON_ENV_DIR";
+pub const DEFAULT_RUNTIME_IDLE_SECONDS: u64 = 300;
+pub const DEFAULT_MODEL_IDLE_SECONDS: u64 = 0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelRuntimeIdlePolicy {
+    pub runtime_idle_seconds: u64,
+    pub model_idle_seconds: u64,
+}
+
+impl ModelRuntimeIdlePolicy {
+    pub fn new(runtime_idle_seconds: u64, model_idle_seconds: u64) -> Result<Self, String> {
+        if model_idle_seconds > runtime_idle_seconds {
+            return Err(format!(
+                "model_idle_seconds ({model_idle_seconds}) must be less than or equal to runtime_idle_seconds ({runtime_idle_seconds})"
+            ));
+        }
+        Ok(Self {
+            runtime_idle_seconds,
+            model_idle_seconds,
+        })
+    }
+
+    pub fn from_overrides(
+        runtime_idle_seconds: Option<u64>,
+        model_idle_seconds: Option<u64>,
+    ) -> Result<Self, String> {
+        Self::new(
+            runtime_idle_seconds.unwrap_or(DEFAULT_RUNTIME_IDLE_SECONDS),
+            model_idle_seconds.unwrap_or(DEFAULT_MODEL_IDLE_SECONDS),
+        )
+    }
+}
+
+impl Default for ModelRuntimeIdlePolicy {
+    fn default() -> Self {
+        Self {
+            runtime_idle_seconds: DEFAULT_RUNTIME_IDLE_SECONDS,
+            model_idle_seconds: DEFAULT_MODEL_IDLE_SECONDS,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BootstrapProfile {

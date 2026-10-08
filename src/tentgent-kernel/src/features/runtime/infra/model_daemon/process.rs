@@ -1,8 +1,13 @@
-use std::{process::Child, sync::Arc, thread, time::Duration};
+use std::{process::Child, sync::Arc, thread};
+
+#[cfg(unix)]
+use std::time::Duration;
 
 use crate::foundation::error::{KernelError, KernelResult};
 
+#[cfg(unix)]
 const TERMINATE_GRACE: Duration = Duration::from_secs(2);
+#[cfg(unix)]
 const TERMINATE_POLL: Duration = Duration::from_millis(25);
 
 pub(super) struct PendingRuntimeProcess {
@@ -40,7 +45,11 @@ impl PendingRuntimeProcess {
     }
 
     pub(super) fn disarm(mut self) {
-        self.child.take();
+        if let Some(mut child) = self.child.take() {
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
     }
 
     pub(super) fn terminate_and_wait(&mut self) -> KernelResult<()> {
@@ -70,14 +79,14 @@ fn terminate_process(child: &mut Child) -> KernelResult<()> {
     use nix::{
         errno::Errno,
         sys::signal::{killpg, Signal},
-        unistd::Pid,
     };
 
     let pid = child.id();
+    let process_group = crate::foundation::process::unix_pid(pid)
+        .ok_or_else(|| runtime_error(format!("invalid runtime process group pid {pid}")))?;
     if child.try_wait().map_err(runtime_error)?.is_some() {
         return Ok(());
     }
-    let process_group = Pid::from_raw(pid as i32);
     if let Err(error) = killpg(process_group, Signal::SIGTERM) {
         if error != Errno::ESRCH {
             return Err(runtime_error(format!(
@@ -121,6 +130,9 @@ fn runtime_error(error: impl std::fmt::Display) -> KernelError {
 mod tests {
     use std::process::{Command, Stdio};
 
+    #[cfg(unix)]
+    use std::{thread, time::Duration};
+
     use super::PendingRuntimeProcess;
 
     #[cfg(unix)]
@@ -143,6 +155,33 @@ mod tests {
             .terminate_and_wait()
             .expect("terminate pending process group");
         assert_eq!(pending.pid(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn disarmed_runtime_process_is_reaped_after_natural_exit() {
+        let child = Command::new("sh")
+            .args(["-c", "exit 0"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn short process");
+        let pid = child.id();
+
+        PendingRuntimeProcess::new(child).disarm();
+
+        for _ in 0..100 {
+            let status = Command::new("ps")
+                .args(["-p", &pid.to_string(), "-o", "stat="])
+                .output()
+                .expect("probe child");
+            if !status.status.success() || status.stdout.is_empty() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("disarmed runtime process {pid} was not reaped");
     }
 
     #[cfg(windows)]

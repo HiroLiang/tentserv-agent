@@ -117,6 +117,15 @@ artifact URL and version point at that same tag.
 
 ## Upgrade
 
+This release uses managed Python 3.12 (supported range: `>=3.11,<3.13`) for
+media dependency compatibility, without changing system Python. Stop affected
+Tentgent servers, chat/train work, and the daemon before rebuilding an existing
+3.13 managed environment. Remove a `TENTGENT_BOOTSTRAP_PYTHON_VERSION=3.13`
+override. Bootstrap may recreate only the selected Python environment; model,
+adapter, dataset, and server stores remain intact. If sync fails, close any
+remaining processes and retry bootstrap/the Windows installer rather than
+deleting runtime home. See [runtime notes](./runtime.md#runtime-footprint).
+
 Upgrade Homebrew installs with:
 
 ```bash

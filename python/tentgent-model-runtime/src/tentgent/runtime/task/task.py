@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from threading import Event
 from enum import StrEnum
+from threading import Event
 from time import monotonic
 from typing import Generic, TypeVar
 
@@ -18,6 +18,7 @@ class TaskKind(StrEnum):
     EMBEDDING = "embedding"
     IMAGE_GENERATION = "image-generation"
     LORA_TUNING = "lora-tuning"
+    PRELOAD = "preload"
     RERANK = "rerank"
     VIDEO_UNDERSTANDING = "video-understanding"
     VISION_CHAT = "vision-chat"
@@ -101,4 +102,4 @@ class RuntimeTask(ABC, Generic[RequestT, ResultT]):
 
     async def close(self) -> None:
         """Optional cleanup hook"""
-        return None
+        return

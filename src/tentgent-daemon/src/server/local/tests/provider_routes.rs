@@ -383,10 +383,11 @@ async fn openai_image_generation_maps_local_request_and_response() {
     assert_eq!(captured["output_format"], "png");
     assert_eq!(captured["width"], 512);
     assert_eq!(captured["height"], 512);
-    assert!(captured["output_path"]
-        .as_str()
-        .expect("output path")
-        .contains("local-openai-images/server-local-image/"));
+    let output_path = std::path::Path::new(captured["output_path"].as_str().expect("output path"));
+    assert!(output_path
+        .parent()
+        .expect("output parent")
+        .ends_with("local-openai-images/server-local-image"));
     assert!(captured.get("model").is_none());
     assert!(captured.get("provider").is_none());
     assert!(captured.get("size").is_none());

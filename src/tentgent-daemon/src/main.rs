@@ -14,6 +14,9 @@ use tentgent_kernel::features::auth::domain::Provider;
 use tentgent_kernel::features::cluster::domain::ClusterRef;
 use tentgent_kernel::features::server::domain::ServerCapability;
 
+#[cfg(test)]
+mod server_option_tests;
+
 #[derive(Debug, Parser)]
 #[command(name = "tentgent-daemon")]
 #[command(about = "Run the Tentgent daemon application host")]
@@ -53,10 +56,6 @@ struct CloudServerArgs {
     port: u16,
     #[arg(long)]
     home: Option<PathBuf>,
-    #[arg(long)]
-    lazy_load: bool,
-    #[arg(long = "idle-seconds")]
-    idle_seconds: Option<u64>,
 }
 
 #[derive(Debug, Parser)]
@@ -78,8 +77,14 @@ struct LocalServerArgs {
     home: Option<PathBuf>,
     #[arg(long)]
     lazy_load: bool,
-    #[arg(long = "idle-seconds")]
-    idle_seconds: Option<u64>,
+    #[arg(
+        long = "runtime-idle-seconds",
+        visible_alias = "idle-seconds",
+        default_value_t = 300
+    )]
+    runtime_idle_seconds: u64,
+    #[arg(long = "model-idle-seconds", default_value_t = 0)]
+    model_idle_seconds: u64,
 }
 
 #[derive(Debug, Parser)]
@@ -97,10 +102,27 @@ struct ClusterServerArgs {
     home: Option<PathBuf>,
     #[arg(long)]
     lazy_load: bool,
-    #[arg(long = "idle-seconds")]
-    idle_seconds: Option<u64>,
+    #[arg(
+        long = "runtime-idle-seconds",
+        visible_alias = "idle-seconds",
+        default_value_t = 300
+    )]
+    runtime_idle_seconds: u64,
+    #[arg(long = "model-idle-seconds", default_value_t = 0)]
+    model_idle_seconds: u64,
     #[arg(long)]
     allow_unverified: bool,
+}
+
+impl LocalServerArgs {
+    fn validated_capability(&self) -> miette::Result<ServerCapability> {
+        let capability = ServerCapability::parse(&self.capability)
+            .map_err(|err| miette::miette!("unsupported local server capability: {err}"))?;
+        tentgent_kernel::features::server::options::LoadMode::from_lazy_load(self.lazy_load)
+            .ensure_supported(capability)
+            .map_err(|err| miette::miette!("{err}"))?;
+        Ok(capability)
+    }
 }
 
 #[tokio::main]
@@ -111,7 +133,6 @@ async fn main() -> miette::Result<()> {
                 .enumerate()
                 .filter_map(|(index, value)| (index != 1).then_some(value)),
         );
-        let _ = args.lazy_load;
         let provider = match args.provider.trim().to_ascii_lowercase().as_str() {
             "openai" => Provider::OpenAI,
             "anthropic" | "claude" => Provider::Anthropic,
@@ -134,9 +155,7 @@ async fn main() -> miette::Result<()> {
                 .enumerate()
                 .filter_map(|(index, value)| (index != 1).then_some(value)),
         );
-        let _ = args.lazy_load;
-        let capability = ServerCapability::parse(&args.capability)
-            .map_err(|err| miette::miette!("unsupported local server capability: {err}"))?;
+        let capability = args.validated_capability()?;
         return run_local_server_runtime(LocalServerRuntimeConfig {
             server_ref: args.server_ref,
             capability,
@@ -145,7 +164,11 @@ async fn main() -> miette::Result<()> {
             host: args.host,
             port: args.port,
             runtime_home: args.home,
-            idle_seconds: args.idle_seconds,
+            runtime_idle_seconds: args.runtime_idle_seconds,
+            model_idle_seconds: args.model_idle_seconds,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::from_lazy_load(
+                args.lazy_load,
+            ),
         })
         .await;
     }
@@ -155,7 +178,6 @@ async fn main() -> miette::Result<()> {
                 .enumerate()
                 .filter_map(|(index, value)| (index != 1).then_some(value)),
         );
-        let _ = args.lazy_load;
         let cluster_ref = ClusterRef::parse(&args.cluster_ref)
             .map_err(|err| miette::miette!("invalid cluster ref: {err}"))?;
         return run_cluster_server_runtime(ClusterServerRuntimeConfig {
@@ -164,8 +186,12 @@ async fn main() -> miette::Result<()> {
             host: args.host,
             port: args.port,
             runtime_home: args.home,
-            idle_seconds: args.idle_seconds,
+            runtime_idle_seconds: args.runtime_idle_seconds,
+            model_idle_seconds: args.model_idle_seconds,
             allow_unverified: args.allow_unverified,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::from_lazy_load(
+                args.lazy_load,
+            ),
         })
         .await;
     }

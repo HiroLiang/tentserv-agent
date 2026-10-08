@@ -273,10 +273,129 @@ pub enum RuntimeGenerationHealth {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RuntimeLaunchPolicyRecord {
-    pub idle_keep_alive_seconds: String,
-    pub model_idle_timeout_seconds: String,
+    pub runtime_idle_seconds: u64,
+    pub model_idle_seconds: u64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub legacy_unbounded_model: bool,
+}
+
+impl<'de> Deserialize<'de> for RuntimeLaunchPolicyRecord {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct StoredRuntimeLaunchPolicy {
+            #[serde(default)]
+            runtime_idle_seconds: Option<StoredIdleSeconds>,
+            #[serde(default)]
+            idle_keep_alive_seconds: Option<StoredIdleSeconds>,
+            #[serde(default)]
+            model_idle_seconds: Option<StoredIdleSeconds>,
+            #[serde(default)]
+            model_idle_timeout_seconds: Option<StoredIdleSeconds>,
+            #[serde(default)]
+            legacy_unbounded_model: bool,
+        }
+
+        let stored = StoredRuntimeLaunchPolicy::deserialize(deserializer)?;
+        let runtime_idle_seconds = resolve_stored_idle_alias(
+            stored.runtime_idle_seconds,
+            stored.idle_keep_alive_seconds,
+            "runtime_idle_seconds",
+            "idle_keep_alive_seconds",
+        )?
+        .ok_or_else(|| serde::de::Error::missing_field("runtime_idle_seconds"))?;
+        let mut legacy_unbounded_model = stored.legacy_unbounded_model;
+        let canonical_model = stored
+            .model_idle_seconds
+            .map(StoredIdleSeconds::value::<D::Error>)
+            .transpose()?;
+        let legacy_model = stored
+            .model_idle_timeout_seconds
+            .map(StoredIdleSeconds::value::<D::Error>)
+            .transpose()?;
+        let model_idle_seconds = match (canonical_model, legacy_model) {
+            (Some(canonical), Some(legacy)) if canonical != legacy => {
+                return Err(serde::de::Error::custom(format!(
+                    "model_idle_seconds ({canonical}) and legacy model_idle_timeout_seconds ({legacy}) must match"
+                )));
+            }
+            (Some(canonical), _) => canonical,
+            (None, Some(-1)) => {
+                legacy_unbounded_model = true;
+                0
+            }
+            (None, Some(legacy)) => legacy,
+            (None, None) => {
+                return Err(serde::de::Error::missing_field("model_idle_seconds"));
+            }
+        };
+        let runtime_idle_seconds = u64::try_from(runtime_idle_seconds)
+            .map_err(|_| serde::de::Error::custom("runtime_idle_seconds must be non-negative"))?;
+        let model_idle_seconds = u64::try_from(model_idle_seconds)
+            .map_err(|_| serde::de::Error::custom("model_idle_seconds must be non-negative"))?;
+        if legacy_unbounded_model && model_idle_seconds != 0 {
+            return Err(serde::de::Error::custom(
+                "legacy_unbounded_model requires model_idle_seconds = 0",
+            ));
+        }
+        crate::features::runtime::domain::ModelRuntimeIdlePolicy::new(
+            runtime_idle_seconds,
+            model_idle_seconds,
+        )
+        .map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            runtime_idle_seconds,
+            model_idle_seconds,
+            legacy_unbounded_model,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StoredIdleSeconds {
+    Integer(i64),
+    Text(String),
+}
+
+impl StoredIdleSeconds {
+    fn value<E>(self) -> Result<i64, E>
+    where
+        E: serde::de::Error,
+    {
+        match self {
+            Self::Integer(value) => Ok(value),
+            Self::Text(value) => value.parse::<i64>().map_err(E::custom),
+        }
+    }
+}
+
+fn resolve_stored_idle_alias<E>(
+    canonical: Option<StoredIdleSeconds>,
+    legacy: Option<StoredIdleSeconds>,
+    canonical_name: &str,
+    legacy_name: &str,
+) -> Result<Option<i64>, E>
+where
+    E: serde::de::Error,
+{
+    let canonical = canonical.map(StoredIdleSeconds::value::<E>).transpose()?;
+    let legacy = legacy.map(StoredIdleSeconds::value::<E>).transpose()?;
+    match (canonical, legacy) {
+        (Some(canonical), Some(legacy)) if canonical != legacy => Err(E::custom(format!(
+            "{canonical_name} ({canonical}) and legacy {legacy_name} ({legacy}) must match"
+        ))),
+        (Some(canonical), _) => Ok(Some(canonical)),
+        (None, legacy) => Ok(legacy),
+    }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

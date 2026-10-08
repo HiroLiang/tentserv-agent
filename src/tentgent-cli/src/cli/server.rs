@@ -25,16 +25,13 @@ use tentgent_kernel::features::auth::usecases::{
 };
 use tentgent_kernel::features::cluster::domain::ClusterRef;
 use tentgent_kernel::features::cluster::infra::FileClusterCatalogStore;
-use tentgent_kernel::features::model::domain::{
-    ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelRefSelector,
-};
+use tentgent_kernel::features::model::domain::ModelRefSelector;
 use tentgent_kernel::features::model::infra::{
     FileModelCapabilityProofStore, FileModelCatalogStore, SystemModelClock,
 };
 use tentgent_kernel::features::model::usecases::{
-    ModelCapabilityProofListRequest, ModelCapabilityProofRecordRequest,
-    ModelCapabilityProofUseCase, ModelCatalogReadUseCase, ModelInspectRequest,
-    StdModelCapabilityProofUseCase, StdModelCatalogReadUseCase,
+    ModelCapabilityProofListRequest, ModelCapabilityProofUseCase, ModelCatalogReadUseCase,
+    ModelInspectRequest, StdModelCapabilityProofUseCase, StdModelCatalogReadUseCase,
 };
 use tentgent_kernel::features::runtime::domain::PythonRuntimeResolutionInput;
 use tentgent_kernel::features::runtime::infra::{
@@ -49,9 +46,9 @@ use tentgent_kernel::features::server::domain::{
     ServerRefSelector, ServerRuntimeKind, ServerSpec, ServerStopOutcome, ServerSummary,
 };
 use tentgent_kernel::features::server::infra::{
-    FileServerCatalogStore, ServerRuntimeLaunchRequest, ServerRuntimeLauncher,
-    StdServerIdentityGenerator, StdServerProcessController, StdServerStoreLayoutInitializer,
-    SystemServerClock,
+    observe_server_readiness, FileServerCatalogStore, ServerReadinessObservation,
+    ServerRuntimeLaunchRequest, ServerRuntimeLauncher, StdServerIdentityGenerator,
+    StdServerProcessController, StdServerStoreLayoutInitializer, SystemServerClock,
 };
 use tentgent_kernel::features::server::ports::ServerProcessController;
 use tentgent_kernel::features::server::usecases::{
@@ -158,7 +155,7 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
             if let Some(auth) = &auth {
                 render_cloud_auth_preflight(auth.provider, auth.source);
             }
-            let inspection = launch_background_server(
+            let launched = launch_background_server(
                 &kernel,
                 &server,
                 result.layout,
@@ -167,7 +164,8 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
                 allow_unverified,
             )
             .await?;
-            render_server_started(&inspection, details);
+            render_server_started(&launched.inspection, details);
+            render_launch_readiness(launched.ready);
         }
         ServerCommands::Stop {
             reference,
@@ -214,7 +212,6 @@ pub async fn handle_server_command(action: ServerCommands) -> miette::Result<()>
 }
 
 pub async fn handle_cloud_server_runtime(command: CloudServerRuntimeCommand) -> miette::Result<()> {
-    let _ = (command.lazy_load, command.idle_seconds);
     let provider = match command.provider.trim().to_ascii_lowercase().as_str() {
         "openai" => Provider::OpenAI,
         "anthropic" | "claude" => Provider::Anthropic,
@@ -235,9 +232,11 @@ pub async fn handle_cloud_server_runtime(command: CloudServerRuntimeCommand) -> 
 }
 
 pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> miette::Result<()> {
-    let _ = command.lazy_load;
     let capability = ServerCapability::parse(&command.capability)
         .map_err(|err| miette!("unsupported local server capability: {err}"))?;
+    tentgent_kernel::features::server::options::LoadMode::from_lazy_load(command.lazy_load)
+        .ensure_supported(capability)
+        .into_diagnostic()?;
     tentgent_daemon::server::local::run_local_server_runtime(
         tentgent_daemon::server::local::LocalServerRuntimeConfig {
             server_ref: command.server_ref,
@@ -247,7 +246,11 @@ pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> 
             host: command.host,
             port: command.port,
             runtime_home: command.home,
-            idle_seconds: command.idle_seconds,
+            runtime_idle_seconds: command.runtime_idle_seconds,
+            model_idle_seconds: command.model_idle_seconds,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::from_lazy_load(
+                command.lazy_load,
+            ),
         },
     )
     .await
@@ -256,7 +259,6 @@ pub async fn handle_local_server_runtime(command: LocalServerRuntimeCommand) -> 
 pub async fn handle_cluster_server_runtime(
     command: ClusterServerRuntimeCommand,
 ) -> miette::Result<()> {
-    let _ = command.lazy_load;
     let cluster_ref = ClusterRef::parse(&command.cluster_ref)
         .map_err(|err| miette!("invalid cluster ref: {err}"))?;
     tentgent_daemon::server::cluster::run_cluster_server_runtime(
@@ -266,8 +268,12 @@ pub async fn handle_cluster_server_runtime(
             host: command.host,
             port: command.port,
             runtime_home: command.home,
-            idle_seconds: command.idle_seconds,
+            runtime_idle_seconds: command.runtime_idle_seconds,
+            model_idle_seconds: command.model_idle_seconds,
             allow_unverified: command.allow_unverified,
+            load_mode: tentgent_kernel::features::server::options::LoadMode::from_lazy_load(
+                command.lazy_load,
+            ),
         },
     )
     .await
@@ -283,6 +289,9 @@ async fn run_server(
         return Ok(());
     }
 
+    let runtime_idle_seconds =
+        resolve_runtime_idle_alias(command.runtime_idle_seconds, command.idle_seconds)?;
+
     let outcome = server
         .prepare_server(ServerPrepareRequest {
             layout: runtime_layout_input(LayoutResolveMode::Create, command.home.as_deref()),
@@ -292,8 +301,9 @@ async fn run_server(
             },
             host: command.host,
             port: command.port,
-            lazy_load: command.lazy_load,
-            idle_seconds: command.idle_seconds,
+            lazy_load: command.lazy_load.then_some(true).into(),
+            idle_seconds: runtime_idle_seconds.into(),
+            model_idle_seconds: command.model_idle_seconds.into(),
             allow_unverified: command.allow_unverified,
         })
         .into_diagnostic()?;
@@ -307,7 +317,7 @@ async fn run_server(
         render_cloud_auth_preflight(auth.provider, auth.source);
     }
     if detached {
-        let inspection = launch_background_server(
+        let launched = launch_background_server(
             kernel,
             server,
             outcome.layout,
@@ -316,7 +326,8 @@ async fn run_server(
             command.allow_unverified,
         )
         .await?;
-        render_server_inspection("Server started", &inspection, None);
+        render_server_inspection("Server process started", &launched.inspection, None);
+        render_launch_readiness(launched.ready);
     } else {
         launch_foreground_server(
             kernel,
@@ -337,21 +348,24 @@ pub(super) async fn run_cluster_server(command: ClusterRunCommand) -> miette::Re
         .map_err(|err| miette!("invalid cluster ref: {err}"))?;
     let kernel = CliServerKernel::new();
     let server = kernel.server_usecase();
+    let runtime_idle_seconds =
+        resolve_runtime_idle_alias(command.runtime_idle_seconds, command.idle_seconds)?;
     let outcome = server
         .prepare_server(ServerPrepareRequest {
             layout: runtime_layout_input(LayoutResolveMode::Create, command.home.as_deref()),
             target: ServerPrepareTarget::Cluster { cluster_ref },
             host: command.host,
             port: command.port,
-            lazy_load: command.lazy_load,
-            idle_seconds: command.idle_seconds,
+            lazy_load: command.lazy_load.then_some(true).into(),
+            idle_seconds: runtime_idle_seconds.into(),
+            model_idle_seconds: command.model_idle_seconds.into(),
             allow_unverified: command.allow_unverified,
         })
         .into_diagnostic()?;
 
     render_server_spec_outcome(&outcome.outcome, command.detach);
     if command.detach {
-        let inspection = launch_background_server(
+        let launched = launch_background_server(
             &kernel,
             &server,
             outcome.layout,
@@ -360,7 +374,8 @@ pub(super) async fn run_cluster_server(command: ClusterRunCommand) -> miette::Re
             command.allow_unverified,
         )
         .await?;
-        render_server_inspection("Cluster server started", &inspection, None);
+        render_server_inspection("Cluster server started", &launched.inspection, None);
+        render_launch_readiness(launched.ready);
     } else {
         launch_foreground_server(
             &kernel,
@@ -374,6 +389,19 @@ pub(super) async fn run_cluster_server(command: ClusterRunCommand) -> miette::Re
     }
 
     Ok(())
+}
+
+fn resolve_runtime_idle_alias(
+    canonical: Option<u64>,
+    legacy: Option<u64>,
+) -> miette::Result<Option<u64>> {
+    match (canonical, legacy) {
+        (Some(canonical), Some(legacy)) if canonical != legacy => Err(miette!(
+            "--runtime-idle-seconds ({canonical}) and deprecated --idle-seconds ({legacy}) must match"
+        )),
+        (Some(canonical), _) => Ok(Some(canonical)),
+        (None, legacy) => Ok(legacy),
+    }
 }
 
 async fn launch_foreground_server(
@@ -404,17 +432,7 @@ async fn launch_foreground_server(
         allow_unverified,
     }) {
         Ok(child) => child,
-        Err(err) => {
-            let message = err.to_string();
-            let _ = record_local_server_capability_proof(
-                kernel,
-                &layout,
-                &inspection,
-                ModelCapabilityProofStatus::Failed,
-                Some(message),
-            );
-            return Err(err).into_diagnostic();
-        }
+        Err(err) => return Err(err).into_diagnostic(),
     };
     if let Err(error) = server.record_process_start(ServerRecordProcessStartRequest {
         layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
@@ -428,13 +446,6 @@ async fn launch_foreground_server(
         return Err(error).into_diagnostic();
     }
     drop(start_permit);
-    let _ = record_local_server_capability_proof(
-        kernel,
-        &layout,
-        &inspection,
-        ModelCapabilityProofStatus::Verified,
-        None,
-    );
 
     let status = child.wait().into_diagnostic();
     server
@@ -446,13 +457,6 @@ async fn launch_foreground_server(
         .into_diagnostic()?;
     let status = status?;
     if !status.success() {
-        let _ = record_local_server_capability_proof(
-            kernel,
-            &layout,
-            &inspection,
-            ModelCapabilityProofStatus::Failed,
-            Some(format!("server runtime exited with status {status}")),
-        );
         return Err(miette!("server runtime exited with status {status}"));
     }
 
@@ -466,7 +470,7 @@ async fn launch_background_server(
     inspection: ServerInspection,
     auth: Option<AuthSecretMaterial>,
     allow_unverified: bool,
-) -> miette::Result<ServerInspection> {
+) -> miette::Result<BackgroundLaunch> {
     let start = server
         .resolve_for_start_guarded(ServerResolveForStartRequest {
             layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
@@ -487,17 +491,7 @@ async fn launch_background_server(
         allow_unverified,
     }) {
         Ok(pid) => pid,
-        Err(err) => {
-            let message = err.to_string();
-            let _ = record_local_server_capability_proof(
-                kernel,
-                &layout,
-                &inspection,
-                ModelCapabilityProofStatus::Failed,
-                Some(message),
-            );
-            return Err(err).into_diagnostic();
-        }
+        Err(err) => return Err(err).into_diagnostic(),
     };
     let recorded = match server.record_process_start(ServerRecordProcessStartRequest {
         layout: runtime_layout_input_from_layout(&layout, LayoutResolveMode::ReadOnly),
@@ -517,72 +511,23 @@ async fn launch_background_server(
     };
     drop(start_permit);
 
-    match verify_background_launch(server, &layout, &recorded.inspection, spawned.pid).await {
-        Ok(checked) => {
-            let _ = record_local_server_capability_proof(
-                kernel,
-                &layout,
-                &checked,
-                ModelCapabilityProofStatus::Verified,
-                None,
-            );
-            Ok(checked)
-        }
-        Err(err) => {
-            let message = err.to_string();
-            let _ = record_local_server_capability_proof(
-                kernel,
-                &layout,
-                &recorded.inspection,
-                ModelCapabilityProofStatus::Failed,
-                Some(message),
-            );
-            Err(err)
-        }
-    }
+    verify_background_launch(server, &layout, &recorded.inspection, spawned.pid).await
 }
 
-fn record_local_server_capability_proof(
-    kernel: &CliServerKernel,
-    layout: &RuntimeLayout,
-    inspection: &ServerInspection,
-    status: ModelCapabilityProofStatus,
-    error: Option<String>,
-) -> miette::Result<()> {
-    let Some(model_ref) = inspection.spec.local_model_ref() else {
-        return Ok(());
-    };
-    let selector = ModelRefSelector::parse(model_ref.as_str())
-        .map_err(|err| miette!("invalid model ref in server spec: {err}"))?;
-    let capability = inspection.spec.capability.ok_or_else(|| {
-        miette!(
-            "local server spec `{}` is missing capability metadata",
-            inspection.spec.short_ref
-        )
-    })?;
-    kernel
-        .model_capability_proof_usecase()
-        .record_model_capability_proof(ModelCapabilityProofRecordRequest {
-            layout: runtime_layout_input_from_layout(layout, LayoutResolveMode::Create),
-            selector,
-            capability: capability.required_model_capability(),
-            status,
-            source: ModelCapabilityProofSource::ServerStart,
-            server_ref: Some(inspection.spec.server_ref.to_string()),
-            runtime_profile: inspection
-                .spec
-                .runtime_profile
-                .as_ref()
-                .map(|profile| profile.profile_id.clone()),
-            runtime_profile_version: inspection
-                .spec
-                .runtime_profile
-                .as_ref()
-                .map(|profile| profile.profile_version),
-            error,
-        })
-        .into_diagnostic()?;
-    Ok(())
+struct BackgroundLaunch {
+    inspection: ServerInspection,
+    ready: bool,
+}
+
+fn render_launch_readiness(ready: bool) {
+    println!(
+        "readiness: {}",
+        if ready {
+            "ready"
+        } else {
+            "starting (observation expired; the worker continues startup)"
+        }
+    );
 }
 
 async fn verify_background_launch(
@@ -590,7 +535,7 @@ async fn verify_background_launch(
     layout: &RuntimeLayout,
     inspection: &ServerInspection,
     pid: u32,
-) -> miette::Result<ServerInspection> {
+) -> miette::Result<BackgroundLaunch> {
     let started = Instant::now();
 
     loop {
@@ -602,7 +547,10 @@ async fn verify_background_launch(
 
         match background_health_status(&checked) {
             BackgroundHealthStatus::Matches if started.elapsed() >= BACKGROUND_HEALTH_STABLE => {
-                return Ok(checked);
+                return Ok(BackgroundLaunch {
+                    inspection: checked,
+                    ready: true,
+                });
             }
             BackgroundHealthStatus::DifferentServer(detail) => {
                 clear_background_process(server, layout, inspection, Some(pid))?;
@@ -610,11 +558,16 @@ async fn verify_background_launch(
                     "failed to launch background server runtime: {detail}"
                 ));
             }
-            BackgroundHealthStatus::Matches | BackgroundHealthStatus::Unavailable => {}
+            BackgroundHealthStatus::Matches
+            | BackgroundHealthStatus::Starting
+            | BackgroundHealthStatus::Unavailable => {}
         }
 
         if started.elapsed() >= BACKGROUND_START_OBSERVATION {
-            return Ok(checked);
+            return Ok(BackgroundLaunch {
+                inspection: checked,
+                ready: false,
+            });
         }
 
         thread::sleep(BACKGROUND_START_POLL);
@@ -731,6 +684,7 @@ async fn resolve_server_runtime_auth(
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum BackgroundHealthStatus {
     Matches,
+    Starting,
     DifferentServer(String),
     Unavailable,
 }
@@ -762,17 +716,10 @@ fn background_health_status(inspection: &ServerInspection) -> BackgroundHealthSt
     let Ok(payload) = serde_json::from_str::<Value>(body.trim()) else {
         return BackgroundHealthStatus::Unavailable;
     };
-    let server_ref_matches = payload
-        .get("server_ref")
-        .and_then(Value::as_str)
-        .is_some_and(|server_ref| server_ref == inspection.spec.server_ref.as_str());
-    let runtime_home_matches = payload
-        .get("runtime_home")
-        .and_then(Value::as_str)
-        .is_some_and(|home| home == inspection.home_dir.display().to_string());
-
-    if server_ref_matches && runtime_home_matches {
-        return BackgroundHealthStatus::Matches;
+    match observe_server_readiness(inspection, &payload) {
+        ServerReadinessObservation::Ready => return BackgroundHealthStatus::Matches,
+        ServerReadinessObservation::Starting => return BackgroundHealthStatus::Starting,
+        ServerReadinessObservation::IdentityMismatch => {}
     }
 
     let existing_server = payload

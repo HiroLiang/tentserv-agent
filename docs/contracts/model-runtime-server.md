@@ -10,7 +10,7 @@ capability when it starts the process through the runtime daemon entrypoint. If
 the caller omitted `--capability` for a local model-bound server, Rust infers
 that capability from stored model metadata before launching the Rust server
 proxy. The proxy then starts or reuses the matching Python runtime through the
-shared runtime daemon supervisor on demand.
+shared runtime daemon supervisor at eager startup or on demand for lazy servers.
 
 Supported capability values:
 
@@ -77,6 +77,13 @@ text-to-image, image-to-image, inpaint, and control use different backend
 entrypoints. LoRA tuning remains an explicit direct-runtime endpoint because a
 training run owns its base model through the tuning payload and managed train
 plan.
+
+Image-generation runtimes require lazy loading, for both Diffusers and MLX/MFLUX.
+Direct Python CLI invocation must include `--lazy-load`; programmatic
+`RuntimeServerConfig` rejects `lazy_load=False` for this capability. This applies
+to both bound and unbound runtimes. Startup must not choose a workflow implicitly
+or report eager success without loading its pipeline. Workflow-aware eager
+preparation remains outside this contract; request-specific loading is unchanged.
 
 ### Audio Transcription
 
@@ -215,9 +222,9 @@ PyTorch, and Apple Silicon MLX LoRA packages where supported.
 
 `GET /healthz` returns the runtime process snapshot. Rust uses this endpoint to
 distinguish ready, closing, and shutdown states for one Python runtime process.
-Each successful health check refreshes the runtime task-manager activity
-timestamp, so a Rust supervisor can keep a managed Python runtime alive by
-polling health before the idle keep-alive window expires.
+Health is observational: it does not refresh model or runtime activity. Rust
+startup probes, supervisor polling, CLI inspection, and ownership inspection
+therefore cannot keep an otherwise idle runtime alive.
 
 Response fields include:
 
@@ -231,8 +238,123 @@ Response fields include:
 - `runtime.capability`
 - `runtime.model_ref`
 - `runtime.model_bound`
+- `runtime.lifecycle.runtime_idle_seconds`
+- `runtime.lifecycle.model_idle_seconds`
 - `runtime.resources`
 - `tasks`
+
+Resource entries include `state` (`available`, `invalidated`, or `quarantined`),
+`load_error`, and `cleanup_error`. Diagnostics are strings, not retained loader
+tracebacks. Quarantined resources are still counted; they are not reported as freed.
+
+## Idle Policies
+
+The runtime has two independent finite clocks:
+
+- `runtime_idle_seconds` defaults to `300`. It begins when startup becomes
+  ready, then resets when accepted runtime work completes. Expiry begins
+  graceful process shutdown and the lifespan cleanup calls `release_all()`.
+- `model_idle_seconds` defaults to `0`. It begins when the final model lease
+  completes. Expiry removes the loaded resource and calls the backend's
+  `release()` without stopping the process.
+
+The pair must satisfy
+`0 <= model_idle_seconds <= runtime_idle_seconds`. Negative values, including
+the former `-1` retain-forever sentinel, and non-finite Python values are
+rejected before serving. Retained completed-task metadata does not postpone
+runtime shutdown, and a model cannot be released while it has an active lease.
+
+The direct Python CLI accepts `--runtime-idle-seconds` and
+`--model-idle-seconds`. The older `--idle-keep-alive-seconds` and
+`--model-idle-timeout-seconds` names remain deprecated aliases; a canonical and
+legacy value supplied together must match. Rust-managed launches use only the
+canonical names.
+
+## Managed Preload
+
+Local eager startup and Cluster eager startup/reload use this same operation.
+Rust owns snapshot promotion and staged/active/retiring route claims; Python
+owns accepted tasks and resource leases. Cancelling a Rust observer is not
+cancellation of accepted Python work. See [Cluster reload](./cluster.md#reload-and-drain).
+
+`POST /v1/lifecycle/preload` is an internal, model-bound load validation operation.
+Its JSON body contains only required, non-empty string `task_ref` and
+`process_token` fields. The token must match this runtime's launcher-supplied
+generation token; it is an identity check, not authentication. The operation
+accepts no caller-selected model/path, backend, workflow, or adapter.
+
+Preload submits a `preload` task through TaskManager and takes an ordinary model
+lease for the runtime's bound model/capability. It executes `load()` (or reuses a
+loaded resource), requires `is_loaded`, and exits the lease before returning:
+
+```json
+{
+  "status": "done",
+  "task_ref": "preload-task-ref",
+  "model_ref": "bound-model-ref",
+  "capability": "chat",
+  "process_token": "expected-generation-token"
+}
+```
+
+Completion validates loading, not continued residency: model idle `0` releases
+after the final lease; positive idle preserves normal reuse/expiry. Image
+generation and LoRA tuning have no fixed supported preload. MLX embedding and
+rerank placeholders are also rejected because their `load()` only sets metadata.
+
+Errors use `detail.code` and `detail.message`; accepted tasks also include
+`detail.task_ref`. Generation mismatch diagnostics never disclose the actual token.
+
+| HTTP | Code | Meaning |
+| --- | --- | --- |
+| 422 | `invalid_preload_request` | Missing, null, wrong-type, blank, extra fields, or malformed JSON. |
+| 409 | `runtime_generation_mismatch` | Missing runtime token or mismatched expected token. |
+| 409 | `runtime_closing`, `preload_task_exists` | Admission closed or task ref already tracked. |
+| 400 | `preload_unbound_runtime` | Runtime has no bound model. |
+| 501 | `preload_unsupported` | Unsupported capability/backend or unavailable backend dependency. |
+| 500 | `preload_failed` | Loading did not produce a loaded model, or loading/cleanup failed. |
+| 504 | `preload_wait_timeout` | Internal 300-second HTTP observation budget expired. |
+
+The wait budget is independent of both idle clocks and has no CLI option.
+Timeout/cancellation of the HTTP wait does not cancel queued or running native
+loading. Accepted work remains active until it actually finishes; completion
+restarts runtime idle, and normal lease exit governs model idle. Late errors are
+consumed even without a waiting HTTP client. A backend's own timeout is a load
+failure (`500`), not observation expiry (`504`).
+
+Failed loading invalidates only that resource and calls its `release()` under
+the resource lock. Reserved waiters reject the invalidated object; after the
+last reservation exits, a retry creates a fresh object. Inference-body errors
+do not invalidate a successfully loaded model. Failed cleanup quarantines the
+object and rejects reuse, without global release or shared-runtime termination.
+Idle cleanup skips quarantine, but runtime-idle shutdown still runs and retries
+cleanup for all resources; one cleanup failure does not skip other resources.
+
+The public Local proxy routes only explicitly registered endpoints. Native
+chat and provider routes always pass through their Rust validation handlers;
+transparent forwarding is limited to exact `POST` routes for rerank, audio,
+vision, video, and image editing. Unknown routes, `/internal/*`, lifecycle,
+OpenAPI, and trailing-slash/encoded/dot-segment aliases return `404` before
+runtime resolution or proof recording. Wrong methods do not reach Python.
+The runtime HTTP client does not follow redirects, and upstream redirects
+return `502` without exposing their `Location` to callers. Direct Python
+execution routes remain a trusted loopback boundary, not a public proxy API.
+This blocks existing shutdown as well as preload. The Local worker invokes
+preload after the supervisor's existing health/generation check, including on
+reuse; managed Python launch itself stays lazy. Rust allows 305 seconds for the
+300-second server wait plus transport overhead and validates completion identity.
+Only a matching terminal completion opens Local inference admission. Confirmed
+accepted-task load errors fail startup and record failed proof; timeout,
+transport, generation, and missing-endpoint errors fail startup without such
+proof or shared-runtime termination. See [Local readiness](../user/servers.md#local-startup-and-readiness).
+Cluster startup uses the same operation, sequentially deduplicating configured
+local routes by physical identity before opening inference admission. Its
+route-claim lease protects accepted preload work through completion or bounded
+drain; uncertain completion retains the claim for reconciliation. Explicit
+pre-admission rejection (including an absent preload endpoint) releases the
+caller's claim without recording failed proof. See
+[Cluster startup](./cluster.md#startup-and-load-mode). Eager hot reload remains
+#132 Steps 5-6.
 
 ## Shutdown
 

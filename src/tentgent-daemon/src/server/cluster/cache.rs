@@ -27,9 +27,27 @@ pub(super) struct ClusterDefinitionCache {
 pub(super) struct ClusterDefinitionSnapshot {
     pub(super) definition: ClusterDefinition,
     pub(super) hash: String,
+    pub(super) revision: u64,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
+pub(super) struct DefinitionCandidate {
+    base_revision: u64,
+    loaded: CachedDefinition,
+}
+
+impl DefinitionCandidate {
+    pub(super) fn same_attempt(&self, other: &Self) -> bool {
+        self.base_revision == other.base_revision
+            && self.loaded.snapshot.hash == other.loaded.snapshot.hash
+            && self.loaded.stamp == other.loaded.stamp
+    }
+    pub(super) fn snapshot(&self) -> &ClusterDefinitionSnapshot {
+        &self.loaded.snapshot
+    }
+}
+
+#[derive(Debug, Clone)]
 struct CachedDefinition {
     stamp: DefinitionStamp,
     snapshot: ClusterDefinitionSnapshot,
@@ -59,41 +77,96 @@ impl ClusterDefinitionCache {
         self.refresh(false)
     }
 
+    pub(super) fn committed(&self) -> Result<ClusterDefinitionSnapshot, ClusterServerError> {
+        self.with_committed(|snapshot| Ok(snapshot.clone()))
+    }
+
+    // Synchronous admission/promotion share this short boundary; never await here.
+    pub(super) fn with_committed<T>(
+        &self,
+        read: impl FnOnce(&ClusterDefinitionSnapshot) -> Result<T, ClusterServerError>,
+    ) -> Result<T, ClusterServerError> {
+        let cached = self.lock()?;
+        read(&cached.snapshot)
+    }
+
+    pub(super) fn candidate(
+        &self,
+        force_hash: bool,
+    ) -> Result<Option<DefinitionCandidate>, ClusterServerError> {
+        let base = self.lock()?.clone();
+        let path = self
+            .store
+            .cluster_definition_path(self.cluster_ref.as_str());
+        if !force_hash && definition_stamp(&path)? == base.stamp {
+            return Ok(None);
+        }
+        let loaded = load_definition(&self.store, &self.cluster_ref)?;
+        validate_reload_policy(&base.snapshot.definition, &loaded.snapshot.definition)?;
+        if loaded.snapshot.hash == base.snapshot.hash {
+            let mut current = self.lock()?;
+            if current.snapshot.revision == base.snapshot.revision {
+                current.stamp = loaded.stamp;
+            }
+            return Ok(None);
+        }
+        Ok(Some(DefinitionCandidate {
+            base_revision: base.snapshot.revision,
+            loaded,
+        }))
+    }
+
+    pub(super) fn promote(
+        &self,
+        candidate: &DefinitionCandidate,
+    ) -> Result<bool, ClusterServerError> {
+        self.promote_with(candidate, |_| Ok(()))
+    }
+
+    pub(super) fn promote_with(
+        &self,
+        candidate: &DefinitionCandidate,
+        commit: impl FnOnce(&ClusterDefinitionSnapshot) -> Result<(), ClusterServerError>,
+    ) -> Result<bool, ClusterServerError> {
+        let mut current = self.lock()?;
+        if current.snapshot.revision != candidate.base_revision {
+            return Ok(false);
+        }
+        // A completed B must not overwrite C, nor a newer committed A (ABA).
+        let mut latest = load_definition(&self.store, &self.cluster_ref)?;
+        if latest.snapshot.hash != candidate.snapshot().hash {
+            return Ok(false);
+        }
+        validate_reload_policy(&current.snapshot.definition, &latest.snapshot.definition)?;
+        latest.snapshot.revision = current.snapshot.revision + 1;
+        commit(&latest.snapshot)?;
+        *current = latest;
+        Ok(true)
+    }
+
     pub(super) fn refresh(
         &self,
         force_hash: bool,
     ) -> Result<ClusterDefinitionSnapshot, ClusterServerError> {
-        let definition_path = self
-            .store
-            .cluster_definition_path(self.cluster_ref.as_str());
-        let stamp = definition_stamp(&definition_path)?;
-        {
-            let cached = self.state.lock().map_err(|_| {
-                ClusterServerError::definition_reload_failed(
-                    "cluster definition cache lock is poisoned".to_string(),
-                )
-            })?;
-            if cached.stamp == stamp && !force_hash {
-                return Ok(cached.snapshot.clone());
+        for _ in 0..4 {
+            let Some(candidate) = self.candidate(force_hash)? else {
+                return self.committed();
+            };
+            if self.promote(&candidate)? {
+                return self.committed();
             }
         }
+        Err(ClusterServerError::definition_reload_failed(
+            "definition kept changing during refresh; retry".into(),
+        ))
+    }
 
-        let loaded = load_definition(&self.store, &self.cluster_ref)?;
-        {
-            let cached = self.state.lock().map_err(|_| {
-                ClusterServerError::definition_reload_failed(
-                    "cluster definition cache lock is poisoned".to_string(),
-                )
-            })?;
-            validate_reload_policy(&cached.snapshot.definition, &loaded.snapshot.definition)?;
-        }
-        let snapshot = loaded.snapshot.clone();
-        *self.state.lock().map_err(|_| {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, CachedDefinition>, ClusterServerError> {
+        self.state.lock().map_err(|_| {
             ClusterServerError::definition_reload_failed(
-                "cluster definition cache lock is poisoned".to_string(),
+                "cluster definition cache lock is poisoned".into(),
             )
-        })? = loaded;
-        Ok(snapshot)
+        })
     }
 }
 
@@ -141,9 +214,13 @@ fn load_definition(
         snapshot: ClusterDefinitionSnapshot {
             definition: inspection.definition,
             hash,
+            revision: 0,
         },
     })
 }
+
+#[cfg(test)]
+mod tests;
 
 fn definition_stamp(path: &std::path::Path) -> Result<DefinitionStamp, ClusterServerError> {
     let metadata = fs::metadata(path).map_err(|err| {

@@ -4,7 +4,8 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+use tentgent_kernel::features::server::options::LifecycleInput;
 use tentgent_kernel::{
     features::{
         auth::{
@@ -14,10 +15,6 @@ use tentgent_kernel::{
             usecases::{AuthSecretResolutionRequest, AuthSecretResolverUseCase},
         },
         cluster::domain::ClusterRef,
-        model::{
-            domain::{ModelCapabilityProofSource, ModelCapabilityProofStatus, ModelRefSelector},
-            usecases::{ModelCapabilityProofRecordRequest, ModelCapabilityProofUseCase},
-        },
         runtime::{
             domain::{PythonRuntimeLayout, PythonRuntimeResolutionInput},
             usecases::{RuntimeResolutionRequest, RuntimeResolutionUseCase},
@@ -82,6 +79,10 @@ pub async fn create(
     State(state): State<RestState>,
     Json(request): Json<ServerCreateRequest>,
 ) -> Result<(StatusCode, Json<ServerCreateResponse>), RestError> {
+    let runtime_idle_seconds = resolve_runtime_idle_alias(
+        request.runtime_idle_seconds.value(),
+        request.idle_seconds.value(),
+    )?;
     let result = state
         .app()
         .services()
@@ -92,8 +93,12 @@ pub async fn create(
             target: server_prepare_target(&request)?,
             host: request.host,
             port: request.port,
-            lazy_load: request.lazy_load.unwrap_or(false),
-            idle_seconds: request.idle_seconds,
+            lazy_load: request.lazy_load,
+            idle_seconds: LifecycleInput::with_presence(
+                runtime_idle_seconds,
+                request.runtime_idle_seconds.is_provided() || request.idle_seconds.is_provided(),
+            ),
+            model_idle_seconds: request.model_idle_seconds,
             allow_unverified: request.allow_unverified.unwrap_or(false),
         })
         .map_err(server_error)?;
@@ -241,17 +246,7 @@ pub async fn start(
                 allow_unverified,
             }) {
                 Ok(spawned) => spawned,
-                Err(err) => {
-                    let message = err.to_string();
-                    let _ = record_local_server_capability_proof(
-                        &state,
-                        &layout,
-                        &inspection,
-                        ModelCapabilityProofStatus::Failed,
-                        Some(message),
-                    );
-                    return Err(server_error(err));
-                }
+                Err(err) => return Err(server_error(err)),
             }
         };
         match state
@@ -270,14 +265,6 @@ pub async fn start(
             Ok(result) => result.inspection,
             Err(err) => {
                 let _ = StdServerProcessController::default().terminate_process(spawned.pid);
-                let message = err.to_string();
-                let _ = record_local_server_capability_proof(
-                    &state,
-                    &layout,
-                    &inspection,
-                    ModelCapabilityProofStatus::Failed,
-                    Some(message),
-                );
                 return Err(server_error(err));
             }
         }
@@ -285,35 +272,14 @@ pub async fn start(
     drop(start_permit);
 
     let readiness = if wait_ready {
-        let readiness = wait_for_server_ready(&recorded_inspection, timeout_seconds).await;
-        let (status, error) = if readiness.ready {
-            (ModelCapabilityProofStatus::Verified, None)
-        } else {
-            (
-                ModelCapabilityProofStatus::Failed,
-                readiness
-                    .error
-                    .clone()
-                    .or_else(|| Some("server readiness check did not pass".to_string())),
-            )
-        };
-        let _ = record_local_server_capability_proof(
-            &state,
-            &layout,
-            &recorded_inspection,
-            status,
-            error,
-        );
-        Some(readiness)
+        Some(wait_for_server_ready(&recorded_inspection, timeout_seconds).await)
     } else {
-        let _ = record_local_server_capability_proof(
-            &state,
-            &layout,
-            &recorded_inspection,
-            ModelCapabilityProofStatus::Verified,
-            None,
-        );
         None
+    };
+    let recorded_inspection = if wait_ready {
+        super::common::inspect_server(&state, &reference)?
+    } else {
+        recorded_inspection
     };
     drop(state);
 
@@ -321,60 +287,6 @@ pub async fn start(
         server: server_inspection_item(recorded_inspection),
         readiness,
     }))
-}
-
-fn record_local_server_capability_proof(
-    state: &RestState,
-    layout: &RuntimeLayout,
-    inspection: &ServerInspection,
-    status: ModelCapabilityProofStatus,
-    error: Option<String>,
-) -> Result<(), tentgent_kernel::foundation::error::KernelError> {
-    let Some(model_ref) = inspection.spec.local_model_ref() else {
-        return Ok(());
-    };
-    let selector = ModelRefSelector::parse(model_ref.as_str()).map_err(|err| {
-        tentgent_kernel::foundation::error::KernelError::ModelStoreUnavailable(format!(
-            "invalid model ref in server spec: {err}"
-        ))
-    })?;
-    state
-        .app()
-        .services()
-        .kernel()
-        .models()
-        .capability_proof_usecase()
-        .record_model_capability_proof(ModelCapabilityProofRecordRequest {
-            layout: layout_input_from_layout(layout, LayoutResolveMode::Create),
-            selector,
-            capability: inspection
-                .spec
-                .capability
-                .ok_or_else(|| {
-                    tentgent_kernel::foundation::error::KernelError::ServerStoreUnavailable(
-                        format!(
-                            "local server spec `{}` is missing capability metadata",
-                            inspection.spec.short_ref
-                        ),
-                    )
-                })?
-                .required_model_capability(),
-            status,
-            source: ModelCapabilityProofSource::ServerStart,
-            server_ref: Some(inspection.spec.server_ref.to_string()),
-            runtime_profile: inspection
-                .spec
-                .runtime_profile
-                .as_ref()
-                .map(|profile| profile.profile_id.clone()),
-            runtime_profile_version: inspection
-                .spec
-                .runtime_profile
-                .as_ref()
-                .map(|profile| profile.profile_version),
-            error,
-        })?;
-    Ok(())
 }
 
 pub async fn stop(
@@ -405,9 +317,41 @@ pub struct ServerCreateRequest {
     pub capability: Option<ServerCapability>,
     pub host: Option<String>,
     pub port: Option<u16>,
-    pub lazy_load: Option<bool>,
-    pub idle_seconds: Option<u64>,
+    #[serde(default, deserialize_with = "deserialize_lifecycle_input")]
+    pub lazy_load: LifecycleInput<bool>,
+    #[serde(default, deserialize_with = "deserialize_lifecycle_input")]
+    pub runtime_idle_seconds: LifecycleInput<u64>,
+    #[serde(default, deserialize_with = "deserialize_lifecycle_input")]
+    pub model_idle_seconds: LifecycleInput<u64>,
+    #[serde(default, deserialize_with = "deserialize_lifecycle_input")]
+    pub idle_seconds: LifecycleInput<u64>,
     pub allow_unverified: Option<bool>,
+}
+
+fn deserialize_lifecycle_input<'de, D, T>(deserializer: D) -> Result<LifecycleInput<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(LifecycleInput::Provided)
+}
+
+fn resolve_runtime_idle_alias(
+    canonical: Option<u64>,
+    legacy: Option<u64>,
+) -> Result<Option<u64>, RestError> {
+    match (canonical, legacy) {
+        (Some(canonical), Some(legacy)) if canonical != legacy => {
+            Err(RestError::bad_request(
+                "bad_request",
+                format!(
+                    "`runtime_idle_seconds` ({canonical}) and deprecated `idle_seconds` ({legacy}) must match"
+                ),
+            ))
+        }
+        (Some(canonical), _) => Ok(Some(canonical)),
+        (None, legacy) => Ok(legacy),
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]

@@ -3,6 +3,7 @@
 mod domain;
 pub(super) mod port;
 mod probes;
+mod reload;
 mod runner;
 mod strategy;
 

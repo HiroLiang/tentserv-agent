@@ -665,6 +665,8 @@ working context, not audit logs.
       "port_auto": true,
       "bound_port": null,
       "lazy_load": false,
+      "runtime_idle_seconds": null,
+      "model_idle_seconds": null,
       "idle_seconds": null,
       "created_at": "2026-04-28T00:00:00Z",
       "running": false,
@@ -693,6 +695,8 @@ and returns:
     "port_auto": true,
     "bound_port": null,
     "lazy_load": false,
+    "runtime_idle_seconds": null,
+    "model_idle_seconds": null,
     "idle_seconds": null,
     "created_at": "2026-04-28T00:00:00Z",
     "running": false,
@@ -1020,6 +1024,9 @@ Provider-backed dataset synth/eval are implemented in Rust through the shared
 cloud provider client. OpenAI, Anthropic, and Gemini provider requests resolve
 secrets through the daemon auth resolver; Python model-runtime processes are not
 started for these workflows.
+
+For accepted JSON fields, mutually exclusive inputs, CLI provider differences,
+and current execution limits, see [Datasets](../user/datasets.md#http-request-fields).
 
 ## LoRA Train Plans
 
@@ -1446,9 +1453,10 @@ keys.
 `video-understanding`, or `image-generation`.
 
 The manual verify route records a metadata-level `manual-probe` proof. It does
-not run full endpoint inference in this slice. Local model-bound server starts
-write `server-start` proofs after launch success or failure. Resolved local
-runtime attempts may write `runtime-execution` proofs after execution succeeds
+not run full endpoint inference in this slice. Local eager workers write
+`server-start` proofs only after terminal preload success or accepted-task load
+failure, not process launch, lazy startup, or readiness observation timeout.
+Resolved local runtime attempts may write `runtime-execution` proofs after execution succeeds
 or fails. Future endpoint smoke tests can write `endpoint-smoke` proofs with
 the same response shape.
 
@@ -1522,9 +1530,9 @@ capability used by a cluster route cannot be removed until the cluster route is
 updated or deleted.
 
 `GET /v1/servers/{server_ref}/health` checks one stored server spec. Stopped
-servers return `running: false` and `reachable: false` without opening a network
-connection. Running servers probe the target model-bound server's `/healthz`
-endpoint:
+servers return `running: false`, `reachable: false`, and `ready: false` without
+opening a network connection. Running servers probe `/healthz`; reachability
+alone is not Local load readiness. An abbreviated ready Local response is:
 
 ```json
 {
@@ -1535,11 +1543,14 @@ endpoint:
   },
   "running": true,
   "reachable": true,
+  "ready": true,
   "target_url": "http://127.0.0.1:8780/healthz",
   "target_status": 200,
   "target_health": {
-    "status": "ok",
-    "chat_ready": true
+    "ok": true,
+    "ready": true,
+    "status": "ready",
+    "load_mode": "eager"
   },
   "checked_at": "2026-04-28T00:00:00Z",
   "error": null
@@ -1564,12 +1575,13 @@ server:
 
 ```json
 {
-  "runtime_ref": "openai:gpt-4.1-mini",
+  "runtime_ref": "<local-model-ref>",
   "capability": "chat",
   "host": "127.0.0.1",
   "port": 8780,
-  "lazy_load": false,
-  "idle_seconds": null
+  "lazy_load": true,
+  "runtime_idle_seconds": 300,
+  "model_idle_seconds": 0
 }
 ```
 
@@ -1589,6 +1601,22 @@ cluster ref in `runtime_ref`:
 Cluster targets must not include `runtime_ref` or `capability`. Existing
 local/cloud requests may omit `runtime_kind`; when it is supplied, it must
 match the parsed `runtime_ref` target kind.
+
+After target resolution, new Cloud requests reject explicit `lazy_load`,
+`runtime_idle_seconds`, `model_idle_seconds`, and legacy `idle_seconds` with
+`400 unsupported_target`, including `false`, `0`, and `null`; omit these fields.
+Local/Cluster null values retain their existing default and alias semantics.
+Local image-generation (Diffusers and MLX/MFLUX) requires `lazy_load: true`,
+including when capability is inferred. Eager create and stored-spec start fail
+before worker launch, even with `allow_unverified`; old specs remain readable
+and removable. Recovery is to create a lazy spec with the desired settings.
+
+Valid legacy Cloud specs retain read/start/ref compatibility and are not
+rewritten. Cloud detailed server objects (including create/start/inspect) add
+`lifecycle_options_applicability: "not_applicable_legacy_ignored"`. Raw lifecycle
+fields remain for compatibility but do not control Cloud execution. New Cloud
+specs retain canonical `false`/absent defaults and the existing identity encoding.
+Hidden Cloud workers no longer receive ignored lifecycle flags.
 
 Omit `port` to request automatic port selection. Auto-port specs keep
 `requested_port = 8780` and rescan from that default on every launch; they do
@@ -1620,6 +1648,8 @@ An abbreviated response is:
     "port_auto": false,
     "bound_port": null,
     "lazy_load": false,
+    "runtime_idle_seconds": null,
+    "model_idle_seconds": null,
     "idle_seconds": null,
     "created_at": "2026-04-28T00:00:00Z",
     "running": false,
@@ -1644,15 +1674,28 @@ capability before launching a Rust local-server proxy on the requested port.
 The proxy forwards matching `chat`, `embedding`, `rerank`, audio, vision,
 video, and image-generation paths to the shared Python model runtime daemon
 supervisor. The supervisor starts or reuses the capability/model-bound Python
-runtime on demand and lets that Python runtime follow its normal idle shutdown
-lifecycle. Requests to those model-bound server ports omit `model` and
+runtime at eager startup or on first lazy use, then lets Python follow its
+normal idle shutdown lifecycle. Requests to those model-bound server ports omit `model` and
 `model_kind`; direct Python runtime callers may still provide those fields
 explicitly. The server process remains a server lifecycle resource, not a job
-record. `idle_seconds`, when set, is passed to the shared Python runtime
-supervisor as the idle shutdown policy if the proxy is the process that starts
-that capability/model runtime; an already-running shared runtime is reused with
-its existing policy. The local proxy does not keep a separate permanent Python
-process alive.
+record. Local and Cluster specs use two finite policies:
+`runtime_idle_seconds` defaults to `300` and shuts down the subordinate Python
+process after workload idleness; `model_idle_seconds` defaults to `0` and
+releases a model after its final lease without closing the Rust proxy. Both are
+non-negative and the model value cannot exceed the runtime value. Deprecated
+`idle_seconds` remains a runtime-idle input and response mirror; when supplied
+with `runtime_idle_seconds`, the values must match. An already-running shared
+runtime is reused with the complete first-spawner policy, and mismatch
+diagnostics compare both values. Health, inspect, and ownership probes do not
+reset either clock.
+
+List and create responses expose requested `runtime_idle_seconds`,
+`model_idle_seconds`, and the deprecated `idle_seconds` mirror. Detailed
+inspection also exposes concrete `effective_runtime_idle_seconds` and
+`effective_model_idle_seconds`, so omitted Local or Cluster values are visible
+as `300` / `0`. New stored specs use canonical field names; legacy
+`idle_seconds` specs remain readable. The local proxy does not keep a separate
+permanent Python process alive.
 
 Cluster server starts require a local `routes.chat` target. Only that required
 route gates process startup; optional route problems remain route-scoped.
@@ -1724,7 +1767,13 @@ An abbreviated response is:
 ```
 
 With `wait_ready: true`, the response includes readiness. A readiness timeout
-does not roll back or stop the launched process:
+does not roll back or stop the launched process and cannot write model proof.
+Local readiness requires matching server/home/process identity and explicit
+`ok:true`, `ready:true`, `status:"ready"`, not HTTP reachability alone. While
+eager preload is pending the process can be `running:true`, `reachable:true`,
+but `ready:false`. Non-waiting start omits readiness and makes no load-success
+claim. `GET /v1/servers/{server_ref}/health` also exposes the additive `ready`
+boolean separately from `running` and `reachable`:
 
 ```json
 {
@@ -1738,8 +1787,10 @@ does not roll back or stop the launched process:
     "reachable": true,
     "target_status": 200,
     "target_health": {
-      "status": "ok",
-      "chat_ready": true
+      "ok": true,
+      "ready": true,
+      "status": "ready",
+      "load_mode": "eager"
     },
     "checked_at": "2026-04-28T00:00:00Z",
     "error": null

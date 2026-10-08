@@ -34,6 +34,20 @@ pub trait ServerIdentityGenerator {
         lazy_load: bool,
         idle_seconds: Option<u64>,
     ) -> KernelResult<ServerRef>;
+
+    fn server_ref_for_target_with_model_idle(
+        &self,
+        target: &ServerRuntimeTarget,
+        host: &str,
+        port: u16,
+        port_auto: bool,
+        lazy_load: bool,
+        idle_seconds: Option<u64>,
+        model_idle_seconds: Option<u64>,
+    ) -> KernelResult<ServerRef> {
+        let _ = model_idle_seconds;
+        self.server_ref_for_target(target, host, port, port_auto, lazy_load, idle_seconds)
+    }
 }
 
 /// Supplies timestamps for durable server records.

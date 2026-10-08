@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${ROOT_DIR}/dist"
-VERSION="${TENTGENT_VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' "${ROOT_DIR}/Cargo.toml" | head -n 1)}"
+WORKSPACE_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "${ROOT_DIR}/Cargo.toml" | head -n 1)"
+VERSION="${TENTGENT_VERSION:-${WORKSPACE_VERSION}}"
 MACOS_SIGNING_IDENTIFIER="com.tentserv.tentgent"
 
 usage() {
@@ -17,7 +18,8 @@ Options:
   -h, --help         Show this help.
 
 Environment:
-  TENTGENT_VERSION  Override the package version.
+  TENTGENT_VERSION  Override the package version, including an optional RC suffix.
+                    Its base version must match the workspace/binary version.
   TENTGENT_TARGET   Override the target triple used in the artifact name.
   TENTGENT_MACOS_CODESIGN_IDENTITY
                     Developer ID identity for macOS release signing. If unset,
@@ -65,17 +67,24 @@ validate_package_target() {
   esac
 }
 
-checksum_command() {
+validate_package_version() {
+  [[ "${WORKSPACE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || fail "workspace version must be a stable base version: ${WORKSPACE_VERSION}"
+  [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]] \
+    || fail "invalid package version: ${VERSION}"
+  [[ "${VERSION%%-*}" == "${WORKSPACE_VERSION}" ]] \
+    || fail "package base version ${VERSION%%-*} does not match workspace version ${WORKSPACE_VERSION}"
+}
+
+write_checksum() {
   if command -v shasum >/dev/null 2>&1; then
-    echo "shasum -a 256"
-    return
+    shasum -a 256 "$1"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1"
+  else
+    echo "error: shasum or sha256sum is required" >&2
+    return 1
   fi
-  if command -v sha256sum >/dev/null 2>&1; then
-    echo "sha256sum"
-    return
-  fi
-  echo "error: shasum or sha256sum is required" >&2
-  exit 1
 }
 
 sign_macos_binary() {
@@ -259,6 +268,7 @@ main() {
 
   target="${TENTGENT_TARGET:-$(uname_target)}"
   validate_package_target "${target}"
+  validate_package_version
   archive_extension="$(archive_extension_for_target "${target}")"
   binary_name="$(binary_name_for_target "${target}")"
   package_name="tentgent-${VERSION}-${target}"
@@ -278,7 +288,15 @@ main() {
   require_command cargo
 
   echo "==> Building Tentgent release binary"
-  cargo build --release --bin tentgent
+  (
+    cd "${ROOT_DIR}"
+    cargo build --manifest-path "${ROOT_DIR}/Cargo.toml" --release --locked --bin tentgent
+  )
+
+  local binary_version
+  binary_version="$("${ROOT_DIR}/target/release/${binary_name}" --version)"
+  [[ "${binary_version}" == "tentgent ${WORKSPACE_VERSION}" ]] \
+    || fail "binary version mismatch: expected tentgent ${WORKSPACE_VERSION}, got ${binary_version}"
 
   echo "==> Preparing local package ${package_name}"
   rm -rf "${staging_dir}"
@@ -307,7 +325,7 @@ main() {
   echo "==> Writing ${checksums_path}"
   (
     cd "${DIST_DIR}"
-    checksum_command | xargs -I {} sh -c '{} "$1"' sh "$(basename "${archive_path}")"
+    write_checksum "$(basename "${archive_path}")"
   ) >"${checksums_path}"
 
   echo "==> Package complete"

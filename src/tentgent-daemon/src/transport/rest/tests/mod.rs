@@ -43,10 +43,12 @@ mod openai_chat_compat;
 mod openai_embeddings_compat;
 mod openai_image_generation_compat;
 mod provider_rerank_compat;
+mod server_options;
 
 mod auth_and_chat;
 mod clusters_and_sessions;
 mod datasets_and_servers;
+mod fixture_paths;
 mod fixtures;
 mod media_and_jobs;
 mod model_capabilities;

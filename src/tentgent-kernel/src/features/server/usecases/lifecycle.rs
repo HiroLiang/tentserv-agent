@@ -309,6 +309,7 @@ impl ServerSpecUseCase for StdServerUseCase<'_> {
             request.port,
             request.lazy_load,
             request.idle_seconds,
+            request.model_idle_seconds,
             self.clock.now_rfc3339()?,
             self.identity,
         )?;

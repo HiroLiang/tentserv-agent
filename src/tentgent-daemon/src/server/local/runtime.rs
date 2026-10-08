@@ -1,7 +1,12 @@
-use std::{net::SocketAddr, path::PathBuf};
+use std::{
+    future::{Future, IntoFuture},
+    net::SocketAddr,
+    path::PathBuf,
+};
 
 use axum::{
     extract::State,
+    middleware,
     routing::{get, post},
     Json, Router,
 };
@@ -16,7 +21,7 @@ use tentgent_kernel::{
             },
             ports::PythonRuntimeResolver,
         },
-        server::domain::ServerCapability,
+        server::{domain::ServerCapability, options::LoadMode},
     },
     foundation::layout::{
         LayoutResolveMode, RuntimeLayoutInput, RuntimeLayoutResolver, StdRuntimeLayoutResolver,
@@ -24,8 +29,14 @@ use tentgent_kernel::{
 };
 
 use super::{
-    claude_messages, gemini_generate_content, image_generations, managed_native_chat,
-    managed_native_chat_stream, openai_chat_completions, openai_embeddings, proxy_request,
+    claude_messages,
+    error::LocalServerError,
+    gemini_generate_content, image_generations,
+    ingress::{reject_unknown_route, PUBLIC_RUNTIME_PATHS},
+    managed_native_chat, managed_native_chat_stream, openai_chat_completions, openai_embeddings,
+    proxy::runtime_http_client,
+    proxy_request,
+    startup::{admit_ready_request, prepare_local_startup, StartupReadiness},
 };
 
 pub(in crate::server) const PROXY_BODY_LIMIT_BYTES: usize = 256 * 1024 * 1024;
@@ -43,7 +54,9 @@ pub struct LocalServerRuntimeConfig {
     pub host: String,
     pub port: u16,
     pub runtime_home: Option<PathBuf>,
-    pub idle_seconds: Option<u64>,
+    pub runtime_idle_seconds: u64,
+    pub model_idle_seconds: u64,
+    pub load_mode: LoadMode,
 }
 
 #[derive(Clone)]
@@ -55,9 +68,14 @@ pub(in crate::server) struct LocalServerState {
     pub(in crate::server) supervisor: ModelRuntimeDaemonSupervisor,
     pub(in crate::server) client: reqwest::Client,
     pub(in crate::server) launch_policy: ModelRuntimeDaemonLaunchPolicy,
+    pub(in crate::server) readiness: StartupReadiness,
 }
 
 pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miette::Result<()> {
+    config
+        .load_mode
+        .ensure_supported(config.capability)
+        .map_err(|error| miette::miette!("{error}"))?;
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)
         .parse()
         .map_err(|err| miette::miette!("invalid local server bind address: {err}"))?;
@@ -72,18 +90,28 @@ pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miett
         .resolve_python_runtime(&layout, PythonRuntimeResolutionInput::default())
         .map_err(|err| miette::miette!("{err}"))?;
     let state = LocalServerState {
-        launch_policy: config
-            .idle_seconds
-            .map(ModelRuntimeDaemonLaunchPolicy::with_idle_keep_alive_seconds)
-            .unwrap_or_default(),
+        readiness: StartupReadiness::new(config.load_mode),
+        launch_policy: ModelRuntimeDaemonLaunchPolicy::new(
+            config.runtime_idle_seconds,
+            config.model_idle_seconds,
+        )
+        .map_err(|error| miette::miette!(error))?,
         config,
         layout,
         runtime,
         executable_resolver: StdRuntimeExecutableResolver,
         supervisor: ModelRuntimeDaemonSupervisor::new(),
-        client: reqwest::Client::new(),
+        client: runtime_http_client()
+            .map_err(|err| miette::miette!("local runtime HTTP client failed: {err}"))?,
     };
-    let router = Router::new()
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|err| miette::miette!("local server proxy bind failed: {err}"))?;
+    serve_with_startup(state.clone(), listener, prepare_local_startup(&state)).await
+}
+
+pub(super) fn local_router(state: LocalServerState) -> Router {
+    let mut router = Router::new()
         .route("/healthz", get(healthz))
         .route("/v1/chat/completions", post(openai_chat_completions))
         .route("/v1/chat", post(managed_native_chat))
@@ -91,28 +119,55 @@ pub async fn run_local_server_runtime(config: LocalServerRuntimeConfig) -> miett
         .route("/v1/messages", post(claude_messages))
         .route("/v1beta/models/{*operation}", post(gemini_generate_content))
         .route("/v1/embeddings", post(openai_embeddings))
-        .route("/v1/images/generations", post(image_generations))
-        .fallback(proxy_request)
-        .with_state(state);
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .map_err(|err| miette::miette!("local server proxy bind failed: {err}"))?;
-    axum::serve(listener, router)
+        .route("/v1/images/generations", post(image_generations));
+    for path in PUBLIC_RUNTIME_PATHS {
+        router = router.route(path, post(proxy_request));
+    }
+    router
+        .fallback(reject_unknown_route)
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            admit_ready_request,
+        ))
+        .with_state(state)
+}
+
+pub(super) async fn serve_with_startup(
+    state: LocalServerState,
+    listener: tokio::net::TcpListener,
+    startup: impl Future<Output = Result<(), LocalServerError>>,
+) -> miette::Result<()> {
+    let readiness = state.readiness.clone();
+    let serving = axum::serve(listener, local_router(state)).into_future();
+    tokio::pin!(serving);
+    tokio::select! {
+        result = startup => {
+            result.map_err(|error| miette::miette!("local server startup failed: {}", error.message))?;
+            readiness.mark_ready();
+        }
+        result = &mut serving => return result.map_err(|err| miette::miette!("local server proxy failed: {err}")),
+    }
+    serving
         .await
         .map_err(|err| miette::miette!("local server proxy failed: {err}"))
 }
 
 async fn healthz(State(state): State<LocalServerState>) -> Json<serde_json::Value> {
+    let ready = state.readiness.is_ready();
     Json(json!({
-        "ok": true,
+        "ok": ready,
+        "ready": ready,
+        "status": if ready { "ready" } else { "starting" },
+        "load_mode": if state.config.load_mode == LoadMode::Lazy { "lazy" } else { "eager" },
         "runtime_kind": "local-proxy",
         "server_ref": state.config.server_ref,
         "process_token": tentgent_kernel::features::server::infra::server_process_token_from_env(),
-        "runtime_home": state.config.runtime_home.as_ref().map(|path| path.display().to_string()),
+        "runtime_home": state.layout.home_dir.display().to_string(),
         "capability": state.config.capability.as_str(),
         "model_ref": state.config.model_ref,
         "runtime_profile": state.config.runtime_profile,
-        "idle_seconds": state.config.idle_seconds,
+        "runtime_idle_seconds": state.config.runtime_idle_seconds,
+        "model_idle_seconds": state.config.model_idle_seconds,
         "backend": "model-runtime-daemon"
     }))
 }

@@ -19,11 +19,14 @@ from tentgent.runtime.backends.lora_tuning import (
     LoraTuningResult,
     ensure_lora_trainable_model,
 )
+from tentgent.runtime.backends.model_safety import validate_model_assets
 from tentgent.runtime.backends.records import ModelRecord
-from tentgent.runtime.training.datasets import RenderedDatasetSummary, render_training_dataset
+from tentgent.runtime.training.datasets import (
+    RenderedDatasetSummary,
+    render_training_dataset,
+)
 
 from .base import MlxBackendModel, clear_mlx_cache, require_mlx_model
-
 
 PARAMS_RE = re.compile(
     r"Trainable parameters:\s+(?P<percent>[0-9.]+)%\s+"
@@ -77,7 +80,12 @@ class MlxLoraTuningModel(MlxBackendModel, LoraTuningBackendModel):
                 f"`{request.model.model_ref}`"
             )
 
-        config_path = write_mlx_config(request=request, run_dir=request.output_dir, emit=emit)
+        # mlx_lm's CLI enables tokenizer repository code internally. Reject
+        # custom code metadata again before entering that separate process.
+        validate_model_assets(request.model)
+        config_path = write_mlx_config(
+            request=request, run_dir=request.output_dir, emit=emit
+        )
         adapter_path = request.output_dir / "adapter-output"
         command = [sys.executable, "-m", "mlx_lm", "lora", "--config", str(config_path)]
 
@@ -112,7 +120,9 @@ class MlxLoraTuningModel(MlxBackendModel, LoraTuningBackendModel):
 
     def _require_loaded(self) -> ModelRecord:
         if self._record is None:
-            raise RuntimeError("MLX LoRA tuning model is not loaded yet; call load() first.")
+            raise RuntimeError(
+                "MLX LoRA tuning model is not loaded yet; call load() first."
+            )
         return self._record
 
 
@@ -159,7 +169,9 @@ def write_mlx_config(
         "lora_parameters": lora_parameters(request),
     }
     config_path = run_dir / "mlx-config.yaml"
-    config_path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
+    config_path.write_text(
+        json.dumps(config, indent=2, sort_keys=True), encoding="utf-8"
+    )
     return config_path
 
 
@@ -250,7 +262,9 @@ def read_stream(
 
 
 def split_progress_line(raw: str) -> list[str]:
-    return [part.strip() for part in raw.replace("\r", "\n").splitlines() if part.strip()]
+    return [
+        part.strip() for part in raw.replace("\r", "\n").splitlines() if part.strip()
+    ]
 
 
 def parse_mlx_line(line: str, *, request: LoraTuningRequest) -> list[LoraTuningEvent]:

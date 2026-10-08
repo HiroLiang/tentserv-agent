@@ -33,7 +33,7 @@ print_plan() {
   temp_home="$(mktemp -d /tmp/tentgent-runtime-profile.XXXXXX)"
   trap 'rm -rf "${temp_home}"' RETURN
 
-  TENTGENT_HOME="${temp_home}" bash "${bootstrap_script}" \
+  TENTGENT_HOME="${temp_home}" TENTGENT_BOOTSTRAP_PYTHON_VERSION="" bash "${bootstrap_script}" \
     --project "${project_dir}" \
     --env "${temp_home}/python-env" \
     --profile "${profile}" \
@@ -47,6 +47,7 @@ print_plan() {
 base_plan="$(print_plan base)"
 assert_contains "${base_plan}" "runtime profile: base" "base print-plan"
 assert_contains "${base_plan}" "uv extras: none" "base print-plan"
+assert_contains "${base_plan}" "python version: 3.12" "managed Python default"
 
 local_model_plan="$(print_plan local-model)"
 assert_contains "${local_model_plan}" "runtime profile: local-model" "local-model print-plan"

@@ -37,10 +37,11 @@ readable in the response body rather than being escaped as `\uXXXX` sequences.
 
 Direct model-server chat is stateless. The direct server runtime does not read
 or write Tentgent session files, does not compact transcripts, and does not
-accept daemon-only session fields. Requests containing `session_ref` or
+accept session fields. Requests containing `session_ref` or
 `max_session_messages` return `400 session_context_unsupported`. Session-aware
-HTTP chat must go through the Rust daemon `POST /v1/chat` proxy, which removes
-session fields before forwarding the final model-bound request.
+chat is available through CLI `tentgent chat --session`. Daemon chat is also
+stateless; HTTP callers manage context explicitly with the
+[session endpoints](../user/api.md#sessions) and pass the desired messages.
 
 Local model-bound processes serve chat only when launched with `--capability
 chat`. A local server launched for any other capability rejects `POST /v1/chat`
@@ -110,6 +111,12 @@ an `adapter` object containing trusted local source fields. Rust constructs the
 internal runtime adapter record only after managed lookup and compatibility
 validation.
 
+Local chat routes match their public paths exactly. Internal runtime aliases,
+trailing slashes, percent-encoded path aliases, and dot-segment aliases do not
+bypass managed validation: the Local proxy returns `404` without launching a
+runtime or recording support proof. It never forwards arbitrary fallback
+routes or follows runtime redirects.
+
 Compatibility is considered proven when:
 
 - `base_model_ref` matches the server model, or
@@ -168,7 +175,7 @@ provider-specific mapping.
   Request shape is invalid.
 - `400 session_context_unsupported`
   `session_ref` or `max_session_messages` was sent to a direct model-server
-  port. Send session-aware chat to the daemon `POST /v1/chat` endpoint.
+  port. Use CLI `chat --session` or explicitly pass conversation messages.
 - `404 adapter_not_found`
   The requested adapter reference does not resolve.
 - `409 adapter_ambiguous`

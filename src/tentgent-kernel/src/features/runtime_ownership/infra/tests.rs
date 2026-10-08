@@ -3,19 +3,20 @@ use std::{
     io::{Read, Write},
     net::TcpListener,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Barrier, Mutex,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{
     features::{
         cluster::domain::{ClusterRef, ClusterRouteKey},
         resource_coordination::{
-            infra::FileResourceCoordinator, ResourceCoordinator, ResourceKey, ResourceKind,
-            ResourceLockMode, ResourceLockRequest,
+            infra::FileResourceCoordinator, ResourceBusy, ResourceCoordinationCode,
+            ResourceCoordinator, ResourceKey, ResourceKind, ResourceLockMode, ResourceLockRequest,
+            ResourcePermit,
         },
         runtime::infra::ModelRuntimeCapability,
         runtime_ownership::{
@@ -27,11 +28,12 @@ use crate::{
             RuntimeReconcileRequest,
         },
     },
-    foundation::layout::RuntimeLayout,
+    foundation::{error::KernelResult, layout::RuntimeLayout},
 };
 
 use super::super::usecases::{
-    RouteClaimAcquireRequest, RouteClaimTransition, StdRuntimeOwnershipUseCase,
+    RouteClaimAcquireRequest, RouteClaimTransition, RuntimeGenerationAdmission,
+    RuntimeOwnershipDependencies, StdRuntimeOwnershipUseCase,
 };
 
 #[test]
@@ -240,8 +242,9 @@ fn runtime_generation_admission_reuses_starting_record() {
     let layout = runtime_layout(&root);
     let identity = RuntimeExecutionIdentity::unbound(ModelRuntimeCapability::LoraTuning, None);
     let policy = RuntimeLaunchPolicyRecord {
-        idle_keep_alive_seconds: "300".to_string(),
-        model_idle_timeout_seconds: "-1".to_string(),
+        runtime_idle_seconds: 300,
+        model_idle_seconds: 0,
+        legacy_unbounded_model: false,
     };
     let usecase = StdRuntimeOwnershipUseCase::default();
     assert!(matches!(
@@ -266,10 +269,10 @@ fn concurrent_runtime_callers_share_one_generation_and_first_policy() {
     let identity =
         RuntimeExecutionIdentity::model_bound("model-a", ModelRuntimeCapability::Chat, None);
     let callers = [
-        ("one-shot", "101"),
-        ("daemon", "202"),
-        ("direct-server", "303"),
-        ("cluster", "404"),
+        ("one-shot", 101),
+        ("daemon", 202),
+        ("direct-server", 303),
+        ("cluster", 404),
     ];
     let barrier = Arc::new(Barrier::new(callers.len()));
     let outcomes = Arc::new(Mutex::new(Vec::new()));
@@ -283,12 +286,18 @@ fn concurrent_runtime_callers_share_one_generation_and_first_policy() {
             thread::spawn(move || {
                 barrier.wait();
                 let policy = RuntimeLaunchPolicyRecord {
-                    idle_keep_alive_seconds: idle.to_string(),
-                    model_idle_timeout_seconds: "-1".to_string(),
+                    runtime_idle_seconds: idle,
+                    model_idle_seconds: 0,
+                    legacy_unbounded_model: false,
                 };
-                let admission = StdRuntimeOwnershipUseCase::default()
-                    .admit_runtime_generation(&layout, identity, policy)
-                    .expect("runtime admission");
+                let admission = admit_generation_with_busy_retry(
+                    &StdRuntimeOwnershipUseCase::default(),
+                    &layout,
+                    &identity,
+                    &policy,
+                    caller,
+                    Duration::from_secs(20),
+                );
                 outcomes
                     .lock()
                     .expect("outcomes lock")
@@ -304,9 +313,7 @@ fn concurrent_runtime_callers_share_one_generation_and_first_policy() {
     let starts = outcomes
         .iter()
         .filter_map(|(caller, admission)| match admission {
-            super::super::usecases::RuntimeGenerationAdmission::Start(record) => {
-                Some((*caller, record.policy.clone()))
-            }
+            RuntimeGenerationAdmission::Start(record) => Some((*caller, record)),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -314,20 +321,164 @@ fn concurrent_runtime_callers_share_one_generation_and_first_policy() {
     assert_eq!(
         outcomes
             .iter()
-            .filter(|(_, admission)| matches!(
-                admission,
-                super::super::usecases::RuntimeGenerationAdmission::Starting(_)
-            ))
+            .filter(|(_, admission)| matches!(admission, RuntimeGenerationAdmission::Starting(_)))
             .count(),
-        callers.len() - 1
+        callers.len() - 1,
+        "every other caller must observe the starting generation: {outcomes:?}"
     );
+    for (caller, admission) in outcomes.iter() {
+        let record = match admission {
+            RuntimeGenerationAdmission::Start(record)
+            | RuntimeGenerationAdmission::Starting(record) => record,
+            other => panic!("{caller}: unexpected runtime admission: {other:?}"),
+        };
+        assert_eq!(record.generation_id, starts[0].1.generation_id, "{caller}");
+        assert_eq!(record.policy, starts[0].1.policy, "{caller}");
+    }
 
     let inspection = StdRuntimeOwnershipUseCase::default()
         .summarize_runtime_ownership(&layout)
         .expect("ownership inspection");
     assert_eq!(inspection.generations.len(), 1);
-    assert_eq!(inspection.generations[0].policy, starts[0].1);
+    assert_eq!(inspection.generations[0].policy, starts[0].1.policy);
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn runtime_admission_retries_busy_before_preserving_the_first_generation() {
+    let root = temp_root("admission-busy-retry");
+    let layout = runtime_layout(&root);
+    let identity =
+        RuntimeExecutionIdentity::model_bound("model-a", ModelRuntimeCapability::Chat, None);
+    let coordinator = Arc::new(BusyBeforeAdmissionCoordinator {
+        busy_attempts: 2,
+        attempts: AtomicUsize::new(0),
+    });
+    let usecase = StdRuntimeOwnershipUseCase::new_with_dependencies(RuntimeOwnershipDependencies {
+        coordinator: coordinator.clone(),
+        ..RuntimeOwnershipDependencies::default()
+    });
+    let policy = runtime_policy();
+    let first = admit_generation_with_busy_retry(
+        &usecase,
+        &layout,
+        &identity,
+        &policy,
+        "first-caller",
+        Duration::from_secs(20),
+    );
+    assert_eq!(coordinator.attempts.load(Ordering::SeqCst), 3);
+    let RuntimeGenerationAdmission::Start(first) = first else {
+        panic!("first caller must start after two Busy responses: {first:?}");
+    };
+    let later_policy = RuntimeLaunchPolicyRecord {
+        runtime_idle_seconds: 600,
+        ..policy.clone()
+    };
+    let later = admit_generation_with_busy_retry(
+        &usecase,
+        &layout,
+        &identity,
+        &later_policy,
+        "later-caller",
+        Duration::from_secs(20),
+    );
+    let RuntimeGenerationAdmission::Starting(later) = later else {
+        panic!("later caller must reuse the first generation: {later:?}");
+    };
+    assert_eq!(first.generation_id, later.generation_id);
+    assert_eq!(first.policy, policy);
+    assert_eq!(later.policy, policy);
+    fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[test]
+fn runtime_admission_busy_retry_stops_at_its_deadline() {
+    let root = temp_root("admission-busy-deadline");
+    let layout = runtime_layout(&root);
+    let coordinator = Arc::new(BusyBeforeAdmissionCoordinator {
+        busy_attempts: usize::MAX,
+        attempts: AtomicUsize::new(0),
+    });
+    let usecase = StdRuntimeOwnershipUseCase::new_with_dependencies(RuntimeOwnershipDependencies {
+        coordinator: coordinator.clone(),
+        ..RuntimeOwnershipDependencies::default()
+    });
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        admit_generation_with_busy_retry(
+            &usecase,
+            &layout,
+            &RuntimeExecutionIdentity::unbound(ModelRuntimeCapability::Chat, None),
+            &runtime_policy(),
+            "deadline-caller",
+            Duration::ZERO,
+        )
+    }));
+    let panic = result.expect_err("an exhausted deadline must fail, not retry indefinitely");
+    let message = panic.downcast_ref::<String>().expect("diagnostic message");
+    assert!(message.contains("deadline-caller: runtime admission remained busy"));
+    assert!(message.contains("injected contention"));
+    assert_eq!(coordinator.attempts.load(Ordering::SeqCst), 1);
+    fs::remove_dir_all(root).expect("remove fixture");
+}
+
+fn admit_generation_with_busy_retry(
+    usecase: &StdRuntimeOwnershipUseCase,
+    layout: &RuntimeLayout,
+    identity: &RuntimeExecutionIdentity,
+    policy: &RuntimeLaunchPolicyRecord,
+    caller: &str,
+    timeout: Duration,
+) -> RuntimeGenerationAdmission {
+    // ModelRuntimeDaemonSupervisor also retries Busy within a 20-second startup
+    // budget, sleeping 150 ms between the coordinator's bounded attempts.
+    let started = Instant::now();
+    loop {
+        match usecase
+            .admit_runtime_generation(layout, identity.clone(), policy.clone())
+            .unwrap_or_else(|error| panic!("{caller}: runtime admission failed: {error:?}"))
+        {
+            RuntimeGenerationAdmission::Busy(busy) => {
+                assert!(
+                    started.elapsed() < timeout,
+                    "{caller}: runtime admission remained busy after {timeout:?}: {busy:?}"
+                );
+                thread::sleep(
+                    Duration::from_millis(150).min(timeout.saturating_sub(started.elapsed())),
+                );
+            }
+            admission @ (RuntimeGenerationAdmission::Start(_)
+            | RuntimeGenerationAdmission::Starting(_)) => return admission,
+            other => panic!("{caller}: unexpected runtime admission: {other:?}"),
+        }
+    }
+}
+
+struct BusyBeforeAdmissionCoordinator {
+    busy_attempts: usize,
+    attempts: AtomicUsize,
+}
+
+impl ResourceCoordinator for BusyBeforeAdmissionCoordinator {
+    fn acquire(
+        &self,
+        layout: &RuntimeLayout,
+        request: ResourceLockRequest,
+    ) -> KernelResult<Result<ResourcePermit, ResourceBusy>> {
+        if self.attempts.fetch_add(1, Ordering::SeqCst) < self.busy_attempts {
+            return Ok(Err(ResourceBusy {
+                code: ResourceCoordinationCode::ResourceBusy,
+                operation_id: request.operation_id,
+                key: request.locks[0].0.clone(),
+                attempts: 1,
+                waited_millis: 0,
+                holders: Vec::new(),
+                retry_after_millis: 150,
+                description: "injected contention".to_string(),
+            }));
+        }
+        FileResourceCoordinator.acquire(layout, request)
+    }
 }
 
 #[test]
@@ -702,10 +853,48 @@ fn legacy_ownership_operation_without_resource_keys_deserializes() {
     assert!(operation.resource_keys.is_empty());
 }
 
+#[test]
+fn runtime_policy_accepts_legacy_names_and_text_but_rejects_negative_values() {
+    let legacy: RuntimeLaunchPolicyRecord =
+        toml::from_str("idle_keep_alive_seconds = '300'\nmodel_idle_timeout_seconds = '0'\n")
+            .expect("legacy runtime policy");
+    assert_eq!(legacy, runtime_policy());
+
+    let body = toml::to_string(&legacy).expect("canonical runtime policy");
+    assert!(body.contains("runtime_idle_seconds = 300"));
+    assert!(body.contains("model_idle_seconds = 0"));
+    assert!(!body.contains("idle_keep_alive_seconds"));
+    assert!(!body.contains("model_idle_timeout_seconds"));
+
+    let migrated = toml::from_str::<RuntimeLaunchPolicyRecord>(
+        "idle_keep_alive_seconds = '300'\nmodel_idle_timeout_seconds = '-1'\n",
+    )
+    .expect("former legacy sentinel must remain recoverable");
+    assert_eq!(migrated.runtime_idle_seconds, 300);
+    assert_eq!(migrated.model_idle_seconds, 0);
+    assert!(migrated.legacy_unbounded_model);
+    let migrated_body = toml::to_string(&migrated).expect("migrated runtime policy");
+    assert!(migrated_body.contains("model_idle_seconds = 0"));
+    assert!(migrated_body.contains("legacy_unbounded_model = true"));
+
+    let error = toml::from_str::<RuntimeLaunchPolicyRecord>(
+        "runtime_idle_seconds = '300'\nmodel_idle_seconds = '-1'\n",
+    )
+    .expect_err("negative policy must be rejected");
+    assert!(error.to_string().contains("non-negative"));
+
+    let error = toml::from_str::<RuntimeLaunchPolicyRecord>(
+        "runtime_idle_seconds = 30\nmodel_idle_seconds = 31\n",
+    )
+    .expect_err("invalid clock ordering must be rejected");
+    assert!(error.to_string().contains("less than or equal"));
+}
+
 fn runtime_policy() -> RuntimeLaunchPolicyRecord {
     RuntimeLaunchPolicyRecord {
-        idle_keep_alive_seconds: "300".to_string(),
-        model_idle_timeout_seconds: "-1".to_string(),
+        runtime_idle_seconds: 300,
+        model_idle_seconds: 0,
+        legacy_unbounded_model: false,
     }
 }
 

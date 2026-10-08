@@ -750,6 +750,8 @@ async fn dataset_deterministic_routes_validate_template_export_and_diff() {
     let state = rest_state_for_home(requested_home);
     let home = state.app().layout().home_dir.canonicalize().expect("home");
     let source_dir = home.join("fixtures/source-dataset");
+    #[cfg(unix)]
+    let source_dir = source_dir.join(r#"windows\style"path"#);
     fs::create_dir_all(&source_dir).expect("source dataset");
     fs::write(source_dir.join("train.jsonl"), sample_dataset_record()).expect("train jsonl");
 
@@ -759,10 +761,9 @@ async fn dataset_deterministic_routes_validate_template_export_and_diff() {
                 .method("POST")
                 .uri("/v1/datasets/validate")
                 .header("content-type", "application/json")
-                .body(Body::from(format!(
-                    r#"{{"path":"{}"}}"#,
-                    path_string(&source_dir)
-                )))
+                .body(Body::from(
+                    serde_json::json!({ "path": source_dir }).to_string(),
+                ))
                 .expect("request"),
         )
         .await
@@ -848,16 +849,17 @@ async fn dataset_deterministic_routes_validate_template_export_and_diff() {
     assert_eq!(body["diff"]["summary"]["unchanged"], 1);
 
     let export_dir = home.join("exports/dataset");
+    #[cfg(unix)]
+    let export_dir = export_dir.join(r#"windows\style"path"#);
     let response = build_router(state)
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri(format!("/v1/datasets/{}/export", &first_ref[..12]))
                 .header("content-type", "application/json")
-                .body(Body::from(format!(
-                    r#"{{"output_path":"{}"}}"#,
-                    path_string(&export_dir)
-                )))
+                .body(Body::from(
+                    serde_json::json!({ "output_path": export_dir }).to_string(),
+                ))
                 .expect("request"),
         )
         .await
