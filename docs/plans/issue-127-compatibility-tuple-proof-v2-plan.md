@@ -1,7 +1,7 @@
 # Issue 127 Compatibility Tuple And Proof v2 Sub-Plan
 
-Status: implementation complete; final native validation and PR review pending.
-Updated: 2026-10-08. User decisions and intermediate checks are recorded below.
+Status: implementation and validation complete; PR review/merge pending.
+Updated: 2026-10-09. Review: [PR #142](https://github.com/HiroLiang/tentserv-agent/pull/142).
 
 - Issue: [#127](https://github.com/HiroLiang/tentserv-agent/issues/127)
 - Parent: [v1.2.0 Local Compatibility State Plan](./v1.2.0-local-compatibility-state-plan.md)
@@ -251,7 +251,7 @@ blocked is a regression to investigate, not a snapshot to approve silently.
 
 - [x] Run the full Rust/Python source gate and sequential subprocess suites
   listed in the companion; inspect all skipped/ignored/zero-test results.
-- [ ] Validate new persistence tests on native macOS, Linux, and Windows;
+- [x] Validate new persistence tests on native macOS, Linux, and Windows;
   add focused PR coverage where the existing workflow would not execute them.
 - [x] Record test counts, commands, environment, fault-injection outcomes, and
   unchanged runtime cleanup behavior. No additional model download is required
@@ -269,7 +269,7 @@ Passing storage tests alone does not complete `#126` or authorize publication.
 - [x] Preserved #131/#132 fixes, Rust 1.99.0, and the v1.1.2 baseline.
 - [x] Refreshed scope, risks, decisions, review steps, and validation plan.
 - [x] User decision/review checkpoint; recommended options accepted.
-- [ ] Steps 1–6 implementation and validation.
+- [x] Steps 1–6 implementation and validation; PR #142 awaits human review/merge.
 
 ## Implementation Review Map
 
@@ -281,6 +281,7 @@ Passing storage tests alone does not complete `#126` or authorize publication.
 | Step 2 | `44dc105`: safe legacy transactions, permit borrowing, and caller integration. |
 | Step 4 | `19c9a5b`: v2 storage, generation-aware evidence, and process/fault fixtures. |
 | Step 5 | `f6ca67a`: complete-query resolver and 23 precedence/isolation tests. |
+| Step 6 | `8fda3ca` / `7ca010a` / `a2ff8bf` / `e72d8ee`: crash checkpoints, native matrix, and CI portability fixes. |
 
 Pure types landed before transaction integration so every commit remains
 buildable; the legacy transaction commit was separately compiled from an

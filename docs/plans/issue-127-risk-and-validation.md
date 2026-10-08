@@ -225,7 +225,7 @@ limitation. Stop on changed stable output, self-Busy/deadlock, corrupted proof,
 unreleased fixture process, source/schema mismatch, or an unexplained skip.
 Do not update expected snapshots merely to conceal a compatibility regression.
 
-## Execution Evidence (2026-10-08)
+## Execution Evidence (2026-10-08–09)
 
 Native host: macOS arm64, Rust 1.99.0, Python 3.12.13. Isolated synthetic
 stores and fixture-owned processes only; no user models or production runtime
@@ -275,11 +275,16 @@ rename, and do not establish power-loss multi-file atomicity.
 
 ## Native CI And Handoff
 
-`model-proof-native.yml` runs macOS, Linux, and Windows atomic replacement,
-long paths, model/proof/process tests, coordination, server/Cluster callers,
-Local evidence/eager startup, REST proofs, and CLI compatibility. PR/native
-results are pending; local success alone does not close this checklist. The
-first Linux attempt stopped before tests because the new runner lacked the
+At `e72d8ee`, all three native jobs passed in
+[run 37804732609](https://github.com/HiroLiang/tentserv-agent/actions/runs/37804732609).
+Per platform: kernel/platform-fs atomic tests 2/1, model/proof 176, coordination
+11, server 33, Cluster 13, Local evidence/eager 39, REST 21. CLI passed 119 on
+macOS/Linux and 118 on Windows (the POSIX-only fixture is not claimed there).
+Subprocess helpers actually ran; filtered zero-test targets are excluded.
+The existing [Windows ownership gate](https://github.com/HiroLiang/tentserv-agent/actions/runs/37804732753)
+also passed. PR #142 remains unmerged; this is validation, not a release.
+
+The first Linux attempt stopped before tests because the new runner lacked the
 existing keyring dependency's D-Bus headers. The workflow now installs
 `libdbus-1-dev` and `pkg-config`; no Rust dependency or product change was needed.
 The first Windows model suite passed 175 cases and failed only the documentation
