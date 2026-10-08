@@ -33,9 +33,9 @@ or too cross-cutting to track only in GitHub issues.
 ## Active Plan Index
 
 - [issue-127-compatibility-tuple-proof-v2-plan.md](./issue-127-compatibility-tuple-proof-v2-plan.md)
-  Draft issue-level decision register and execution checklist for the complete
-  compatibility tuple, proof v2 persistence, legacy evidence, exact queries,
-  and concurrent file-backed writes.
+  Reviewable compatibility-tuple/proof-v2 steps, pending decisions, and safe
+  legacy persistence on the merged `v1.1.2` baseline. Includes a linked risk,
+  transaction, migration, and regression checklist; implementation is pending.
 - [issue-131-model-idle-release-plan.md](./issue-131-model-idle-release-plan.md)
   Implemented and validated issue-level contract, decision register, evidence,
   and live smoke runbook for restoring model idle release without letting

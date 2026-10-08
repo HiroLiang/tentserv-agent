@@ -157,9 +157,9 @@ Key current documents:
   compatibility tuples, proof v2 persistence, tuple-aware model, Cluster, and
   LoRA gates, diagnostics, recovery, documentation, and closeout.
 - [docs/plans/issue-127-compatibility-tuple-proof-v2-plan.md](./docs/plans/issue-127-compatibility-tuple-proof-v2-plan.md)
-  Draft issue-level decision register and implementation checklist for the
-  complete compatibility tuple, proof v2 storage, conservative legacy reads,
-  exact queries, and concurrent file-backed proof transitions.
+  Reviewable execution steps and pending decisions for compatibility tuples,
+  proof v2, safe legacy persistence, and exact queries; links to the risk and
+  regression checklist protecting the completed runtime/server fixes.
 - [docs/plans/issue-131-model-idle-release-plan.md](./docs/plans/issue-131-model-idle-release-plan.md)
   Implemented and validated issue-level contract, decision register,
   implementation evidence, and live smoke runbook for restoring model idle
