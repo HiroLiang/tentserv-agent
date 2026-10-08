@@ -12,7 +12,12 @@ use crate::features::model::ports::{
     ModelCatalogStore, ModelContentStore, ModelIdentityGenerator, ModelManifestBuilder,
     ModelSourceIndexStore, ModelSourceStager, StagedModelSource,
 };
+use crate::features::resource_coordination::{
+    infra::FileResourceCoordinator, ResourceCoordinator, ResourceKey, ResourceKind,
+    ResourceLockMode, ResourceLockRequest,
+};
 use crate::foundation::error::{KernelError, KernelResult};
+use crate::foundation::layout::RuntimeLayout;
 
 pub(super) enum ModelImportSource {
     Local {
@@ -68,13 +73,13 @@ pub(super) struct ModelImportFinalizer<'a> {
 impl ModelImportFinalizer<'_> {
     pub fn finalize(
         &self,
-        store: &ModelStoreLayout,
+        layout: &RuntimeLayout,
         staged: &StagedModelSource,
         source: ModelImportSource,
         method: ModelImportMethod,
         capability_assignment: ModelCapabilityAssignment,
     ) -> KernelResult<ModelImportOutcome> {
-        let result = self.finalize_inner(store, staged, source, method, capability_assignment);
+        let result = self.finalize_inner(layout, staged, source, method, capability_assignment);
         let cleanup = self.stager.discard_staging(staged);
 
         match (result, cleanup) {
@@ -86,12 +91,13 @@ impl ModelImportFinalizer<'_> {
 
     fn finalize_inner(
         &self,
-        store: &ModelStoreLayout,
+        layout: &RuntimeLayout,
         staged: &StagedModelSource,
         source: ModelImportSource,
         method: ModelImportMethod,
         capability_assignment: ModelCapabilityAssignment,
     ) -> KernelResult<ModelImportOutcome> {
+        let store = &model_store_layout(layout);
         let manifest = self.manifest_builder.build_manifest(&staged.source_dir)?;
         let model_ref = self.identity.model_ref_for_manifest(&manifest)?;
         let detected_formats = detect_model_formats(&manifest, source.repo_id());
@@ -101,8 +107,38 @@ impl ModelImportFinalizer<'_> {
             })?;
         let store_path = store.model_dir(&model_ref);
 
+        // Copy/download and manifest hashing are complete before this short
+        // commit boundary. Deduplicated imports can also replace capability
+        // metadata, so they must exclude proof snapshots and model deletion.
+        let _permit = FileResourceCoordinator
+            .acquire(
+                layout,
+                ResourceLockRequest::new(
+                    "model-import-finalize",
+                    vec![
+                        (ResourceKey::maintenance(), ResourceLockMode::Shared),
+                        (
+                            ResourceKey::new(ResourceKind::Model, model_ref.as_str()),
+                            ResourceLockMode::Exclusive,
+                        ),
+                    ],
+                ),
+            )?
+            .map_err(|busy| {
+                KernelError::ResourceCoordinationUnavailable(format!(
+                    "{}; retry after {} ms",
+                    busy.description, busy.retry_after_millis,
+                ))
+            })?;
+
         if self.content.model_content_exists(store, &model_ref)? {
             let mut metadata = self.catalog.load_model_metadata(store, &model_ref)?;
+            if metadata.model_ref != model_ref {
+                return Err(KernelError::ModelStoreUnavailable(format!(
+                    "deduplicated model metadata reference `{}` does not match canonical model `{model_ref}`; inspect and repair the stored metadata before retrying",
+                    metadata.model_ref,
+                )));
+            }
             if should_apply_capability_assignment(&metadata, &capability_assignment) {
                 apply_capability_assignment(&mut metadata, &capability_assignment);
                 metadata.mlx_runtime_family =

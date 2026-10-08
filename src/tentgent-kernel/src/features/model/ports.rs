@@ -7,6 +7,8 @@ use crate::features::runtime::domain::PythonRuntimeLayout;
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
 
+use super::proof_context::ModelProofContext;
+
 use super::domain::{
     HfModelMetadata, HfModelPullProgress, HfModelSourceIndex, LocalModelSourceIndex,
     ModelCapability, ModelCapabilityProof, ModelFormat, ModelImportMethod, ModelInspection,
@@ -135,38 +137,46 @@ pub trait ModelCapabilityProofStore {
     /// Lists all current capability proofs for one model, including legacy latest records.
     fn list_capability_proofs(
         &self,
-        layout: &ModelStoreLayout,
+        context: &ModelProofContext<'_>,
         model_ref: &ModelRef,
+    ) -> KernelResult<Vec<ModelCapabilityProof>>;
+
+    /// Reads only one capability; suitable for an already-authorized server gate.
+    fn list_capability_proofs_for(
+        &self,
+        context: &ModelProofContext<'_>,
+        model_ref: &ModelRef,
+        capability: ModelCapability,
     ) -> KernelResult<Vec<ModelCapabilityProof>>;
 
     /// Saves or replaces the tuple-specific support proof for one model capability.
     fn save_support_proof(
         &self,
-        layout: &ModelStoreLayout,
+        context: &ModelProofContext<'_>,
         proof: &ModelCapabilityProof,
     ) -> KernelResult<()>;
 
     /// Lists tuple-specific support proofs for one model.
     fn list_support_proofs(
         &self,
-        layout: &ModelStoreLayout,
+        context: &ModelProofContext<'_>,
         model_ref: &ModelRef,
     ) -> KernelResult<Vec<ModelCapabilityProof>>;
 
     /// Saves or replaces the latest legacy proof for one model capability and the tuple proof.
     fn save_capability_proof(
         &self,
-        layout: &ModelStoreLayout,
+        context: &ModelProofContext<'_>,
         proof: &ModelCapabilityProof,
     ) -> KernelResult<()>;
 
     /// Removes all capability proof records for one capability.
     fn remove_capability_proof(
         &self,
-        layout: &ModelStoreLayout,
+        context: &ModelProofContext<'_>,
         model_ref: &ModelRef,
         capability: ModelCapability,
-    ) -> KernelResult<()>;
+    ) -> KernelResult<usize>;
 }
 
 /// Reads and writes source indexes that point back to canonical model_ref entries.

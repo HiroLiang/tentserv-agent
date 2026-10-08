@@ -249,6 +249,9 @@ fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
     let root = unique_path("model-support-proof");
     let layout = ModelStoreLayout::from_models_dir(root.join("models"));
     let model_ref = ModelRef::parse("d".repeat(64)).expect("model ref");
+    FileModelCatalogStore
+        .save_model_metadata(&layout, &metadata_fixture(model_ref.clone()))
+        .expect("proof model metadata");
     let store = FileModelCapabilityProofStore;
 
     let gguf = proof_fixture(
@@ -267,14 +270,23 @@ fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
     );
 
     store
-        .save_capability_proof(&layout, &gguf)
+        .save_capability_proof(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &gguf,
+        )
         .expect("save gguf proof");
     store
-        .save_capability_proof(&layout, &llama)
+        .save_capability_proof(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &llama,
+        )
         .expect("save llama proof");
 
     let proofs = store
-        .list_capability_proofs(&layout, &model_ref)
+        .list_capability_proofs(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+        )
         .expect("list proofs");
     assert_eq!(proofs.len(), 2);
     assert!(proofs.iter().any(
@@ -296,11 +308,17 @@ fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
         Some("new failure".to_string()),
     );
     store
-        .save_capability_proof(&layout, &overwritten)
+        .save_capability_proof(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &overwritten,
+        )
         .expect("overwrite gguf proof");
 
     let proofs = store
-        .list_capability_proofs(&layout, &model_ref)
+        .list_capability_proofs(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+        )
         .expect("list overwritten proofs");
     assert_eq!(proofs.len(), 2);
     assert!(proofs.iter().any(|proof| proof.backend == "gguf"
@@ -317,11 +335,17 @@ fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
     profiled.runtime_profile = Some("local-chat-llama-cpp".to_string());
     profiled.runtime_profile_version = Some(1);
     store
-        .save_capability_proof(&layout, &profiled)
+        .save_capability_proof(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &profiled,
+        )
         .expect("save profiled proof");
 
     let proofs = store
-        .list_capability_proofs(&layout, &model_ref)
+        .list_capability_proofs(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+        )
         .expect("list profiled proofs");
     assert_eq!(proofs.len(), 3);
     assert!(proofs.iter().any(|proof| proof.backend == "gguf"
@@ -332,11 +356,17 @@ fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
     let mut profiled_v2 = profiled.clone();
     profiled_v2.runtime_profile_version = Some(2);
     store
-        .save_capability_proof(&layout, &profiled_v2)
+        .save_capability_proof(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &profiled_v2,
+        )
         .expect("save profile version proof");
 
     let proofs = store
-        .list_capability_proofs(&layout, &model_ref)
+        .list_capability_proofs(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+        )
         .expect("list profile version proofs");
     assert_eq!(proofs.len(), 4);
 
@@ -344,11 +374,17 @@ fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
     profiled_overwrite.status = ModelCapabilityProofStatus::Failed;
     profiled_overwrite.error = Some("profile v2 failed".to_string());
     store
-        .save_capability_proof(&layout, &profiled_overwrite)
+        .save_capability_proof(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &profiled_overwrite,
+        )
         .expect("overwrite profile version proof");
 
     let proofs = store
-        .list_capability_proofs(&layout, &model_ref)
+        .list_capability_proofs(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+        )
         .expect("list overwritten profile version proofs");
     assert_eq!(proofs.len(), 4);
     assert!(proofs.iter().any(|proof| proof.backend == "gguf"
@@ -358,10 +394,17 @@ fn filesystem_model_capability_proofs_keep_tuple_specific_records() {
         && proof.error.as_deref() == Some("profile v2 failed")));
 
     store
-        .remove_capability_proof(&layout, &model_ref, ModelCapability::Chat)
+        .remove_capability_proof(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+            ModelCapability::Chat,
+        )
         .expect("remove chat proofs");
     let proofs = store
-        .list_capability_proofs(&layout, &model_ref)
+        .list_capability_proofs(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+        )
         .expect("list after proof removal");
     assert!(proofs.is_empty());
     assert!(!layout
@@ -379,6 +422,9 @@ fn filesystem_model_proof_direct_writes_redact_error_values() {
     let root = unique_path("model-proof-write-redaction");
     let layout = ModelStoreLayout::from_models_dir(root.join("models"));
     let model_ref = ModelRef::parse("b".repeat(64)).expect("model ref");
+    FileModelCatalogStore
+        .save_model_metadata(&layout, &metadata_fixture(model_ref.clone()))
+        .expect("proof model metadata");
     let proof = proof_fixture(
         model_ref.clone(),
         ModelCapability::Chat,
@@ -391,13 +437,19 @@ fn filesystem_model_proof_direct_writes_redact_error_values() {
         &crate::features::model::domain::ModelCapabilityProofKey::from_proof(&proof),
     );
     store
-        .save_support_proof(&layout, &proof)
+        .save_support_proof(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &proof,
+        )
         .expect("direct tuple save");
     assert!(!fs::read_to_string(&support_path)
         .expect("support TOML")
         .contains("synthetic-write-secret"));
     store
-        .save_capability_proof(&layout, &proof)
+        .save_capability_proof(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &proof,
+        )
         .expect("direct compatible save");
     for path in [
         support_path,
@@ -415,12 +467,18 @@ fn filesystem_model_proof_parse_errors_do_not_disclose_toml_body() {
     let root = unique_path("model-proof-invalid-redaction");
     let layout = ModelStoreLayout::from_models_dir(root.join("models"));
     let model_ref = ModelRef::parse("c".repeat(64)).expect("model ref");
+    FileModelCatalogStore
+        .save_model_metadata(&layout, &metadata_fixture(model_ref.clone()))
+        .expect("proof model metadata");
     let path = layout.capability_proof_path(&model_ref, ModelCapability::Chat);
     fs::create_dir_all(path.parent().expect("parent")).expect("proof directory");
     let malformed = "error = \"HF_TOKEN=synthetic-parse-secret\n";
     fs::write(&path, malformed).expect("malformed fixture");
     let error = FileModelCapabilityProofStore
-        .list_capability_proofs(&layout, &model_ref)
+        .list_capability_proofs(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+        )
         .expect_err("invalid proof")
         .to_string();
     assert!(error.contains("invalid model proof TOML"));
@@ -438,6 +496,9 @@ fn filesystem_model_proof_reads_redact_legacy_errors_without_rewriting_files() {
     let root = unique_path("model-proof-read-redaction");
     let layout = ModelStoreLayout::from_models_dir(root.join("models"));
     let model_ref = ModelRef::parse("a".repeat(64)).expect("model ref");
+    FileModelCatalogStore
+        .save_model_metadata(&layout, &metadata_fixture(model_ref.clone()))
+        .expect("proof model metadata");
     let mut proof = proof_fixture(
         model_ref.clone(),
         ModelCapability::Chat,
@@ -459,7 +520,10 @@ fn filesystem_model_proof_reads_redact_legacy_errors_without_rewriting_files() {
     }
 
     let records = FileModelCapabilityProofStore
-        .list_capability_proofs(&layout, &model_ref)
+        .list_capability_proofs(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+        )
         .expect("proofs");
     assert_eq!(records.len(), 1);
     let error = records[0].error.as_deref().expect("error");
@@ -471,7 +535,10 @@ fn filesystem_model_proof_reads_redact_legacy_errors_without_rewriting_files() {
     }
     fs::remove_file(&paths[1]).expect("remove tuple fixture");
     let legacy_only = FileModelCapabilityProofStore
-        .list_capability_proofs(&layout, &model_ref)
+        .list_capability_proofs(
+            &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout(&root)),
+            &model_ref,
+        )
         .expect("legacy only");
     assert_eq!(legacy_only[0].error, records[0].error);
     fs::remove_dir_all(root).expect("fixture cleanup");

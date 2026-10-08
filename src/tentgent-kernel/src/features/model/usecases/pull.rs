@@ -120,7 +120,7 @@ impl ModelHfPullUseCase for StdModelHfPullUseCase<'_> {
         let capability_assignment =
             resolve_hf_capability_assignment(request.capability, snapshot.metadata.as_ref());
         let outcome = self.finalizer().finalize(
-            &store,
+            &layout,
             &staged,
             ModelImportSource::HuggingFace {
                 repo_id: snapshot.repo_id,
