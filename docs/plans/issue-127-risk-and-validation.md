@@ -248,7 +248,8 @@ were modified. No new model download was needed for this storage foundation.
 - Domain/key: 39 tests; resolver: 23; v2 store: 18; import coordination: 3.
   Two canonical JSON/SHA-256 golden vectors were independently checked.
 - Proof transactions/processes: 16; complete proof suite: 34; coordinator: 11;
-  server use cases: 33. Native CI will rerun final fixtures.
+  server use cases: 33. Final kernel rerun including both added crash
+  checkpoints: 594 passed, two subprocess helpers executed by parent tests.
 - The isolated `44dc105` archive independently passed warning-denied workspace
   all-target compilation, verifying the legacy-only commit remains buildable.
 
@@ -277,7 +278,10 @@ rename, and do not establish power-loss multi-file atomicity.
 `model-proof-native.yml` runs macOS, Linux, and Windows atomic replacement,
 long paths, model/proof/process tests, coordination, server/Cluster callers,
 Local evidence/eager startup, REST proofs, and CLI compatibility. PR/native
-results are pending; local success alone does not close this checklist.
+results are pending; local success alone does not close this checklist. The
+first Linux attempt stopped before tests because the new runner lacked the
+existing keyring dependency's D-Bus headers. The workflow now installs
+`libdbus-1-dev` and `pkg-config`; no Rust dependency or product change was needed.
 
 #128 must collect authoritative selected-runtime facts before adopting v2.
 #129 owns adapter load identity and serving gates; #130 owns exact-query UX
