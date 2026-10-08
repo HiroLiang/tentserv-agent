@@ -110,10 +110,19 @@ impl Fixture {
     }
 
     pub fn proof_v2(&self, version: &str, iteration: u32) -> CompatibilityProofV2 {
+        self.proof_v2_for(ModelCapability::Chat, version, iteration)
+    }
+
+    pub fn proof_v2_for(
+        &self,
+        capability: ModelCapability,
+        version: &str,
+        iteration: u32,
+    ) -> CompatibilityProofV2 {
         CompatibilityProofV2::new(
             CompatibilityTuple::new(CompatibilityTupleInput {
                 model_ref: self.model_ref().clone(),
-                capability: ModelCapability::Chat,
+                capability,
                 primary_format: ModelFormat::Safetensors,
                 quantization: Quantization::Unquantized,
                 backend: CompatibilityBackend::Transformers,

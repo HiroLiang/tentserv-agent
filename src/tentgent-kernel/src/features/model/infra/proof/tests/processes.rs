@@ -10,7 +10,9 @@ use std::{
 
 use crate::features::model::{
     compatibility::CompatibilityFilter,
-    domain::{ModelCapability, ModelCapabilityProof, ModelCapabilityProofKey},
+    domain::{
+        ModelCapability, ModelCapabilityProof, ModelCapabilityProofKey, ModelCapabilityProofStatus,
+    },
     ports::{ModelCapabilityProofStore, ModelCompatibilityProofStore},
 };
 use crate::features::resource_coordination::{
@@ -248,6 +250,169 @@ fn abrupt_process_exit_releases_locks_and_ignores_uncommitted_temporary_file() {
 }
 
 #[test]
+fn process_exit_after_primary_replace_preserves_authority_and_retry_repairs_mirror() {
+    let _scenario = PROCESS_SCENARIO.lock().unwrap();
+    let fixture = Fixture::new("exit-after-primary");
+    let store = FileModelCapabilityProofStore;
+    let original = fixture.proof("same");
+    store
+        .save_capability_proof(&fixture.context(), &original)
+        .unwrap();
+    let latest = fixture
+        .store
+        .capability_proof_path(fixture.model_ref(), ModelCapability::Chat);
+    let original_mirror = fs::read(&latest).unwrap();
+    let replacement = checkpoint_replacement(&fixture, "same");
+    let primary = fixture
+        .store
+        .support_proof_path(&ModelCapabilityProofKey::from_proof(&replacement));
+
+    let mut child = ProofChild::spawn(&fixture, "primary", "after-primary", "same");
+    child.ready();
+    assert_eq!(fs::read(&latest).unwrap(), original_mirror);
+    assert_eq!(
+        toml::from_str::<ModelCapabilityProof>(&fs::read_to_string(&primary).unwrap()).unwrap(),
+        replacement
+    );
+    fs::write(fixture.root.join("go"), b"exit after primary replacement").unwrap();
+    assert_eq!(child.finish().code(), Some(23));
+
+    // The old verified mirror must not override the newer failed primary with
+    // the same key, even though process exit bypassed the permit's destructor.
+    assert_eq!(
+        store
+            .list_capability_proofs_for(
+                &fixture.context(),
+                fixture.model_ref(),
+                ModelCapability::Chat,
+            )
+            .unwrap(),
+        vec![replacement.clone()]
+    );
+    store
+        .save_capability_proof(&fixture.context(), &replacement)
+        .unwrap();
+    assert_eq!(fs::read(&primary).unwrap(), fs::read(&latest).unwrap());
+    assert_eq!(
+        toml::from_str::<ModelCapabilityProof>(&fs::read_to_string(&latest).unwrap()).unwrap(),
+        replacement
+    );
+    assert_eq!(
+        store
+            .list_capability_proofs_for(
+                &fixture.context(),
+                fixture.model_ref(),
+                ModelCapability::Chat,
+            )
+            .unwrap(),
+        vec![replacement]
+    );
+}
+
+#[test]
+fn process_exit_during_bulk_clear_allows_counted_retry_without_clearing_other_capabilities() {
+    let _scenario = PROCESS_SCENARIO.lock().unwrap();
+    let fixture = Fixture::new("exit-during-clear");
+    let store = FileModelCapabilityProofStore;
+    let chat = fixture.proof("same");
+    let exact_chat = fixture.proof_v2("1.0", 0);
+    store
+        .save_capability_proof(&fixture.context(), &chat)
+        .unwrap();
+    let chat_key = store.save_exact(&fixture.context(), &exact_chat).unwrap();
+    let mut embedding = fixture.proof("same");
+    embedding.capability = ModelCapability::Embedding;
+    let exact_embedding = fixture.proof_v2_for(ModelCapability::Embedding, "1.0", 0);
+    store
+        .save_capability_proof(&fixture.context(), &embedding)
+        .unwrap();
+    let embedding_key = store
+        .save_exact(&fixture.context(), &exact_embedding)
+        .unwrap();
+    let other_paths = [
+        fixture
+            .store
+            .capability_proof_path(fixture.model_ref(), ModelCapability::Embedding),
+        fixture
+            .store
+            .support_proof_path(&ModelCapabilityProofKey::from_proof(&embedding)),
+        fixture.store.compatibility_proof_path(&embedding_key),
+    ];
+    let other_bytes = other_paths.each_ref().map(|path| fs::read(path).unwrap());
+
+    let mut child = ProofChild::spawn(&fixture, "clear", "during-clear", "same");
+    child.ready();
+    assert!(!fixture
+        .store
+        .capability_proof_path(fixture.model_ref(), ModelCapability::Chat)
+        .exists());
+    assert!(fixture
+        .store
+        .support_proof_path(&ModelCapabilityProofKey::from_proof(&chat))
+        .is_file());
+    assert!(fixture.store.compatibility_proof_path(&chat_key).is_file());
+    fs::write(fixture.root.join("go"), b"exit during capability clear").unwrap();
+    assert_eq!(child.finish().code(), Some(23));
+
+    assert_eq!(
+        store
+            .list_capability_proofs_for(
+                &fixture.context(),
+                fixture.model_ref(),
+                ModelCapability::Chat,
+            )
+            .unwrap(),
+        vec![chat]
+    );
+    assert_eq!(
+        store.get_exact(&fixture.context(), &chat_key).unwrap(),
+        Some(exact_chat)
+    );
+    for expected_count in [2, 0] {
+        assert_eq!(
+            store
+                .remove_capability_proof(
+                    &fixture.context(),
+                    fixture.model_ref(),
+                    ModelCapability::Chat,
+                )
+                .unwrap(),
+            expected_count
+        );
+    }
+    assert!(store
+        .list_capability_proofs_for(
+            &fixture.context(),
+            fixture.model_ref(),
+            ModelCapability::Chat,
+        )
+        .unwrap()
+        .is_empty());
+    assert!(store
+        .get_exact(&fixture.context(), &chat_key)
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        store
+            .list_capability_proofs_for(
+                &fixture.context(),
+                fixture.model_ref(),
+                ModelCapability::Embedding,
+            )
+            .unwrap(),
+        vec![embedding]
+    );
+    assert_eq!(
+        store.get_exact(&fixture.context(), &embedding_key).unwrap(),
+        Some(exact_embedding)
+    );
+    assert_eq!(
+        other_paths.each_ref().map(|path| fs::read(path).unwrap()),
+        other_bytes
+    );
+}
+
+#[test]
 fn waiting_writer_does_not_recreate_a_model_deleted_under_exclusive_model_lock() {
     let _scenario = PROCESS_SCENARIO.lock().unwrap();
     let fixture = Fixture::new("deleted-model");
@@ -285,6 +450,14 @@ fn wait_for_go(fixture: &Fixture) {
         );
         thread::sleep(Duration::from_millis(5));
     }
+}
+
+fn checkpoint_replacement(fixture: &Fixture, backend: &str) -> ModelCapabilityProof {
+    let mut proof = fixture.proof(backend);
+    proof.status = ModelCapabilityProofStatus::Failed;
+    proof.checked_at = "2026-10-08T00:00:59Z".into();
+    proof.error = Some("checkpoint load failure".into());
+    proof
 }
 
 fn assert_consistent_legacy_snapshot(fixture: &Fixture) {
@@ -354,17 +527,35 @@ fn proof_process_worker() {
     let mode = std::env::var("TENTGENT_PROOF_TEST_MODE").unwrap();
     let backend = std::env::var("TENTGENT_PROOF_TEST_BACKEND").unwrap();
     let store = FileModelCapabilityProofStore;
-    if mode == "crash" {
-        let _permit = fixture.permit(ResourceLockMode::Exclusive);
-        let directory = fixture
-            .store
-            .support_proofs_capability_dir(fixture.model_ref(), ModelCapability::Chat);
-        // Deterministic pre-replace checkpoint: no canonical file is replaced.
-        fs::write(
-            directory.join(".uncommitted.toml.crash.tmp"),
-            b"incomplete = [",
-        )
-        .unwrap();
+    if matches!(mode.as_str(), "crash" | "after-primary" | "during-clear") {
+        let permit = fixture.permit(ResourceLockMode::Exclusive);
+        // Deterministic crash checkpoints, not a kill injected inside a system
+        // call. All mutations happen under the same real exclusive permit.
+        match mode.as_str() {
+            "crash" => {
+                let directory = fixture
+                    .store
+                    .support_proofs_capability_dir(fixture.model_ref(), ModelCapability::Chat);
+                fs::write(
+                    directory.join(".uncommitted.toml.crash.tmp"),
+                    b"incomplete = [",
+                )
+                .unwrap();
+            }
+            "after-primary" => store
+                .save_support_proof(
+                    &fixture.context().with_permit(&permit),
+                    &checkpoint_replacement(&fixture, &backend),
+                )
+                .unwrap(),
+            "during-clear" => fs::remove_file(
+                fixture
+                    .store
+                    .capability_proof_path(fixture.model_ref(), ModelCapability::Chat),
+            )
+            .unwrap(),
+            _ => unreachable!(),
+        }
         fs::write(fixture.root.join(format!("{name}.ready")), b"ready").unwrap();
         wait_for_go(&fixture);
         std::process::exit(23); // Bypass Drop to exercise OS-level lock release.
