@@ -9,7 +9,9 @@ mod evidence;
 mod filter;
 mod key;
 mod proof;
+mod resolver;
 mod shape;
+mod stale;
 mod tuple;
 
 pub use components::*;
@@ -18,6 +20,11 @@ pub use evidence::{CompatibilityEvidence, EvidenceGeneration, MissingDimension};
 pub use filter::CompatibilityFilter;
 pub use key::CompatibilityProofKey;
 pub use proof::{CompatibilityProofV2, ProofFailureCode, MAX_PROOF_V2_BYTES, PROOF_SCHEMA_VERSION};
+pub use resolver::{
+    CompatibilityConstraints, CompatibilityHint, CompatibilityReason, CompatibilityResolution,
+    CompatibilityResolutionEvidence, CompatibilityResolver, CompatibilityStaleReason,
+    HardIncompatibility,
+};
 pub use shape::*;
 pub use tuple::{CompatibilityTuple, CompatibilityTupleInput, TUPLE_IDENTITY_VERSION};
 

@@ -13,4 +13,6 @@ pub enum CompatibilityError {
     CanonicalSerialization,
     #[error("compatibility proof source cannot establish this observation")]
     InvalidObservationSource,
+    #[error("multiple current compatibility proofs share an exact tuple")]
+    AmbiguousExactProof,
 }
