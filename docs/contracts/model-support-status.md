@@ -10,7 +10,29 @@ Support status is derived from evidence. It is not the same thing as stored
 records.
 
 The local proof and support hint record schema is defined in
-[model-support-proof-schema.md](./model-support-proof-schema.md).
+[model-support-proof-schema.md](./model-support-proof-schema.md). The complete
+v2 identity is specified in
+[compatibility-tuple-v2.md](./compatibility-tuple-v2.md).
+
+## Resolver Generations
+
+The existing `ModelSupportStatusResolver` and its Local/Cluster gate adapters
+remain partial compatibility surfaces through #127. Preserve their established
+ordering, status, and allow-unverified behavior; do not feed v2 through a lossy
+legacy projection. Integrating complete execution facts into those gates is
+separate #128/#129 work.
+
+The new complete-query resolver accepts a validated v2 tuple. Hard
+incompatibility remains first; an exact current v2 proof can produce `verified`
+or `failed`. Incomplete old evidence can produce `stale`, never exact
+authorization. An unrelated newer record cannot replace an exact match.
+Typed list/filter results are diagnostics, not authorization queries.
+
+Observation scope is part of the tuple: `load` and `execution` are different
+identities. A successful preload cannot verify an inference/output shape.
+Manual metadata verification and training success cannot create complete v2
+execution proof. These rules do not retroactively change legacy manual-probe
+response statuses.
 
 ## Purpose
 
@@ -32,7 +54,7 @@ The status should explain:
 A support status applies to one resolved tuple. It must not be keyed by model
 name alone.
 
-The tuple should include at least:
+The legacy partial tuple includes available values from:
 
 - `model_ref`
 - capability, such as `chat`, `embedding`, or `vision-chat`
@@ -46,6 +68,10 @@ The tuple should include at least:
 
 If any tuple dimension changes in a way that can affect execution, previous
 proof for the old tuple must not be treated as proof for the new tuple.
+Complete v2 additionally requires explicit quantization, observed runtime
+package/version, profile, OS/architecture/device, adapter/load identity, and
+observation scope with shapes when execution was observed. Missing facts are
+not filled with the current host, defaults, or an arbitrary `not-applicable`.
 
 ## Status Vocabulary
 
@@ -192,11 +218,12 @@ model proof scope and keep using provider capability checks.
 Endpoint smoke verification remains separate runtime proof work. A gate
 decision may allow a `supported` or explicitly allowed `unknown`/`stale` tuple
 to launch, but that decision does not by itself create a `verified` proof. The
-actual local server launch outcome records a `server-start` proof: successful
-starts write `verified`, and launch failures after profile selection write
-`failed`. Resolved direct local runtime attempts, such as chat, embedding, and
-rerank execution, record `runtime-execution` proofs when the runtime succeeds
-or fails.
+eager worker records `server-start` only after terminal preload success or an
+accepted-task load failure. Process launch, lazy startup, caller observation
+timeout, transport failure, and a missing/stale Python endpoint write no such
+proof. CLI/REST callers do not duplicate the worker's record. Resolved direct
+local attempts, such as chat, embedding, and rerank, record `runtime-execution`
+after dispatch succeeds or fails; lookup, validation, and Cloud failures do not.
 
 ## Stale Evidence
 
@@ -215,6 +242,7 @@ Proof should become stale when any of these change:
 - platform or device class
 - input or output shape
 - selected adapter
+- adapter load identity and load-versus-execution observation scope
 - relevant runtime profile version
 - support-status resolver schema version
 - support record version that supplied the previous conclusion
@@ -225,6 +253,13 @@ variants are removed.
 `stale` is an effective status. The proof record may remain stored for audit
 history, but a resolver must not use stale proof as current `verified` or
 `failed` evidence.
+
+For exact v2 queries, missing legacy dimensions remain explicit stale reasons.
+Removal of an exact v2 record does not promote a remaining legacy result into
+exact authority. Explicit base-model/no-profile/unquantized states are valid
+only when observed or established, not aliases for missing facts. The initial
+runtime fingerprint is intentionally not a full transitive dependency, driver,
+OS patch, GPU model, or capacity guarantee.
 
 ## Transition Rules
 

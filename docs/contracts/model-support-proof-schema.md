@@ -1,350 +1,145 @@
 # Model Support Proof Schema
 
-This document defines the minimum record schema used to explain model support
-status. It is the local proof schema introduced for support status and extended
-by the `v0.8.0` runtime-profile gate.
+This contract distinguishes implemented legacy proof records from the complete
+proof v2 foundation added by #127. Historical `v0.7.0` examples describing
+platform, shape, or a schema marker were design targets, not fields present in
+the old persisted `ModelCapabilityProof`.
 
-Support proof records and support hint records are separate:
+See [compatibility-tuple-v2.md](./compatibility-tuple-v2.md) for the complete
+tuple, observation scope, versioned key, and v2 record contract. Effective
+status belongs to [model-support-status.md](./model-support-status.md);
+coordination belongs to [resource-blockers.md](./resource-blockers.md).
 
-- A local proof records an observed result on this machine.
-- A support hint records built-in, curated, or shared knowledge about what
-  should or should not work.
+## Evidence Kinds
 
-Effective support status is derived from these records by
-[model-support-status.md](./model-support-status.md). Neither record type is
-itself the final status resolver.
+| Kind | Meaning | Result |
+| --- | --- | --- |
+| Local proof | An observed local event, with its actual evidence scope. | Stored `verified` or `failed`; effective `stale` when it cannot answer the query. |
+| Support hint | Built-in or curated knowledge, not a local observation. | `supported` or `unsupported`, never local `verified` or `failed`. |
+| Legacy manual probe | Capability metadata check without executing a model. | Retains the old partial API result; never becomes a complete v2 execution proof. |
 
-## Record Kinds
+An applicable local failure cannot be hidden by a positive hint. No stored
+status overrides hard incompatibility. Evidence is not a runtime ownership
+claim or a model-deletion blocker.
 
-| Kind | Owner | Can produce | Cannot produce |
-| --- | --- | --- | --- |
-| Local proof | Local machine/runtime event | `verified`, `failed`, or effective `stale` | `supported`, `unknown` |
-| Support hint | Tentgent built-in data, curated fixtures, or future shared registry | `supported`, `unsupported`, or effective `stale` | `verified`, `failed` |
+## Three File Generations
 
-Local proof wins over positive support hints when it applies to the same tuple.
-Hard unsupported rules and negative support hints can still block routing before
-runtime dispatch.
+All paths are relative to the canonical model directory.
 
-## Local Proof Record
+| Generation | Path | Identity |
+| --- | --- | --- |
+| Legacy latest | `capability-proofs/<capability>.toml` | One latest partial result per capability. |
+| Tuple-aware v1 | `support-proofs/<capability>/<proof_key>.toml` | Existing format/runtime/backend/profile subset. |
+| Complete v2 | `support-proofs/v2/<capability>/<tuple_sha256>.toml` | Complete normalized tuple including observation scope. |
 
-Local proof records are currently stored as TOML under the canonical model
-directory in two compatible locations.
+The first two generations have the same legacy body; calling the tuple-aware
+generation "v1" does not imply it contains `schema_version = 1`.
+Keep their filenames and field encoding readable. Do not rename old files to
+new hashes or infer missing facts from the current machine.
 
-Tuple-aware support proofs are stored under:
+A v1 writer saves the tuple-aware support file first, then the latest mirror.
+When both exist for the same partial key, the support file is authoritative.
+Different partial keys coexist; the latest path is not their durable index.
 
-```text
-models/store/<model_ref>/support-proofs/<capability>/<proof_key>.toml
-```
+V2 writes only v2. Never project a complete proof into the less-specific latest
+or v1 shape. Legacy gate/list adapters continue reading their compatible
+generations until the separate #128/#129 integration. The new evidence API can
+read all three generations and retains their provenance and missing dimensions.
 
-The current proof key is derived from:
+## Implemented Legacy Body
 
-- `primary_format`
-- `runtime_family` when present
-- `backend`
-- `runtime_version` when present
-- `runtime_profile` when present
-- `runtime_profile_version` when present
+Required fields:
 
-This allows multiple backend or runtime proofs for the same model capability to
-coexist. Saving another proof for the same tuple replaces that tuple proof.
-
-The legacy latest-proof location is still written and read for compatibility:
-
-```text
-models/store/<model_ref>/capability-proofs/<capability>.toml
-```
-
-That path stores only one latest proof per capability. It must not be treated
-as the durable tuple index when multiple backend, runtime, adapter, or shape
-proofs exist for the same capability.
-
-Capability proof clearing is intentionally capability-wide in this schema
-generation. Clearing one `model_ref + capability` removes all tuple-aware
-support proof files for that capability and the legacy latest-proof file. It
-does not remove model content, stored capability metadata, or proof records for
-other capabilities.
-
-The `v0.7.0` schema should be versioned:
-
-```toml
-schema_version = 1
-record_kind = "local-proof"
-
-model_ref = "<model_ref>"
-short_ref = "<short_ref>"
-source_kind = "huggingface"
-source_repo = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
-source_revision = "<resolved_revision>"
-
-capability = "chat"
-primary_format = "mlx"
-quantization = "4bit"
-backend = "mlx"
-runtime_family = "mlx-lm"
-runtime_package = "mlx-lm"
-runtime_version = "0.24.0"
-
-platform = "macos"
-device_class = "apple-silicon"
-
-status = "verified"
-proof_source = "server-start"
-checked_at = "2026-06-12T00:00:00Z"
-
-[input_shape]
-family = "chat"
-modalities = ["text"]
-provider_shape = "native"
-
-[output_shape]
-family = "chat"
-modalities = ["text"]
-streaming = true
-```
+- `model_ref`, `capability`, `primary_format`, `backend`;
+- `status = "verified" | "failed"`;
+- `source = "manual-probe" | "server-start" | "endpoint-smoke" |
+  "runtime-execution"`;
+- `checked_at`.
 
 Optional fields:
 
-```toml
-server_ref = "<server_ref>"
-adapter_ref = "<adapter_ref>"
-runtime_profile = "mlx-lm-chat-v1"
-runtime_profile_version = 1
-error_code = "runtime_failed"
-error = "backend failed to load model"
-```
+- `mlx_runtime_family`;
+- `runtime_version`;
+- `runtime_profile` and `runtime_profile_version`;
+- `server_ref`;
+- `error`.
 
-The JSON representation should use the same field names.
+The existing partial path key contains format, MLX runtime family, backend,
+runtime version, profile id, and profile version. The directory supplies model
+and capability. Its historical escaping is preserved for old-file lookup, not
+reused for new v2 identity.
 
-## Required Local Proof Fields
+Missing platform, device, quantization, adapter, or observation facts remain
+missing. Legacy records are not malformed merely because they lack v2 fields.
+A precise comparison treats incomplete evidence conservatively; old public
+response fields and partial gate behavior do not change as a side effect.
 
-Every local proof must include:
+## Producer Boundaries
 
-- `schema_version`
-- `record_kind = "local-proof"`
-- `model_ref`
-- `capability`
-- `primary_format`
-- `backend`
-- `runtime_family` when a concrete runtime family is selected
-- `platform`
-- `device_class`
-- `status = "verified" | "failed"`
-- `proof_source = "manual-probe" | "server-start" | "endpoint-smoke" |
-  "runtime-execution"`
-- `checked_at`
+Current producers remain on their existing legacy schema until they can supply
+complete authoritative facts. The persistence upgrade does not move when an
+event is recorded:
 
-The first implementation may preserve older records that only contain the
-current `ModelCapabilityProof` fields. A resolver should treat missing
-dimension fields as less specific evidence and mark them `stale` when a precise
-comparison is required.
+- Manual verify checks stored capability metadata; it does not load a model.
+- Local and Cluster eager workers record `server-start` only after confirmed
+  terminal preload success or accepted-task load failure. CLI/REST callers
+  must not duplicate the worker's record.
+- Process launch, lazy start, readiness observation expiry, transport failure,
+  and missing/stale Python endpoints do not create preload proof.
+- Resolved direct local attempts record `runtime-execution` after dispatch.
+  Model lookup, request validation, unsupported input, and Cloud provider
+  failures are not local runtime evidence.
+- Preload observes loading only. It does not verify inference, streaming,
+  provider formatting, adapter execution, or every image workflow.
+- Training success is provenance, not serving verification.
 
-Current CLI diagnostics read `runtime_profile` and `runtime_profile_version`
-from persisted proof records when a server launch recorded them. Local
-server-start proof recording must include these fields whenever the selected
-server spec has runtime profile metadata. Server-bound inspection may also pass
-the selected server runtime profile into the resolver before comparing support
-evidence. `execution_backend` is derived from the proof tuple's
-backend/runtime-family fields.
+The selected runtime profile is an execution profile, not the Python bootstrap
+dependency profile. Runtime facts must describe the selected or reused worker,
+not an unrelated caller environment. Do not invent a package version to make
+an old event satisfy the v2 writer.
 
-## Identity Fields
+## Persistence And Clearing
 
-Identity fields explain which model the record applies to:
+All generations use the existing atomic replacement primitive and short proof
+transactions. The complete lock set and authoritative metadata reread are
+specified in [resource-blockers.md](./resource-blockers.md#proof-transactions).
 
-- `model_ref`: canonical content identity.
-- `short_ref`: display-only convenience.
-- `source_kind`: `huggingface`, `local`, or future source kinds.
-- `source_repo`: source repository or local source label when known.
-- `source_revision`: resolved immutable source revision when known.
+Atomicity is per file, not an all-or-nothing promise for legacy dual writes or
+bulk clear. A mirror failure may follow a committed support file. Return an
+explicit error, preserve readable committed evidence, and allow safe retry.
+A directory-sync failure can likewise occur after a complete replacement.
 
-`model_ref` is the authority. Source fields explain provenance and help support
-hints target known public fixtures, but source fields must not replace
-`model_ref` for local proof matching.
+Exact v2 removal deletes only the selected v2 file. Older evidence remains
+older evidence and cannot restore exact `verified`/`failed`.
+Capability-wide clear removes all three generations for the selected model and
+capability, without deleting assets or other capabilities. Count logical v2
+keys plus deduplicated v1/latest records from the same locked snapshot.
+Partial failure must not report a successful removal count.
 
-## Proof Key
+Old binaries ignore v2 and cannot clear it. After an old-version clear,
+re-upgrading may expose the untouched v2 record again. No semantic rollback,
+automatic backfill, tombstone protocol, or concurrent old/new writer support is
+promised. See the [v2 compatibility boundary](./compatibility-tuple-v2.md).
 
-The proof matching key is the normalized tuple that decides whether a record
-applies to the current route:
+## Error Summaries
 
-- `model_ref`
-- `capability`
-- `primary_format`
-- `quantization`
-- `backend`
-- `runtime_family`
-- `runtime_package`
-- `runtime_version`
-- `runtime_profile`
-- `runtime_profile_version`
-- `platform`
-- `device_class`
-- `adapter_ref`
-- `input_shape`
-- `output_shape`
+Proof errors are diagnostic summaries, not raw logs or request transcripts.
+Before persistence and when reading existing proofs, compact whitespace,
+redact common credential assignment/header values, and truncate to 500 Unicode
+characters plus an optional `...`. The formatter does not read secret stores
+or environment values and is not a general PII detector.
 
-The current tuple-aware local proof store derives its path key in memory from
-the fields it records today: primary format, runtime family, backend, runtime
-version, runtime profile, and runtime profile version. A later expanded proof
-key must continue to derive from these fields and must not ignore adapter or
-shape differences once those fields are recorded.
+Reading sanitizes the returned value without rewriting historical files.
+Malformed-proof errors identify the file and failure class, not raw TOML
+content. V2 shape fields cannot contain arbitrary payloads or headers.
 
-## Runtime Tuple Fields
+## Support Hints
 
-Runtime tuple fields explain how the model was run:
+The implemented in-memory hint contains capability, status, reason, and
+optional format, MLX runtime family, and backend constraints. The built-in
+catalog supplies source-aware matching separately.
 
-- `capability`
-- `primary_format`
-- `quantization`
-- `backend`
-- `runtime_family`
-- `runtime_package`
-- `runtime_version`
-- `runtime_profile`
-- `runtime_profile_version`
-- `platform`
-- `device_class`
-- `adapter_ref`
-
-If any recorded tuple field changes and the old proof cannot safely apply to
-the new tuple, the effective status should become `stale`.
-
-Local eager workers record `server-start` proofs only after confirmed terminal
-preload success or accepted-task load failure. Process launch, lazy startup,
-readiness observation expiry, transport failure, and missing/stale Python
-endpoints write no proof. CLI/REST callers do not duplicate worker writes.
-Records include the selected runtime profile id and version when the server spec
-has one. Runtime errors are normalized for
-display: multi-line output is compacted, common credential assignment/header
-values are redacted, and long messages are truncated. Existing proof errors are
-also sanitized when read, without rewriting historical files; malformed-proof
-diagnostics never include the raw TOML body.
-
-Direct local runtime attempts record `runtime-execution` proofs after model
-resolution and runtime dispatch. These records are for concrete execution
-outcomes, not model lookup, request validation, unsupported input, or cloud
-provider failures.
-
-## Input And Output Shape
-
-Input and output shapes describe what the proof exercised. They are not a full
-API transcript.
-
-`input_shape` should include:
-
-- `family`: endpoint family such as `chat`, `embedding`, `rerank`,
-  `vision-chat`, `audio-transcription`, `audio-speech`,
-  `video-understanding`, or `image-generation`
-- `modalities`: one or more of `text`, `image`, `audio`, `video`, or `file`
-- `provider_shape`: `native`, `openai`, `claude`, `gemini`, or another
-  provider adapter name
-- optional normalized limits such as context length, image size, audio format,
-  or embedding input type
-
-`output_shape` should include:
-
-- `family`
-- `modalities`
-- optional `streaming`
-- optional output format hints such as `json`, `wav`, `png`, or embedding
-  vector dimensions
-
-Shape fields are part of stale comparison when the route depends on them.
-For example, a text-only chat proof does not verify an image+text vision route.
-
-## Support Hint Record
-
-Support hints should be stored separately from local proof. A hint can be
-shipped with Tentgent, generated from curated fixture docs, or loaded from a
-future shared registry.
-
-Minimal hint shape:
-
-```toml
-schema_version = 1
-record_kind = "support-hint"
-
-source = "built-in"
-hint_id = "mlx-community-qwen2-5-0-5b-instruct-4bit-chat"
-status = "supported"
-
-source_kind = "huggingface"
-source_repo = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
-source_revision = "*"
-
-capability = "chat"
-primary_format = "mlx"
-quantization = "4bit"
-backend = "mlx"
-runtime_family = "mlx-lm"
-platform = "macos"
-device_class = "apple-silicon"
-
-reason = "curated smoke fixture"
-recorded_at = "2026-06-12T00:00:00Z"
-
-[input_shape]
-family = "chat"
-modalities = ["text"]
-provider_shape = "native"
-
-[output_shape]
-family = "chat"
-modalities = ["text"]
-```
-
-Hint `status` is limited to:
-
-- `supported`
-- `unsupported`
-
-Hints must not claim `verified` or `failed`; only local proof can do that.
-
-Hints may omit shape fields only when the support claim truly applies to every
-shape that the capability can expose. Otherwise, hints should include
-`input_shape` and `output_shape` so a text-only hint does not authorize a
-multimodal route.
-
-## Stale Comparison Keys
-
-The resolver should compare these keys when deciding whether proof or hints are
-current:
-
-- `schema_version`
-- `model_ref` for local proof
-- `source_kind`, `source_repo`, and `source_revision` for hints
-- `capability`
-- `primary_format`
-- `quantization`
-- `backend`
-- `runtime_family`
-- `runtime_package`
-- `runtime_version`
-- `runtime_profile`
-- `runtime_profile_version`
-- `platform`
-- `device_class`
-- `adapter_ref`
-- `input_shape`
-- `output_shape`
-
-Missing keys in old records should not crash resolution. They should reduce
-confidence and may produce effective `stale` when the missing dimension is
-needed to trust the record.
-
-## Current Compatibility
-
-The current `ModelCapabilityProof` domain type already stores a small subset:
-
-- `model_ref`
-- `capability`
-- `status`
-- `source`
-- `primary_format`
-- `mlx_runtime_family`
-- `backend`
-- `runtime_version`
-- `server_ref`
-- `checked_at`
-- `error`
-
-This subset remains readable. The `v0.7.0` implementation can migrate in place
-or write expanded records while accepting old records as legacy proof evidence.
+A future shared registry may define a richer serialized schema, but #127
+does not introduce it. Do not interpret older aspirational registry TOML
+examples as files that Tentgent currently persists or consumes. A hint never
+becomes a local exact proof merely because its descriptive fields match.

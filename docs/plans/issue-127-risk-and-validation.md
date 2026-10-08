@@ -1,7 +1,7 @@
 # Issue 127 Risk And Validation Checklist
 
-Status: pre-implementation audit, 2026-10-08; tests below are required future
-evidence, not results of this planning turn.
+Status: implementation checklist, 2026-10-08. Matrices below define required
+coverage; only the execution evidence section records completed runs.
 
 Owner: [#127 execution plan](./issue-127-compatibility-tuple-proof-v2-plan.md).
 Baseline: main `8c5d215`, integrated by `4f38069`.
@@ -224,3 +224,21 @@ skipped/ignored reasons, native platform, fixture scope, and any remaining
 limitation. Stop on changed stable output, self-Busy/deadlock, corrupted proof,
 unreleased fixture process, source/schema mismatch, or an unexplained skip.
 Do not update expected snapshots merely to conceal a compatibility regression.
+
+## Intermediate Execution Evidence
+
+Initial integration checkpoint on 2026-10-08 (macOS arm64, working tree after
+the independent #141 commit `e1c4226`; not final issue closeout):
+
+- `cargo check --locked --workspace --all-targets`: passed, no warnings.
+- `cargo test --locked -p tentgent-kernel features::model --lib`: 112 passed,
+  0 failed/ignored, including legacy storage/use cases and #141 synthetic
+  write/read/parse-error cases. Later domain changes require another run.
+- `cargo test --locked -p tentgent-daemon model_resources -- --nocapture`:
+  21 library tests passed; the separate binary target has no matching tests
+  and is not counted as evidence.
+- Pure tuple refinement: 36 focused domain tests passed; the fixed canonical
+  JSON vector's SHA-256 was independently checked outside the Rust code.
+
+Native CI, full source regression, concurrency/crash coverage, and final diff
+review are still pending. Intermediate green checks do not complete #127.

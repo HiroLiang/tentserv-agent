@@ -86,6 +86,9 @@ Key current documents:
 - [docs/contracts/model-support-proof-schema.md](./docs/contracts/model-support-proof-schema.md)
   Local proof and support hint record schema for explaining model support
   status.
+- [docs/contracts/compatibility-tuple-v2.md](./docs/contracts/compatibility-tuple-v2.md)
+  Complete compatibility identity, load/execution evidence scope, canonical
+  proof keys, strict v2 schema, and legacy transition boundaries.
 - [docs/contracts/adapter-store.md](./docs/contracts/adapter-store.md)
   Adapter-store identity, compatibility metadata, layout, and source-index draft.
 - [docs/contracts/dataset-store.md](./docs/contracts/dataset-store.md)
@@ -157,7 +160,7 @@ Key current documents:
   compatibility tuples, proof v2 persistence, tuple-aware model, Cluster, and
   LoRA gates, diagnostics, recovery, documentation, and closeout.
 - [docs/plans/issue-127-compatibility-tuple-proof-v2-plan.md](./docs/plans/issue-127-compatibility-tuple-proof-v2-plan.md)
-  Reviewable execution steps and pending decisions for compatibility tuples,
+  Reviewable execution steps and accepted decisions for compatibility tuples,
   proof v2, safe legacy persistence, and exact queries; links to the risk and
   regression checklist protecting the completed runtime/server fixes.
 - [docs/plans/issue-131-model-idle-release-plan.md](./docs/plans/issue-131-model-idle-release-plan.md)

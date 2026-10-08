@@ -62,6 +62,54 @@ the entire partial set without leaving a holder record. Retry jitter is
 derived from the operation id, process id, and attempt number and remains
 inside the configured bound.
 
+## Proof Transactions
+
+Proofs remain non-owning evidence, but their short filesystem operations must
+coordinate with writers, capability changes, model deletion, and maintenance.
+All proof generations use the same protocol and the real `RuntimeLayout`
+coordination root, carried explicitly by `ModelProofContext`. Never infer the
+lock root from a model-directory parent: the data root may be separate from
+`TENTGENT_HOME`.
+
+| Operation | Maintenance key | Model key | ModelCapability keys |
+| --- | --- | --- | --- |
+| Exact/capability read | Shared | Shared | Shared for the selected capability. |
+| Model-wide snapshot | Shared | Shared | Shared for every capability in the kernel enum, acquired together. |
+| Save/replace/exact removal/capability clear | Shared | Shared | Exclusive for the selected capability. |
+| Existing model deletion/capability replacement | Existing guard policy | Exclusive | Existing guard policy is unchanged. |
+
+An independent operation acquires its complete set once. Model-wide reads lock
+all known capability keys, not only directories discovered before acquisition.
+After acquiring, reread authoritative model metadata and validate canonical
+identity. If supplied observed metadata changed, return a retryable state
+error; never relabel old execution evidence or recreate a deleted model.
+
+A caller already holding a permit may borrow it only when the store validates
+the same coordination root and every required key **and lock mode**. An
+exclusive lock covers a shared read; a shared lock cannot authorize mutation.
+Key-name equality alone, nested public store calls, and a `skip_lock` flag are
+not authorization. Raw filesystem helpers remain private to the transaction.
+
+The coordinator orders one request; it does not order a nested call stack.
+Never upgrade shared locks in place or acquire an earlier Model key while
+holding a later Server key. If a caller needs a different set, release its
+permit, acquire the complete set, and reread within bounded retry policy.
+Hold permits only for the filesystem transition, not model loading, network
+calls, streams, shutdown waits, or callbacks that acquire more resources.
+
+Reuse the existing same-directory atomic replacement primitive. Its guarantee
+is per file: v1 support-file plus latest-mirror writes, and multi-file clear,
+are serialized but not crash-atomic transactions. Report partial failures;
+restarting and retrying must not accept torn proof, conceal a failed mirror
+write, or claim a successful clear count. Directory sync can fail after a
+complete replacement became visible. See
+[model-support-proof-schema.md](./model-support-proof-schema.md#persistence-and-clearing).
+
+These guarantees require cooperating binaries, a local filesystem, and one
+coordination root. They do not cover old writers that ignore locks or different
+runtime homes sharing one data root. Proof transactions add no durable claim,
+lease, model-retention requirement, or new resource-mutation blocker.
+
 ## Resource Operations
 
 `ResourceOperation` is the complete operation vocabulary used by the guard

@@ -1,7 +1,7 @@
 # Issue 127 Compatibility Tuple And Proof v2 Sub-Plan
 
-Status: implementation proposal; user decisions below remain pending.
-Updated: 2026-10-08. No feature implementation has started.
+Status: active implementation; recommended user decisions accepted.
+Updated: 2026-10-08. Steps are being implemented with intermediate checks.
 
 - Issue: [#127](https://github.com/HiroLiang/tentserv-agent/issues/127)
 - Parent: [v1.2.0 Local Compatibility State Plan](./v1.2.0-local-compatibility-state-plan.md)
@@ -12,8 +12,8 @@ Updated: 2026-10-08. No feature implementation has started.
 - Companion: [risk, transaction, and validation checklist](./issue-127-risk-and-validation.md)
 
 This refresh replaces the old six-phase checklist with reviewable steps that
-include their own tests. It does not authorize implementation or accept the
-pending decisions. Keep all steps in this issue branch, with separate commits;
+include their own tests. The user accepted the recommendations and authorized
+completion of #127 on 2026-10-08. Keep steps in this branch with separate commits;
 do not create one branch per implementation layer.
 
 ## Outcome And Scope
@@ -137,7 +137,7 @@ legacy-only fixtures retain their existing count.
 
 ## User Decisions Before Implementation
 
-All five items are still **pending**, not accepted by this planning request.
+All five recommended options were **accepted** on 2026-10-08.
 
 | ID | Recommendation | Alternative and tradeoff |
 | --- | --- | --- |
@@ -153,10 +153,12 @@ Current sanitization removes known environment-variable **names**, not their
 values. For example, a synthetic `HF_TOKEN=example-secret` still retains its
 value. No real credential exposure has been established.
 
-Recommendation: approve a separate narrowly scoped bug/commit for safe error
+Accepted: a separate narrowly scoped bug/commit for safe error
 persistence and presentation, using synthetic-secret fixtures. Do not silently
 fold a general logging/security refactor into `#127`, or defer the known gap
-until diagnostics work. No new issue or branch is created by this plan.
+until diagnostics work. Track this as
+[#141](https://github.com/HiroLiang/tentserv-agent/issues/141), with an independent
+commit before proof persistence integration; no separate checkout is needed.
 
 This does not block tuple/storage design or synthetic tests. Before connecting
 v2 failure persistence to real errors or declaring the branch release-ready,
@@ -167,21 +169,22 @@ proof rewriting and broad PII detection require separate approval.
 ## Reviewable Execution Steps
 
 Each step includes tests and documentation, ends with its own commit and diff
-review, and stops on an unresolved contract or regression. Human checkpoints
-remain the default unless the user explicitly authorizes proceeding through
-all steps. Do not defer all validation to the last step.
+review, and stops on an unresolved contract or regression. The user authorized
+proceeding through all steps; perform intermediate automated checks and review
+without waiting for another approval unless scope or policy must change.
+Do not defer all validation to the last step.
 
 ### Step 1 — Freeze Decisions And Compatibility Fixtures
 
-- [ ] Resolve U127-01–05 and the handling/dependency of X127-01.
-- [ ] Update proof-schema, support-status, model-store, and resource-blockers
+- [x] Resolve U127-01–05 and the handling/dependency of X127-01 (#141).
+- [x] Update proof-schema, support-status, model-store, and resource-blockers
   contracts with fields, per-dimension not-applicable rules, value limits,
   lock scope, and failure rules.
-- [ ] Separate historical aspirational schema examples from implemented v1
+- [x] Separate historical aspirational schema examples from implemented v1
   and new v2. Correct stale server-start wording to terminal eager evidence.
-- [ ] Capture legacy files and current CLI/REST/gate results as fixtures;
+- [x] Capture legacy files and current CLI/REST/gate results as fixtures;
   enumerate every proof reader, writer, clear, and already-held permit.
-- [ ] Define explicit evidence scope so preload never claims unexercised
+- [x] Define explicit evidence scope so preload never claims unexercised
   inference/provider/streaming shapes.
 
 Check: fixture tests actually run and preserve today's behavior. Review the
@@ -265,5 +268,5 @@ Passing storage tests alone does not complete `#126` or authorize publication.
 - [x] Switched to the existing issue branch and merged current `origin/main`.
 - [x] Preserved #131/#132 fixes, Rust 1.99.0, and the v1.1.2 baseline.
 - [x] Refreshed scope, risks, decisions, review steps, and validation plan.
-- [ ] User decision/review checkpoint.
+- [x] User decision/review checkpoint; recommended options accepted.
 - [ ] Steps 1–6 implementation and validation.
