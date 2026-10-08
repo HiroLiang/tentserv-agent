@@ -1,13 +1,13 @@
 //! Standard server spec and lifecycle orchestration.
 
-use std::sync::Arc;
+use std::{sync::Arc, thread};
 
 use crate::features::cluster::ports::ClusterCatalogStore;
 use crate::features::model::domain::ModelStoreLayout;
 use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
 use crate::features::resource_coordination::{
-    infra::FileResourceCoordinator, ResourceCoordinator, ResourceKey, ResourceKind,
-    ResourceLockMode, ResourceLockRequest,
+    bounded_retry_delay, infra::FileResourceCoordinator, ResourceCoordinator, ResourceKey,
+    ResourceKind, ResourceLockMode, ResourceLockRequest, ResourcePermit,
 };
 use crate::features::resource_guard::{
     ResourceGuardUseCase, ResourceMutationAuthorization, ResourceMutationOutcome,
@@ -26,10 +26,11 @@ use crate::features::server::ports::{
 };
 use crate::features::server::profile::local_server_runtime_profile_for;
 use crate::foundation::error::{KernelError, KernelResult};
-use crate::foundation::layout::RuntimeLayoutResolver;
+use crate::foundation::layout::{RuntimeLayout, RuntimeLayoutResolver};
 
 use super::common::{
-    build_server_spec, ensure_server_spec_launchable, resolve_server_runtime_target,
+    build_server_spec, cluster_chat_model_target, ensure_server_spec_launchable,
+    resolve_server_runtime_target, resolve_server_runtime_target_identity,
     server_runtime_backend_for_format, server_store_layout,
 };
 use super::port::{
@@ -250,44 +251,84 @@ impl<'a> StdServerUseCase<'a> {
         &self,
         request: ServerResolveForStartRequest,
     ) -> KernelResult<ServerStartAuthorization> {
-        let preflight = self.inspect_server(ServerInspectRequest {
-            layout: request.layout.clone(),
-            selector: request.selector.clone(),
-        })?;
-        let permit = match self.coordinator.acquire(
-            &preflight.layout,
-            ResourceLockRequest::new(
-                "start-server",
-                server_transition_locks(&preflight.inspection.spec),
-            ),
-        )? {
-            Ok(permit) => permit,
-            Err(busy) => {
-                return Err(KernelError::ResourceCoordinationUnavailable(format!(
-                    "{}; retry after {} ms",
-                    busy.description, busy.retry_after_millis
+        for attempt in 0..3 {
+            let preflight = self.inspect_server(ServerInspectRequest {
+                layout: request.layout.clone(),
+                selector: request.selector.clone(),
+            })?;
+            let locks = self.server_start_locks(&preflight.layout, &preflight.inspection.spec)?;
+            let permit =
+                self.acquire_start_permit(&preflight.layout, "start-server", locks.clone())?;
+            let result = self.inspect_server(ServerInspectRequest {
+                layout: request.layout.clone(),
+                selector: request.selector.clone(),
+            })?;
+            if locks != self.server_start_locks(&result.layout, &result.inspection.spec)? {
+                // No upgrade or nested acquisition: release the full set before retrying.
+                release_before_start_retry(permit, attempt);
+                continue;
+            }
+            ensure_server_spec_launchable(
+                &result.inspection.spec,
+                &result.layout,
+                self.model_catalog,
+                self.model_proofs,
+                self.cluster_catalog,
+                request.allow_unverified,
+                Some(&permit),
+            )?;
+            if result.inspection.running {
+                return Err(KernelError::ServerRuntimeUnavailable(format!(
+                    "server `{}` is already running",
+                    result.inspection.spec.short_ref
                 )));
             }
-        };
-        let result = self.inspect_server(ServerInspectRequest {
-            layout: request.layout,
-            selector: request.selector,
-        })?;
-        ensure_server_spec_launchable(
-            &result.inspection.spec,
-            &result.layout,
-            self.model_catalog,
-            self.model_proofs,
-            self.cluster_catalog,
-            request.allow_unverified,
-        )?;
-        if result.inspection.running {
-            return Err(KernelError::ServerRuntimeUnavailable(format!(
-                "server `{}` is already running",
-                result.inspection.spec.short_ref
-            )));
+            return Ok(ServerStartAuthorization { result, permit });
         }
-        Ok(ServerStartAuthorization { result, permit })
+        Err(unstable_start_resources())
+    }
+
+    fn server_start_locks(
+        &self,
+        layout: &RuntimeLayout,
+        spec: &ServerSpec,
+    ) -> KernelResult<Vec<(ResourceKey, ResourceLockMode)>> {
+        let mut locks = server_transition_locks(spec);
+        if let Some(cluster_ref) = spec.cluster_ref.as_ref() {
+            let (model_ref, _) =
+                cluster_chat_model_target(cluster_ref, layout, self.cluster_catalog)?;
+            locks.push((
+                ResourceKey::new(ResourceKind::Model, model_ref.to_string()),
+                ResourceLockMode::Shared,
+            ));
+            locks.push((
+                ResourceKey::new(
+                    ResourceKind::ModelCapability,
+                    format!(
+                        "{model_ref}|{}",
+                        ServerCapability::Chat.required_model_capability()
+                    ),
+                ),
+                ResourceLockMode::Shared,
+            ));
+        }
+        Ok(locks)
+    }
+
+    fn acquire_start_permit(
+        &self,
+        layout: &RuntimeLayout,
+        operation: &str,
+        locks: Vec<(ResourceKey, ResourceLockMode)>,
+    ) -> KernelResult<ResourcePermit> {
+        self.coordinator
+            .acquire(layout, ResourceLockRequest::new(operation, locks))?
+            .map_err(|busy| {
+                KernelError::ResourceCoordinationUnavailable(format!(
+                    "{}; retry after {} ms",
+                    busy.description, busy.retry_after_millis
+                ))
+            })
     }
 }
 
@@ -295,113 +336,91 @@ impl ServerSpecUseCase for StdServerUseCase<'_> {
     fn prepare_server(&self, request: ServerPrepareRequest) -> KernelResult<ServerPrepareResult> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = server_store_layout(&layout);
-        let target = resolve_server_runtime_target(
-            &request.target,
-            &layout,
-            self.model_catalog,
-            self.model_proofs,
-            self.cluster_catalog,
-            request.allow_unverified,
-        )?;
-        let spec = build_server_spec(
-            target.clone(),
-            request.host.as_deref(),
-            request.port,
-            request.lazy_load,
-            request.idle_seconds,
-            request.model_idle_seconds,
-            self.clock.now_rfc3339()?,
-            self.identity,
-        )?;
-        let mut locks = vec![
-            (ResourceKey::maintenance(), ResourceLockMode::Shared),
-            (
-                ResourceKey::new(ResourceKind::Server, spec.server_ref.to_string()),
-                ResourceLockMode::Exclusive,
-            ),
-        ];
-        match &target {
-            crate::features::server::domain::ServerRuntimeTarget::LocalModel {
-                model_ref,
-                capability,
-                ..
-            } => {
-                locks.push((
-                    ResourceKey::new(ResourceKind::Model, model_ref.to_string()),
-                    ResourceLockMode::Shared,
-                ));
-                locks.push((
-                    ResourceKey::new(
-                        ResourceKind::ModelCapability,
-                        format!("{model_ref}|{}", capability.required_model_capability()),
-                    ),
-                    ResourceLockMode::Shared,
-                ));
-            }
-            crate::features::server::domain::ServerRuntimeTarget::Cluster { cluster_ref } => {
-                locks.push((
-                    ResourceKey::new(ResourceKind::Cluster, cluster_ref.to_string()),
-                    ResourceLockMode::Shared,
-                ));
-            }
-            crate::features::server::domain::ServerRuntimeTarget::CloudProvider { .. } => {}
-        }
-        let _permit = match self.coordinator.acquire(
-            &layout,
-            ResourceLockRequest::new("prepare-server-spec", locks),
-        )? {
-            Ok(permit) => permit,
-            Err(busy) => {
-                return Err(KernelError::ResourceCoordinationUnavailable(format!(
-                    "{}; retry after {} ms",
-                    busy.description, busy.retry_after_millis
-                )))
-            }
-        };
-        resolve_server_runtime_target(
-            &request.target,
-            &layout,
-            self.model_catalog,
-            self.model_proofs,
-            self.cluster_catalog,
-            request.allow_unverified,
-        )?;
-        let selector =
-            crate::features::server::domain::ServerRefSelector::parse(spec.server_ref.as_str())
-                .map_err(|err| KernelError::ServerStoreUnavailable(err.to_string()))?;
-
-        if store.server_spec_path(spec.server_ref.as_str()).exists() {
-            let inspection = self.catalog.inspect_server(&store, &selector)?;
-            ensure_server_spec_launchable(
-                &inspection.spec,
+        for attempt in 0..3 {
+            let target = resolve_server_runtime_target(
+                &request.target,
                 &layout,
                 self.model_catalog,
                 self.model_proofs,
                 self.cluster_catalog,
                 request.allow_unverified,
+                None,
             )?;
+            let spec = build_server_spec(
+                target.clone(),
+                request.host.as_deref(),
+                request.port,
+                request.lazy_load,
+                request.idle_seconds,
+                request.model_idle_seconds,
+                self.clock.now_rfc3339()?,
+                self.identity,
+            )?;
+            let locks = self.server_start_locks(&layout, &spec)?;
+            let permit =
+                self.acquire_start_permit(&layout, "prepare-server-spec", locks.clone())?;
+            if locks != self.server_start_locks(&layout, &spec)? {
+                release_before_start_retry(permit, attempt);
+                continue;
+            }
+            let current_target = resolve_server_runtime_target_identity(
+                &request.target,
+                &layout,
+                self.model_catalog,
+                self.cluster_catalog,
+            )?;
+            if current_target != target {
+                release_before_start_retry(permit, attempt);
+                continue;
+            }
+            resolve_server_runtime_target(
+                &request.target,
+                &layout,
+                self.model_catalog,
+                self.model_proofs,
+                self.cluster_catalog,
+                request.allow_unverified,
+                Some(&permit),
+            )?;
+            let selector =
+                crate::features::server::domain::ServerRefSelector::parse(spec.server_ref.as_str())
+                    .map_err(|err| KernelError::ServerStoreUnavailable(err.to_string()))?;
+
+            if store.server_spec_path(spec.server_ref.as_str()).exists() {
+                let inspection = self.catalog.inspect_server(&store, &selector)?;
+                ensure_server_spec_launchable(
+                    &inspection.spec,
+                    &layout,
+                    self.model_catalog,
+                    self.model_proofs,
+                    self.cluster_catalog,
+                    request.allow_unverified,
+                    Some(&permit),
+                )?;
+                return Ok(ServerPrepareResult {
+                    layout,
+                    store,
+                    outcome: ServerPrepareOutcome {
+                        inspection,
+                        created: false,
+                    },
+                });
+            }
+
+            self.layout_initializer.ensure_server_store_layout(&store)?;
+            self.catalog.save_server_spec(&store, &spec)?;
+            let inspection = self.catalog.inspect_server(&store, &selector)?;
+
             return Ok(ServerPrepareResult {
                 layout,
                 store,
                 outcome: ServerPrepareOutcome {
                     inspection,
-                    created: false,
+                    created: true,
                 },
             });
         }
-
-        self.layout_initializer.ensure_server_store_layout(&store)?;
-        self.catalog.save_server_spec(&store, &spec)?;
-        let inspection = self.catalog.inspect_server(&store, &selector)?;
-
-        Ok(ServerPrepareResult {
-            layout,
-            store,
-            outcome: ServerPrepareOutcome {
-                inspection,
-                created: true,
-            },
-        })
+        Err(unstable_start_resources())
     }
 
     fn list_servers(&self, request: ServerListRequest) -> KernelResult<ServerListResult> {
@@ -593,4 +612,26 @@ fn server_transition_locks(
         ));
     }
     locks
+}
+
+fn unstable_start_resources() -> KernelError {
+    KernelError::ResourceStateUnstable {
+        resource: "server-start-targets".into(),
+        description: "server start targets changed during three coordination attempts; retry after model and cluster updates finish".into(),
+        retry_after_millis: 250,
+    }
+}
+
+fn release_before_start_retry(permit: ResourcePermit, attempt: u32) {
+    let operation_id = permit.operation_id().to_owned();
+    drop(permit);
+    if attempt < 2 {
+        thread::sleep(bounded_retry_delay(
+            &operation_id,
+            std::process::id(),
+            attempt + 1,
+            25,
+            75,
+        ));
+    }
 }

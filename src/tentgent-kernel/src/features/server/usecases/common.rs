@@ -13,6 +13,7 @@ use crate::features::model::file_diagnostics::{
     model_file_diagnostics, model_file_diagnostics_block_execution, model_file_diagnostics_summary,
 };
 use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore};
+use crate::features::resource_coordination::ResourcePermit;
 use crate::features::server::domain::{
     ensure_server_model_capability, infer_server_capability_from_model_capabilities,
     normalize_server_host, parse_server_runtime_selection, CloudProvider, ServerCapability,
@@ -46,6 +47,50 @@ pub(super) fn resolve_server_runtime_target(
     model_proofs: &dyn ModelCapabilityProofStore,
     cluster_catalog: &dyn ClusterCatalogStore,
     allow_unverified: bool,
+    permit: Option<&ResourcePermit>,
+) -> KernelResult<ServerRuntimeTarget> {
+    let resolved =
+        resolve_server_runtime_target_identity(target, layout, model_catalog, cluster_catalog)?;
+    match &resolved {
+        ServerRuntimeTarget::LocalModel {
+            model_ref,
+            capability,
+            runtime_profile,
+            ..
+        } => {
+            let metadata =
+                model_catalog.load_model_metadata(&model_store_layout(layout), model_ref)?;
+            ensure_local_server_support_status_allows_start(
+                &metadata,
+                *capability,
+                layout,
+                model_proofs,
+                runtime_profile.as_ref(),
+                allow_unverified,
+                permit,
+            )?;
+        }
+        ServerRuntimeTarget::Cluster { cluster_ref } => ensure_cluster_chat_launchable(
+            cluster_ref,
+            layout,
+            cluster_catalog,
+            model_catalog,
+            model_proofs,
+            allow_unverified,
+            permit,
+        )?,
+        ServerRuntimeTarget::CloudProvider { .. } => {}
+    }
+    Ok(resolved)
+}
+
+/// Resolves identity before proof access so a changed capability can trigger a
+/// complete lock-set retry rather than a nested acquisition or lock upgrade.
+pub(super) fn resolve_server_runtime_target_identity(
+    target: &ServerPrepareTarget,
+    layout: &RuntimeLayout,
+    model_catalog: &dyn ModelCatalogStore,
+    cluster_catalog: &dyn ClusterCatalogStore,
 ) -> KernelResult<ServerRuntimeTarget> {
     let (runtime_ref, capability) = match target {
         ServerPrepareTarget::RuntimeRef {
@@ -53,14 +98,7 @@ pub(super) fn resolve_server_runtime_target(
             capability,
         } => (runtime_ref, *capability),
         ServerPrepareTarget::Cluster { cluster_ref } => {
-            ensure_cluster_chat_launchable(
-                cluster_ref,
-                layout,
-                cluster_catalog,
-                model_catalog,
-                model_proofs,
-                allow_unverified,
-            )?;
+            cluster_chat_model_target(cluster_ref, layout, cluster_catalog)?;
             return Ok(ServerRuntimeTarget::Cluster {
                 cluster_ref: cluster_ref.clone(),
             });
@@ -88,15 +126,6 @@ pub(super) fn resolve_server_runtime_target(
             let backend = server_runtime_backend_for_format(capability, metadata.primary_format)?;
             let runtime_profile = resolve_local_server_runtime_profile(capability, backend)?;
             ensure_model_files_allow_local_server_start(&model_store, metadata, capability)?;
-            ensure_local_server_support_status_allows_start(
-                metadata,
-                capability,
-                layout,
-                model_proofs,
-                runtime_profile.as_ref(),
-                allow_unverified,
-            )?;
-
             Ok(ServerRuntimeTarget::LocalModel {
                 model_ref: metadata.model_ref.clone(),
                 backend,
@@ -141,6 +170,7 @@ pub(super) fn ensure_server_spec_launchable(
     model_proofs: &dyn ModelCapabilityProofStore,
     cluster_catalog: &dyn ClusterCatalogStore,
     allow_unverified: bool,
+    permit: Option<&ResourcePermit>,
 ) -> KernelResult<()> {
     match spec.runtime_kind {
         ServerRuntimeKind::Cloud => {
@@ -188,6 +218,7 @@ pub(super) fn ensure_server_spec_launchable(
                 model_proofs,
                 spec.runtime_profile.as_ref(),
                 allow_unverified,
+                permit,
             )?;
             Ok(())
         }
@@ -205,6 +236,7 @@ pub(super) fn ensure_server_spec_launchable(
                 model_catalog,
                 model_proofs,
                 allow_unverified,
+                permit,
             )
         }
     }
@@ -399,30 +431,12 @@ fn ensure_cluster_chat_launchable(
     model_catalog: &dyn ModelCatalogStore,
     model_proofs: &dyn ModelCapabilityProofStore,
     allow_unverified: bool,
+    permit: Option<&ResourcePermit>,
 ) -> KernelResult<()> {
-    let cluster_store = ClusterStoreLayout::from_home_dir(layout.home_dir.clone());
-    let inspection = cluster_catalog.inspect_cluster(&cluster_store, cluster_ref)?;
-    let target = inspection
-        .definition
-        .routes
-        .get(&ClusterRouteKey::Chat)
-        .ok_or_else(|| {
-            KernelError::UnsupportedTarget(format!(
-                "cluster `{cluster_ref}` cannot run as a server without a `routes.chat` target"
-            ))
-        })?;
-    let ClusterRouteTarget::LocalModel {
-        model_ref,
-        runtime_profile,
-    } = target
-    else {
-        return Err(KernelError::UnsupportedTarget(format!(
-            "cluster `{cluster_ref}` route `chat` must use a local-model target in this release"
-        )));
-    };
-
+    let (model_ref, runtime_profile) =
+        cluster_chat_model_target(cluster_ref, layout, cluster_catalog)?;
     let model_store = model_store_layout(layout);
-    let metadata = model_catalog.load_model_metadata(&model_store, model_ref)?;
+    let metadata = model_catalog.load_model_metadata(&model_store, &model_ref)?;
     let capability = ServerCapability::Chat;
     ensure_model_compatible_with_server(
         capability,
@@ -445,7 +459,41 @@ fn ensure_cluster_chat_launchable(
         model_proofs,
         effective_runtime_profile.as_ref(),
         allow_unverified,
+        permit,
     )
+}
+
+/// Resolves the same chat target used by the launch gate, without reading proofs.
+pub(super) fn cluster_chat_model_target(
+    cluster_ref: &crate::features::cluster::domain::ClusterRef,
+    layout: &RuntimeLayout,
+    cluster_catalog: &dyn ClusterCatalogStore,
+) -> KernelResult<(
+    crate::features::model::domain::ModelRef,
+    Option<ServerRuntimeProfileSelection>,
+)> {
+    let cluster_store = ClusterStoreLayout::from_home_dir(layout.home_dir.clone());
+    let inspection = cluster_catalog.inspect_cluster(&cluster_store, cluster_ref)?;
+    let target = inspection
+        .definition
+        .routes
+        .get(&ClusterRouteKey::Chat)
+        .ok_or_else(|| {
+            KernelError::UnsupportedTarget(format!(
+                "cluster `{cluster_ref}` cannot run as a server without a `routes.chat` target"
+            ))
+        })?;
+    let ClusterRouteTarget::LocalModel {
+        model_ref,
+        runtime_profile,
+    } = target
+    else {
+        return Err(KernelError::UnsupportedTarget(format!(
+            "cluster `{cluster_ref}` route `chat` must use a local-model target in this release"
+        )));
+    };
+
+    Ok((model_ref.clone(), runtime_profile.clone()))
 }
 
 fn ensure_model_files_allow_local_server_start(

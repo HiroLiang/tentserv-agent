@@ -790,7 +790,7 @@ fn standard_model_capability_proof_usecase_sanitizes_recorded_errors() {
             runtime_profile: Some("local-chat-mlx".to_string()),
             runtime_profile_version: Some(1),
             error: Some(format!(
-                "runtime failed\nOPENAI_API_KEY\n{}",
+                "runtime failed\nOPENAI_API_KEY=synthetic-env-secret\nAuthorization: Bearer synthetic-header-secret\napi_key=synthetic-key-secret\n{}",
                 "x".repeat(600)
             )),
         })
@@ -798,9 +798,26 @@ fn standard_model_capability_proof_usecase_sanitizes_recorded_errors() {
 
     let error = recorded.proof.error.as_deref().expect("recorded error");
     assert!(!error.contains("OPENAI_API_KEY"));
+    assert!(!error.contains("synthetic-env-secret"));
+    assert!(!error.contains("synthetic-header-secret"));
+    assert!(!error.contains("synthetic-key-secret"));
     assert!(error.contains("[redacted-env]"));
     assert!(!error.contains('\n'));
     assert!(error.chars().count() <= 503);
+
+    for path in [
+        recorded
+            .store
+            .capability_proof_path(&recorded.proof.model_ref, recorded.proof.capability),
+        recorded.store.support_proof_path(
+            &crate::features::model::domain::ModelCapabilityProofKey::from_proof(&recorded.proof),
+        ),
+    ] {
+        let body = fs::read_to_string(path).expect("persisted proof");
+        assert!(!body.contains("synthetic-env-secret"));
+        assert!(!body.contains("synthetic-header-secret"));
+        assert!(!body.contains("synthetic-key-secret"));
+    }
 
     let _ = fs::remove_dir_all(home);
 }

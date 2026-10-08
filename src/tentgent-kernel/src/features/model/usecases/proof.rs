@@ -5,6 +5,7 @@ use crate::features::model::domain::{
     ModelCapabilityProofStatus, ModelFormat, ModelMetadata,
 };
 use crate::features::model::ports::{ModelCapabilityProofStore, ModelCatalogStore, ModelClock};
+use crate::features::model::proof_context::ModelProofContext;
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayoutResolver;
 
@@ -59,7 +60,6 @@ impl ModelRuntimeExecutionEvidenceRecorder for StdModelRuntimeExecutionEvidenceR
         &self,
         request: ModelRuntimeExecutionEvidenceRecordRequest,
     ) -> KernelResult<ModelRuntimeExecutionEvidenceRecordResult> {
-        let store = model_store_layout(&request.layout);
         let proof = build_proof(
             &request.metadata,
             ProofBuildInput {
@@ -73,7 +73,10 @@ impl ModelRuntimeExecutionEvidenceRecorder for StdModelRuntimeExecutionEvidenceR
                 checked_at: self.clock.now_rfc3339()?,
             },
         );
-        self.proofs.save_capability_proof(&store, &proof)?;
+        self.proofs.save_capability_proof(
+            &ModelProofContext::new(&request.layout).with_expected_metadata(&request.metadata),
+            &proof,
+        )?;
 
         Ok(ModelRuntimeExecutionEvidenceRecordResult { proof })
     }
@@ -87,9 +90,10 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = model_store_layout(&layout);
         let model = self.catalog.inspect_model(&store, &request.selector)?;
-        let proofs = self
-            .proofs
-            .list_capability_proofs(&store, &model.metadata.model_ref)?;
+        let proofs = self.proofs.list_capability_proofs(
+            &ModelProofContext::new(&layout).with_expected_metadata(&model.metadata),
+            &model.metadata.model_ref,
+        )?;
 
         Ok(ModelCapabilityProofListResult {
             layout,
@@ -132,7 +136,10 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
                 checked_at: self.clock.now_rfc3339()?,
             },
         );
-        self.proofs.save_capability_proof(&store, &proof)?;
+        self.proofs.save_capability_proof(
+            &ModelProofContext::new(&layout).with_expected_metadata(&model.metadata),
+            &proof,
+        )?;
 
         Ok(ModelCapabilityProofRecordResult {
             layout,
@@ -162,7 +169,10 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
                 checked_at: self.clock.now_rfc3339()?,
             },
         );
-        self.proofs.save_capability_proof(&store, &proof)?;
+        self.proofs.save_capability_proof(
+            &ModelProofContext::new(&layout).with_expected_metadata(&model.metadata),
+            &proof,
+        )?;
 
         Ok(ModelCapabilityProofRecordResult {
             layout,
@@ -179,15 +189,8 @@ impl ModelCapabilityProofUseCase for StdModelCapabilityProofUseCase<'_> {
         let layout = self.layout_resolver.resolve(request.layout)?;
         let store = model_store_layout(&layout);
         let model = self.catalog.inspect_model(&store, &request.selector)?;
-        let removed_proof_count = self
-            .proofs
-            .list_capability_proofs(&store, &model.metadata.model_ref)?
-            .into_iter()
-            .filter(|proof| proof.capability == request.capability)
-            .count();
-
-        self.proofs.remove_capability_proof(
-            &store,
+        let removed_proof_count = self.proofs.remove_capability_proof(
+            &ModelProofContext::new(&layout).with_expected_metadata(&model.metadata),
             &model.metadata.model_ref,
             request.capability,
         )?;
@@ -232,35 +235,7 @@ fn build_proof(metadata: &ModelMetadata, input: ProofBuildInput) -> ModelCapabil
 }
 
 fn sanitize_proof_error(error: String) -> String {
-    const MAX_PROOF_ERROR_CHARS: usize = 500;
-    let mut sanitized = error
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    for marker in [
-        "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "GEMINI_API_KEY",
-        "GOOGLE_API_KEY",
-        "HF_TOKEN",
-        "HUGGING_FACE_HUB_TOKEN",
-    ] {
-        sanitized = sanitized.replace(marker, "[redacted-env]");
-    }
-
-    if sanitized.chars().count() > MAX_PROOF_ERROR_CHARS {
-        let mut truncated = sanitized
-            .chars()
-            .take(MAX_PROOF_ERROR_CHARS)
-            .collect::<String>();
-        truncated.push_str("...");
-        truncated
-    } else {
-        sanitized
-    }
+    super::sanitize_proof_error(error)
 }
 
 fn backend_label(

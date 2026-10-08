@@ -73,6 +73,125 @@ fn shared_holders_coexist_and_exclusive_times_out() {
 }
 
 #[test]
+fn permit_covers_only_acquired_keys_and_sufficient_modes() {
+    let root = temp_root("permit-modes");
+    let layout = runtime_layout(&root);
+    let shared = ResourceKey::new(ResourceKind::Model, "shared");
+    let exclusive = ResourceKey::new(ResourceKind::ModelCapability, "exclusive");
+    let missing = ResourceKey::new(ResourceKind::ModelCapability, "missing");
+    let requirements = vec![
+        (shared.clone(), ResourceLockMode::Shared),
+        (exclusive.clone(), ResourceLockMode::Exclusive),
+    ];
+    let permit = FileResourceCoordinator
+        .acquire(
+            &layout,
+            ResourceLockRequest::new("cover", requirements.clone()),
+        )
+        .unwrap()
+        .unwrap();
+
+    assert!(permit.covers(&shared, ResourceLockMode::Shared));
+    assert!(!permit.covers(&shared, ResourceLockMode::Exclusive));
+    assert!(permit.covers(&exclusive, ResourceLockMode::Shared));
+    assert!(permit.covers(&exclusive, ResourceLockMode::Exclusive));
+    assert!(!permit.covers(&missing, ResourceLockMode::Shared));
+    assert!(!permit.covers(&missing, ResourceLockMode::Exclusive));
+    assert!(permit.covers_all(&requirements));
+    assert!(permit.covers_all(&[]));
+    assert!(!permit.covers_all(&[(shared, ResourceLockMode::Exclusive)]));
+    assert!(!permit.covers_all(&[(missing, ResourceLockMode::Shared)]));
+
+    drop(permit);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn permit_records_canonical_final_modes_after_duplicate_requests() {
+    let root = temp_root("permit-canonical");
+    let layout = runtime_layout(&root);
+    let model = ResourceKey::new(ResourceKind::Model, "model");
+    let capability = ResourceKey::new(ResourceKind::ModelCapability, "model:chat");
+
+    for modes in [
+        [ResourceLockMode::Shared, ResourceLockMode::Exclusive],
+        [ResourceLockMode::Exclusive, ResourceLockMode::Shared],
+    ] {
+        let permit = FileResourceCoordinator
+            .acquire(
+                &layout,
+                ResourceLockRequest::new(
+                    "canonical",
+                    vec![
+                        (capability.clone(), modes[0]),
+                        (model.clone(), ResourceLockMode::Shared),
+                        (capability.clone(), modes[1]),
+                    ],
+                ),
+            )
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(permit.keys(), &[model.clone(), capability.clone()]);
+        assert!(permit.covers(&capability, ResourceLockMode::Exclusive));
+        assert!(permit.covers(&capability, ResourceLockMode::Shared));
+        assert!(!permit.covers(&model, ResourceLockMode::Exclusive));
+        let busy = FileResourceCoordinator
+            .acquire(
+                &layout,
+                ResourceLockRequest::new(
+                    "verify-actual-exclusive",
+                    vec![(capability.clone(), ResourceLockMode::Shared)],
+                )
+                .with_limits(Duration::from_millis(20), 1),
+            )
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(busy.key, capability);
+        drop(permit);
+    }
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn permit_scope_uses_actual_coordination_root_not_only_home_or_keys() {
+    let root = temp_root("permit-scope");
+    let first_layout = runtime_layout(&root.join("first"));
+    let second_layout = runtime_layout(&root.join("second"));
+    let mut alternate_locks = first_layout.clone();
+    alternate_locks.locks_dir = root.join("alternate-locks");
+    let key = ResourceKey::new(ResourceKind::ModelCapability, "model:chat");
+    let requirement = vec![(key, ResourceLockMode::Exclusive)];
+    let mut permits = Vec::new();
+
+    for layout in [&first_layout, &second_layout, &alternate_locks] {
+        let permit = FileResourceCoordinator
+            .acquire(
+                layout,
+                ResourceLockRequest::new("scope", requirement.clone()),
+            )
+            .unwrap()
+            .unwrap();
+        assert!(permit.covers_all(&requirement));
+        assert_eq!(permit.coordination_root(), super::coordination_root(layout));
+        permits.push(permit);
+    }
+
+    assert_ne!(
+        permits[0].coordination_root(),
+        permits[1].coordination_root()
+    );
+    assert_ne!(
+        permits[0].coordination_root(),
+        permits[2].coordination_root()
+    );
+    assert_eq!(first_layout.home_dir, alternate_locks.home_dir);
+    drop(permits);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn partial_multi_resource_acquisition_is_released_before_retry() {
     let root = temp_root("partial-release");
     let layout = runtime_layout(&root);

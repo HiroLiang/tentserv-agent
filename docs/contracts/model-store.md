@@ -17,6 +17,9 @@ TENTGENT_HOME/
     │   └── <model_ref>/
     │       ├── model.toml
     │       ├── manifest.json
+    │       ├── capability-proofs/<capability>.toml
+    │       ├── support-proofs/<capability>/<partial_key>.toml
+    │       ├── support-proofs/v2/<capability>/<tuple_sha256>.toml
     │       └── variants/
     │           └── <primary_format>/
     │               ├── variant.toml
@@ -127,6 +130,12 @@ input preserves the stored metadata. Explicit capability input updates the
 existing stored model metadata before returning the deduplicated outcome. This
 metadata update does not copy content and does not change `model_ref`.
 
+Finalization holds shared runtime maintenance and exclusive canonical model
+coordination after staging/hashing. It rereads existence and rejects metadata
+whose body reference differs from the manifest-derived reference before any
+write. This excludes proof snapshots and deletion during the filesystem
+commit; it does not change the existing deduplication capability policy.
+
 Hugging Face pull uses compact registry and snapshot metadata as best-effort
 evidence. `feature-extraction`, `sentence-similarity`,
 `sentence-transformers`, or `sentence_bert_config.json` can classify
@@ -213,8 +222,8 @@ server routes for media families remain separate contracts.
 
 ## Capability Proof Metadata
 
-Capability proofs record the latest observed result for a
-`model_ref + capability` pair. They are separate from declared
+Capability proofs record local evidence at an explicitly limited scope. They
+are separate from declared
 `model_capabilities`: declaration says the model should be routed to an
 endpoint family, while proof records whether a local probe or runtime event has
 confirmed or failed that path.
@@ -227,49 +236,36 @@ effective `failed`, and either proof can become effectively `stale` when its
 model, capability, backend, runtime, platform, or resolver assumptions no
 longer match the current tuple.
 
-The proof and support hint schema is defined in
-[model-support-proof-schema.md](./model-support-proof-schema.md). The schema
-separates local proof from built-in or shared support hints. Local proof records
-may explain `verified` or `failed`; support hints may explain `supported` or
-`unsupported`.
+The [proof schema](./model-support-proof-schema.md) owns generation-specific
+fields and producer rules; [compatibility tuple v2](./compatibility-tuple-v2.md)
+owns complete identity. Local proof may explain `verified`/`failed`; a hint may
+explain `supported`/`unsupported` but is not a local execution result.
 
-Tuple-aware proofs live under the canonical model directory:
+Three generations coexist inside the canonical model directory: legacy latest,
+tuple-aware v1, and complete v2 (paths above). Existing producers retain v1 plus
+the latest mirror. Complete v2 writes do not project into either old shape.
+Old files remain readable; missing dimensions are never backfilled from the
+current machine. Legacy gates retain their compatibility behavior until #128.
 
-```text
-models/store/<model_ref>/support-proofs/<capability>/<proof_key>.toml
-```
+Manual verify remains a metadata-only check. Only a terminal eager worker
+preload outcome writes `server-start`; process launch, lazy start, readiness
+observation timeout, and transport failure do not. Preload proves loading,
+not an inference shape. Resolved local execution records its actual outcome;
+Cloud, lookup, and request-validation failures do not create local evidence.
 
-The legacy latest-proof path remains readable and writable for compatibility:
+All proof operations coordinate with model deletion and capability changes
+using [proof transactions](./resource-blockers.md#proof-transactions). Reread
+model metadata while holding the shared model lock so a late writer cannot
+recreate a removed model. Proofs themselves remain non-blocking evidence;
+existing stored references, leases, and runtime ownership still guard deletion.
 
-```text
-models/store/<model_ref>/capability-proofs/<capability>.toml
-```
-
-Current proof records store a legacy subset:
-
-- `model_ref`
-- `capability`
-- `status = "verified" | "failed"`
-- `source = "manual-probe" | "server-start" | "endpoint-smoke" |
-  "runtime-execution"`
-- `primary_format`
-- optional `mlx_runtime_family`
-- `backend`
-- optional `runtime_version`
-- optional `server_ref`
-- `checked_at`
-- optional `error`
-
-The `v0.7.0` support-status implementation should expand records toward the
-versioned schema without breaking reads of the legacy subset.
-
-The current manual probe is metadata-level: it verifies that the stored model
-advertises the requested capability and records the inferred backend label. A
-server start writes a `server-start` proof for local model-bound servers after
-the launch path succeeds or fails. Resolved local runtime attempts write
-`runtime-execution` proofs after execution succeeds or fails. Endpoint-level
-smoke proofs can later reuse the same file shape with
-`source = "endpoint-smoke"`.
+New capability-wide clear removes all proof generations and counts logical
+records, not mirrors. Exact v2 remove touches only its selected tuple; neither
+operation removes model content. An old binary cannot see or clear v2, so its
+clear operation may leave records visible after re-upgrade. Atomic replacement
+is per file, not multi-file crash rollback; partial failures are explicit and
+retryable. No automatic migration or concurrent old/new writer guarantee is
+implied.
 
 ## Hugging Face Pull Contract
 
