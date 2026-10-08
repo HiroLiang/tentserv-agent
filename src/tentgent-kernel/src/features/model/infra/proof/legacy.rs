@@ -3,6 +3,7 @@
 use std::{fs, io::Read, path::Path};
 
 use crate::features::model::{
+    compatibility::{CompatibilityEvidence, EvidenceGeneration},
     domain::{
         ModelCapability, ModelCapabilityProof, ModelCapabilityProofKey, ModelRef, ModelStoreLayout,
         MODEL_CAPABILITY_CANONICAL_ORDER,
@@ -14,6 +15,30 @@ use crate::foundation::{error::KernelResult, fs::atomic_write};
 use super::super::error::{model_store_error, path_error};
 
 pub(super) const MAX_PROOF_BYTES: u64 = 64 * 1024;
+
+pub(super) fn evidence(
+    store: &ModelStoreLayout,
+    model_ref: &ModelRef,
+    capability: Option<ModelCapability>,
+) -> KernelResult<Vec<CompatibilityEvidence>> {
+    let support = list(store, model_ref, capability, false)?;
+    list(store, model_ref, capability, true)?
+        .into_iter()
+        .map(|proof| {
+            let key = ModelCapabilityProofKey::from_proof(&proof);
+            let generation = if support
+                .iter()
+                .any(|current| ModelCapabilityProofKey::from_proof(current) == key)
+            {
+                EvidenceGeneration::TupleAwareV1
+            } else {
+                EvidenceGeneration::LegacyLatest
+            };
+            CompatibilityEvidence::from_legacy(proof, generation)
+                .map_err(|err| model_store_error(err.to_string()))
+        })
+        .collect()
+}
 
 pub(super) fn list(
     store: &ModelStoreLayout,

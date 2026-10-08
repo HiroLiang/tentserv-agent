@@ -82,6 +82,27 @@ impl ModelStoreLayout {
             .join(format!("{}.toml", capability.as_str()))
     }
 
+    pub fn compatibility_proofs_dir(&self, model_ref: &ModelRef) -> PathBuf {
+        self.support_proofs_dir(model_ref).join("v2")
+    }
+
+    pub fn compatibility_proofs_capability_dir(
+        &self,
+        model_ref: &ModelRef,
+        capability: ModelCapability,
+    ) -> PathBuf {
+        self.compatibility_proofs_dir(model_ref)
+            .join(capability.as_str())
+    }
+
+    pub fn compatibility_proof_path(
+        &self,
+        key: &crate::features::model::compatibility::CompatibilityProofKey,
+    ) -> PathBuf {
+        self.compatibility_proofs_capability_dir(key.model_ref(), key.capability())
+            .join(key.filename())
+    }
+
     pub fn local_index_path(&self, model_ref: &ModelRef) -> PathBuf {
         self.local_index_dir
             .join(format!("{}.toml", model_ref.as_str()))

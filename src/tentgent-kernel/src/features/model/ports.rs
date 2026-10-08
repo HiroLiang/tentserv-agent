@@ -7,6 +7,9 @@ use crate::features::runtime::domain::PythonRuntimeLayout;
 use crate::foundation::error::KernelResult;
 use crate::foundation::layout::RuntimeLayout;
 
+use super::compatibility::{
+    CompatibilityEvidence, CompatibilityFilter, CompatibilityProofKey, CompatibilityProofV2,
+};
 use super::proof_context::ModelProofContext;
 
 use super::domain::{
@@ -177,6 +180,41 @@ pub trait ModelCapabilityProofStore {
         model_ref: &ModelRef,
         capability: ModelCapability,
     ) -> KernelResult<usize>;
+}
+
+/// Complete proof APIs. Partial filters enumerate records; they never authorize execution.
+pub trait ModelCompatibilityProofStore {
+    fn get_exact(
+        &self,
+        context: &ModelProofContext<'_>,
+        key: &CompatibilityProofKey,
+    ) -> KernelResult<Option<CompatibilityProofV2>>;
+
+    fn save_exact(
+        &self,
+        context: &ModelProofContext<'_>,
+        proof: &CompatibilityProofV2,
+    ) -> KernelResult<CompatibilityProofKey>;
+
+    fn list_exact(
+        &self,
+        context: &ModelProofContext<'_>,
+        model_ref: &ModelRef,
+        filter: &CompatibilityFilter,
+    ) -> KernelResult<Vec<CompatibilityProofV2>>;
+
+    fn remove_exact(
+        &self,
+        context: &ModelProofContext<'_>,
+        key: &CompatibilityProofKey,
+    ) -> KernelResult<bool>;
+
+    fn list_evidence(
+        &self,
+        context: &ModelProofContext<'_>,
+        model_ref: &ModelRef,
+        capability: Option<ModelCapability>,
+    ) -> KernelResult<Vec<CompatibilityEvidence>>;
 }
 
 /// Reads and writes source indexes that point back to canonical model_ref entries.
