@@ -1,6 +1,7 @@
 //! Model feature package.
 
 pub mod classification;
+pub mod compatibility;
 pub mod domain;
 pub mod file_diagnostics;
 pub mod infra;
