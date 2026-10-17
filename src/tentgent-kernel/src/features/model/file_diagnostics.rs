@@ -58,7 +58,7 @@ pub fn model_file_diagnostics(
     }
 
     match metadata.primary_format {
-        ModelFormat::Gguf => check_gguf_source(metadata, &source_path, &mut diagnostics),
+        ModelFormat::Gguf => check_gguf_source(&source_path, &mut diagnostics),
         ModelFormat::Safetensors | ModelFormat::Mlx => {
             check_config_source(metadata, &source_path, &mut diagnostics);
             if requires_tokenizer_assets(&metadata.model_capabilities) {
@@ -138,16 +138,14 @@ fn read_variant_source_path(
         .join(variant.relative_source_path))
 }
 
-fn check_gguf_source(
-    metadata: &ModelMetadata,
-    source_path: &Path,
-    diagnostics: &mut Vec<ModelFileDiagnostic>,
-) {
+fn check_gguf_source(source_path: &Path, diagnostics: &mut Vec<ModelFileDiagnostic>) {
+    let next_action = "import a source directory containing exactly one primary GGUF model with `tentgent model add <source-dir>`; optional mmproj projector sidecars may remain";
     if source_path.is_file() {
         if source_path
             .extension()
             .and_then(|extension| extension.to_str())
             .is_some_and(|extension| extension.eq_ignore_ascii_case("gguf"))
+            && !is_gguf_projector(source_path)
         {
             return;
         }
@@ -155,30 +153,41 @@ fn check_gguf_source(
             ModelFileDiagnosticSeverity::Blocking,
             ModelFileDiagnosticCode::MissingGgufFile,
             source_path.to_path_buf(),
-            "GGUF model source is not a .gguf file",
-            reinstall_action(metadata),
+            "GGUF model source is not a primary .gguf model file; mmproj files are multimodal projectors",
+            next_action,
         ));
         return;
     }
 
-    let matches = direct_child_files_with_extension(source_path, "gguf");
+    let matches: Vec<_> = direct_child_files_with_extension(source_path, "gguf")
+        .into_iter()
+        .filter(|path| !is_gguf_projector(path))
+        .collect();
     match matches.len() {
         0 => diagnostics.push(diagnostic(
             ModelFileDiagnosticSeverity::Blocking,
             ModelFileDiagnosticCode::MissingGgufFile,
             source_path.to_path_buf(),
-            "GGUF model source does not contain a .gguf file",
-            reinstall_action(metadata),
+            "GGUF model source does not contain a primary .gguf model file; mmproj files are multimodal projectors",
+            next_action,
         )),
         1 => {}
         _ => diagnostics.push(diagnostic(
             ModelFileDiagnosticSeverity::Blocking,
             ModelFileDiagnosticCode::MultipleGgufFiles,
             source_path.to_path_buf(),
-            "GGUF model source contains multiple .gguf files and the runtime expects exactly one",
-            reinstall_action(metadata),
+            "GGUF model source contains multiple primary .gguf model files and the runtime expects exactly one (excluding mmproj projectors)",
+            next_action,
         )),
     }
+}
+
+fn is_gguf_projector(path: &Path) -> bool {
+    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    let stem = stem.to_ascii_lowercase();
+    stem == "mmproj" || stem.starts_with("mmproj-") || stem.starts_with("mmproj_")
 }
 
 fn check_config_source(

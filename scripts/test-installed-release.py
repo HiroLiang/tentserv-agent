@@ -55,6 +55,39 @@ print(json.dumps({'python': sys.version, 'environment': str(expected_env),
                   'runtime_version': dist.version, 'modules': modules}, indent=2))
 """
 
+GGUF_SELECTION_PROBE = """
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from tentgent.runtime.backends.llama_cpp.common import resolve_gguf_path
+
+with TemporaryDirectory(prefix='tentgent-installed-gguf-') as temporary:
+    source = Path(temporary)
+    primary = source / 'gemma-3-4b-it-q4_0.gguf'
+    projector = source / 'mmproj-model-f16-4B.gguf'
+    primary.touch()
+    projector.touch()
+    assert resolve_gguf_path(source) == primary
+    assert projector.is_file(), 'selection must preserve the projector'
+
+    primary.unlink()
+    try:
+        resolve_gguf_path(source)
+    except FileNotFoundError:
+        pass
+    else:
+        raise AssertionError('a projector alone must not be selected as a model')
+
+    primary.touch()
+    (source / 'another-model.GGUF').touch()
+    try:
+        resolve_gguf_path(source)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('multiple primary GGUF models must remain ambiguous')
+print('Installed GGUF main/projector selection passed')
+"""
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -256,6 +289,7 @@ def smoke(args: argparse.Namespace) -> None:
             cwd=cwd,
             env=env,
         )
+        run([str(python), "-I", "-c", GGUF_SELECTION_PROBE], cwd=cwd, env=env)
         uv_name = "uv.exe" if windows else "uv"
         tools = list(
             (runtime_home / "runtime/bootstrap/uv").glob(

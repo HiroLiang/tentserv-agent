@@ -98,6 +98,21 @@ Primary format selection order:
 2. `safetensors` when detected
 3. `gguf` when detected
 
+### GGUF Runtime Selection
+
+The llama.cpp chat and embedding loaders and model-file diagnostics require
+exactly one primary GGUF file at the source root. Match `.gguf` extensions
+case-insensitively and consider only files, without searching subdirectories.
+Exclude projector sidecars whose filename stem is `mmproj` or starts with
+`mmproj-` or `mmproj_`, case-insensitively. For example,
+`gemma-3-4b-it-q4_0.gguf` plus `mmproj-model-f16-4B.gguf` selects the former.
+
+Projector-only sources, including a directly selected projector file, cannot
+load as a standalone model. Multiple primary files remain ambiguous, including
+multiple quantizations or split shards. Sidecars stay in the manifest and
+canonical store; selection must not delete files or change model identity.
+Ignoring a projector for text execution does not enable vision support.
+
 ## Model Capability Metadata
 
 `model_capabilities` describes the intended endpoint family for a model. It is
