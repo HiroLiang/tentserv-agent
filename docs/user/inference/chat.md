@@ -30,6 +30,12 @@ tentgent chat <model-ref> --session <session-ref> --message "user:Suggest a next
 
 `--message` is repeatable and accepts `system:`, `user:`, or `assistant:` prefixes. The default role is user. With no message, the CLI prompts once. Session behavior is explained in [Sessions](../sessions.md).
 
+GGUF text chat selects the single primary model file and ignores accompanying
+`mmproj` projector files. Keep those sidecars in the managed store. A source
+containing multiple primary GGUF files must be imported from a directory with
+one primary model; a projector by itself cannot run chat. This does not enable GGUF
+vision input. See the [selection contract](../../contracts/model-store.md#gguf-runtime-selection).
+
 ## Parameters
 
 Use the installed command’s `-h` or `--help` for required arguments and version-specific options.

@@ -19,6 +19,10 @@ Options:
   --tag <TAG>              Stable release tag to publish in the tap formula.
   --tap-repo <PATH>        Homebrew tap checkout. Defaults to `brew --repository hiroliang/tap`.
   --checksums-file <PATH>  Read release checksums from a local file instead of GitHub.
+  --revision <NUMBER>      Homebrew revision for a same-version replacement.
+                          Defaults to the existing revision for the same version,
+                          or zero (no revision line) for a different version.
+                          Positive revisions also refresh the download cache key.
   --dry-run                Print the formula diff without writing it.
   -h, --help               Print this help.
 USAGE
@@ -27,6 +31,7 @@ USAGE
 tag=""
 tap_repo=""
 checksums_file=""
+revision=""
 dry_run=false
 
 while [[ "$#" -gt 0 ]]; do
@@ -49,6 +54,12 @@ while [[ "$#" -gt 0 ]]; do
     --dry-run)
       dry_run=true
       shift
+      ;;
+    --revision)
+      [[ "$#" -ge 2 ]] || fail "--revision requires a value"
+      [[ "$2" =~ ^(0|[1-9][0-9]*)$ ]] || fail "--revision must be a nonnegative integer"
+      revision="$2"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -143,6 +154,8 @@ ARM_URL="${arm_url}" \
 ARM_SHA="${arm_sha}" \
 INTEL_URL="${intel_url}" \
 INTEL_SHA="${intel_sha}" \
+RELEASE_VERSION="${RELEASE_VERSION}" \
+FORMULA_REVISION="${revision}" \
 DRY_RUN="${dry_run}" \
 python3 - <<'PY'
 import difflib
@@ -161,18 +174,21 @@ targets = [
 original = formula_path.read_text()
 lines = original.splitlines(keepends=True)
 updated = list(lines)
+current_versions = set()
+checksums_changed = False
+url_updates = []
 
 for target, url, sha in targets:
     url_pattern = re.compile(
-        r'^(?P<indent>\s*)url "https://github\.com/HiroLiang/tentserv-agent/releases/download/[^"]+/tentgent-[^"]+-'
+        r'^(?P<indent>\s*)url "https://github\.com/HiroLiang/tentserv-agent/releases/download/[^"]+/tentgent-(?P<version>[^"]+)-'
         + re.escape(target)
-        + r'\.tar\.gz"\s*$'
+        + r'\.tar\.gz(?:\?revision=[0-9]+)?"\s*$'
     )
     matches = []
     for index, line in enumerate(updated):
         match = url_pattern.match(line.rstrip("\n"))
         if match:
-            matches.append((index, match.group("indent")))
+            matches.append((index, match.group("indent"), match.group("version")))
 
     if len(matches) != 1:
         print(
@@ -181,7 +197,8 @@ for target, url, sha in targets:
         )
         sys.exit(1)
 
-    url_index, url_indent = matches[0]
+    url_index, url_indent, current_version = matches[0]
+    current_versions.add(current_version)
     sha_index = url_index + 1
     if sha_index >= len(updated):
         print(
@@ -191,7 +208,7 @@ for target, url, sha in targets:
         sys.exit(1)
 
     sha_match = re.match(
-        r'^(?P<indent>\s*)sha256 "[0-9a-fA-F]{64}"\s*$',
+        r'^(?P<indent>\s*)sha256 "(?P<sha>[0-9a-fA-F]{64})"\s*$',
         updated[sha_index].rstrip("\n"),
     )
     if not sha_match:
@@ -201,8 +218,61 @@ for target, url, sha in targets:
         )
         sys.exit(1)
 
-    updated[url_index] = f'{url_indent}url "{url}"\n'
+    url_updates.append((url_index, url_indent, url))
     updated[sha_index] = f'{sha_match.group("indent")}sha256 "{sha}"\n'
+    checksums_changed |= sha_match.group("sha").lower() != sha.lower()
+
+if len(current_versions) != 1:
+    sys.exit("update-homebrew-formula: platform formula versions must match")
+
+revision_lines = [
+    (index, line) for index, line in enumerate(updated)
+    if re.match(r"^  revision\b", line)
+]
+if len(revision_lines) > 1:
+    sys.exit("update-homebrew-formula: expected at most one formula revision")
+
+current_revision = 0
+if revision_lines:
+    revision_index, revision_line = revision_lines[0]
+    revision_match = re.fullmatch(r"  revision (0|[1-9][0-9]*)\s*", revision_line)
+    if not revision_match:
+        sys.exit("update-homebrew-formula: invalid existing formula revision")
+    current_revision = int(revision_match.group(1))
+
+same_version = current_versions == {os.environ["RELEASE_VERSION"]}
+requested_revision = os.environ["FORMULA_REVISION"]
+new_revision = (
+    int(requested_revision) if requested_revision
+    else current_revision if same_version else 0
+)
+if same_version and new_revision < current_revision:
+    sys.exit("update-homebrew-formula: same-version formula revision cannot decrease")
+if same_version and checksums_changed and new_revision <= current_revision:
+    sys.exit(
+        "update-homebrew-formula: same-version checksums changed; "
+        f"pass --revision greater than {current_revision} so brew upgrade detects the replacement"
+    )
+
+# Homebrew keys its archive cache by URL. A revised release must not reuse the
+# old tarball merely because the version and artifact filename are unchanged.
+for url_index, url_indent, url in url_updates:
+    if new_revision:
+        url += f"?revision={new_revision}"
+    updated[url_index] = f'{url_indent}url "{url}"\n'
+
+if revision_lines:
+    if new_revision:
+        updated[revision_index] = f"  revision {new_revision}\n"
+    else:
+        del updated[revision_index]
+elif new_revision:
+    license_lines = [
+        index for index, line in enumerate(updated) if re.match(r"^  license\b", line)
+    ]
+    if len(license_lines) != 1:
+        sys.exit("update-homebrew-formula: expected one license line before formula revision")
+    updated.insert(license_lines[0] + 1, f"  revision {new_revision}\n")
 
 new_text = "".join(updated)
 if new_text == original:

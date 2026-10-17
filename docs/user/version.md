@@ -7,6 +7,13 @@ limits for current and historical Tentgent versions.
 
 Server lifecycle correctness, model-loading safety, and release reliability.
 
+- The October 17, 2026 replacement fixes GGUF text-model selection when the
+  source also contains `mmproj` projector sidecars, including Google's Gemma 3
+  QAT GGUF repository. Python loading and Rust file diagnostics now agree;
+  multiple primary weights remain ambiguous. Homebrew revision `1` makes
+  this replacement upgradeable as `1.1.2_1`; the CLI version stays `1.1.2`.
+  Refresh the managed runtime after upgrading as described in the
+  [upgrade instructions](./install.md#upgrade).
 - Raised the source-build minimum Rust version to 1.99.0 and pinned local,
   Windows CI and native release builds to that version. Rust edition and
   source language remain unchanged; binary installations need no compiler.

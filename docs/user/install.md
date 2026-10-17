@@ -117,10 +117,13 @@ artifact URL and version point at that same tag.
 
 ## Upgrade
 
+Stop affected Tentgent servers, chat/train work and the daemon before upgrading
+or refreshing the managed runtime, then restart them afterward. Existing
+Python workers can retain old imported code even after package files change.
+
 This release uses managed Python 3.12 (supported range: `>=3.11,<3.13`) for
-media dependency compatibility, without changing system Python. Stop affected
-Tentgent servers, chat/train work, and the daemon before rebuilding an existing
-3.13 managed environment. Remove a `TENTGENT_BOOTSTRAP_PYTHON_VERSION=3.13`
+media dependency compatibility, without changing system Python. When rebuilding
+an existing 3.13 managed environment, remove a `TENTGENT_BOOTSTRAP_PYTHON_VERSION=3.13`
 override. Bootstrap may recreate only the selected Python environment; model,
 adapter, dataset, and server stores remain intact. If sync fails, close any
 remaining processes and retry bootstrap/the Windows installer rather than
@@ -135,6 +138,14 @@ tentgent runtime bootstrap
 tentgent doctor
 tentgent --version
 ```
+
+The October 17, 2026 `v1.1.2` GGUF fix replaces the original release assets.
+Homebrew identifies the corrected package as `1.1.2_1` (formula revision `1`),
+while `tentgent --version` remains `1.1.2`. Check the installed package with
+`brew list --versions tentgent`. The Python runtime is installed separately:
+run bootstrap after the package upgrade to refresh its code. Use
+`tentgent runtime bootstrap --profile local-model` when local inference
+dependencies are needed; the default bootstrap installs only the base profile.
 
 Upgrade direct installer installs by running the installer again:
 

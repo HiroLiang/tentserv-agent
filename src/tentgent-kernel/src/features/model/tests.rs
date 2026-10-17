@@ -24,6 +24,8 @@ use super::ports::{
     ModelSourceIndexStore, ModelSourceStager, ModelStoreLayoutInitializer, StagedModelSource,
 };
 
+mod gguf_diagnostics;
+
 #[test]
 fn model_ref_is_canonical_sha256_hex_and_derives_short_ref() {
     let uppercase = "A".repeat(64);
