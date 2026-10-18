@@ -63,7 +63,7 @@ impl ModelLocalImportUseCase for StdModelLocalImportUseCase<'_> {
         self.stager
             .copy_local_source(&request.source_path, &staged)?;
         let outcome = self.finalizer().finalize(
-            &store,
+            &layout,
             &staged,
             ModelImportSource::Local {
                 original_path: request.source_path,

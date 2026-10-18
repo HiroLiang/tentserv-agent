@@ -56,6 +56,7 @@ pub struct StdClusterReadinessUseCase<'a> {
 }
 
 pub(super) struct ClusterReadinessContext<'a> {
+    pub(super) runtime: &'a RuntimeLayout,
     pub(super) cluster_ref: &'a ClusterRef,
     pub(super) cluster_store: &'a ClusterStoreLayout,
     pub(super) model_store: &'a ModelStoreLayout,
@@ -243,6 +244,7 @@ fn resolve_cluster_readiness(
     let provider_statuses = provider_auth_statuses(inspection, auth_status);
     let mut routes = Vec::with_capacity(inspection.definition.routes.len());
     let context = ClusterReadinessContext {
+        runtime: layout,
         cluster_ref: &inspection.definition.cluster_ref,
         cluster_store: store,
         model_store: &model_store,
@@ -362,10 +364,12 @@ pub(super) fn resolve_local_route_readiness(
         query = query.with_runtime_profile(profile.profile_id.clone(), profile.profile_version);
     }
 
-    let proofs = match context
-        .model_proofs
-        .list_capability_proofs(context.model_store, &metadata.model_ref)
-    {
+    let proofs = match context.model_proofs.list_capability_proofs_for(
+        &crate::features::model::proof_context::ModelProofContext::new(context.runtime)
+            .with_expected_metadata(&metadata),
+        &metadata.model_ref,
+        capability,
+    ) {
         Ok(proofs) => proofs,
         Err(err) => {
             return unavailable_route(

@@ -158,7 +158,10 @@ mod tests {
         record_runtime_execution_response(&state, &response);
 
         let proofs = FileModelCapabilityProofStore
-            .list_capability_proofs(&model_store, &model_ref)
+            .list_capability_proofs(
+                &tentgent_kernel::features::model::proof_context::ModelProofContext::new(&layout),
+                &model_ref,
+            )
             .expect("proofs");
         assert_eq!(proofs.len(), 1);
         assert_eq!(proofs[0].capability, ModelCapability::Chat);
@@ -194,7 +197,10 @@ mod tests {
         record_runtime_execution_response(&state, &response);
 
         let proofs = FileModelCapabilityProofStore
-            .list_capability_proofs(&model_store, &model_ref)
+            .list_capability_proofs(
+                &tentgent_kernel::features::model::proof_context::ModelProofContext::new(&layout),
+                &model_ref,
+            )
             .expect("proofs");
         assert_eq!(proofs.len(), 1);
         assert_eq!(proofs[0].status, ModelCapabilityProofStatus::Verified);

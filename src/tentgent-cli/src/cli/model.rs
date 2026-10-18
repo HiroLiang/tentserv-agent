@@ -126,7 +126,7 @@ pub fn handle_model_command(action: ModelCommands) -> Result<()> {
                     layout: runtime_layout_input(LayoutResolveMode::ReadOnly),
                 })
                 .into_diagnostic()?;
-            let proofs = model_proofs_for_summaries(&model.proofs, &result.store, &result.models)
+            let proofs = model_proofs_for_summaries(&model.proofs, &result.layout, &result.models)
                 .into_diagnostic()?;
             render_model_list(&result.models, &proofs);
         }
@@ -521,13 +521,17 @@ fn runtime_layout_input(mode: LayoutResolveMode) -> RuntimeLayoutInput {
 
 fn model_proofs_for_summaries(
     proof_store: &dyn ModelCapabilityProofStore,
-    store: &ModelStoreLayout,
+    layout: &tentgent_kernel::foundation::layout::RuntimeLayout,
     models: &[ModelSummary],
 ) -> tentgent_kernel::foundation::error::KernelResult<HashMap<ModelRef, Vec<ModelCapabilityProof>>>
 {
     let mut proofs = HashMap::new();
     for model in models {
-        let model_proofs = proof_store.list_capability_proofs(store, &model.metadata.model_ref)?;
+        let model_proofs = proof_store.list_capability_proofs(
+            &tentgent_kernel::features::model::proof_context::ModelProofContext::new(layout)
+                .with_expected_metadata(&model.metadata),
+            &model.metadata.model_ref,
+        )?;
         proofs.insert(model.metadata.model_ref.clone(), model_proofs);
     }
     Ok(proofs)

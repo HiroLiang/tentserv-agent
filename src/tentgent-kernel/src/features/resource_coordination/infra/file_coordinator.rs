@@ -22,7 +22,7 @@ use crate::{
 
 use super::{
     holder_metadata::{read_holders, remove_holder, write_holder},
-    layout::coordination_lock_path,
+    layout::{coordination_lock_path, coordination_root},
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -47,10 +47,10 @@ impl ResourceCoordinator for FileResourceCoordinator {
             attempts += 1;
             match try_acquire_set(layout, &request)? {
                 Ok(lease) => {
-                    let keys = request.locks.iter().map(|(key, _)| key.clone()).collect();
                     return Ok(Ok(ResourcePermit::new(
                         request.operation_id,
-                        keys,
+                        coordination_root(layout),
+                        request.locks,
                         Box::new(lease),
                     )));
                 }

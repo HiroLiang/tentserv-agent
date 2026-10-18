@@ -169,12 +169,16 @@ pub(super) fn write_model_capability_proof(
     error: Option<&str>,
 ) {
     let store = FileModelCapabilityProofStore;
-    let layout = tentgent_kernel::features::model::domain::ModelStoreLayout::from_models_dir(
-        home.join("models"),
-    );
+    let layout = StdRuntimeLayoutResolver
+        .resolve(RuntimeLayoutInput {
+            mode: LayoutResolveMode::ReadOnly,
+            home_dir: Some(home.to_path_buf()),
+            data_root_dir: Some(home.to_path_buf()),
+        })
+        .expect("proof runtime layout");
     store
         .save_capability_proof(
-            &layout,
+            &tentgent_kernel::features::model::proof_context::ModelProofContext::new(&layout),
             &ModelCapabilityProof {
                 model_ref: ModelRef::parse(model_ref).expect("model ref"),
                 capability,

@@ -38,6 +38,7 @@ use super::{
     ServerSpecUseCase, ServerStopRequest, StdServerUseCase,
 };
 
+mod coordination;
 mod fixtures;
 mod lifecycle;
 mod options;

@@ -216,10 +216,9 @@ impl Fixture {
         let layout = StdRuntimeLayoutResolver
             .resolve(self.layout_input(LayoutResolveMode::Create))
             .expect("layout");
-        let model_store = ModelStoreLayout::from_models_dir(layout.models_dir);
         FileModelCapabilityProofStore
             .save_capability_proof(
-                &model_store,
+                &crate::features::model::proof_context::ModelProofContext::new(&layout),
                 &ModelCapabilityProof {
                     model_ref: self.model_ref.clone(),
                     capability,

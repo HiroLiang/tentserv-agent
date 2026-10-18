@@ -574,7 +574,10 @@ fn readiness_for(
     let proof_store = FileModelCapabilityProofStore;
     for proof in proofs {
         proof_store
-            .save_capability_proof(&model_layout, &proof)
+            .save_capability_proof(
+                &crate::features::model::proof_context::ModelProofContext::new(&runtime_layout),
+                &proof,
+            )
             .expect("save proof");
     }
 

@@ -1,4 +1,8 @@
-use std::{fmt, time::Duration};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -151,19 +155,25 @@ pub struct ResourceBusy {
 
 pub struct ResourcePermit {
     operation_id: String,
+    coordination_root: PathBuf,
     keys: Vec<ResourceKey>,
+    locks: Vec<(ResourceKey, ResourceLockMode)>,
     lease: Option<Box<dyn ResourceCoordinationLease>>,
 }
 
 impl ResourcePermit {
     pub(crate) fn new(
         operation_id: String,
-        keys: Vec<ResourceKey>,
+        coordination_root: PathBuf,
+        locks: Vec<(ResourceKey, ResourceLockMode)>,
         lease: Box<dyn ResourceCoordinationLease>,
     ) -> Self {
+        let keys = locks.iter().map(|(key, _)| key.clone()).collect();
         Self {
             operation_id,
+            coordination_root,
             keys,
+            locks,
             lease: Some(lease),
         }
     }
@@ -176,6 +186,29 @@ impl ResourcePermit {
         &self.keys
     }
 
+    /// The lock namespace in which this permit was acquired.
+    ///
+    /// Borrowers must match this against their coordinator's root as well as
+    /// checking the required keys and modes. Matching keys alone cannot grant
+    /// authority over a different runtime home's resources.
+    pub fn coordination_root(&self) -> &Path {
+        &self.coordination_root
+    }
+
+    /// Checks an actually acquired key and mode without acquiring or upgrading.
+    /// An exclusive lock also covers a shared requirement, but not vice versa.
+    pub fn covers(&self, key: &ResourceKey, mode: ResourceLockMode) -> bool {
+        self.locks.iter().any(|(held_key, held_mode)| {
+            held_key == key && (*held_mode == mode || *held_mode == ResourceLockMode::Exclusive)
+        })
+    }
+
+    pub fn covers_all(&self, requirements: &[(ResourceKey, ResourceLockMode)]) -> bool {
+        requirements
+            .iter()
+            .all(|(key, mode)| self.covers(key, *mode))
+    }
+
     pub fn release(mut self) {
         self.lease.take();
     }
@@ -186,7 +219,8 @@ impl fmt::Debug for ResourcePermit {
         formatter
             .debug_struct("ResourcePermit")
             .field("operation_id", &self.operation_id)
-            .field("keys", &self.keys)
+            .field("coordination_root", &self.coordination_root)
+            .field("locks", &self.locks)
             .finish_non_exhaustive()
     }
 }

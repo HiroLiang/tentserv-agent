@@ -89,6 +89,7 @@ impl ClusterRouteExecutionUseCase for StdClusterRouteExecutionUseCase<'_> {
             model_ref.to_string(),
             runtime_profile,
             &ClusterReadinessContext {
+                runtime: &layout,
                 cluster_ref: &request.definition.cluster_ref,
                 cluster_store: &cluster_store,
                 model_store: &model_store,

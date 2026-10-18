@@ -81,7 +81,7 @@ fn state(label: &str, mode: LoadMode) -> LocalServerState {
 fn proofs(state: &LocalServerState) -> Vec<ModelCapabilityProof> {
     FileModelCapabilityProofStore
         .list_capability_proofs(
-            &ModelStoreLayout::from_models_dir(state.layout.models_dir.clone()),
+            &tentgent_kernel::features::model::proof_context::ModelProofContext::new(&state.layout),
             &ModelRef::parse(&state.config.model_ref).unwrap(),
         )
         .unwrap()

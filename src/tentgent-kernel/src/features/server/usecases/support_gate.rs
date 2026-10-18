@@ -1,13 +1,15 @@
 //! Local server support-status gating.
 
 use crate::features::model::{
-    domain::{ModelMetadata, ModelStoreLayout},
+    domain::ModelMetadata,
     ports::ModelCapabilityProofStore,
+    proof_context::ModelProofContext,
     support_catalog::built_in_support_hints_for_model,
     support_status::{
         ModelSupportQuery, ModelSupportResolution, ModelSupportStatus, ModelSupportStatusResolver,
     },
 };
+use crate::features::resource_coordination::ResourcePermit;
 use crate::features::server::domain::ServerCapability;
 use crate::features::server::domain::ServerRuntimeProfileSelection;
 use crate::foundation::{
@@ -22,8 +24,12 @@ pub(super) fn ensure_local_server_support_status_allows_start(
     proofs: &dyn ModelCapabilityProofStore,
     runtime_profile: Option<&ServerRuntimeProfileSelection>,
     allow_unverified: bool,
+    permit: Option<&ResourcePermit>,
 ) -> KernelResult<()> {
-    let model_store = ModelStoreLayout::from_models_dir(layout.models_dir.clone());
+    let mut context = ModelProofContext::new(layout).with_expected_metadata(metadata);
+    if let Some(permit) = permit {
+        context = context.with_permit(permit);
+    }
     let model_capability = capability.required_model_capability();
     let mut query = ModelSupportQuery::from_metadata(metadata, model_capability);
     if let Some(runtime_profile) = runtime_profile {
@@ -32,7 +38,8 @@ pub(super) fn ensure_local_server_support_status_allows_start(
             runtime_profile.profile_version,
         );
     }
-    let stored_proofs = proofs.list_capability_proofs(&model_store, &metadata.model_ref)?;
+    let stored_proofs =
+        proofs.list_capability_proofs_for(&context, &metadata.model_ref, model_capability)?;
     let hints = built_in_support_hints_for_model(metadata);
     let resolution = ModelSupportStatusResolver.resolve(metadata, &query, &stored_proofs, &hints);
 

@@ -5,6 +5,7 @@ mod common;
 mod import;
 pub mod port;
 mod proof;
+mod proof_error;
 mod pull;
 mod remove;
 mod update;
@@ -27,6 +28,7 @@ pub use port::{
     ModelRuntimeExecutionEvidenceRecordResult, ModelRuntimeExecutionEvidenceRecorder,
 };
 pub use proof::{StdModelCapabilityProofUseCase, StdModelRuntimeExecutionEvidenceRecorder};
+pub(crate) use proof_error::sanitize_proof_error;
 pub use pull::StdModelHfPullUseCase;
 pub use remove::StdModelRemoveUseCase;
 pub use update::StdModelCapabilityUpdateUseCase;

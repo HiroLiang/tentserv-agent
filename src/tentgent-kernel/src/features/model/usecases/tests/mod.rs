@@ -43,6 +43,7 @@ use super::{
 };
 
 mod fixtures;
+mod import_coordination;
 mod workflows;
 
 use fixtures::*;

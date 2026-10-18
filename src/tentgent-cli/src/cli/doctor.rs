@@ -555,10 +555,13 @@ fn model_support_checks(kernel: &CliDoctorKernel) -> Vec<DoctorCheck> {
             checks.push(check);
         }
 
-        let proofs = match kernel
-            .model_proofs
-            .list_capability_proofs(&result.store, &model.metadata.model_ref)
-        {
+        let proofs = match kernel.model_proofs.list_capability_proofs(
+            &tentgent_kernel::features::model::proof_context::ModelProofContext::new(
+                &result.layout,
+            )
+            .with_expected_metadata(&model.metadata),
+            &model.metadata.model_ref,
+        ) {
             Ok(proofs) => proofs,
             Err(err) => {
                 checks.push(DoctorCheck::warn(
