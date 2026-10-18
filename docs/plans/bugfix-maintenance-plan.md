@@ -45,13 +45,17 @@ queue that should stay visible from the active plan.
 
 ## GGUF Projector Incident (`2026-10-17`)
 
-The released `v1.1.2` rejects a valid Gemma GGUF source containing one primary
+The original `v1.1.2` rejected a valid Gemma GGUF source containing one primary
 model and an `mmproj` projector. The [incident review](./gguf-projector-incident.md)
-records the inherited selection assumption, missing fixture coverage, paired
-Rust/Python remediation, and replacement-release/Homebrew acceptance gates.
-The user authorized replacing `v1.1.2` after verification and making the
-same-version correction available through Homebrew upgrade. Publication and
-upgrade evidence remain pending; earlier release checkpoints below are history.
+records the inherited selection assumption, missing fixture coverage and
+paired Rust/Python remediation. PR #143 merged at `a850a3f`; the authorized
+same-version replacement passed all four native release gates, both macOS
+notarizations and actual published ARM installation/chat/streaming checks.
+Homebrew revision 1 is published in tap commit `1287ddb`; actual upgrade to
+`1.1.2_1`, managed Python refresh, fresh-worker chat/streaming and the original
+short-ref workflow passed on `2026-10-18`. `doctor` reports ready; formula
+audit and `brew test` also passed. The incident is closed. The original
+release checkpoints below are historical evidence.
 
 ## Current Handoff State
 

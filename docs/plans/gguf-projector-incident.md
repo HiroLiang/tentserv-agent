@@ -1,8 +1,8 @@
 # GGUF Projector Selection Incident
 
 Date: `2026-10-17`. Affected release: `v1.1.2` at `0ea91c7`.
-Status: source remediation prepared; replacement-release and Homebrew
-verification pending. Parent: [maintenance plan](./bugfix-maintenance-plan.md).
+Status: closed `2026-10-18`; replacement release, Homebrew upgrade, managed
+runtime refresh and original user workflow verified. Parent: [maintenance plan](./bugfix-maintenance-plan.md).
 
 ## User Impact
 
@@ -98,14 +98,14 @@ chat with `llama-cpp-python` 0.3.23 and the corrected runtime source selected
 explicitly. Both GGUF files remained in place. These results validate the
 source repair on the reported model; the source override is not evidence that
 the published release or Homebrew installation already contains the fix.
-The final release matrix must supersede these initial counts.
+The release evidence below supersedes these initial counts.
 
 The local installation audit also found CLI `1.1.2` alongside a non-editable
 Python package still installed from the `1.1.1` Cellar. The resolver defect
 exists in both releases, but this establishes a separate upgrade gap:
 Homebrew updates packaged files without syncing the managed Python runtime.
-Closeout must verify bootstrap refresh and a fresh worker process, not only
-the CLI version or formula revision.
+This required verification of bootstrap refresh and a fresh worker process
+in addition to the CLI version and formula revision.
 
 ## Release Acceptance And Follow-Up
 
@@ -115,24 +115,60 @@ same-version replacement, not a new semantic-version release. Preserve the
 old release commit and asset checksums in the release evidence so the two
 builds can be distinguished and the replacement can be audited.
 
-Required evidence before closeout:
+### Replacement Release Evidence (`2026-10-18`)
 
-- [ ] Revalidate focused and full regressions against the final source; record
-  skips and their reasons separately from successful coverage.
-- [ ] Require an offline primary-plus-projector fixture through the installed
-  runtime, so native packaging checks verify this fix without downloading a
-  model or relying on development imports.
-- [ ] Run real text chat and streaming with the reported Gemma snapshot through
-  the candidate installation, retaining both GGUF files.
-- [ ] Complete native release checks, signature/notarization requirements,
-  replacement asset checksums and published-artifact verification.
-- [ ] Publish a Homebrew formula revision with matching replacement checksums;
-  demonstrate upgrade from the already installed `1.1.2` and repeat Gemma chat
-  through the upgraded installation.
+[PR #143](https://github.com/HiroLiang/tentserv-agent/pull/143) merged at
+`a850a3f`; the authorized replacement `v1.1.2` tag points to that commit.
+The original source remains identified by
+`archive/v1.1.2-before-gguf-20261017` at `0ea91c7`, and the previous release
+archives and metadata were retained before replacement.
 
-Local source smoke results and a published, upgradeable artifact are different
-evidence. Keep this incident open until the replacement release and actual
-Homebrew upgrade have been verified. Future changes to asset selection must
-review both Rust diagnostics and Python execution against the same layout
-matrix; future backend release evidence must name the tested backend and
-layout instead of implying coverage from another backend's successful smoke.
+- [x] Final native source, packaging and installed-artifact gates passed on
+  macOS ARM/Intel, Linux x86_64 and Windows x86_64 in
+  [release run 39017736205](https://github.com/HiroLiang/tentserv-agent/actions/runs/39017736205).
+  The installed probes exercised primary-plus-projector selection from
+  non-editable site-packages on all four platforms.
+- [x] The local Python suite with optional dependencies passed all 207 tests
+  without skips. Native base environments passed 192 tests with 15 optional
+  dependency skips on macOS/Linux; Windows passed 190 with those 15 skips
+  plus two POSIX-only FIFO skips. Each native suite also passed 11 subtests.
+  These skips are recorded as exclusions, not successful native coverage.
+- [x] Both macOS notarizations were `Accepted`: ARM submission
+  `7089978b-88cd-496f-95a9-e39b53743217`; Intel submission
+  `c3220a56-edcd-4971-903a-19bf5688e81a`. All four downloaded replacement
+  archives matched the published checksums.
+- [x] The published signed ARM archive was installed with a non-editable
+  Python 3.12.13 runtime and `llama-cpp-python` 0.3.23. Its actual CLI completed
+  both ordinary and streaming Gemma chat, using the reported snapshot with
+  both GGUF files retained. Installed module hashes matched the packaged
+  source. The isolated worker exited, and production model data was unchanged.
+- [x] [Tap commit 1287ddb](https://github.com/HiroLiang/homebrew-tap/commit/1287ddb)
+  published formula revision 1 with replacement checksums and cache-distinct
+  URLs. `brew update` and actual upgrade from `1.1.2` to `1.1.2_1` succeeded.
+  Bootstrap from the new Cellar refreshed the managed environment to Python
+  3.12.13 with 150 locked packages. Non-editable package provenance and
+  installed resolver/chat hashes matched the new Cellar source.
+- [x] The upgraded CLI and managed environment passed ordinary and streaming
+  Gemma chat with a fresh worker, followed by confirmed worker exit. The
+  isolated verification retained both GGUF files and left production data
+  unchanged. The user's short model ref also succeeded through default
+  installed paths outside the checkout, without `TENTGENT_*` or Python source
+  overrides, for both ordinary and streaming chat. `doctor` reported `ready`
+  and `cpu-gguf` reported `Ready`.
+- [x] `brew audit --formula hiroliang/tap/tentgent` and
+  `brew test hiroliang/tap/tentgent` both exited successfully. The formula test
+  executed the installed `1.1.2_1` binary; no checks were skipped or bypassed.
+
+The asset names remain `tentgent-1.1.2-<target>.tar.gz` (`.zip` for Windows).
+The retained hashes distinguish the two same-version builds:
+
+| Target | Original SHA-256 | Replacement SHA-256 |
+| --- | --- | --- |
+| `aarch64-apple-darwin` | `956cbb7b277654385ad5dac8d5fd1dd4b16802c95caafb83ddf7827bd97908af` | `0704b9e9192a3f4eff057a281087c2e9571df1b50681e25fb6e9d15457043b51` |
+| `x86_64-apple-darwin` | `74cb92ec07b1d412f7f894bf385e43d86874006048f4d60ca8bf419082d8614c` | `0f25a865e682009dc7a754afb7f615c338b16ae42868201ab087d6155e4d7554` |
+| `x86_64-pc-windows-msvc` | `da4b1c90db4149a2a82dd06fd77a62e97dcfb6af2dbf7e472a6332d2216f6542` | `0b1aa347058d01a8806d0c80957e254e26e5acc50e63297d9a8cb8edc81b4e20` |
+| `x86_64-unknown-linux-gnu` | `b02c75a4ec4e6a2b55ffdd4217e05b769e11c9009ecfc5e130e78ef03b20264e` | `225f3ed3a53098b43bdac31c6ab0385d110f98fc0da7e35fa09d4c05ee9dad38` |
+
+All incident acceptance gates passed. Future changes to asset selection must review both Rust diagnostics and Python
+execution against the same layout matrix. Backend release evidence must name
+the tested backend and layout; another backend's smoke cannot establish it.
